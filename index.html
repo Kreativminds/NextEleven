@@ -2639,7 +2639,7 @@ const Render = (() => {
     const rows = players.map(p => `
       <tr>
         <td class="col-sticky-num">${p.shirtNumber||'—'}</td>
-        <td class="col-sticky-name">${esc(p.fullName)} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor" title="${esc(p.trackingLabel||'Tracked')}">${esc(p.trackingLabel||'★')}</span>`:''} ${!p.isActive?'<span class="badge-nc badge" style="font-size:9px">Archived</span>':''}</td>
+        <td class="col-sticky-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor" title="${esc(p.trackingLabel||'Tracked')}">${esc(p.trackingLabel||'★')}</span>`:''} ${!p.isActive?'<span class="badge-nc badge" style="font-size:9px">Archived</span>':''}</td>
         <td><span class="pos-pill">${p.primaryPosition||'—'}</span></td>
         <td>${p.secondaryPosition||'—'}</td>
         <td>${p.dominantFoot||'—'}</td>
@@ -2798,7 +2798,7 @@ const Render = (() => {
             const rowClass = calledUp ? '' : 'row-locked';
             return `<tr class="${rowClass}" id="gdr-${p.playerId}" data-role="${gp.role||'Not Called'}">
               <td class="col-sticky-num" style="opacity:1!important;pointer-events:auto!important">${p.shirtNumber||'—'}</td>
-              <td class="col-sticky-name" style="opacity:1!important;pointer-events:auto!important">${esc(p.fullName)} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor" title="${esc(p.trackingLabel||'Tracked')}">${esc(p.trackingLabel||'★')}</span>`:''}</td>
+              <td class="col-sticky-name" style="opacity:1!important;pointer-events:auto!important" title="${esc(p.fullName)}">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor" title="${esc(p.trackingLabel||'Tracked')}">${esc(p.trackingLabel||'★')}</span>`:''}</td>
               <td><span class="pos-pill" style="opacity:1!important;pointer-events:auto!important">${p.primaryPosition||'—'}</span></td>
               <td class="td-center" style="opacity:1!important;pointer-events:auto!important">
                 <input type="checkbox" class="calledUp-cb" ${calledUp?'checked':''} onchange="toggleCalledUp(${p.playerId},this.checked,${gameId})">
@@ -3097,7 +3097,7 @@ const Render = (() => {
             const arrow = active ? (sortDir==='asc'?' ▲':' ▼') : '';
             return `<th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#999;padding:5px 8px;text-align:${i===0?'left':'center'};border-bottom:1px solid #ddd;cursor:pointer;user-select:none" onclick="playerTableSort('${tableId}','${key}')">${h}${arrow}</th>`;
           }).join('')}</tr></thead>
-          <tbody>${sorted.map((p,i)=>`<tr>${fields.map((f,fi)=>`<td style="padding:7px 8px;font-size:12px;border-bottom:1px solid #eee;${fi===0?'font-weight:700':'text-align:center'}">${fi===0?`${i+1}. ${esc(p[f])}`:p[f]||0}</td>`).join('')}</tr>`).join('')}</tbody>
+          <tbody>${sorted.map((p,i)=>`<tr>${fields.map((f,fi)=>`<td style="padding:7px 8px;font-size:12px;border-bottom:1px solid #eee;${fi===0?'font-weight:700':'text-align:center'}" ${fi===0?`title="${esc(p[f])}"`:''}>${fi===0?`${i+1}. ${esc(shortName(p[f]))}`:p[f]||0}</td>`).join('')}</tr>`).join('')}</tbody>
         </table>
       </div>`;
   }
@@ -3199,6 +3199,7 @@ const Render = (() => {
           <div class="form-grid">
             <div class="form-group"><label>Season Name *</label><input id="sf-name" type="text" placeholder="e.g. 2025/26"></div>
             <div class="form-group"><label>Club Name</label><input id="sf-club" type="text" placeholder="e.g. SL Olivais"></div>
+            <div class="form-group"><label>Home Ground</label><input id="sf-homeground" type="text" placeholder="e.g. Campo SL Olivais"></div>
             <div class="form-group"><label>Age Group</label><input id="sf-age" type="text" placeholder="e.g. U12"></div>
             <div class="form-group full"><label>Notes</label><textarea id="sf-notes" placeholder="Any notes about this season..."></textarea></div>
           </div>
@@ -3216,6 +3217,16 @@ const Render = (() => {
             </select>
           </div>
           <button class="btn btn-primary" style="margin-top:10px" id="btnSwitchSeason">Switch Season</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Edit Season Details</div>
+          <div class="form-grid">
+            <div class="form-group"><label>Club Name</label><input id="sf-edit-club" type="text" placeholder="e.g. SL Olivais" value="${esc(State.currentSeason?.clubName||'')}"></div>
+            <div class="form-group"><label>Home Ground</label><input id="sf-edit-homeground" type="text" placeholder="e.g. Campo SL Olivais" value="${esc(State.currentSeason?.homeGround||'')}"></div>
+            <div class="form-group"><label>Age Group</label><input id="sf-edit-age" type="text" placeholder="e.g. U12" value="${esc(State.currentSeason?.ageGroup||'')}"></div>
+          </div>
+          <p style="font-size:11px;color:var(--muted);margin-top:6px">Editing: <strong>${esc(State.currentSeason?.seasonName||'—')}</strong> (the active season above). Home Ground auto-fills the Venue field on Home games.</p>
+          <button class="btn btn-primary" style="margin-top:10px" id="btnSaveSeasonEdit">Save Changes</button>
         </div>` : ''}
       </div>
 
@@ -3670,6 +3681,15 @@ const Confirm = (() => {
 function esc(str) {
   if (!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Shortens a full name to "First Last" for compact table display.
+// "Lorenzo Morenda Mabere" -> "Lorenzo Mabere". Names with 1-2 words pass through unchanged.
+function shortName(fullName) {
+  if (!fullName) return '';
+  const parts = String(fullName).trim().split(/\s+/);
+  if (parts.length <= 2) return fullName;
+  return parts[0] + ' ' + parts[parts.length - 1];
 }
 function fmtDate(d) {
   if (!d) return '—';
@@ -4244,6 +4264,7 @@ function attachEvents() {
     const t = document.getElementById('gf-time').value;
     const ha = document.getElementById('gf-venue').value;
     if (t) document.getElementById('gf-arrivalTime').value = Calc.arrivalTime(t, ha);
+    autoFillHomeGround();
   });
   document.getElementById('btnCancelGame')?.addEventListener('click', () => {
     document.getElementById('addGamePanel').classList.add('panel-hidden');
@@ -4370,6 +4391,18 @@ function resetGameForm() {
   document.getElementById('gf-venue').value='Home';
   document.getElementById('gf-compType').value='League';
   document.getElementById('gf-oppScore').value='0';
+  autoFillHomeGround();
+}
+
+// Auto-fill the Venue/Ground field from the season's Home Ground when Home is selected.
+// Only overwrites if the ground field is currently empty, so manual edits are never lost.
+function autoFillHomeGround() {
+  const venueSel = document.getElementById('gf-venue');
+  const groundEl = document.getElementById('gf-ground');
+  if (!venueSel || !groundEl) return;
+  if (venueSel.value === 'Home' && !groundEl.value.trim() && State.currentSeason?.homeGround) {
+    groundEl.value = State.currentSeason.homeGround;
+  }
 }
 
 async function saveGame() {
@@ -4791,6 +4824,7 @@ document.addEventListener('click', async e => {
     const season = {
       seasonName: name,
       clubName: document.getElementById('sf-club')?.value.trim()||null,
+      homeGround: document.getElementById('sf-homeground')?.value.trim()||null,
       ageGroup: document.getElementById('sf-age')?.value.trim()||null,
       notes: document.getElementById('sf-notes')?.value.trim()||null,
       createdAt: new Date().toISOString(),
@@ -4801,6 +4835,21 @@ document.addEventListener('click', async e => {
     await loadMeta();
     Toast.show(`Season "${name}" created.`);
     await buildTrackedNav();
+    await Render.settings();
+  }
+
+  if (t.id==='btnSaveSeasonEdit') {
+    if (!State.currentSeasonId) { Toast.error('No active season.'); return; }
+    const updated = {
+      ...State.currentSeason,
+      clubName:   document.getElementById('sf-edit-club')?.value.trim()||null,
+      homeGround: document.getElementById('sf-edit-homeground')?.value.trim()||null,
+      ageGroup:   document.getElementById('sf-edit-age')?.value.trim()||null,
+    };
+    await Backup.create('before-save');
+    await DB.put('seasons', updated);
+    await loadMeta();
+    Toast.show('Season details updated.');
     await Render.settings();
   }
 
