@@ -320,7 +320,6 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
     <button class="nav-link" data-section="dashboard">&#128202; Dashboard</button>
     <button class="nav-link" data-section="squad">Squad</button>
     <button class="nav-link" data-section="games">Games</button>
-    <button class="nav-link" data-section="importSection">Import</button>
     <span id="trackedNavLinks"></span>
     <button class="nav-link" data-section="teamSummary">Team Summary</button>
     <button class="nav-link" data-section="settings">Settings</button>
@@ -336,7 +335,6 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
   <button class="nav-link" data-section="dashboard">&#128202; Dashboard</button>
   <button class="nav-link" data-section="squad">Squad</button>
   <button class="nav-link" data-section="games">Games</button>
-  <button class="nav-link" data-section="importSection">Import</button>
   <span id="trackedMobileLinks"></span>
   <button class="nav-link" data-section="teamSummary">Team Summary</button>
   <button class="nav-link" data-section="settings">Settings</button>
@@ -534,90 +532,6 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 
 
   <!-- IMPORT — file inputs are STATIC in HTML, never injected via innerHTML -->
-  <div class="section" id="sec-importSection">
-    <div class="page-header"><div><h1>Import</h1><div class="page-header-sub" id="importSubtitle"></div></div></div>
-
-    <!-- TAB BUTTONS -->
-    <div style="display:flex;gap:0;border-bottom:2px solid #ddd;margin-bottom:20px">
-      <button id="tabPlayers" class="import-tab active-tab" onclick="switchImportTab('players')">Players</button>
-      <button id="tabGames" class="import-tab" onclick="switchImportTab('games')">Games</button>
-      <button id="tabOpponents" class="import-tab" onclick="switchImportTab('opponents')">Opponents</button>
-    </div>
-
-    <!-- DEBUG LOG -->
-    <div id="importDebugLog" style="background:#111;color:#0f0;font-family:monospace;font-size:11px;padding:10px;border-radius:3px;margin-bottom:16px;max-height:120px;overflow-y:auto;display:none"></div>
-
-    <!-- ── PLAYERS PANEL ── -->
-    <div id="importPlayersPanel">
-      <div class="card">
-        <div class="card-title">Download Template</div>
-        <p style="font-size:12px;color:#999;margin-bottom:12px">Columns: fullName, shirtNumber, dateOfBirth, nationality, primaryPosition, secondaryPosition, dominantFoot, height, weight, notes</p>
-        <div class="btn-group">
-          <button class="btn btn-secondary" onclick="downloadImportTemplate('players','csv')">Download CSV Template</button>
-          <button class="btn btn-secondary" style="opacity:.4;cursor:not-allowed" disabled title="Coming in Phase 2">Excel — Phase 2</button>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">Import from CSV File</div>
-        <!-- STATIC file input — visible label, input overlaid inside -->
-        <label for="fileInputPlayers" class="file-label-btn">&#128196; Choose CSV File</label>
-        <div id="importPlayersFileInfo" style="font-size:11px;color:#999;margin-top:6px"></div>
-        <div id="importPlayersPreview" style="margin-top:12px"></div>
-      </div>
-      <div class="card">
-        <div class="card-title">Or Paste CSV Text</div>
-        <textarea id="pastePlayersCSV" style="width:100%;height:100px;font-family:monospace;font-size:11px;border:1px solid #ddd;border-radius:3px;padding:8px" placeholder="Paste CSV content here..."></textarea>
-        <button class="btn btn-secondary" style="margin-top:8px" onclick="handlePasteImport('players')">Parse Pasted CSV</button>
-      </div>
-    </div>
-
-    <!-- ── GAMES PANEL ── -->
-    <div id="importGamesPanel" style="display:none">
-      <div class="card">
-        <div class="card-title">Download Template</div>
-        <p style="font-size:12px;color:#999;margin-bottom:12px">Columns: date, opponent, homeAway, competitionType, competitionName, venue, opponentScore, notes</p>
-        <div class="btn-group">
-          <button class="btn btn-secondary" onclick="downloadImportTemplate('games','csv')">Download CSV Template</button>
-          <button class="btn btn-secondary" style="opacity:.4;cursor:not-allowed" disabled title="Coming in Phase 2">Excel — Phase 2</button>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">Import from CSV File</div>
-        <label for="fileInputGames" class="file-label-btn">&#128196; Choose CSV File</label>
-        <div id="importGamesFileInfo" style="font-size:11px;color:#999;margin-top:6px"></div>
-        <div id="importGamesPreview" style="margin-top:12px"></div>
-      </div>
-      <div class="card">
-        <div class="card-title">Or Paste CSV Text</div>
-        <textarea id="pasteGamesCSV" style="width:100%;height:100px;font-family:monospace;font-size:11px;border:1px solid #ddd;border-radius:3px;padding:8px" placeholder="Paste CSV content here..."></textarea>
-        <button class="btn btn-secondary" style="margin-top:8px" onclick="handlePasteImport('games')">Parse Pasted CSV</button>
-      </div>
-    </div>
-
-    <!-- ── OPPONENTS PANEL ── -->
-    <div id="importOpponentsPanel" style="display:none">
-      <div class="card">
-        <div class="card-title">Download Template</div>
-        <p style="font-size:12px;color:#999;margin-bottom:12px">Columns: opponentName, ageGroup, level, notes</p>
-        <div class="btn-group">
-          <button class="btn btn-secondary" onclick="downloadImportTemplate('opponents','csv')">Download CSV Template</button>
-          <button class="btn btn-secondary" style="opacity:.4;cursor:not-allowed" disabled title="Coming in Phase 2">Excel — Phase 2</button>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">Import from CSV File</div>
-        <label for="fileInputOpponents" class="file-label-btn">&#128196; Choose CSV File</label>
-        <div id="importOpponentsFileInfo" style="font-size:11px;color:#999;margin-top:6px"></div>
-        <div id="importOpponentsPreview" style="margin-top:12px"></div>
-      </div>
-      <div class="card">
-        <div class="card-title">Or Paste CSV Text</div>
-        <textarea id="pasteOpponentsCSV" style="width:100%;height:100px;font-family:monospace;font-size:11px;border:1px solid #ddd;border-radius:3px;padding:8px" placeholder="Paste CSV content here..."></textarea>
-        <button class="btn btn-secondary" style="margin-top:8px" onclick="handlePasteImport('opponents')">Parse Pasted CSV</button>
-      </div>
-    </div>
-  </div>
-
   <!-- SETTINGS -->
   <div class="section" id="sec-settings">
     <div class="page-header"><div><h1>Settings</h1></div></div>
@@ -2352,6 +2266,8 @@ const Render = (() => {
       return;
     }
 
+    try {
+
     const season = State.currentSeason;
     if (sub) sub.textContent = season.seasonName + (season.clubName ? ' · ' + season.clubName : '');
 
@@ -2443,6 +2359,11 @@ const Render = (() => {
       </div>
     `;
     updateDashSyncStatus();
+
+    } catch(err) {
+      console.error('Home render error:', err);
+      el.innerHTML = `<div class="empty"><strong>Home page error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;text-align:left;white-space:pre-wrap">${esc(err.message)}\n\n${esc(err.stack||'')}</p></div>`;
+    }
   }
 
   // ── DASHBOARD — pure analytics ──────────────────────────────────────────────
@@ -2455,6 +2376,8 @@ const Render = (() => {
       el.innerHTML = `<div class="empty"><strong>No season set up yet</strong><p>Go to Home to create your first season.</p><button class="btn btn-primary" onclick="Nav.go('home')">Go to Home</button></div>`;
       return;
     }
+
+    try {
 
     const season = State.currentSeason;
     if (sub) sub.textContent = season.seasonName + (season.clubName ? ' · ' + season.clubName : '');
@@ -2484,7 +2407,7 @@ const Render = (() => {
 
       <!-- TRACKED PLAYERS -->
       ${trackedPlayers.map(tp => {
-        const tpStats = Calc.playerSeasonStats(tp, allGP);
+        const tpStats = Calc.playerSeasonStats(tp.playerId, games, allGP);
         const tpGames = [...games].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
         const formStrip = tpGames.map(g=>{
           const gp = allGP.find(r=>r.gameId===g.gameId && r.playerId===tp.playerId);
@@ -2505,7 +2428,7 @@ const Render = (() => {
             <span style="font-size:11px;color:var(--muted)">Tap for full stats →</span>
           </div>
           <div class="stat-grid" style="margin-bottom:10px">
-            <div class="stat-card"><div class="val" style="font-size:22px">${tpStats.appearances}</div><div class="lbl">Apps</div></div>
+            <div class="stat-card"><div class="val" style="font-size:22px">${tpStats.calledUp}</div><div class="lbl">Apps</div></div>
             <div class="stat-card"><div class="val" style="font-size:22px">${tpStats.goals}</div><div class="lbl">Goals</div></div>
             <div class="stat-card"><div class="val" style="font-size:22px">${tpStats.assists}</div><div class="lbl">Assists</div></div>
             <div class="stat-card"><div class="val" style="font-size:22px">${tpStats.goals+tpStats.assists}</div><div class="lbl">G+A</div></div>
@@ -2527,6 +2450,11 @@ const Render = (() => {
         </div>
       </div>
     `;
+
+    } catch(err) {
+      console.error('Dashboard render error:', err);
+      el.innerHTML = `<div class="empty"><strong>Dashboard error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;text-align:left;white-space:pre-wrap">${esc(err.message)}\n\n${esc(err.stack||'')}</p></div>`;
+    }
   }
 
   // ── SQUAD ──────────────────────────────────────────────────────────────────
@@ -3172,12 +3100,84 @@ const Render = (() => {
       <div id="stab-panel-import" style="display:none">
         <div class="settings-section">
           <h3>Import Data</h3>
-          <div class="card" style="text-align:center;padding:24px">
-            <p style="font-size:13px;color:var(--mid);margin-bottom:16px">Import players, games, and opponents from CSV files.</p>
-            <div class="btn-group" style="justify-content:center;flex-wrap:wrap">
-              <button class="btn btn-primary" onclick="Nav.go('importSection')">&#128196; Open Import — Players</button>
-              <button class="btn btn-secondary" onclick="Nav.go('importSection');setTimeout(()=>switchImportTab('games'),100)">Open Import — Games</button>
-              <button class="btn btn-secondary" onclick="Nav.go('importSection');setTimeout(()=>switchImportTab('opponents'),100)">Open Import — Opponents</button>
+          <div class="page-header-sub" id="importSubtitle" style="margin-bottom:14px"></div>
+
+          <!-- TAB BUTTONS -->
+          <div style="display:flex;gap:0;border-bottom:2px solid #ddd;margin-bottom:20px">
+            <button id="tabPlayers" class="import-tab active-tab" onclick="switchImportTab('players')">Players</button>
+            <button id="tabGames" class="import-tab" onclick="switchImportTab('games')">Games</button>
+            <button id="tabOpponents" class="import-tab" onclick="switchImportTab('opponents')">Opponents</button>
+          </div>
+
+          <!-- DEBUG LOG -->
+          <div id="importDebugLog" style="background:#111;color:#0f0;font-family:monospace;font-size:11px;padding:10px;border-radius:3px;margin-bottom:16px;max-height:120px;overflow-y:auto;display:none"></div>
+
+          <!-- ── PLAYERS PANEL ── -->
+          <div id="importPlayersPanel">
+            <div class="card">
+              <div class="card-title">Download Template</div>
+              <p style="font-size:12px;color:#999;margin-bottom:12px">Columns: fullName, shirtNumber, dateOfBirth, nationality, primaryPosition, secondaryPosition, dominantFoot, height, weight, notes</p>
+              <div class="btn-group">
+                <button class="btn btn-secondary" onclick="downloadImportTemplate('players','csv')">Download CSV Template</button>
+                <button class="btn btn-secondary" style="opacity:.4;cursor:not-allowed" disabled title="Coming in Phase 2">Excel — Phase 2</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Import from CSV File</div>
+              <label for="fileInputPlayers" class="file-label-btn">&#128196; Choose CSV File</label>
+              <div id="importPlayersFileInfo" style="font-size:11px;color:#999;margin-top:6px"></div>
+              <div id="importPlayersPreview" style="margin-top:12px"></div>
+            </div>
+            <div class="card">
+              <div class="card-title">Or Paste CSV Text</div>
+              <textarea id="pastePlayersCSV" style="width:100%;height:100px;font-family:monospace;font-size:11px;border:1px solid #ddd;border-radius:3px;padding:8px" placeholder="Paste CSV content here..."></textarea>
+              <button class="btn btn-secondary" style="margin-top:8px" onclick="handlePasteImport('players')">Parse Pasted CSV</button>
+            </div>
+          </div>
+
+          <!-- ── GAMES PANEL ── -->
+          <div id="importGamesPanel" style="display:none">
+            <div class="card">
+              <div class="card-title">Download Template</div>
+              <p style="font-size:12px;color:#999;margin-bottom:12px">Columns: date, opponent, homeAway, competitionType, competitionName, venue, opponentScore, notes</p>
+              <div class="btn-group">
+                <button class="btn btn-secondary" onclick="downloadImportTemplate('games','csv')">Download CSV Template</button>
+                <button class="btn btn-secondary" style="opacity:.4;cursor:not-allowed" disabled title="Coming in Phase 2">Excel — Phase 2</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Import from CSV File</div>
+              <label for="fileInputGames" class="file-label-btn">&#128196; Choose CSV File</label>
+              <div id="importGamesFileInfo" style="font-size:11px;color:#999;margin-top:6px"></div>
+              <div id="importGamesPreview" style="margin-top:12px"></div>
+            </div>
+            <div class="card">
+              <div class="card-title">Or Paste CSV Text</div>
+              <textarea id="pasteGamesCSV" style="width:100%;height:100px;font-family:monospace;font-size:11px;border:1px solid #ddd;border-radius:3px;padding:8px" placeholder="Paste CSV content here..."></textarea>
+              <button class="btn btn-secondary" style="margin-top:8px" onclick="handlePasteImport('games')">Parse Pasted CSV</button>
+            </div>
+          </div>
+
+          <!-- ── OPPONENTS PANEL ── -->
+          <div id="importOpponentsPanel" style="display:none">
+            <div class="card">
+              <div class="card-title">Download Template</div>
+              <p style="font-size:12px;color:#999;margin-bottom:12px">Columns: opponentName, ageGroup, level, notes</p>
+              <div class="btn-group">
+                <button class="btn btn-secondary" onclick="downloadImportTemplate('opponents','csv')">Download CSV Template</button>
+                <button class="btn btn-secondary" style="opacity:.4;cursor:not-allowed" disabled title="Coming in Phase 2">Excel — Phase 2</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Import from CSV File</div>
+              <label for="fileInputOpponents" class="file-label-btn">&#128196; Choose CSV File</label>
+              <div id="importOpponentsFileInfo" style="font-size:11px;color:#999;margin-top:6px"></div>
+              <div id="importOpponentsPreview" style="margin-top:12px"></div>
+            </div>
+            <div class="card">
+              <div class="card-title">Or Paste CSV Text</div>
+              <textarea id="pasteOpponentsCSV" style="width:100%;height:100px;font-family:monospace;font-size:11px;border:1px solid #ddd;border-radius:3px;padding:8px" placeholder="Paste CSV content here..."></textarea>
+              <button class="btn btn-secondary" style="margin-top:8px" onclick="handlePasteImport('opponents')">Parse Pasted CSV</button>
             </div>
           </div>
         </div>
@@ -3475,7 +3475,6 @@ const Nav = (() => {
       case 'dashboard':    await Render.dashboard(); break;
       case 'squad':        await Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||''); break;
       case 'games':        await Render.gamesList(document.getElementById('gamesSearch')?.value||'', document.getElementById('gamesFilter')?.value||''); break;
-      case 'importSection': break; // static HTML — no render needed
       case 'teamSummary':  await Render.teamSummary(); break;
       case 'settings':     await Render.settings(); break;
       case 'help':         Render.help(); break;
@@ -5171,8 +5170,11 @@ function switchSettingsTab(tab) {
     if (panel) panel.style.display = t === tab ? '' : 'none';
     if (btn)   btn.classList.toggle('active-tab', t === tab);
   });
-  // If switching to import, ensure players tab is shown
-  if (tab === 'import') switchImportTab('players');
+  // If switching to import, ensure players tab is shown and subtitle is set
+  if (tab === 'import') {
+    switchImportTab('players');
+    renderImportSection();
+  }
 }
 
 function switchImportTab(tab) {
