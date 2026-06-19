@@ -1336,6 +1336,31 @@ async function renderRoadmapTable() {
     return true;
   });
 
+  // Sorting
+  const sortKey = el.dataset.sortKey || 'phase';
+  const sortDir = el.dataset.sortDir || 'asc';
+  const sortFns = {
+    title:    (a,b) => (a.title||'').localeCompare(b.title||''),
+    type:     (a,b) => (a.type||'').localeCompare(b.type||''),
+    phase:    (a,b) => (a.phase||0) - (b.phase||0),
+    version:  (a,b) => (a.version||'').localeCompare(b.version||''),
+    priority: (a,b) => (a.priority||'').localeCompare(b.priority||''),
+    status:   (a,b) => (a.status||'').localeCompare(b.status||''),
+    test:     (a,b) => (a.test_status||'').localeCompare(b.test_status||''),
+    target:   (a,b) => new Date(a.target_date||0) - new Date(b.target_date||0),
+    visible:  (a,b) => (a.is_visible_to_users?1:0) - (b.is_visible_to_users?1:0),
+  };
+  filtered.sort((a,b) => {
+    const fn = sortFns[sortKey] || sortFns.phase;
+    return sortDir === 'asc' ? fn(a,b) : fn(b,a);
+  });
+
+  function thSort(key, label, extra='') {
+    const active = sortKey === key;
+    const arrow  = active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    return `<th style="${extra}cursor:pointer;user-select:none" onclick="roadmapTableSort('${key}')">${label}${arrow}</th>`;
+  }
+
   el.innerHTML = `
     <!-- Filters -->
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
@@ -1361,15 +1386,15 @@ async function renderRoadmapTable() {
     <div class="game-detail-table-wrap">
     <table class="game-detail-table" style="min-width:900px">
       <thead><tr>
-        <th style="min-width:220px">Title</th>
-        <th>Type</th>
-        <th>Phase</th>
-        <th>Version</th>
-        <th>Priority</th>
-        <th>Status</th>
-        <th>Test</th>
-        <th>Target</th>
-        <th>Visible</th>
+        ${thSort('title','Title','min-width:220px;')}
+        ${thSort('type','Type')}
+        ${thSort('phase','Phase')}
+        ${thSort('version','Version')}
+        ${thSort('priority','Priority')}
+        ${thSort('status','Status')}
+        ${thSort('test','Test')}
+        ${thSort('target','Target')}
+        ${thSort('visible','Visible')}
         <th></th>
       </tr></thead>
       <tbody>
@@ -1396,6 +1421,16 @@ async function renderRoadmapTable() {
         </tr>`).join('') : `<tr><td colspan="10" style="text-align:center;color:#999;padding:32px">No items match filters.</td></tr>`}
       </tbody>
     </table></div>`;
+}
+
+function roadmapTableSort(key) {
+  const el = document.getElementById('admin-panel-roadmap');
+  if (!el) return;
+  const current = el.dataset.sortKey;
+  const dir     = el.dataset.sortDir;
+  el.dataset.sortKey = key;
+  el.dataset.sortDir = (current === key && dir === 'asc') ? 'desc' : 'asc';
+  renderRoadmapTable();
 }
 
 // ── Render kanban ──────────────────────────────────────────────────────────────
@@ -1818,10 +1853,42 @@ async function renderMatchLog(playerId) {
   const player = players.find(p => p.playerId === playerId);
   if (!player) return;
 
-  const games = (await DB.getAll('games','seasonId',State.currentSeasonId))
-    .sort((a,b) => new Date(b.date)-new Date(a.date));
+  const games = await DB.getAll('games','seasonId',State.currentSeasonId);
   const allGP = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
   const lorGP = allGP.filter(r => r.playerId === playerId);
+
+  // Pre-compute everything needed for sorting
+  const enriched = games.map(g => {
+    const gp = lorGP.find(r => r.gameId === g.gameId);
+    const gps = allGP.filter(r => r.gameId === g.gameId);
+    const our = Calc.teamGoals(gps);
+    const their = parseInt(g.opponentScore)||0;
+    return { game: g, gp, _our: our, _their: their, _res: Calc.result(our,their) };
+  });
+
+  const sortKey = el.dataset.sortKey || 'date';
+  const sortDir = el.dataset.sortDir || 'desc';
+  const sortFns = {
+    date:     (a,b) => new Date(a.game.date||0) - new Date(b.game.date||0),
+    opponent: (a,b) => (a.game.opponent||'').localeCompare(b.game.opponent||''),
+    result:   (a,b) => (a._res||'').localeCompare(b._res||''),
+    role:     (a,b) => (a.gp?.role||'').localeCompare(b.gp?.role||''),
+    position: (a,b) => (a.gp?.positionPlayed||'').localeCompare(b.gp?.positionPlayed||''),
+    goals:    (a,b) => (a.gp?.goals||0) - (b.gp?.goals||0),
+    assists:  (a,b) => (a.gp?.assists||0) - (b.gp?.assists||0),
+    yc:       (a,b) => (a.gp?.yellowCards||0) - (b.gp?.yellowCards||0),
+    rc:       (a,b) => (a.gp?.redCards||0) - (b.gp?.redCards||0),
+  };
+  enriched.sort((a,b) => {
+    const fn = sortFns[sortKey] || sortFns.date;
+    return sortDir === 'asc' ? fn(a,b) : fn(b,a);
+  });
+
+  function thSort(key, label, extraClass='') {
+    const active = sortKey === key;
+    const arrow  = active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    return `<th class="${extraClass}" style="cursor:pointer;user-select:none" onclick="matchLogSort(${playerId},'${key}')">${label}${arrow}</th>`;
+  }
 
   el.innerHTML = `
     <div class="card">
@@ -1829,17 +1896,19 @@ async function renderMatchLog(playerId) {
       <div class="game-detail-table-wrap" style="margin-bottom:0">
         <table class="game-detail-table">
           <thead><tr>
-            <th class="col-sticky-num" style="min-width:60px">Date</th>
-            <th class="col-sticky-name">Opponent</th>
-            <th>Result</th><th>Role</th><th>Position</th><th>Goals</th><th>Ast</th><th>YC</th><th>RC</th><th>MoM</th><th>Cap</th><th>Notes</th>
+            ${thSort('date','Date','col-sticky-num')}
+            ${thSort('opponent','Opponent','col-sticky-name')}
+            ${thSort('result','Result')}
+            ${thSort('role','Role')}
+            ${thSort('position','Position')}
+            ${thSort('goals','Goals')}
+            ${thSort('assists','Ast')}
+            ${thSort('yc','YC')}
+            ${thSort('rc','RC')}
+            <th>MoM</th><th>Cap</th><th>Notes</th>
           </tr></thead>
           <tbody>
-          ${games.map(g => {
-            const gp = lorGP.find(r => r.gameId === g.gameId);
-            const gps = allGP.filter(r => r.gameId === g.gameId);
-            const our = Calc.teamGoals(gps);
-            const their = parseInt(g.opponentScore)||0;
-            const res = Calc.result(our,their);
+          ${enriched.map(({game:g, gp, _our:our, _their:their, _res:res}) => {
             if (!gp||!gp.calledUp) return `<tr>
               <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
               <td class="col-sticky-name">${esc(g.opponent)}</td>
@@ -1864,6 +1933,26 @@ async function renderMatchLog(playerId) {
         </table>
       </div>
     </div>`;
+}
+
+function overviewMatchSort(playerId, key) {
+  const el = document.getElementById(`tracked-content-${playerId}`);
+  if (!el) return;
+  const current = el.dataset.sortKey;
+  const dir     = el.dataset.sortDir;
+  el.dataset.sortKey = key;
+  el.dataset.sortDir = (current === key && dir === 'asc') ? 'desc' : 'asc';
+  Render.trackedPlayer(playerId);
+}
+
+function matchLogSort(playerId, key) {
+  const el = document.getElementById(`tracked-log-${playerId}`);
+  if (!el) return;
+  const current = el.dataset.sortKey;
+  const dir     = el.dataset.sortDir;
+  el.dataset.sortKey = key;
+  el.dataset.sortDir = (current === key && dir === 'asc') ? 'desc' : 'asc';
+  renderMatchLog(playerId);
 }
 
 async function renderPlayerClubHistory(playerId) {
@@ -2091,6 +2180,18 @@ async function deleteAchievementEntry(playerId, id) {
     Toast.show('Deleted.');
     await renderPlayerAchievements(playerId);
   });
+}
+
+function gamesSort(key) {
+  const el = document.getElementById('gamesContent');
+  if (!el) return;
+  const current = el.dataset.sortKey;
+  const dir     = el.dataset.sortDir;
+  el.dataset.sortKey = key;
+  el.dataset.sortDir = (current === key && dir === 'asc') ? 'desc' : 'asc';
+  const search = document.getElementById('gamesSearch')?.value || '';
+  const filter = document.getElementById('gamesFilter')?.value || '';
+  Render.gamesList(search, filter);
 }
 
 function squadSort(key) {
@@ -2511,7 +2612,6 @@ const Render = (() => {
     sub.textContent = State.currentSeason.seasonName;
 
     let games = await DB.getAll('games','seasonId',State.currentSeasonId);
-    games.sort((a,b)=>new Date(b.date)-new Date(a.date));
     if (search) games = games.filter(g=>g.opponent.toLowerCase().includes(search.toLowerCase()));
     if (compFilter) games = games.filter(g=>g.competitionType===compFilter);
 
@@ -2522,32 +2622,59 @@ const Render = (() => {
 
     const allGP = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
 
-    const rows = games.map(g => {
+    // Pre-compute score/result for sorting
+    const enriched = games.map(g => {
       const gps = allGP.filter(r=>r.gameId===g.gameId);
       const our = Calc.teamGoals(gps);
       const their = parseInt(g.opponentScore)||0;
-      const res = Calc.result(our, their);
-      return `<tr style="cursor:pointer" onclick="openGameDetail(${g.gameId})">
+      return { ...g, _our: our, _their: their, _res: Calc.result(our, their) };
+    });
+
+    const sortKey = el.dataset.sortKey || 'date';
+    const sortDir = el.dataset.sortDir || 'desc';
+    const sortFns = {
+      date:            (a,b) => new Date(a.date||0) - new Date(b.date||0),
+      opponent:        (a,b) => (a.opponent||'').localeCompare(b.opponent||''),
+      homeAway:        (a,b) => (a.homeAway||'').localeCompare(b.homeAway||''),
+      competitionType: (a,b) => (a.competitionType||'').localeCompare(b.competitionType||''),
+      score:           (a,b) => (a._our - a._their) - (b._our - b._their),
+      result:          (a,b) => (a._res||'').localeCompare(b._res||''),
+    };
+    enriched.sort((a,b) => {
+      const fn = sortFns[sortKey] || sortFns.date;
+      return sortDir === 'asc' ? fn(a,b) : fn(b,a);
+    });
+
+    function thSort(key, label, extraClass='') {
+      const active = sortKey === key;
+      const arrow  = active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+      return `<th class="${extraClass}" style="cursor:pointer;user-select:none" onclick="gamesSort('${key}')">${label}${arrow}</th>`;
+    }
+
+    const rows = enriched.map(g => `<tr style="cursor:pointer" onclick="openGameDetail(${g.gameId})">
         <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
         <td class="col-sticky-name">${esc(g.opponent)}</td>
         <td>${g.homeAway||'—'}</td>
         <td><span style="font-size:11px;color:var(--muted)">${g.competitionType||'—'}</span></td>
-        <td class="td-bold">${our} — ${their}</td>
-        <td><span class="badge badge-${res}">${res}</span></td>
+        <td class="td-bold">${g._our} — ${g._their}</td>
+        <td><span class="badge badge-${g._res}">${g._res}</span></td>
         <td onclick="event.stopPropagation()">
           <button class="btn btn-secondary btn-sm" onclick="editGame(${g.gameId})">Edit</button>
           <button class="btn btn-danger btn-sm" onclick="deleteGame(${g.gameId})" style="margin-left:4px">Delete</button>
         </td>
-      </tr>`;
-    }).join('');
+      </tr>`).join('');
 
     el.innerHTML = `
       <div class="game-detail-table-wrap">
         <table class="game-detail-table">
           <thead><tr>
-            <th class="col-sticky-num" style="min-width:60px">Date</th>
-            <th class="col-sticky-name">Opponent</th>
-            <th>H/A</th><th>Competition</th><th>Score</th><th>Result</th><th>Actions</th>
+            ${thSort('date','Date','col-sticky-num')}
+            ${thSort('opponent','Opponent','col-sticky-name')}
+            ${thSort('homeAway','H/A')}
+            ${thSort('competitionType','Competition')}
+            ${thSort('score','Score')}
+            ${thSort('result','Result')}
+            <th>Actions</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -2684,6 +2811,37 @@ const Render = (() => {
     const lorGP = allGP.filter(r=>r.playerId===lor.playerId);
     const s = Calc.lorenzoStats(games, lorGP);
 
+    // Sorting for the Match by Match table on this Overview tab
+    const ovSortKey = el.dataset.sortKey || 'date';
+    const ovSortDir = el.dataset.sortDir || 'desc';
+    const ovEnriched = games.map(g => {
+      const gp = allGP.find(r=>r.gameId===g.gameId && r.playerId===playerId);
+      const gps = allGP.filter(r=>r.gameId===g.gameId);
+      const our = Calc.teamGoals(gps);
+      const their = parseInt(g.opponentScore)||0;
+      return { game:g, gp, _our:our, _their:their, _res:Calc.result(our,their) };
+    });
+    const ovSortFns = {
+      date:     (a,b) => new Date(a.game.date||0) - new Date(b.game.date||0),
+      opponent: (a,b) => (a.game.opponent||'').localeCompare(b.game.opponent||''),
+      result:   (a,b) => (a._res||'').localeCompare(b._res||''),
+      role:     (a,b) => (a.gp?.role||'').localeCompare(b.gp?.role||''),
+      position: (a,b) => (a.gp?.positionPlayed||'').localeCompare(b.gp?.positionPlayed||''),
+      goals:    (a,b) => (a.gp?.goals||0) - (b.gp?.goals||0),
+      assists:  (a,b) => (a.gp?.assists||0) - (b.gp?.assists||0),
+      yc:       (a,b) => (a.gp?.yellowCards||0) - (b.gp?.yellowCards||0),
+      rc:       (a,b) => (a.gp?.redCards||0) - (b.gp?.redCards||0),
+    };
+    ovEnriched.sort((a,b) => {
+      const fn = ovSortFns[ovSortKey] || ovSortFns.date;
+      return ovSortDir === 'asc' ? fn(a,b) : fn(b,a);
+    });
+    function ovThSort(key, label, extraClass='') {
+      const active = ovSortKey === key;
+      const arrow  = active ? (ovSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+      return `<th class="${extraClass}" style="cursor:pointer;user-select:none" onclick="overviewMatchSort(${playerId},'${key}')">${label}${arrow}</th>`;
+    }
+
     const sortedGames = [...games].sort((a,b)=>new Date(b.date)-new Date(a.date));
     const last5 = sortedGames.slice(0,5);
 
@@ -2755,17 +2913,19 @@ const Render = (() => {
         <div class="game-detail-table-wrap" style="margin-bottom:0">
           <table class="game-detail-table">
             <thead><tr>
-              <th class="col-sticky-num" style="min-width:60px">Date</th>
-              <th class="col-sticky-name">Opponent</th>
-              <th>Result</th><th>Role</th><th>Position</th><th>Goals</th><th>Ast</th><th>YC</th><th>RC</th><th>MoM</th><th>Cap</th><th>Notes</th>
+              ${ovThSort('date','Date','col-sticky-num')}
+              ${ovThSort('opponent','Opponent','col-sticky-name')}
+              ${ovThSort('result','Result')}
+              ${ovThSort('role','Role')}
+              ${ovThSort('position','Position')}
+              ${ovThSort('goals','Goals')}
+              ${ovThSort('assists','Ast')}
+              ${ovThSort('yc','YC')}
+              ${ovThSort('rc','RC')}
+              <th>MoM</th><th>Cap</th><th>Notes</th>
             </tr></thead>
             <tbody>
-            ${sortedGames.map(g=>{
-              const gp = lorGP.find(r=>r.gameId===g.gameId);
-              const gps = allGP.filter(r=>r.gameId===g.gameId);
-              const our = Calc.teamGoals(gps);
-              const their = parseInt(g.opponentScore)||0;
-              const res = Calc.result(our,their);
+            ${ovEnriched.map(({game:g, gp, _our:our, _their:their, _res:res})=>{
               if (!gp||!gp.calledUp) return `<tr><td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td><td class="col-sticky-name">${esc(g.opponent)}</td><td><span class="badge badge-${res}">${res}</span></td><td colspan="9" class="td-muted">Not called up</td></tr>`;
               return `<tr>
                 <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
@@ -2820,6 +2980,8 @@ const Render = (() => {
     const mostApps = [...pStats].sort((a,b)=>b.calledUp-a.calledUp).slice(0,5);
     const mostMoM = [...pStats].sort((a,b)=>b.mom-a.mom).filter(p=>p.mom>0).slice(0,5);
 
+    window._teamSummaryAllStats = pStats; // store full dataset for re-sort
+
     el.innerHTML = `
       <div class="stat-grid">
         <div class="stat-card"><div class="val">${ts.played}</div><div class="lbl">Played</div></div>
@@ -2842,24 +3004,41 @@ const Render = (() => {
         ${ts.biggestLoss?`<div class="info-row"><span class="ir-label">Biggest Loss</span><span class="ir-value">${ts.biggestLoss.score} vs ${esc(ts.biggestLoss.opp)}</span></div>`:''}
       </div>
 
-      ${playerTable('Top Scorers', topScorers, ['fullName','goals','assists','calledUp'], ['Player','Goals','Assists','Apps'])}
-      ${playerTable('Top Assisters', topAssisters, ['fullName','assists','goals','calledUp'], ['Player','Assists','Goals','Apps'])}
-      ${playerTable('Most Appearances', mostApps, ['fullName','calledUp','started','goals'], ['Player','Apps','Starts','Goals'])}
-      ${mostMoM.length?playerTable('Player of the Match', mostMoM, ['fullName','mom','goals','calledUp'], ['Player','MoM','Goals','Apps']):''}
+      ${playerTable('topScorers','Top Scorers', topScorers, ['fullName','goals','assists','calledUp'], ['Player','Goals','Assists','Apps'])}
+      ${playerTable('topAssisters','Top Assisters', topAssisters, ['fullName','assists','goals','calledUp'], ['Player','Assists','Goals','Apps'])}
+      ${playerTable('mostApps','Most Appearances', mostApps, ['fullName','calledUp','started','goals'], ['Player','Apps','Starts','Goals'])}
+      ${mostMoM.length?playerTable('mostMoM','Player of the Match', mostMoM, ['fullName','mom','goals','calledUp'], ['Player','MoM','Goals','Apps']):''}
     `;
   }
 
-  function playerTable(title, players, fields, headers) {
+  function playerTable(tableId, title, players, fields, headers) {
     if (!players.length) return '';
+    const elId = `pt-${tableId}`;
+    const sortKey = window[`_sortKey_${tableId}`] || fields[1]; // default: second field (the "top" metric)
+    const sortDir = window[`_sortDir_${tableId}`] || 'desc';
+
+    const sorted = [...players].sort((a,b) => {
+      const av = a[sortKey]||0, bv = b[sortKey]||0;
+      const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
     return `
-      <div class="card">
+      <div class="card" id="${elId}">
         <div class="card-title">${title}</div>
         <table style="width:100%;border-collapse:collapse">
-          <thead><tr>${headers.map((h,i)=>`<th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#999;padding:5px 8px;text-align:${i===0?'left':'center'};border-bottom:1px solid #ddd">${h}</th>`).join('')}</tr></thead>
-          <tbody>${players.map((p,i)=>`<tr>${fields.map((f,fi)=>`<td style="padding:7px 8px;font-size:12px;border-bottom:1px solid #eee;${fi===0?'font-weight:700':'text-align:center'}">${fi===0?`${i+1}. ${esc(p[f])}`:p[f]||0}</td>`).join('')}</tr>`).join('')}</tbody>
+          <thead><tr>${headers.map((h,i)=>{
+            const key = fields[i];
+            const active = sortKey === key;
+            const arrow = active ? (sortDir==='asc'?' ▲':' ▼') : '';
+            return `<th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#999;padding:5px 8px;text-align:${i===0?'left':'center'};border-bottom:1px solid #ddd;cursor:pointer;user-select:none" onclick="playerTableSort('${tableId}','${key}')">${h}${arrow}</th>`;
+          }).join('')}</tr></thead>
+          <tbody>${sorted.map((p,i)=>`<tr>${fields.map((f,fi)=>`<td style="padding:7px 8px;font-size:12px;border-bottom:1px solid #eee;${fi===0?'font-weight:700':'text-align:center'}">${fi===0?`${i+1}. ${esc(p[f])}`:p[f]||0}</td>`).join('')}</tr>`).join('')}</tbody>
         </table>
       </div>`;
   }
+
+  // playerTableSort moved to global scope below Render module (onclick needs global access)
 
   // ── ACHIEVEMENTS ───────────────────────────────────────────────────────────
   async function achievements() {
@@ -3251,6 +3430,15 @@ const Render = (() => {
 
   return { home, dashboard, squad, gamesList, gameDetail, trackedPlayer, teamSummary, achievements, clubHistory, settings, help };
 })();
+
+// Global wrapper — onclick handlers run in global scope, Render.teamSummary lives in the closure
+function playerTableSort(tableId, key) {
+  const current = window[`_sortKey_${tableId}`];
+  const dir      = window[`_sortDir_${tableId}`];
+  window[`_sortKey_${tableId}`] = key;
+  window[`_sortDir_${tableId}`] = (current === key && dir === 'asc') ? 'desc' : 'asc';
+  Render.teamSummary();
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // NAVIGATION
