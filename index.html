@@ -172,6 +172,15 @@ tr:hover td{background:var(--highlight)}
 .wp-role-toggle{display:flex;gap:6px;padding:0 14px 12px}
 .wp-role-btn{flex:1;padding:8px;border:1px solid var(--border);border-radius:5px;background:#fff;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
 .wp-role-btn.wp-role-active{background:#111;color:#fff;border-color:#111}
+.wp-role-pill{flex-shrink:0;padding:4px 10px;border-radius:12px;font-size:10px;font-weight:700;border:none;cursor:pointer;margin-left:auto}
+.wp-role-starter{background:#111;color:#fff}
+.wp-role-sub{background:#e8e8e8;color:#555}
+.wp-stats-row{display:flex;gap:10px;padding:0 14px 12px;align-items:flex-end}
+.wp-stat-field{display:flex;flex-direction:column;gap:3px}
+.wp-stat-field label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.wp-stat-field input{border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:13px;width:56px}
+.wp-stat-notes{flex:1}
+.wp-stat-notes input{width:100%}
 
 /* ── GOALS TAB ── */
 .goals-list{display:flex;flex-direction:column;gap:8px}
@@ -2902,50 +2911,39 @@ const Render = (() => {
     const players = window._gdPlayers;
     const existingGP = await DB.getAll('gamePlayers','gameId',gameId);
     const calledUpCount = existingGP.filter(r=>r.calledUp).length;
+    const starterCount = existingGP.filter(r=>r.calledUp && r.role==='Starter').length;
 
     el.innerHTML = `
-      <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Tick <strong>Played</strong>, choose Starter/Sub, then fill in Goals and Assists. Everything saves as you type — just tap elsewhere or move to the next field.</p>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Called up: <strong style="color:var(--dark)">${calledUpCount}</strong> / ${players.length}</div>
-      <div class="game-detail-table-wrap">
-        <table class="game-detail-table">
-          <thead><tr>
-            <th class="col-sticky-num">#</th>
-            <th class="col-sticky-name">Player</th>
-            <th>Played</th>
-            <th>Role</th>
-            <th>Goals</th>
-            <th>Assists</th>
-            <th>Notes</th>
-          </tr></thead>
-          <tbody>
-          ${players.map(p => {
-            const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
-            const calledUp = !!gp.calledUp;
-            return `<tr id="sgr-${p.playerId}">
-              <td class="col-sticky-num">${p.shirtNumber||'—'}</td>
-              <td class="col-sticky-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor">${esc(p.trackingLabel||'★')}</span>`:''}</td>
-              <td class="td-center">
-                <input type="checkbox" ${calledUp?'checked':''} onchange="simpleSetCalledUp(${gameId},${p.playerId},this.checked)">
-              </td>
-              <td>
-                <select onchange="simpleSetRole(${gameId},${p.playerId},this.value)" ${!calledUp?'disabled':''} style="width:80px">
-                  <option value="Sub" ${gp.role==='Sub'?'selected':''}>Sub</option>
-                  <option value="Starter" ${gp.role==='Starter'?'selected':''}>Starter</option>
-                </select>
-              </td>
-              <td>
-                <input type="number" min="0" max="20" value="${gp.goals||0}" ${!calledUp?'disabled':''} style="width:50px" onchange="simpleSetField(${gameId},${p.playerId},'goals',this.value)">
-              </td>
-              <td>
-                <input type="number" min="0" max="20" value="${gp.assists||0}" ${!calledUp?'disabled':''} style="width:50px" onchange="simpleSetField(${gameId},${p.playerId},'assists',this.value)">
-              </td>
-              <td>
-                <input type="text" placeholder="Notes..." value="${esc(gp.performanceNotes||'')}" ${!calledUp?'disabled':''} style="width:120px" onchange="simpleSetNotes(${gameId},${p.playerId},this.value)">
-              </td>
-            </tr>`;
-          }).join('')}
-          </tbody>
-        </table>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Tap a player to call them up — the first 11 become Starters automatically, the rest Subs. Tap the role badge to override. Tap the player again to remove them.</p>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Called up: <strong style="color:var(--dark)">${calledUpCount}</strong> / ${players.length} &nbsp;·&nbsp; Starters: <strong style="color:var(--dark)">${starterCount}</strong> / 11</div>
+      <div class="who-played-list">
+        ${players.map(p => {
+          const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
+          const calledUp = !!gp.calledUp;
+          const role = gp.role || null;
+          return `<div class="wp-row ${calledUp?'wp-active':''}" id="sgr-${p.playerId}">
+            <div class="wp-info" onclick="simpleTogglePlayer(${gameId},${p.playerId})">
+              <span class="wp-num">${p.shirtNumber||'—'}</span>
+              <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor">${esc(p.trackingLabel||'★')}</span>`:''}</span>
+              ${calledUp ? `<button class="wp-role-pill ${role==='Starter'?'wp-role-starter':'wp-role-sub'}" onclick="event.stopPropagation();simpleToggleRole(${gameId},${p.playerId})">${role}</button>` : ''}
+            </div>
+            ${calledUp ? `
+            <div class="wp-stats-row">
+              <div class="wp-stat-field">
+                <label>Goals</label>
+                <input type="number" min="0" max="20" value="${gp.goals||0}" onchange="simpleSetField(${gameId},${p.playerId},'goals',this.value)">
+              </div>
+              <div class="wp-stat-field">
+                <label>Assists</label>
+                <input type="number" min="0" max="20" value="${gp.assists||0}" onchange="simpleSetField(${gameId},${p.playerId},'assists',this.value)">
+              </div>
+              <div class="wp-stat-field wp-stat-notes">
+                <label>Notes</label>
+                <input type="text" placeholder="Notes..." value="${esc(gp.performanceNotes||'')}" onchange="simpleSetNotes(${gameId},${p.playerId},this.value)">
+              </div>
+            </div>` : ''}
+          </div>`;
+        }).join('')}
       </div>
     `;
   }
@@ -4700,32 +4698,46 @@ function countStartersExcluding(allGP, excludePlayerId) {
   return allGP.filter(r => r.role === 'Starter' && r.calledUp && r.playerId !== excludePlayerId).length;
 }
 
-async function simpleSetCalledUp(gameId, playerId, checked) {
+// Tap a player row: not called up -> call up (auto Starter if <11 starters
+// exist right now, else Sub). Already called up -> remove entirely.
+async function simpleTogglePlayer(gameId, playerId) {
+  const allGP = await DB.getAll('gamePlayers','gameId',gameId);
   const gp = await getOrCreateGP(gameId, playerId);
-  gp.calledUp = checked;
-  if (!checked) {
-    gp.role = 'Sub';
+
+  if (gp.calledUp) {
+    // Remove from squad for this game
+    gp.calledUp = false;
+    gp.role = null;
     gp.playedFullGame = false;
+  } else {
+    // Call up: auto-assign role based on current starter count
+    const starterCount = countStartersExcluding(allGP, playerId);
+    const role = starterCount < 11 ? 'Starter' : 'Sub';
+    gp.calledUp = true;
+    gp.role = role;
+    gp.playedFullGame = (role === 'Starter');
   }
   await DB.put('gamePlayers', gp);
   await renderSimpleGameTable(gameId);
   await refreshGameHeaderScore(gameId);
 }
 
-async function simpleSetRole(gameId, playerId, role) {
+// Tap the role badge: manually flip Starter <-> Sub for one player.
+async function simpleToggleRole(gameId, playerId) {
   const allGP = await DB.getAll('gamePlayers','gameId',gameId);
-  if (role === 'Starter') {
+  const gp = await getOrCreateGP(gameId, playerId);
+  if (!gp.calledUp) return;
+
+  const newRole = gp.role === 'Starter' ? 'Sub' : 'Starter';
+  if (newRole === 'Starter') {
     const starterCount = countStartersExcluding(allGP, playerId);
     if (starterCount >= 11) {
-      Toast.error('Maximum 11 Starters. Remove a Starter before adding another.');
-      await renderSimpleGameTable(gameId); // revert the dropdown visually
+      Toast.error('Maximum 11 Starters. Switch another Starter to Sub first.');
       return;
     }
   }
-  const gp = await getOrCreateGP(gameId, playerId);
-  gp.calledUp = true;
-  gp.role = role;
-  gp.playedFullGame = (role === 'Starter');
+  gp.role = newRole;
+  gp.playedFullGame = (newRole === 'Starter');
   await DB.put('gamePlayers', gp);
   await renderSimpleGameTable(gameId);
 }
