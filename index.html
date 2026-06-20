@@ -2854,6 +2854,10 @@ const Render = (() => {
   async function renderWhoPlayedTab(gameId) {
     const el = document.getElementById('gdPanel-played');
     if (!el) return;
+    if (!window._gdPlayers || !window._gdPlayers.length) {
+      window._gdPlayers = (await DB.getAll('players','seasonId', State.currentSeasonId)).filter(p=>p.isActive).sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99));
+      window._gdGameId = gameId;
+    }
     const players = window._gdPlayers || [];
     const existingGP = await DB.getAll('gamePlayers','gameId',gameId);
 
@@ -2888,6 +2892,10 @@ const Render = (() => {
   async function renderGoalsTab(gameId) {
     const el = document.getElementById('gdPanel-goals');
     if (!el) return;
+    if (!window._gdPlayers || !window._gdPlayers.length) {
+      window._gdPlayers = (await DB.getAll('players','seasonId', State.currentSeasonId)).filter(p=>p.isActive).sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99));
+      window._gdGameId = gameId;
+    }
     const allPlayers = window._gdPlayers || [];
     const [existingGP, goalEvents] = await Promise.all([
       DB.getAll('gamePlayers','gameId',gameId),
@@ -2899,7 +2907,9 @@ const Render = (() => {
     });
 
     if (!calledUp.length) {
-      el.innerHTML = `<div class="empty"><strong>No players called up yet</strong><p>Go to "Who Played" first and mark who played in this game.</p><button class="btn btn-primary" onclick="switchGameDetailTab(${gameId},'played')">Go to Who Played</button></div>`;
+      el.innerHTML = `<div class="empty"><strong>No players called up yet</strong><p>Go to "Who Played" and tap a player's name to call them up — then come back here.</p><button class="btn btn-primary" onclick="switchGameDetailTab(${gameId},'played')">Go to Who Played</button>
+      <p style="margin-top:16px;font-size:10px;color:#ccc;font-family:monospace">debug: total players ${allPlayers.length}, gamePlayers rows ${existingGP.length}, calledUp rows ${existingGP.filter(r=>r.calledUp).length}</p>
+      </div>`;
       return;
     }
 
@@ -2931,6 +2941,10 @@ const Render = (() => {
   async function renderGameDetailsTab(gameId) {
     const el = document.getElementById('gdPanel-details');
     if (!el) return;
+    if (!window._gdPlayers || !window._gdPlayers.length) {
+      window._gdPlayers = (await DB.getAll('players','seasonId', State.currentSeasonId)).filter(p=>p.isActive).sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99));
+      window._gdGameId = gameId;
+    }
     const allPlayers = window._gdPlayers || [];
     const existingGP = await DB.getAll('gamePlayers','gameId',gameId);
     const calledUp = allPlayers.filter(p => {
@@ -2939,7 +2953,9 @@ const Render = (() => {
     });
 
     if (!calledUp.length) {
-      el.innerHTML = `<div class="empty"><strong>No players called up yet</strong><p>Go to "Who Played" first.</p><button class="btn btn-primary" onclick="switchGameDetailTab(${gameId},'played')">Go to Who Played</button></div>`;
+      el.innerHTML = `<div class="empty"><strong>No players called up yet</strong><p>Go to "Who Played" first.</p><button class="btn btn-primary" onclick="switchGameDetailTab(${gameId},'played')">Go to Who Played</button>
+      <p style="margin-top:16px;font-size:10px;color:#ccc;font-family:monospace">debug: total players ${allPlayers.length}, gamePlayers rows ${existingGP.length}, calledUp rows ${existingGP.filter(r=>r.calledUp).length}</p>
+      </div>`;
       return;
     }
 
@@ -4657,23 +4673,26 @@ function countCurrentStartersFromGP(allGP, excludePlayerId) {
 
 // ── TAB 1 HANDLERS — WHO PLAYED ───────────────────────────────────────────────
 async function toggleWhoPlayed(gameId, playerId) {
-  const allGP = await DB.getAll('gamePlayers','gameId',gameId);
   const gp = await getOrCreateGP(gameId, playerId);
+  console.log('[toggleWhoPlayed] before:', JSON.parse(JSON.stringify(gp)));
 
   if (gp.calledUp) {
-    // Currently called up -> remove entirely (back to Not Called)
     gp.calledUp = false;
     gp.role = 'Not Called';
     gp.playedFullGame = false;
-    await DB.put('gamePlayers', gp);
+    const savedId = await DB.put('gamePlayers', gp);
+    console.log('[toggleWhoPlayed] removed, saved id:', savedId, gp);
     Toast.show('Removed from squad.');
   } else {
-    // Not called up -> mark as called up, default to Sub (user picks Starter/Sub next)
     gp.calledUp = true;
     gp.role = 'Sub';
-    await DB.put('gamePlayers', gp);
+    const savedId = await DB.put('gamePlayers', gp);
+    console.log('[toggleWhoPlayed] added, saved id:', savedId, gp);
     Toast.show('Marked as played.');
   }
+  // Verify the write actually persisted before re-rendering
+  const verify = await DB.getAll('gamePlayers','gameId',gameId);
+  console.log('[toggleWhoPlayed] verify all gamePlayers for game:', verify);
   await renderWhoPlayedTab(gameId);
   await refreshGameHeaderScore(gameId);
 }
