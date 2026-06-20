@@ -2905,6 +2905,8 @@ const Render = (() => {
     const el = document.getElementById('gdSimpleTable');
     if (!el) return;
 
+    try {
+
     if (!window._gdPlayers || !window._gdPlayers.length) {
       window._gdPlayers = (await DB.getAll('players','seasonId', State.currentSeasonId)).filter(p=>p.isActive).sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99));
     }
@@ -2946,6 +2948,11 @@ const Render = (() => {
         }).join('')}
       </div>
     `;
+
+    } catch(err) {
+      console.error('[renderSimpleGameTable] error:', err);
+      el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;text-align:left;white-space:pre-wrap">${esc(err.message)}</p></div>`;
+    }
   }
 
   // ── LORENZO ────────────────────────────────────────────────────────────────
@@ -4701,64 +4708,81 @@ function countStartersExcluding(allGP, excludePlayerId) {
 // Tap a player row: not called up -> call up (auto Starter if <11 starters
 // exist right now, else Sub). Already called up -> remove entirely.
 async function simpleTogglePlayer(gameId, playerId) {
-  const allGP = await DB.getAll('gamePlayers','gameId',gameId);
-  const gp = await getOrCreateGP(gameId, playerId);
+  try {
+    const allGP = await DB.getAll('gamePlayers','gameId',gameId);
+    const gp = await getOrCreateGP(gameId, playerId);
 
-  if (gp.calledUp) {
-    // Remove from squad for this game
-    gp.calledUp = false;
-    gp.role = null;
-    gp.playedFullGame = false;
-  } else {
-    // Call up: auto-assign role based on current starter count
-    const starterCount = countStartersExcluding(allGP, playerId);
-    const role = starterCount < 11 ? 'Starter' : 'Sub';
-    gp.calledUp = true;
-    gp.role = role;
-    gp.playedFullGame = (role === 'Starter');
+    if (gp.calledUp) {
+      // Remove from squad for this game
+      gp.calledUp = false;
+      gp.role = null;
+      gp.playedFullGame = false;
+    } else {
+      // Call up: auto-assign role based on current starter count
+      const starterCount = countStartersExcluding(allGP, playerId);
+      const role = starterCount < 11 ? 'Starter' : 'Sub';
+      gp.calledUp = true;
+      gp.role = role;
+      gp.playedFullGame = (role === 'Starter');
+    }
+    await DB.put('gamePlayers', gp);
+  } catch(err) {
+    console.error('[simpleTogglePlayer] error:', err);
+    Toast.error('Could not save: ' + err.message);
+  } finally {
+    // Always re-render, even if the save failed, so the screen never freezes
+    await renderSimpleGameTable(gameId);
+    await refreshGameHeaderScore(gameId);
   }
-  await DB.put('gamePlayers', gp);
-  await renderSimpleGameTable(gameId);
-  await refreshGameHeaderScore(gameId);
 }
 
 // Tap the role badge: manually flip Starter <-> Sub for one player.
 async function simpleToggleRole(gameId, playerId) {
-  const allGP = await DB.getAll('gamePlayers','gameId',gameId);
-  const gp = await getOrCreateGP(gameId, playerId);
-  if (!gp.calledUp) return;
+  try {
+    const allGP = await DB.getAll('gamePlayers','gameId',gameId);
+    const gp = await getOrCreateGP(gameId, playerId);
+    if (!gp.calledUp) return;
 
-  const newRole = gp.role === 'Starter' ? 'Sub' : 'Starter';
-  if (newRole === 'Starter') {
-    const starterCount = countStartersExcluding(allGP, playerId);
-    if (starterCount >= 11) {
-      Toast.error('Maximum 11 Starters. Switch another Starter to Sub first.');
-      return;
+    const newRole = gp.role === 'Starter' ? 'Sub' : 'Starter';
+    if (newRole === 'Starter') {
+      const starterCount = countStartersExcluding(allGP, playerId);
+      if (starterCount >= 11) {
+        Toast.error('Maximum 11 Starters. Switch another Starter to Sub first.');
+        return;
+      }
     }
+    gp.role = newRole;
+    gp.playedFullGame = (newRole === 'Starter');
+    await DB.put('gamePlayers', gp);
+  } catch(err) {
+    console.error('[simpleToggleRole] error:', err);
+    Toast.error('Could not save: ' + err.message);
+  } finally {
+    await renderSimpleGameTable(gameId);
   }
-  gp.role = newRole;
-  gp.playedFullGame = (newRole === 'Starter');
-  await DB.put('gamePlayers', gp);
-  await renderSimpleGameTable(gameId);
 }
 
 async function simpleSetField(gameId, playerId, field, value) {
-  const gp = await getOrCreateGP(gameId, playerId);
-  gp[field] = parseInt(value) || 0;
-  await DB.put('gamePlayers', gp);
-  await refreshGameHeaderScore(gameId);
-  // Only the score header needs updating live; no full re-render needed
-  // for a single number field, but we keep it consistent and cheap:
-  if (field === 'goals') {
-    const row = document.getElementById(`sgr-${playerId}`);
-    if (row) { /* value already reflects what was typed, no redraw needed */ }
+  try {
+    const gp = await getOrCreateGP(gameId, playerId);
+    gp[field] = parseInt(value) || 0;
+    await DB.put('gamePlayers', gp);
+    await refreshGameHeaderScore(gameId);
+  } catch(err) {
+    console.error('[simpleSetField] error:', err);
+    Toast.error('Could not save: ' + err.message);
   }
 }
 
 async function simpleSetNotes(gameId, playerId, value) {
-  const gp = await getOrCreateGP(gameId, playerId);
-  gp.performanceNotes = value.trim() || null;
-  await DB.put('gamePlayers', gp);
+  try {
+    const gp = await getOrCreateGP(gameId, playerId);
+    gp.performanceNotes = value.trim() || null;
+    await DB.put('gamePlayers', gp);
+  } catch(err) {
+    console.error('[simpleSetNotes] error:', err);
+    Toast.error('Could not save: ' + err.message);
+  }
 }
 
 async function refreshGameHeaderScore(gameId) {
