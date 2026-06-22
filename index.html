@@ -144,7 +144,7 @@ tr:hover td{background:var(--highlight)}
 .panel-hidden{display:none}
 
 /* ── GAME DETAIL ──────────────────────────────────────────────────────────── */
-.game-header{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+.game-header{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:16px;box-shadow:0 4px 10px rgba(0,0,0,.12);position:sticky;top:var(--nav-h);z-index:50}
 .game-header-top{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px}
 .game-title{font-size:18px;font-weight:700}
 .game-meta{font-size:12px;color:var(--muted);margin-top:3px}
@@ -4868,7 +4868,6 @@ async function renderSimpleGoalsTab(gameId) {
             <div class="goal-info">
               <span class="wp-num">${p.shirtNumber||'—'}</span>
               <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))}</span>
-              <span class="wp-role-pill ${gp.role==='Starter'?'wp-role-starter':'wp-role-sub'}">${gp.role||'Sub'}</span>
             </div>
             <div class="wp-stats-row" style="padding:0">
               <div class="wp-stat-field">
