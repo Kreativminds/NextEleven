@@ -2887,6 +2887,8 @@ const Render = (() => {
 
       <div style="font-size:11px;color:#2a7a3b;margin-bottom:14px">&#10003; Changes save automatically — no Save button needed.</div>
 
+      <div id="gdDebugPanel" style="background:#111;color:#0f0;font-family:monospace;font-size:10px;padding:10px;border-radius:4px;margin-bottom:14px;white-space:pre-wrap;line-height:1.5">DEBUG: waiting for first action...</div>
+
       <div id="gdSimpleTable"></div>
 
       <div style="margin-top:10px">
@@ -2894,6 +2896,7 @@ const Render = (() => {
       </div>
     `;
 
+    gdDebugLog('gameDetail() loaded for game ' + gameId);
     await renderSimpleGameTable(gameId);
   }
 
@@ -2902,7 +2905,8 @@ const Render = (() => {
   // whole table after every change so the UI can never go stale.
   async function renderSimpleGameTable(gameId) {
     const el = document.getElementById('gdSimpleTable');
-    if (!el) return;
+    if (typeof gdDebugLog === 'function') gdDebugLog(`renderSimpleGameTable START, el found=${!!el}`);
+    if (!el) { if (typeof gdDebugLog === 'function') gdDebugLog('ABORTED: #gdSimpleTable not found in DOM'); return; }
 
     try {
       if (!window._gdPlayers || !window._gdPlayers.length) {
@@ -2912,6 +2916,7 @@ const Render = (() => {
       const existingGP = await DB.getAll('gamePlayers','gameId',gameId);
       const calledUpCount = existingGP.filter(r=>r.calledUp).length;
       const starterCount = existingGP.filter(r=>r.calledUp && r.role==='Starter').length;
+      if (typeof gdDebugLog === 'function') gdDebugLog(`fetched ${players.length} players, ${existingGP.length} gp records, calledUp=${calledUpCount}`);
 
       el.innerHTML = `
         <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Tick <strong>Played</strong> for anyone in the squad. Choose Starter or Sub. Fill in Goals/Assists for anyone who scored.</p>
@@ -2954,7 +2959,9 @@ const Render = (() => {
           </table>
         </div>
       `;
+      if (typeof gdDebugLog === 'function') gdDebugLog(`innerHTML written, table now has ${el.querySelectorAll('tr').length} rows`);
     } catch(err) {
+      if (typeof gdDebugLog === 'function') gdDebugLog(`RENDER ERROR: ${err.message}`);
       console.error('[renderSimpleGameTable] error:', err);
       el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;text-align:left;white-space:pre-wrap">${esc(err.message)}</p></div>`;
     }
@@ -4713,9 +4720,22 @@ function countStarters(allGP, excludePlayerId) {
 }
 
 // Checkbox: mark player as called up / not. Unticking clears role.
+// ── ON-SCREEN DEBUG PANEL — writes directly to the page, no console needed ──
+let _gdDebugLines = [];
+function gdDebugLog(msg) {
+  const ts = new Date().toLocaleTimeString();
+  _gdDebugLines.unshift(`[${ts}] ${msg}`);
+  if (_gdDebugLines.length > 8) _gdDebugLines = _gdDebugLines.slice(0, 8);
+  const panel = document.getElementById('gdDebugPanel');
+  if (panel) panel.textContent = _gdDebugLines.join('\n');
+  console.log('[GD-DEBUG]', msg);
+}
+
 async function simpleSetCalledUp(gameId, playerId, checked) {
+  gdDebugLog(`CLICK checkbox player=${playerId} checked=${checked}`);
   try {
     const gp = await getOrCreateGP(gameId, playerId);
+    gdDebugLog(`got gp record, calledUp was=${gp.calledUp}`);
     gp.calledUp = checked;
     if (!checked) {
       gp.role = 'Sub';
@@ -4723,25 +4743,32 @@ async function simpleSetCalledUp(gameId, playerId, checked) {
     } else if (!gp.role) {
       gp.role = 'Sub';
     }
-    await DB.put('gamePlayers', gp);
+    const savedKey = await DB.put('gamePlayers', gp);
+    gdDebugLog(`DB.put OK, key=${savedKey}, calledUp now=${gp.calledUp}`);
     Toast.show(checked ? 'Added to squad' : 'Removed from squad');
   } catch(err) {
+    gdDebugLog(`ERROR: ${err.message}`);
     console.error('[simpleSetCalledUp] error:', err);
     Toast.error('Could not save: ' + err.message);
   } finally {
+    gdDebugLog('calling renderSimpleGameTable...');
     await renderSimpleGameTable(gameId);
+    gdDebugLog('renderSimpleGameTable finished');
     await refreshGameHeaderScore(gameId);
     await refreshGameCounters(gameId);
+    gdDebugLog('all updates complete');
   }
 }
 
 // Dropdown: Starter / Sub, max 11 starters.
 async function simpleSetRole(gameId, playerId, role) {
+  gdDebugLog(`CLICK dropdown player=${playerId} role=${role}`);
   try {
     const allGP = await DB.getAll('gamePlayers','gameId',gameId);
     if (role === 'Starter') {
       const starterCount = countStarters(allGP, playerId);
       if (starterCount >= 11) {
+        gdDebugLog('REJECTED: 11 starters already');
         Toast.error('Maximum 11 Starters. Switch another Starter to Sub first.');
         await renderSimpleGameTable(gameId); // revert the dropdown
         return;
