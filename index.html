@@ -1229,7 +1229,7 @@ const State = {
   currentSettingsTab: 'seasons',
   currentTrackedPlayer: null,
   currentTrackedTab: 'overview',
-  gameDetailTab: 'played',
+  gameDetailTab: 'squad',
 };
 
 const NAV_LABEL_MAP = {
@@ -2869,6 +2869,7 @@ const Render = (() => {
     const theirScore = parseInt(game.opponentScore)||0;
     const res = Calc.result(ourScore, theirScore);
     const displayScore = Calc.homeAwayScore(game.homeAway, ourScore, theirScore);
+    const currentTab = State.gameDetailTab || 'squad';
 
     el.innerHTML = `
       <div class="game-header">
@@ -2885,72 +2886,152 @@ const Render = (() => {
         ${game.teamNotes?`<div style="margin-top:10px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px">${esc(game.teamNotes)}</div>`:''}
       </div>
 
+      <div style="display:flex;gap:0;border-bottom:2px solid #ddd;margin-bottom:16px;overflow-x:auto">
+        <button class="import-tab ${currentTab==='squad'?'active-tab':''}" id="gdtab-squad" onclick="switchSimpleTab(${gameId},'squad')">Squad List</button>
+        <button class="import-tab ${currentTab==='xi'?'active-tab':''}" id="gdtab-xi" onclick="switchSimpleTab(${gameId},'xi')">Starting XI</button>
+        <button class="import-tab ${currentTab==='goals'?'active-tab':''}" id="gdtab-goals" onclick="switchSimpleTab(${gameId},'goals')">Goals</button>
+      </div>
       <div style="font-size:11px;color:#2a7a3b;margin-bottom:14px">&#10003; Changes save automatically — no Save button needed.</div>
 
-      <div id="gdSimpleTable"></div>
+      <div id="gdPanel-squad" style="${currentTab==='squad'?'':'display:none'}"></div>
+      <div id="gdPanel-xi" style="${currentTab==='xi'?'':'display:none'}"></div>
+      <div id="gdPanel-goals" style="${currentTab==='goals'?'':'display:none'}"></div>
 
       <div style="margin-top:10px">
         <button class="btn btn-secondary" onclick="closeGameDetail()">&#8592; Back to Games</button>
       </div>
     `;
 
-    await renderSimpleGameTable(gameId);
+    if (currentTab==='squad') await renderSquadListTab(gameId);
+    if (currentTab==='xi')    await renderStartingXITab(gameId);
+    if (currentTab==='goals') await renderSimpleGoalsTab(gameId);
   }
 
-  // ── SIMPLE SINGLE-TABLE GAME ENTRY ──────────────────────────────────────────
-  // One table. Re-renders fully after every change. No tabs, no separate
-  // event log — goals/assists are plain numbers on the player's gamePlayers
-  // record, same as the very first working version of this app.
-  async function renderSimpleGameTable(gameId) {
-    const el = document.getElementById('gdSimpleTable');
+  // ── TAB 1 — SQUAD LIST ───────────────────────────────────────────────────────
+  // Just who is named/available for this game. No starter/sub decision here.
+  async function renderSquadListTab(gameId) {
+    const el = document.getElementById('gdPanel-squad');
     if (!el) return;
-
     try {
+      if (!window._gdPlayers || !window._gdPlayers.length) {
+        window._gdPlayers = (await DB.getAll('players','seasonId', State.currentSeasonId)).filter(p=>p.isActive).sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99));
+      }
+      const players = window._gdPlayers;
+      const existingGP = await DB.getAll('gamePlayers','gameId',gameId);
+      const calledUpCount = existingGP.filter(r=>r.calledUp).length;
 
-    if (!window._gdPlayers || !window._gdPlayers.length) {
-      window._gdPlayers = (await DB.getAll('players','seasonId', State.currentSeasonId)).filter(p=>p.isActive).sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99));
-    }
-    const players = window._gdPlayers;
-    const existingGP = await DB.getAll('gamePlayers','gameId',gameId);
-    const calledUpCount = existingGP.filter(r=>r.calledUp).length;
-    const starterCount = existingGP.filter(r=>r.calledUp && r.role==='Starter').length;
-
-    el.innerHTML = `
-      <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Tap a player to call them up — the first 11 become Starters automatically, the rest Subs. Tap the role badge to override. Tap the player again to remove them.</p>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Called up: <strong style="color:var(--dark)">${calledUpCount}</strong> / ${players.length} &nbsp;·&nbsp; Starters: <strong style="color:var(--dark)">${starterCount}</strong> / 11</div>
-      <div class="who-played-list">
-        ${players.map(p => {
-          const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
-          const calledUp = !!gp.calledUp;
-          const role = gp.role || null;
-          return `<div class="wp-row ${calledUp?'wp-active':''}" id="sgr-${p.playerId}">
-            <div class="wp-info" onclick="simpleTogglePlayer(${gameId},${p.playerId})">
-              <span class="wp-num">${p.shirtNumber||'—'}</span>
-              <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor">${esc(p.trackingLabel||'★')}</span>`:''}</span>
-              ${calledUp ? `<button class="wp-role-pill ${role==='Starter'?'wp-role-starter':'wp-role-sub'}" onclick="event.stopPropagation();simpleToggleRole(${gameId},${p.playerId})">${role}</button>` : ''}
-            </div>
-            ${calledUp ? `
-            <div class="wp-stats-row">
-              <div class="wp-stat-field">
-                <label>Goals</label>
-                <input type="number" min="0" max="20" value="${gp.goals||0}" onchange="simpleSetField(${gameId},${p.playerId},'goals',this.value)">
+      el.innerHTML = `
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Tap a player to add them to the squad for this game. Use this as soon as you know who's available — before match day.</p>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">In squad: <strong style="color:var(--dark)">${calledUpCount}</strong> / ${players.length}</div>
+        <div class="who-played-list">
+          ${players.map(p => {
+            const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
+            const calledUp = !!gp.calledUp;
+            return `<div class="wp-row ${calledUp?'wp-active':''}" id="sql-${p.playerId}" onclick="simpleToggleSquad(${gameId},${p.playerId})">
+              <div class="wp-info">
+                <span class="wp-num">${p.shirtNumber||'—'}</span>
+                <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor">${esc(p.trackingLabel||'★')}</span>`:''}</span>
+                ${calledUp?'<span style="margin-left:auto;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
               </div>
-              <div class="wp-stat-field">
-                <label>Assists</label>
-                <input type="number" min="0" max="20" value="${gp.assists||0}" onchange="simpleSetField(${gameId},${p.playerId},'assists',this.value)">
-              </div>
-              <div class="wp-stat-field wp-stat-notes">
-                <label>Notes</label>
-                <input type="text" placeholder="Notes..." value="${esc(gp.performanceNotes||'')}" onchange="simpleSetNotes(${gameId},${p.playerId},this.value)">
-              </div>
-            </div>` : ''}
-          </div>`;
-        }).join('')}
-      </div>
-    `;
-
+            </div>`;
+          }).join('')}
+        </div>
+      `;
     } catch(err) {
-      console.error('[renderSimpleGameTable] error:', err);
+      console.error('[renderSquadListTab] error:', err);
+      el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;text-align:left;white-space:pre-wrap">${esc(err.message)}</p></div>`;
+    }
+  }
+
+  // ── TAB 2 — STARTING XI ──────────────────────────────────────────────────────
+  // Only shows players already in the squad list. Tap to mark Starter.
+  // Anyone in the squad not tapped is automatically a Sub.
+  async function renderStartingXITab(gameId) {
+    const el = document.getElementById('gdPanel-xi');
+    if (!el) return;
+    try {
+      const allPlayers = window._gdPlayers || [];
+      const existingGP = await DB.getAll('gamePlayers','gameId',gameId);
+      const squad = allPlayers.filter(p => {
+        const gp = existingGP.find(r=>r.playerId===p.playerId);
+        return gp && gp.calledUp;
+      });
+
+      if (!squad.length) {
+        el.innerHTML = `<div class="empty"><strong>No squad selected yet</strong><p>Go to "Squad List" first and add players who are available for this game.</p><button class="btn btn-primary" onclick="switchSimpleTab(${gameId},'squad')">Go to Squad List</button></div>`;
+        return;
+      }
+
+      const starterCount = existingGP.filter(r=>r.calledUp && r.role==='Starter').length;
+
+      el.innerHTML = `
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Tap up to 11 players for the Starting XI. Everyone else in the squad is automatically a Sub.</p>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Starters: <strong style="color:var(--dark)">${starterCount}</strong> / 11</div>
+        <div class="who-played-list">
+          ${squad.map(p => {
+            const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
+            const isStarter = gp.role === 'Starter';
+            return `<div class="wp-row ${isStarter?'wp-active':''}" id="xi-${p.playerId}" onclick="simpleToggleStarter(${gameId},${p.playerId})">
+              <div class="wp-info">
+                <span class="wp-num">${p.shirtNumber||'—'}</span>
+                <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))}</span>
+                <span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:auto">${isStarter?'Starter':'Sub'}</span>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      `;
+    } catch(err) {
+      console.error('[renderStartingXITab] error:', err);
+      el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;text-align:left;white-space:pre-wrap">${esc(err.message)}</p></div>`;
+    }
+  }
+
+  // ── TAB 3 — GOALS ────────────────────────────────────────────────────────────
+  // Whole squad (Starters + Subs), simple number fields. Independent of role.
+  async function renderSimpleGoalsTab(gameId) {
+    const el = document.getElementById('gdPanel-goals');
+    if (!el) return;
+    try {
+      const allPlayers = window._gdPlayers || [];
+      const existingGP = await DB.getAll('gamePlayers','gameId',gameId);
+      const squad = allPlayers.filter(p => {
+        const gp = existingGP.find(r=>r.playerId===p.playerId);
+        return gp && gp.calledUp;
+      });
+
+      if (!squad.length) {
+        el.innerHTML = `<div class="empty"><strong>No squad selected yet</strong><p>Go to "Squad List" first.</p><button class="btn btn-primary" onclick="switchSimpleTab(${gameId},'squad')">Go to Squad List</button></div>`;
+        return;
+      }
+
+      el.innerHTML = `
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Enter goals and assists for anyone in the squad — Starter or Sub.</p>
+        <div class="goals-list">
+          ${squad.map(p => {
+            const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
+            return `<div class="goal-row" id="gl-${p.playerId}">
+              <div class="goal-info">
+                <span class="wp-num">${p.shirtNumber||'—'}</span>
+                <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))}</span>
+                <span class="wp-role-pill ${gp.role==='Starter'?'wp-role-starter':'wp-role-sub'}">${gp.role||'Sub'}</span>
+              </div>
+              <div class="wp-stats-row" style="padding:0">
+                <div class="wp-stat-field">
+                  <label>Goals</label>
+                  <input type="number" min="0" max="20" value="${gp.goals||0}" onchange="simpleSetField(${gameId},${p.playerId},'goals',this.value)">
+                </div>
+                <div class="wp-stat-field">
+                  <label>Assists</label>
+                  <input type="number" min="0" max="20" value="${gp.assists||0}" onchange="simpleSetField(${gameId},${p.playerId},'assists',this.value)">
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      `;
+    } catch(err) {
+      console.error('[renderSimpleGoalsTab] error:', err);
       el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;text-align:left;white-space:pre-wrap">${esc(err.message)}</p></div>`;
     }
   }
@@ -4675,6 +4756,7 @@ async function goToGameDetail(gameId) {
 async function openGameDetail(gameId) {
   document.getElementById('gamesListView').style.display = 'none';
   document.getElementById('gameDetailView').style.display = 'block';
+  State.gameDetailTab = 'squad';
   await Render.gameDetail(gameId);
   window.scrollTo(0,0);
 }
@@ -4701,64 +4783,73 @@ async function getOrCreateGP(gameId, playerId) {
   return gp;
 }
 
-function countStartersExcluding(allGP, excludePlayerId) {
+function countStarters(allGP, excludePlayerId) {
   return allGP.filter(r => r.role === 'Starter' && r.calledUp && r.playerId !== excludePlayerId).length;
 }
 
-// Tap a player row: not called up -> call up (auto Starter if <11 starters
-// exist right now, else Sub). Already called up -> remove entirely.
-async function simpleTogglePlayer(gameId, playerId) {
-  try {
-    const allGP = await DB.getAll('gamePlayers','gameId',gameId);
-    const gp = await getOrCreateGP(gameId, playerId);
+// ── TAB SWITCHING ────────────────────────────────────────────────────────────
+async function switchSimpleTab(gameId, tab) {
+  State.gameDetailTab = tab;
+  try { sessionStorage.setItem('squadTracker_gameDetailTab', tab); } catch(e) {}
+  ['squad','xi','goals'].forEach(t => {
+    const panel = document.getElementById(`gdPanel-${t}`);
+    const btn   = document.getElementById(`gdtab-${t}`);
+    if (panel) panel.style.display = t === tab ? '' : 'none';
+    if (btn)   btn.classList.toggle('active-tab', t === tab);
+  });
+  if (tab === 'squad') await renderSquadListTab(gameId);
+  if (tab === 'xi')    await renderStartingXITab(gameId);
+  if (tab === 'goals') await renderSimpleGoalsTab(gameId);
+}
 
+// ── TAB 1 HANDLER — toggle squad membership (no role decision here) ─────────
+async function simpleToggleSquad(gameId, playerId) {
+  try {
+    const gp = await getOrCreateGP(gameId, playerId);
     if (gp.calledUp) {
-      // Remove from squad for this game
       gp.calledUp = false;
       gp.role = null;
       gp.playedFullGame = false;
     } else {
-      // Call up: auto-assign role based on current starter count
-      const starterCount = countStartersExcluding(allGP, playerId);
-      const role = starterCount < 11 ? 'Starter' : 'Sub';
       gp.calledUp = true;
-      gp.role = role;
-      gp.playedFullGame = (role === 'Starter');
+      gp.role = 'Sub'; // default; set explicitly in Starting XI tab
+      gp.playedFullGame = false;
     }
     await DB.put('gamePlayers', gp);
   } catch(err) {
-    console.error('[simpleTogglePlayer] error:', err);
+    console.error('[simpleToggleSquad] error:', err);
     Toast.error('Could not save: ' + err.message);
   } finally {
-    // Always re-render, even if the save failed, so the screen never freezes
-    await renderSimpleGameTable(gameId);
+    await renderSquadListTab(gameId);
     await refreshGameHeaderScore(gameId);
   }
 }
 
-// Tap the role badge: manually flip Starter <-> Sub for one player.
-async function simpleToggleRole(gameId, playerId) {
+// ── TAB 2 HANDLER — toggle Starter status (max 11) ───────────────────────────
+async function simpleToggleStarter(gameId, playerId) {
   try {
     const allGP = await DB.getAll('gamePlayers','gameId',gameId);
     const gp = await getOrCreateGP(gameId, playerId);
     if (!gp.calledUp) return;
 
-    const newRole = gp.role === 'Starter' ? 'Sub' : 'Starter';
-    if (newRole === 'Starter') {
-      const starterCount = countStartersExcluding(allGP, playerId);
+    if (gp.role === 'Starter') {
+      gp.role = 'Sub';
+      gp.playedFullGame = false;
+    } else {
+      const starterCount = countStarters(allGP, playerId);
       if (starterCount >= 11) {
-        Toast.error('Maximum 11 Starters. Switch another Starter to Sub first.');
+        Toast.error('Maximum 11 Starters. Tap a current Starter to make them a Sub first.');
         return;
       }
+      gp.role = 'Starter';
+      gp.playedFullGame = true;
     }
-    gp.role = newRole;
-    gp.playedFullGame = (newRole === 'Starter');
     await DB.put('gamePlayers', gp);
   } catch(err) {
-    console.error('[simpleToggleRole] error:', err);
+    console.error('[simpleToggleStarter] error:', err);
     Toast.error('Could not save: ' + err.message);
   } finally {
-    await renderSimpleGameTable(gameId);
+    await renderStartingXITab(gameId);
   }
 }
 
@@ -4770,17 +4861,6 @@ async function simpleSetField(gameId, playerId, field, value) {
     await refreshGameHeaderScore(gameId);
   } catch(err) {
     console.error('[simpleSetField] error:', err);
-    Toast.error('Could not save: ' + err.message);
-  }
-}
-
-async function simpleSetNotes(gameId, playerId, value) {
-  try {
-    const gp = await getOrCreateGP(gameId, playerId);
-    gp.performanceNotes = value.trim() || null;
-    await DB.put('gamePlayers', gp);
-  } catch(err) {
-    console.error('[simpleSetNotes] error:', err);
     Toast.error('Could not save: ' + err.message);
   }
 }
