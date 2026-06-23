@@ -14,7 +14,10 @@ a{color:#111;text-decoration:none}
 
 /* ── VARIABLES ────────────────────────────────────────────────────────────── */
 :root{
-  --black:#111111;
+  /* ZeroZero-inspired palette: maroon-red primary, navy nav */
+  --black:#a23b3b;
+  --black-dark:#7e2d2d;
+  --navy:#2d3e50;
   --dark:#333333;
   --mid:#666666;
   --muted:#999999;
@@ -22,7 +25,7 @@ a{color:#111;text-decoration:none}
   --border-dark:#bbbbbb;
   --bg:#f5f5f5;
   --surface:#ffffff;
-  --highlight:#f0f0f0;
+  --highlight:#f5e9e9;
   --radius:3px;
   --shadow:0 1px 3px rgba(0,0,0,0.1);
   --nav-h:52px;
@@ -33,7 +36,7 @@ a{color:#111;text-decoration:none}
 .main-content{margin-top:var(--nav-h);padding:20px;max-width:1200px;width:100%;margin-left:auto;margin-right:auto;flex:1}
 
 /* ── NAV ──────────────────────────────────────────────────────────────────── */
-nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--black);z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 16px}
+nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--navy);z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 16px}
 .nav-brand{color:#fff;font-size:15px;font-weight:700;letter-spacing:.3px;white-space:nowrap}
 .nav-brand span{color:#aaa;font-size:11px;font-weight:400;margin-left:8px}
 .nav-links{display:flex;gap:2px;align-items:center}
@@ -42,7 +45,7 @@ nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--bla
 .nav-link.active{color:#fff;background:rgba(255,255,255,.18);font-weight:700}
 .hamburger{display:none;flex-direction:column;gap:4px;cursor:pointer;padding:6px;background:none;border:none}
 .hamburger span{display:block;width:22px;height:2px;background:#fff;transition:.2s}
-.mobile-menu{display:none;position:fixed;top:var(--nav-h);left:0;right:0;background:var(--black);z-index:99;padding:8px;flex-direction:column;gap:2px}
+.mobile-menu{display:none;position:fixed;top:var(--nav-h);left:0;right:0;background:var(--navy);z-index:99;padding:8px;flex-direction:column;gap:2px}
 .mobile-menu.open{display:flex}
 .mobile-menu .nav-link{text-align:left;padding:10px 14px;font-size:13px}
 
@@ -86,9 +89,9 @@ tr:hover td{background:var(--highlight)}
 .badge-W{background:#e6f4ea;color:#2a7a3b}
 .badge-D{background:#fff8e1;color:#b07a00}
 .badge-L{background:#fde8e8;color:#b03030}
-.badge-mom{background:#111;color:#fff}
+.badge-mom{background:var(--black);color:#fff}
 .badge-cap{background:#555;color:#fff}
-.badge-lor{background:#111;color:#fff;font-size:9px;padding:1px 5px}
+.badge-lor{background:var(--black);color:#fff;font-size:9px;padding:1px 5px}
 .badge-starter{background:#e8f0fe;color:#1a56c4}
 .badge-sub{background:#f3f3f3;color:#555}
 .badge-nc{background:#fafafa;color:#aaa}
@@ -163,17 +166,17 @@ tr:hover td{background:var(--highlight)}
 /* ── WHO PLAYED LIST ── */
 .who-played-list{display:flex;flex-direction:column;gap:6px}
 .wp-row{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:6px;background:var(--surface);overflow:hidden;transition:border-color .15s,background .15s}
-.wp-row.wp-active{border-color:#111;background:#f8f8f8}
+.wp-row.wp-active{border-color:var(--black);background:#fbf3f3}
 .wp-info{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;user-select:none}
 .wp-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#eee;font-size:12px;font-weight:700;flex-shrink:0}
-.wp-row.wp-active .wp-num{background:#111;color:#fff}
+.wp-row.wp-active .wp-num{background:var(--black);color:#fff}
 .wp-name{flex:1;font-size:14px;font-weight:600}
 .wp-pos{font-size:11px;color:var(--muted)}
 .wp-role-toggle{display:flex;gap:6px;padding:0 14px 12px}
 .wp-role-btn{flex:1;padding:8px;border:1px solid var(--border);border-radius:5px;background:#fff;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
-.wp-role-btn.wp-role-active{background:#111;color:#fff;border-color:#111}
+.wp-role-btn.wp-role-active{background:var(--black);color:#fff;border-color:var(--black)}
 .wp-role-pill{flex-shrink:0;padding:4px 10px;border-radius:12px;font-size:10px;font-weight:700;border:none;cursor:pointer;margin-left:auto}
-.wp-role-starter{background:#111;color:#fff}
+.wp-role-starter{background:var(--black);color:#fff}
 .wp-role-sub{background:#e8e8e8;color:#555}
 .wp-stats-row{display:flex;gap:10px;padding:0 14px 12px;align-items:flex-end}
 .wp-stat-field{display:flex;flex-direction:column;gap:3px}
@@ -190,7 +193,7 @@ tr:hover td{background:var(--highlight)}
 .goal-stepper{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .stepper-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:#fff;font-size:18px;font-weight:700;color:var(--dark);cursor:pointer;display:flex;align-items:center;justify-content:center}
 .stepper-btn:disabled{opacity:.3;cursor:not-allowed}
-.stepper-btn-add{background:#111;color:#fff;border-color:#111}
+.stepper-btn-add{background:var(--black);color:#fff;border-color:var(--black)}
 .stepper-count{font-size:18px;font-weight:700;min-width:24px;text-align:center}
 .game-detail-table{width:100%;border-collapse:collapse;min-width:760px}
 .game-detail-table th,.game-detail-table td{padding:7px 8px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:middle;white-space:nowrap}
@@ -212,7 +215,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .fv-switch input{opacity:0;width:0;height:0}
 .fv-slider{position:absolute;cursor:pointer;inset:0;background:#ccc;border-radius:24px;transition:.15s}
 .fv-slider:before{position:absolute;content:"";height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.15s}
-.fv-switch input:checked + .fv-slider{background:#111}
+.fv-switch input:checked + .fv-slider{background:var(--black)}
 .fv-switch input:checked + .fv-slider:before{transform:translateX(18px)}
 .prog-label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px}
 
@@ -270,7 +273,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .type-Improvement{background:#e6f4ea;color:#2a7a3b}
 .type-Technical{background:#f3f3f3;color:#555}
 .type-Security{background:#fff3cd;color:#856404}
-.type-Release{background:#111;color:#fff}
+.type-Release{background:var(--black);color:#fff}
 .priority-P1{color:#b03030;font-weight:700}
 .priority-P2{color:#b07a00;font-weight:700}
 .priority-P3{color:#1a56c4}
@@ -322,11 +325,11 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 }
 
 /* ── FILE LABEL BUTTON ────────────────────────────────────────────────────── */
-.file-label-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;background:#fff;border:1px solid #bbb;border-radius:3px;font-size:13px;font-weight:700;color:#111;cursor:pointer;transition:background .15s}
+.file-label-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;background:#fff;border:1px solid #bbb;border-radius:3px;font-size:13px;font-weight:700;color:var(--black);cursor:pointer;transition:background .15s}
 .file-label-btn:hover{background:#f0f0f0}
 /* ── IMPORT TABS ──────────────────────────────────────────────────────────── */
 .import-tab{padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;color:#999;border-bottom:2px solid transparent;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none}
-.import-tab.active-tab{color:#111;border-bottom-color:#111}
+.import-tab.active-tab{color:var(--black);border-bottom-color:var(--black)}
 /* ── IMPORT BADGE ─────────────────────────────────────────────────────────── */
 .badge-ok{background:#e6f4ea;color:#2a7a3b;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700;display:inline-block}
 .badge-skip{background:#f0f0f0;color:#888;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700;display:inline-block}
@@ -357,7 +360,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 /* ── LOADING ──────────────────────────────────────────────────────────────── */
 #loading{position:fixed;inset:0;background:#fff;display:flex;align-items:center;justify-content:center;z-index:999;flex-direction:column;gap:12px}
 #loading p{font-size:13px;color:var(--muted)}
-.spinner{width:32px;height:32px;border:3px solid #eee;border-top-color:#111;border-radius:50%;animation:spin .7s linear infinite}
+.spinner{width:32px;height:32px;border:3px solid #eee;border-top-color:var(--black);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
@@ -537,10 +540,12 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
       <button class="import-tab active-tab" id="atab-roadmap" onclick="switchAdminTab('roadmap')">&#128202; Roadmap</button>
       <button class="import-tab" id="atab-kanban" onclick="switchAdminTab('kanban')">&#9646;&#9646; Kanban</button>
       <button class="import-tab" id="atab-fields" onclick="switchAdminTab('fields')">&#128065; Field Visibility</button>
+      <button class="import-tab" id="atab-debug" onclick="switchAdminTab('debug')">&#128027; Debug</button>
     </div>
     <div id="admin-panel-roadmap"></div>
     <div id="admin-panel-kanban" style="display:none"></div>
     <div id="admin-panel-fields" style="display:none"></div>
+    <div id="admin-panel-debug" style="display:none"></div>
   </div>
 
   <!-- HELP PAGE -->
@@ -708,7 +713,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 // ══════════════════════════════════════════════════════════════════════════════
 const CONFIG = {
   APP_VERSION: '1.1.0',
-  SCHEMA_VERSION: 5,
+  SCHEMA_VERSION: 6,
   DB_NAME: 'footballSquadTrackerDB',
   MAX_BACKUPS: 30,
   FULL_GAME_MINS: 80,
@@ -905,6 +910,10 @@ const DB = (() => {
           ge.createIndex('gameId', 'gameId', { unique: false });
           ge.createIndex('scorerId', 'scorerId', { unique: false });
         }
+        if (!db.objectStoreNames.contains('injuries')) {
+          const inj = db.createObjectStore('injuries', { keyPath: 'injuryId', autoIncrement: true });
+          inj.createIndex('playerId', 'playerId', { unique: false });
+        }
       };
       req.onsuccess = e => { _db = e.target.result; resolve(_db); };
       req.onerror = e => reject(e.target.error);
@@ -989,14 +998,14 @@ const DB = (() => {
   }
 
   async function getAllFromAllStores() {
-    const stores = ['appMeta','seasons','players','games','gamePlayers','achievements','clubHistory','playerGameStats','events','goalEvents'];
+    const stores = ['appMeta','seasons','players','games','gamePlayers','achievements','clubHistory','playerGameStats','events','goalEvents','injuries'];
     const result = {};
     for (const s of stores) { result[s] = await getAll(s); }
     return result;
   }
 
   async function restoreAllStores(data) {
-    const stores = ['appMeta','seasons','players','games','gamePlayers','achievements','clubHistory','playerGameStats','events','goalEvents'];
+    const stores = ['appMeta','seasons','players','games','gamePlayers','achievements','clubHistory','playerGameStats','events','goalEvents','injuries'];
     for (const s of stores) {
       await clear(s);
       if (data[s]) {
@@ -1338,13 +1347,40 @@ async function initAdmin() {
 
 // ── Admin tab switching ────────────────────────────────────────────────────────
 function switchAdminTab(tab) {
-  ['roadmap','kanban','fields'].forEach(t => {
+  ['roadmap','kanban','fields','debug'].forEach(t => {
     document.getElementById(`admin-panel-${t}`).style.display = t === tab ? '' : 'none';
     document.getElementById(`atab-${t}`)?.classList.toggle('active-tab', t === tab);
   });
   if (tab === 'roadmap') renderRoadmapTable();
   if (tab === 'kanban')  renderKanban();
   if (tab === 'fields')  renderFieldVisibilityTab();
+  if (tab === 'debug')   renderDebugTab();
+}
+
+async function renderDebugTab() {
+  const el = document.getElementById('admin-panel-debug');
+  if (!el) return;
+  const on = await isDebugModeOn();
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">Global Debug Mode</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px">When ON, a live log panel appears at the bottom of every page in the app — Home, Squad, Games, tracked player pages, Settings, everywhere. Use it to capture exactly what happens when something isn't working, then turn it off when you're done.</p>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-weight:700;font-size:13px">${on?'Debug Mode is ON':'Debug Mode is OFF'}</span>
+        <label class="fv-switch">
+          <input type="checkbox" ${on?'checked':''} onchange="toggleDebugMode(this.checked)">
+          <span class="fv-slider"></span>
+        </label>
+      </div>
+    </div>
+    ${on ? `<div class="card"><div class="card-title">Live Log Preview</div><div id="adminDebugPreview" style="background:#111;color:#0f0;font-family:monospace;font-size:10px;padding:10px;border-radius:4px;white-space:pre-wrap;line-height:1.5;max-height:200px;overflow-y:auto">${_debugLines.length?_debugLines.join('\n'):'No actions logged yet — go use the app, then come back here.'}</div></div>` : ''}
+  `;
+}
+
+async function toggleDebugMode(on) {
+  await setDebugMode(on);
+  Toast.show(on ? 'Debug mode ON — log panel active on every page.' : 'Debug mode OFF.');
+  await renderDebugTab();
 }
 
 // ── Render roadmap table ───────────────────────────────────────────────────────
@@ -2550,7 +2586,7 @@ async function handleSyncDownload() {
 // DB PUT WRAPPER — marks records as modified for sync
 // ══════════════════════════════════════════════════════════════════════════════
 const _origPut = DB.put.bind(DB);
-const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents']);
+const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries']);
 
 DB.put = async function(store, obj) {
   if (SYNC_STORES_SET.has(store) && obj) {
@@ -2562,6 +2598,10 @@ DB.put = async function(store, obj) {
     } else if (obj.syncStatus === 'synced') {
       obj.syncStatus = 'modified';
     }
+  }
+  if (typeof gdDebugLog === 'function') {
+    const idField = Object.keys(obj||{}).find(k => /Id$/.test(k) && k.toLowerCase().startsWith(store.toLowerCase().replace(/s$/,'')));
+    gdDebugLog(`DB.put(${store}) key=${obj && (obj[idField]||'(new)')}`);
   }
   return _origPut(store, obj);
 };
@@ -2640,7 +2680,7 @@ const Render = (() => {
             <div style="font-size:13px;margin-top:8px">${fmtDate(nextGame.date)}${nextGame.gameTime?' · Kick-off '+nextGame.gameTime:''}</div>
           </div>
           ${nextGame.arrivalTime?`
-          <div style="background:#111;color:#fff;padding:10px 16px;border-radius:4px;text-align:center">
+          <div style="background:var(--black);color:#fff;padding:10px 16px;border-radius:4px;text-align:center">
             <div style="font-size:9px;text-transform:uppercase;letter-spacing:.8px;opacity:.7">Arrive by</div>
             <div style="font-size:20px;font-weight:700">${nextGame.arrivalTime}</div>
           </div>`:''}
@@ -2811,6 +2851,11 @@ const Render = (() => {
     sub.textContent = State.currentSeason.seasonName;
 
     let players = await DB.getAll('players','seasonId',State.currentSeasonId);
+    const allInjuries = await DB.getAll('injuries');
+    const activeInjuryByPlayer = {};
+    allInjuries.forEach(inj => {
+      if (inj.status === 'Injured') activeInjuryByPlayer[inj.playerId] = inj;
+    });
     players.sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99)||(a.fullName||'').localeCompare(b.fullName||''));
 
     if (search) players = players.filter(p=>p.fullName.toLowerCase().includes(search.toLowerCase()));
@@ -2845,7 +2890,9 @@ const Render = (() => {
       return `<th class="${extraClass}" style="cursor:pointer;user-select:none" onclick="squadSort('${key}')">${label}${arrow}</th>`;
     }
 
-    const rows = players.map(p => `
+    const rows = players.map(p => {
+      const injury = activeInjuryByPlayer[p.playerId];
+      return `
       <tr>
         <td class="col-sticky-num">${p.shirtNumber||'—'}</td>
         <td class="col-sticky-name" title="${esc(p.fullName)}" ${p.trackingStatus==='tracked'?`style="cursor:pointer;text-decoration:underline;text-decoration-color:#ccc" onclick="openPlayerCardPopup(${p.playerId})"`:''}>${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor" title="${esc(p.trackingLabel||'Tracked')}">${esc(p.trackingLabel||'★')}</span>`:''} ${!p.isActive?'<span class="badge-nc badge" style="font-size:9px">Archived</span>':''}</td>
@@ -2853,11 +2900,14 @@ const Render = (() => {
         <td>${p.secondaryPosition||'—'}</td>
         <td>${p.dominantFoot||'—'}</td>
         <td>${p.dateOfBirth?fmtDate(p.dateOfBirth):'—'}</td>
+        <td>${injury?`<span class="badge" style="background:#fde8e8;color:#b03030" title="${esc(injury.injuryType||'')} ${esc(injury.notes||'')}">&#129460; Injured</span>`:'<span style="color:#2a7a3b;font-size:11px">&#10003; Fit</span>'}</td>
         <td>
           <button class="btn btn-secondary btn-sm" onclick="editPlayer(${p.playerId})">Edit</button>
           <button class="btn btn-secondary btn-sm" onclick="archivePlayer(${p.playerId},${!p.isActive})" style="margin-left:4px">${p.isActive?'Archive':'Restore'}</button>
+          <button class="btn ${injury?'btn-danger':'btn-secondary'} btn-sm" onclick="openInjuryModal(${p.playerId})" style="margin-left:4px">${injury?'Manage Injury':'+ Injury'}</button>
         </td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
 
     el.innerHTML = `
       <div class="game-detail-table-wrap">
@@ -2869,6 +2919,7 @@ const Render = (() => {
             ${thSort('secondaryPosition','2nd Pos')}
             ${thSort('dominantFoot','Foot')}
             ${thSort('dateOfBirth','DOB')}
+            <th>Status</th>
             <th>Actions</th>
           </tr></thead>
           <tbody>${rows}</tbody>
@@ -3757,6 +3808,7 @@ const Nav = (() => {
   let current = 'dashboard';
 
   async function go(section) {
+    if (typeof gdDebugLog === 'function') gdDebugLog(`Nav.go('${section}')`);
     // close game detail if open
     document.getElementById('gamesListView').style.display = 'block';
     document.getElementById('gameDetailView').style.display = 'none';
@@ -4598,6 +4650,67 @@ function closePlayerCardPopup() {
   document.getElementById('playerCardOverlay').classList.remove('open');
 }
 
+// ── INJURY TRACKING ──────────────────────────────────────────────────────────
+const INJURY_TYPES = ['Foot','Leg','Knee','Ankle','Head','Body / Torso','Arm','Shoulder','Other'];
+
+async function openInjuryModal(playerId) {
+  const p = await DB.get('players', playerId);
+  if (!p) return;
+  const allInjuries = await DB.getAll('injuries','playerId',playerId);
+  const active = allInjuries.find(i => i.status === 'Injured');
+  const today = new Date().toISOString().split('T')[0];
+
+  const overlay = document.createElement('div');
+  overlay.className = 'rm-form-overlay open';
+  overlay.id = 'injuryModalOverlay';
+  overlay.innerHTML = `
+    <div class="rm-form" style="max-width:420px">
+      <h2>${active?'Manage Injury':'Mark as Injured'} — ${esc(shortName(p.fullName))}</h2>
+      <div class="form-grid">
+        <div class="form-group"><label>Status</label>
+          <select id="inj-status">
+            <option value="Injured" ${(!active||active.status==='Injured')?'selected':''}>Injured</option>
+            <option value="Not Injured" ${active&&active.status!=='Injured'?'selected':''}>Not Injured / Recovered</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Start Date</label><input type="date" id="inj-start" value="${active?.startDate||today}"></div>
+        <div class="form-group"><label>Expected End Date</label><input type="date" id="inj-end" value="${active?.endDate||''}"></div>
+        <div class="form-group full"><label>Injury Type</label>
+          <select id="inj-type">
+            <option value="">— Not specified —</option>
+            ${INJURY_TYPES.map(t=>`<option ${active?.injuryType===t?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group full"><label>Notes (optional)</label><textarea id="inj-notes" placeholder="e.g. mild ankle sprain, expected back in 2 weeks">${esc(active?.notes||'')}</textarea></div>
+      </div>
+      <div class="form-actions" style="margin-top:16px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="document.getElementById('injuryModalOverlay').remove()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveInjury(${playerId}, ${active?active.injuryId:'null'})">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function saveInjury(playerId, existingInjuryId) {
+  const status = document.getElementById('inj-status').value;
+  const startDate = document.getElementById('inj-start').value || new Date().toISOString().split('T')[0];
+  const endDate = document.getElementById('inj-end').value || null;
+  const injuryType = document.getElementById('inj-type').value || null;
+  const notes = document.getElementById('inj-notes').value.trim() || null;
+
+  const record = { playerId, status, startDate, endDate, injuryType, notes };
+  if (existingInjuryId) record.injuryId = existingInjuryId;
+
+  try {
+    await DB.put('injuries', record);
+    document.getElementById('injuryModalOverlay')?.remove();
+    Toast.show(status === 'Injured' ? 'Marked as injured.' : 'Marked as recovered.');
+    await Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||'');
+  } catch(err) {
+    Toast.error('Could not save: ' + err.message);
+  }
+}
+
 async function editPlayer(id) {
   const p = await DB.get('players', id);
   if (!p) return;
@@ -4752,14 +4865,51 @@ function closeGameDetail() {
 // No tabs. No multi-step flow. Everything visible at once. Re-renders the
 // whole table after every change so the UI can never go stale.
 // ── DEBUG LOG ─────────────────────────────────────────────────────────────────
-let _gdDebugLines = [];
+// ── GLOBAL DEBUG MODE ─────────────────────────────────────────────────────────
+// Toggled from Admin. When ON, a floating log panel appears on EVERY page,
+// not just Game Detail. Persisted in appMeta so it survives reloads until
+// explicitly turned off.
+let _debugLines = [];
+let _debugModeCache = null;
+
+async function isDebugModeOn() {
+  if (_debugModeCache !== null) return _debugModeCache;
+  const meta = await DB.get('appMeta', 'debugMode');
+  _debugModeCache = !!(meta && meta.value);
+  return _debugModeCache;
+}
+
+async function setDebugMode(on) {
+  await DB.put('appMeta', { metaKey: 'debugMode', value: on });
+  _debugModeCache = on;
+  if (on) ensureDebugPanel(); else removeDebugPanel();
+}
+
+function ensureDebugPanel() {
+  if (document.getElementById('globalDebugPanel')) return;
+  const panel = document.createElement('div');
+  panel.id = 'globalDebugPanel';
+  panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;max-height:160px;overflow-y:auto;background:#111;color:#0f0;font-family:monospace;font-size:10px;padding:8px 10px;white-space:pre-wrap;line-height:1.5;z-index:9999;border-top:2px solid #0f0';
+  panel.textContent = 'DEBUG MODE ON — waiting for first action...';
+  document.body.appendChild(panel);
+}
+
+function removeDebugPanel() {
+  document.getElementById('globalDebugPanel')?.remove();
+}
+
 function gdDebugLog(msg) {
   const ts = new Date().toLocaleTimeString();
-  _gdDebugLines.unshift(`[${ts}] ${msg}`);
-  if (_gdDebugLines.length > 8) _gdDebugLines = _gdDebugLines.slice(0, 8);
-  const panel = document.getElementById('gdDebugPanel');
-  if (panel) panel.textContent = _gdDebugLines.join('\n');
-  console.log('[GD-DEBUG]', msg);
+  _debugLines.unshift(`[${ts}] ${msg}`);
+  if (_debugLines.length > 20) _debugLines = _debugLines.slice(0, 20);
+  console.log('[DEBUG]', msg);
+  if (_debugModeCache !== true) return; // debug mode off — skip DOM writes
+  ensureDebugPanel();
+  const panel = document.getElementById('globalDebugPanel');
+  if (panel) panel.textContent = _debugLines.join('\n');
+  // Also update the old in-page panel if present (Game Detail still has one)
+  const oldPanel = document.getElementById('gdDebugPanel');
+  if (oldPanel) oldPanel.textContent = _debugLines.slice(0,8).join('\n');
 }
 
 async function getOrCreateGP(gameId, playerId) {
@@ -4811,8 +4961,16 @@ async function renderSquadListTab(gameId) {
     const calledUpCount = existingGP.filter(r=>r.calledUp).length;
     gdDebugLog(`squad tab: ${players.length} players, ${calledUpCount} called up`);
 
+    // Find most recent previous game (by date, before this game's date) to offer copy
+    const thisGame = await DB.get('games', gameId);
+    const allGames = (await DB.getAll('games','seasonId', State.currentSeasonId))
+      .filter(g => g.gameId !== gameId && g.date && (!thisGame?.date || g.date <= thisGame.date))
+      .sort((a,b) => new Date(b.date) - new Date(a.date));
+    const prevGame = allGames[0] || null;
+
     el.innerHTML = `
       <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Tap a player to add them to the squad for this game. Use this as soon as you know who's available — before match day.</p>
+      ${prevGame ? `<button class="btn btn-secondary btn-sm" style="margin-bottom:10px" onclick="copySquadFromPreviousGame(${gameId},${prevGame.gameId})">&#128203; Copy Squad from ${esc(prevGame.opponent)} (${fmtDate(prevGame.date)})</button>` : ''}
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px">In squad: <strong style="color:var(--dark)" id="gdSquadCount">${calledUpCount}</strong> / ${players.length}</div>
       <div class="who-played-list">
         ${players.map(p => {
@@ -4833,6 +4991,27 @@ async function renderSquadListTab(gameId) {
     gdDebugLog(`SQUAD TAB ERROR: ${err.message}`);
     el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;white-space:pre-wrap">${esc(err.message)}</p></div>`;
   }
+}
+
+async function copySquadFromPreviousGame(gameId, prevGameId) {
+  Confirm.show('Copy Squad', 'This copies who played and their Starter/Sub role from the previous game. Goals and assists for this game stay at zero. Continue?', async () => {
+    try {
+      const prevGP = await DB.getAll('gamePlayers','gameId', prevGameId);
+      const calledUpPrev = prevGP.filter(r => r.calledUp);
+      for (const prev of calledUpPrev) {
+        const gp = await getOrCreateGP(gameId, prev.playerId);
+        gp.calledUp = true;
+        gp.role = prev.role || 'Sub';
+        gp.playedFullGame = (gp.role === 'Starter');
+        await DB.put('gamePlayers', gp);
+      }
+      Toast.show(`Copied ${calledUpPrev.length} players from previous game.`);
+      await renderSquadListTab(gameId);
+      await refreshGameHeaderScore(gameId);
+    } catch(err) {
+      Toast.error('Could not copy squad: ' + err.message);
+    }
+  });
 }
 
 async function simpleToggleSquad(gameId, playerId) {
@@ -5279,7 +5458,7 @@ async function init() {
     // If a store is missing, the IndexedDB upgrade didn't run (version mismatch
     // or interrupted upgrade). Force a clean reopen rather than running silently
     // broken for the rest of the session.
-    const requiredStores = ['appMeta','seasons','players','games','gamePlayers','goalEvents','events','playerGameStats','achievements','clubHistory'];
+    const requiredStores = ['appMeta','seasons','players','games','gamePlayers','goalEvents','events','playerGameStats','achievements','clubHistory','injuries'];
     const missing = requiredStores.filter(s => !DB.hasStore(s));
     if (missing.length) {
       console.error('[init] Missing IndexedDB stores after open:', missing);
@@ -5308,6 +5487,7 @@ async function init() {
     attachEvents();
     await buildTrackedNav();
     await initAdmin();
+    if (await isDebugModeOn()) { ensureDebugPanel(); gdDebugLog('App loaded — debug mode active'); }
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
 
