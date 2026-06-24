@@ -1558,16 +1558,22 @@ async function toggleDebugMode(on) {
 // ── Render roadmap table ───────────────────────────────────────────────────────
 async function renderRoadmapTable() {
   const el = document.getElementById('admin-panel-roadmap');
+
+  // Read current filter values BEFORE showing the loading spinner —
+  // the spinner replaces el.innerHTML, which destroys the filter <select>
+  // elements, so reading them afterward always returns empty/undefined.
+  const typeFilter   = document.getElementById('rm-filter-type')?.value   || '';
+  const statusFilter = document.getElementById('rm-filter-status')?.value || '';
+  const phaseFilter  = document.getElementById('rm-filter-phase')?.value  || '';
+  const search       = document.getElementById('rm-search')?.value?.toLowerCase() || '';
+  const searchRaw    = document.getElementById('rm-search')?.value || '';
+
   el.innerHTML = '<div class="empty"><div class="spinner"></div><p>Loading roadmap...</p></div>';
   let items;
   try { items = await Roadmap.getAll(); }
   catch(e) { el.innerHTML = `<div class="empty"><strong>Could not load roadmap</strong><p>${e.message}</p></div>`; return; }
 
   const phases = [...new Set(items.map(i=>i.phase))].sort((a,b)=>a-b);
-  const typeFilter   = document.getElementById('rm-filter-type')?.value   || '';
-  const statusFilter = document.getElementById('rm-filter-status')?.value || '';
-  const phaseFilter  = document.getElementById('rm-filter-phase')?.value  || '';
-  const search       = document.getElementById('rm-search')?.value?.toLowerCase() || '';
 
   let filtered = items.filter(i => {
     if (typeFilter   && i.type !== typeFilter)     return false;
@@ -1605,7 +1611,7 @@ async function renderRoadmapTable() {
   el.innerHTML = `
     <!-- Filters -->
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
-      <input id="rm-search" type="text" placeholder="Search..." value="${search}"
+      <input id="rm-search" type="text" placeholder="Search..." value="${esc(searchRaw)}"
         style="flex:1;min-width:140px;border:1px solid #ddd;border-radius:3px;padding:7px 10px;font-size:13px"
         oninput="renderRoadmapTable()">
       <select id="rm-filter-type" onchange="renderRoadmapTable()" style="border:1px solid #ddd;border-radius:3px;padding:7px 10px;font-size:12px">
