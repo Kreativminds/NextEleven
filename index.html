@@ -217,6 +217,38 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .prog-wrap{margin:6px 0}
 .prog-bar{height:4px;background:#e8e8e8;border-radius:2px;overflow:hidden}
 .prog-fill{height:100%;background:var(--black);border-radius:2px}
+/* ── MOST USED LINEUP PITCH ── */
+.pitch{background:linear-gradient(180deg,#5aa362,#4d9355);border-radius:8px;padding:18px 10px;display:flex;flex-direction:column;gap:14px;position:relative;overflow:hidden}
+.pitch::before{content:'';position:absolute;inset:8px;border:2px solid rgba(255,255,255,.35);border-radius:4px;pointer-events:none}
+.pitch-row{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;position:relative;z-index:1}
+.pitch-row-gk{margin-top:4px}
+.pitch-player{display:flex;flex-direction:column;align-items:center;width:64px}
+.pitch-shirt{width:34px;height:34px;border-radius:6px 6px 3px 3px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;box-shadow:0 2px 4px rgba(0,0,0,.25);position:relative}
+.pitch-shirt::before{content:'';position:absolute;top:-3px;left:-4px;width:10px;height:14px;background:inherit;border-radius:3px 0 0 0;box-shadow:-1px -1px 2px rgba(0,0,0,.15)}
+.pitch-shirt::after{content:'';position:absolute;top:-3px;right:-4px;width:10px;height:14px;background:inherit;border-radius:0 3px 0 0;box-shadow:1px -1px 2px rgba(0,0,0,.15)}
+.pitch-name{font-size:9px;font-weight:700;color:#fff;text-align:center;margin-top:4px;text-shadow:0 1px 2px rgba(0,0,0,.4);line-height:1.2;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ── LEADER CARD (Top Scorers / Assisters / Most Used) — ZeroZero style ── */
+.leader-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;align-items:start}
+.leader-col{display:flex;flex-direction:column;gap:10px}
+.leader-col-title{font-size:13px;font-weight:800;letter-spacing:.3px;color:var(--dark)}
+.leader-feature-card{padding:0!important;overflow:hidden;border-left:4px solid var(--black)}
+.leader-feature{display:flex;align-items:stretch;min-height:90px}
+.leader-feature-left{flex:1;display:flex;flex-direction:column;justify-content:center;padding:12px 8px 12px 14px;background:linear-gradient(135deg,var(--black),var(--black-dark));color:#fff;min-width:0}
+.leader-name{font-size:13px;font-weight:700;margin-bottom:6px;white-space:normal;line-height:1.2}
+.leader-stat-val{font-size:30px;font-weight:800;line-height:1}
+.leader-stat-lbl{font-size:9px;font-weight:700;letter-spacing:1px;opacity:.85;margin-top:2px;text-transform:uppercase}
+.leader-feature-photo{width:90px;flex-shrink:0;background:#ddd;position:relative;overflow:hidden}
+.leader-feature-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.leader-photo-fallback{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#fff;background:linear-gradient(135deg,#8a8f98,#6b7280)}
+.leader-list-card{padding:4px 14px!important}
+.leader-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #eee}
+.leader-row:last-child{border-bottom:none}
+.leader-rank{font-size:12px;color:#999;font-weight:700;width:16px;flex-shrink:0}
+.leader-row-name{flex:1;font-size:13px;font-weight:700;color:var(--dark);white-space:normal;line-height:1.2}
+.leader-row-val{font-size:18px;font-weight:800;color:var(--dark);flex-shrink:0}
+@media(max-width:480px){
+  .leader-grid{grid-template-columns:1fr}
+}
 /* ── FIELD VISIBILITY TOGGLE SWITCH ── */
 .fv-switch{position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0}
 .fv-switch input{opacity:0;width:0;height:0}
@@ -324,7 +356,10 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
   .stat-grid{grid-template-columns:repeat(2,1fr)}
   .form-grid{grid-template-columns:1fr}
   table{min-width:500px}
-  .game-detail-table{min-width:700px}
+  /* Do NOT shrink .game-detail-table here — it needs its full natural width
+     (set per-table via inline min-width, or the 760px base) so columns have
+     room to render properly and the sticky columns + horizontal scroll work
+     as intended, instead of being artificially squeezed on mobile. */
 }
 @media(max-width:480px){
   .stat-grid{grid-template-columns:repeat(2,1fr)}
@@ -506,13 +541,18 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
           <div class="form-group"><label>Home / Away</label>
             <select id="gf-venue"><option value="Home">Home</option><option value="Away">Away</option><option value="Neutral">Neutral</option></select>
           </div>
-          <div class="form-group"><label>Arrival Time <span style="font-size:10px;font-weight:400;color:#999">(auto or manual)</span></label><input id="gf-arrivalTime" type="time"></div>
+          <div class="form-group">
+            <label>Arrival Time <span style="font-size:10px;font-weight:400;color:#999">(optional — defaults to 1h before kick-off)</span></label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input id="gf-arrivalTime" type="time" style="flex:1">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('gf-arrivalTime').value=''" title="Clear — use default">&times;</button>
+            </div>
+          </div>
           <div class="form-group"><label>Competition Type</label>
             <select id="gf-compType"><option>League</option><option>Cup</option><option>Friendly</option><option>Tournament</option><option>Trial</option></select>
           </div>
           <div class="form-group"><label>Competition Name</label><input id="gf-compName" type="text" placeholder="e.g. Liga Revelação"></div>
           <div class="form-group"><label>Venue / Ground</label><input id="gf-ground" type="text" placeholder="e.g. Estádio Municipal"></div>
-          <div class="form-group"><label>Opponent Score</label><input id="gf-oppScore" type="number" min="0" value="0"></div>
           <div class="form-group full"><label>Team Notes</label><textarea id="gf-notes" placeholder="General notes about this game..."></textarea></div>
         </div>
         <div class="form-actions">
@@ -730,8 +770,116 @@ const CONFIG = {
   MAX_BACKUPS: 30,
   FULL_GAME_MINS: 80,
   PARTIAL_GAME_MINS: 40,
+  // U14-style match: 40 min each half + 10 min half-time break = 90 min,
+  // plus a stoppage/extra-time buffer before we trust the result is final.
+  MATCH_DURATION_MINS: 90,
+  RESULT_VISIBILITY_BUFFER_MINS: 15,
   POSITIONS: ['Goalkeeper','Centre Back','Right Back','Left Back','Defensive Midfielder','Central Midfielder','Attacking Midfielder','Right Winger','Left Winger','Striker'],
 };
+
+// ── GAME COMPLETION CHECK ────────────────────────────────────────────────────
+// A game's result/score is only "visible" elsewhere in the app once kick-off
+// time + match duration + buffer has passed. Before that, Home/Dashboard/
+// Match Log/Team Summary/tracked player stats must treat it as not yet played,
+// even if the user is actively entering data on the Game Detail screen itself
+// (that screen is exempt — it always shows live data while you're working on it).
+function isGameResultVisible(game) {
+  if (!game || !game.date) return false;
+  const now = new Date();
+  const gameDateTime = new Date(`${game.date}T${game.gameTime || '00:00'}`);
+  if (isNaN(gameDateTime)) return false;
+  // If no kick-off time was set, fall back to end-of-day for that date —
+  // i.e. once the calendar day has passed, treat it as playable/visible.
+  if (!game.gameTime) {
+    const endOfDay = new Date(`${game.date}T23:59:59`);
+    return now > endOfDay;
+  }
+  const cutoff = new Date(gameDateTime.getTime() + (CONFIG.MATCH_DURATION_MINS + CONFIG.RESULT_VISIBILITY_BUFFER_MINS) * 60000);
+  return now >= cutoff;
+}
+
+// ── MOST USED LINEUP ─────────────────────────────────────────────────────────
+// Maps specific position labels to a pitch row + simple bucket, so we can
+// lay out a best-XI graphic from real recorded positionPlayed data.
+const LINEUP_ROW_MAP = {
+  'Goalkeeper': 'GK',
+  'Centre Back': 'DEF', 'Right Back': 'DEF', 'Left Back': 'DEF',
+  'Defensive Midfielder': 'MID', 'Central Midfielder': 'MID', 'Attacking Midfielder': 'MID',
+  'Right Winger': 'FWD', 'Left Winger': 'FWD', 'Striker': 'FWD',
+};
+const MIN_APPEARANCES_FOR_LINEUP = 3;
+
+function buildMostUsedLineup(players, finishedGames, allGP) {
+  const activePlayers = players.filter(p => p.isActive);
+  // For each player, count appearances per recorded position (when called up & played)
+  const playerPositionCounts = {}; // playerId -> { position: count }
+  const playerTotalApps = {};
+
+  finishedGames.forEach(g => {
+    allGP.filter(r => r.gameId === g.gameId && r.calledUp).forEach(gp => {
+      if (!playerPositionCounts[gp.playerId]) playerPositionCounts[gp.playerId] = {};
+      playerTotalApps[gp.playerId] = (playerTotalApps[gp.playerId]||0) + 1;
+      if (gp.positionPlayed) {
+        playerPositionCounts[gp.playerId][gp.positionPlayed] = (playerPositionCounts[gp.playerId][gp.positionPlayed]||0) + 1;
+      }
+    });
+  });
+
+  // Build a list of { player, position, count } for every player+position combo recorded
+  const candidates = [];
+  activePlayers.forEach(p => {
+    const apps = playerTotalApps[p.playerId] || 0;
+    if (apps < MIN_APPEARANCES_FOR_LINEUP) return;
+    const posCounts = playerPositionCounts[p.playerId] || {};
+    const bestPos = Object.entries(posCounts).sort((a,b)=>b[1]-a[1])[0];
+    const position = bestPos ? bestPos[0] : (p.primaryPosition || null);
+    if (!position) return;
+    candidates.push({ player: p, position, count: bestPos ? bestPos[1] : 0, totalApps: apps });
+  });
+
+  // Greedily assign the most-used player to each position slot, one player per slot,
+  // picking the highest count first, skipping players already placed.
+  candidates.sort((a,b) => b.count - a.count || b.totalApps - a.totalApps);
+  const used = new Set();
+  const bySlot = { GK: [], DEF: [], MID: [], FWD: [] };
+  const slotLimits = { GK: 1, DEF: 4, MID: 3, FWD: 3 }; // simple 4-3-3-ish default shape
+
+  candidates.forEach(c => {
+    if (used.has(c.player.playerId)) return;
+    const row = LINEUP_ROW_MAP[c.position] || 'MID';
+    if (bySlot[row].length >= slotLimits[row]) return;
+    bySlot[row].push({ player: c.player, position: c.position });
+    used.add(c.player.playerId);
+  });
+
+  return bySlot;
+}
+
+function renderLineupPitch(lineup, shirtColor) {
+  const totalPlaced = lineup.GK.length + lineup.DEF.length + lineup.MID.length + lineup.FWD.length;
+  if (!totalPlaced) {
+    return `<div class="card"><div class="card-title">Most Used Lineup</div><p style="font-size:12px;color:var(--muted)">Not enough finished games with recorded positions yet. Needs at least ${MIN_APPEARANCES_FOR_LINEUP} appearances per player with position played logged (Game Detail → Details tab).</p></div>`;
+  }
+  const shirtRow = (players, extraClass='', color=shirtColor) => `
+    <div class="pitch-row ${extraClass}">
+      ${players.map(({player:p}) => `
+        <div class="pitch-player">
+          <div class="pitch-shirt" style="background:${color}">${p.shirtNumber||''}</div>
+          <div class="pitch-name">${esc(shortName(p.fullName))}</div>
+        </div>`).join('')}
+    </div>`;
+  return `
+    <div class="card">
+      <div class="card-title">Most Used Lineup</div>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px">Based on players with the most appearances this season (minimum ${MIN_APPEARANCES_FOR_LINEUP} games).</p>
+      <div class="pitch">
+        ${shirtRow(lineup.FWD)}
+        ${shirtRow(lineup.MID)}
+        ${shirtRow(lineup.DEF)}
+        ${shirtRow(lineup.GK, 'pitch-row-gk', '#3a3a3a')}
+      </div>
+    </div>`;
+}
 
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1135,6 +1283,18 @@ const Calc = (() => {
     return (parseInt(goals)||0) + (parseInt(assists)||0);
   }
 
+  // Default arrival time = 1 hour before kick-off. Always optional —
+  // caller decides whether to use this or leave blank.
+  function arrivalTime(gameTime, homeAway) {
+    if (!gameTime) return '';
+    const [h, m] = gameTime.split(':').map(Number);
+    let totalMins = (h * 60 + m) - 60; // 1 hour before, regardless of home/away
+    if (totalMins < 0) totalMins += 24 * 60;
+    const ah = Math.floor(totalMins / 60);
+    const am = totalMins % 60;
+    return `${String(ah).padStart(2,'0')}:${String(am).padStart(2,'0')}`;
+  }
+
   function availabilityPct(calledUp, totalGames) {
     if (!totalGames) return 0;
     return Math.round((calledUp / totalGames) * 100);
@@ -1245,7 +1405,7 @@ const Calc = (() => {
     return {calledUp,started,subbed,goals,assists,yellow,red,mom,fullGames,partial,minutes:estimatedMins(fullGames,partial)};
   }
 
-  return { teamGoals, result, homeAwayScore, goalContributions, lorenzoStats, teamSeasonStats, playerSeasonStats, estimatedMins };
+  return { teamGoals, result, homeAwayScore, goalContributions, arrivalTime, lorenzoStats, teamSeasonStats, playerSeasonStats, estimatedMins };
 })();
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -2074,7 +2234,7 @@ async function renderMatchLog(playerId) {
     <div class="card">
       <div class="card-title">Match Log — ${esc(player.fullName)}</div>
       <div class="game-detail-table-wrap" style="margin-bottom:0">
-        <table class="game-detail-table">
+        <table class="game-detail-table" style="min-width:980px">
           <thead><tr>
             ${thSort('date','Date','col-sticky-num')}
             ${thSort('opponent','Opponent','col-sticky-name')}
@@ -2089,23 +2249,24 @@ async function renderMatchLog(playerId) {
           </tr></thead>
           <tbody>
           ${enriched.map(({game:g, gp, _our:our, _their:their, _res:res}) => {
+            const resultVisible = isGameResultVisible(g);
             if (!gp||!gp.calledUp) return `<tr>
               <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
               <td class="col-sticky-name">${esc(g.opponent)}</td>
-              <td><span class="badge badge-${res}">${res}</span></td>
+              <td>${resultVisible?`<span class="badge badge-${res}">${res}</span>`:'<span class="td-muted" style="font-size:11px">Upcoming</span>'}</td>
               <td colspan="9" class="td-muted">Not called up</td></tr>`;
             return `<tr>
               <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
               <td class="col-sticky-name">${esc(g.opponent)}</td>
-              <td><span class="badge badge-${res}">${res}</span> <small class="td-muted">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their);return s.home+'-'+s.away;})()}</small></td>
+              <td>${resultVisible?`<span class="badge badge-${res}">${res}</span> <small class="td-muted">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their);return s.home+'-'+s.away;})()}</small>`:'<span class="td-muted" style="font-size:11px">Upcoming</span>'}</td>
               <td><span class="badge ${gp.role==='Starter'?'badge-starter':'badge-sub'}">${gp.role||'—'}</span></td>
               <td><span class="pos-pill">${gp.positionPlayed||'—'}</span></td>
-              <td class="td-center td-bold">${gp.goals||0}</td>
-              <td class="td-center">${gp.assists||0}</td>
-              <td class="td-center">${gp.yellowCards||0}</td>
-              <td class="td-center">${gp.redCards||0}</td>
-              <td class="td-center">${gp.playerOfTheMatch?'<span class="badge badge-mom">MoM</span>':'—'}</td>
-              <td class="td-center">${gp.captain?'<span class="badge badge-cap">C</span>':'—'}</td>
+              <td class="td-center td-bold">${resultVisible?(gp.goals||0):'—'}</td>
+              <td class="td-center">${resultVisible?(gp.assists||0):'—'}</td>
+              <td class="td-center">${resultVisible?(gp.yellowCards||0):'—'}</td>
+              <td class="td-center">${resultVisible?(gp.redCards||0):'—'}</td>
+              <td class="td-center">${resultVisible?(gp.playerOfTheMatch?'<span class="badge badge-mom">MoM</span>':'—'):'—'}</td>
+              <td class="td-center">${resultVisible?(gp.captain?'<span class="badge badge-cap">C</span>':'—'):'—'}</td>
               <td style="font-size:11px;color:var(--muted);max-width:140px">${esc(gp.performanceNotes||'')}</td>
             </tr>`;
           }).join('')}
@@ -2716,6 +2877,7 @@ const Render = (() => {
           const gOurs = Calc.teamGoals(gGP);
           const gTheirs = parseInt(g.opponentScore)||0;
           const gRes = Calc.result(gOurs, gTheirs);
+          const gVisible = isGameResultVisible(g);
           return `
           <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="goToGameDetail(${g.gameId})">
             <div>
@@ -2723,8 +2885,10 @@ const Render = (() => {
               <div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(g.date)}${g.competitionType?' · '+g.competitionType:''}</div>
             </div>
             <div style="text-align:right;flex-shrink:0">
+              ${gVisible ? `
               <span class="badge badge-${gRes}">${gRes}</span>
               <span style="font-size:15px;font-weight:700;margin-left:6px">${(()=>{const s=Calc.homeAwayScore(g.homeAway,gOurs,gTheirs);return s.home+'–'+s.away;})()}</span>
+              ` : `<span class="td-muted" style="font-size:11px">In progress</span>`}
             </div>
           </div>`;
         }).join('')}
@@ -2785,7 +2949,10 @@ const Render = (() => {
       DB.getAll('gamePlayers','seasonId',State.currentSeasonId),
     ]);
 
-    const ts = Calc.teamSeasonStats(games, allGP);
+    // Only finished games count towards season totals shown here.
+    const finishedGames = games.filter(g => isGameResultVisible(g));
+
+    const ts = Calc.teamSeasonStats(finishedGames, allGP);
     const trackedPlayers = allPlayers.filter(p => p.trackingStatus === 'tracked' && p.isActive);
 
     el.innerHTML = `
@@ -2804,13 +2971,14 @@ const Render = (() => {
 
       <!-- TRACKED PLAYERS -->
       ${trackedPlayers.map(tp => {
-        const tpStats = Calc.playerSeasonStats(tp.playerId, games, allGP);
+        const tpStats = Calc.playerSeasonStats(tp.playerId, finishedGames, allGP);
         const tpGames = [...games].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
         const formStrip = tpGames.map(g=>{
           const gp = allGP.find(r=>r.gameId===g.gameId && r.playerId===tp.playerId);
           const gps = allGP.filter(r=>r.gameId===g.gameId);
           const res = Calc.result(Calc.teamGoals(gps), g.opponentScore||0);
           if (!gp||!gp.calledUp) return `<span style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:2px;font-size:10px;font-weight:700;background:#f0f0f0;color:#999">—</span>`;
+          if (!isGameResultVisible(g)) return `<span style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:2px;font-size:10px;font-weight:700;background:#f0f0f0;color:#999" title="In progress">···</span>`;
           const col = res==='W'?'#e6f4ea':res==='D'?'#fff8e1':'#fde8e8';
           const tc = res==='W'?'#2a7a3b':res==='D'?'#b07a00':'#b03030';
           return `<span style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:2px;font-size:10px;font-weight:700;background:${col};color:${tc}">${res}</span>`;
@@ -2990,18 +3158,21 @@ const Render = (() => {
       return `<th class="${extraClass}" style="cursor:pointer;user-select:none" onclick="gamesSort('${key}')">${label}${arrow}</th>`;
     }
 
-    const rows = enriched.map(g => `<tr style="cursor:pointer" onclick="openGameDetail(${g.gameId})">
+    const rows = enriched.map(g => {
+      const gVisible = isGameResultVisible(g);
+      return `<tr style="cursor:pointer" onclick="openGameDetail(${g.gameId})">
         <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
         <td class="col-sticky-name">${esc(g.opponent)}</td>
         <td>${g.homeAway||'—'}</td>
         <td><span style="font-size:11px;color:var(--muted)">${g.competitionType||'—'}</span></td>
-        <td class="td-bold">${(()=>{const s=Calc.homeAwayScore(g.homeAway,g._our,g._their);return s.home+' — '+s.away;})()}</td>
-        <td><span class="badge badge-${g._res}">${g._res}</span></td>
+        <td class="td-bold">${gVisible?(()=>{const s=Calc.homeAwayScore(g.homeAway,g._our,g._their);return s.home+' — '+s.away;})():'<span class="td-muted" style="font-weight:400;font-size:11px">—</span>'}</td>
+        <td>${gVisible?`<span class="badge badge-${g._res}">${g._res}</span>`:'<span class="td-muted" style="font-size:11px">Upcoming</span>'}</td>
         <td onclick="event.stopPropagation()">
           <button class="btn btn-secondary btn-sm" onclick="editGame(${g.gameId})">Edit</button>
           <button class="btn btn-danger btn-sm" onclick="deleteGame(${g.gameId})" style="margin-left:4px">Delete</button>
         </td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
 
     el.innerHTML = `
       <div class="game-detail-table-wrap">
@@ -3041,6 +3212,8 @@ const Render = (() => {
     const displayScore = Calc.homeAwayScore(game.homeAway, ourScore, theirScore);
     const currentTab = State.gameDetailTab || 'squad';
 
+    const debugOn = await isDebugModeOn();
+
     el.innerHTML = `
       <div class="game-header">
         <div class="game-header-top">
@@ -3063,7 +3236,7 @@ const Render = (() => {
       </div>
       <div style="font-size:11px;color:#2a7a3b;margin-bottom:10px">&#10003; Changes save automatically — no Save button needed.</div>
 
-      <div id="gdDebugPanel" style="background:#111;color:#0f0;font-family:monospace;font-size:10px;padding:10px;border-radius:4px;margin-bottom:14px;white-space:pre-wrap;line-height:1.5">DEBUG: waiting for first action...</div>
+      ${debugOn ? `<div id="gdDebugPanel" style="background:#111;color:#0f0;font-family:monospace;font-size:10px;padding:10px;border-radius:4px;margin-bottom:14px;white-space:pre-wrap;line-height:1.5">DEBUG: waiting for first action...</div>` : ''}
 
       <div id="gdPanel-squad" style="${currentTab==='squad'?'':'display:none'}"></div>
       <div id="gdPanel-xi" style="${currentTab==='xi'?'':'display:none'}"></div>
@@ -3101,7 +3274,10 @@ const Render = (() => {
     const games = await DB.getAll('games','seasonId',State.currentSeasonId);
     const allGP = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
     const lorGP = allGP.filter(r=>r.playerId===lor.playerId);
-    const s = Calc.lorenzoStats(games, lorGP);
+    // Only count games whose result is actually visible (i.e. likely finished)
+    // towards season totals — an in-progress game shouldn't inflate stats yet.
+    const finishedGames = games.filter(g => isGameResultVisible(g));
+    const s = Calc.lorenzoStats(finishedGames, lorGP);
 
     // Sorting for the Match by Match table on this Overview tab
     const ovSortKey = el.dataset.sortKey || 'date';
@@ -3194,6 +3370,8 @@ const Render = (() => {
             const our = Calc.teamGoals(gps);
             const their = parseInt(g.opponentScore)||0;
             const res = Calc.result(our,their);
+            const visible = isGameResultVisible(g);
+            if (!visible) return `<div class="form-badge"><div class="fb-result badge" style="background:#f0f0f0;color:#999">···</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">Upcoming</div></div>`;
             if (!gp||!gp.calledUp) return `<div class="form-badge"><div class="fb-result badge badge-${res}">${res}</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">DNP</div></div>`;
             const fbs = Calc.homeAwayScore(g.homeAway, our, their);
             return `<div class="form-badge"><div class="fb-result badge badge-${res}">${res}</div><div class="fb-stat">${fbs.home}-${fbs.away}</div><div class="fb-stat">G:${gp.goals||0} A:${gp.assists||0}</div></div>`;
@@ -3204,7 +3382,7 @@ const Render = (() => {
       <div class="card">
         <div class="card-title">Match by Match</div>
         <div class="game-detail-table-wrap" style="margin-bottom:0">
-          <table class="game-detail-table">
+          <table class="game-detail-table" style="min-width:980px">
             <thead><tr>
               ${ovThSort('date','Date','col-sticky-num')}
               ${ovThSort('opponent','Opponent','col-sticky-name')}
@@ -3219,6 +3397,8 @@ const Render = (() => {
             </tr></thead>
             <tbody>
             ${ovEnriched.map(({game:g, gp, _our:our, _their:their, _res:res})=>{
+              const resultVisible = isGameResultVisible(g);
+              if (!resultVisible) return `<tr><td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td><td class="col-sticky-name">${esc(g.opponent)}</td><td><span class="td-muted" style="font-size:11px">Upcoming</span></td><td colspan="9" class="td-muted">—</td></tr>`;
               if (!gp||!gp.calledUp) return `<tr><td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td><td class="col-sticky-name">${esc(g.opponent)}</td><td><span class="badge badge-${res}">${res}</span></td><td colspan="9" class="td-muted">Not called up</td></tr>`;
               return `<tr>
                 <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
@@ -3261,11 +3441,15 @@ const Render = (() => {
       return;
     }
 
-    const ts = Calc.teamSeasonStats(games, allGP);
+    // Only finished games count towards team and player season totals —
+    // a game still in progress shouldn't affect the table yet.
+    const finishedGames = games.filter(g => isGameResultVisible(g));
+
+    const ts = Calc.teamSeasonStats(finishedGames, allGP);
 
     // player stats
     const pStats = players.filter(p=>p.isActive).map(p => ({
-      ...p, ...Calc.playerSeasonStats(p.playerId, games, allGP)
+      ...p, ...Calc.playerSeasonStats(p.playerId, finishedGames, allGP)
     }));
 
     const topScorers = [...pStats].sort((a,b)=>b.goals-a.goals).slice(0,5);
@@ -3274,6 +3458,10 @@ const Render = (() => {
     const mostMoM = [...pStats].sort((a,b)=>b.mom-a.mom).filter(p=>p.mom>0).slice(0,5);
 
     window._teamSummaryAllStats = pStats; // store full dataset for re-sort
+
+    // Most Used Lineup — best XI based on appearances per position this season
+    const mostUsedLineup = buildMostUsedLineup(players, finishedGames, allGP);
+    const shirtColor = State.currentSeason?.shirtColor || '#B23333';
 
     el.innerHTML = `
       <div class="stat-grid">
@@ -3287,6 +3475,8 @@ const Render = (() => {
         <div class="stat-card"><div class="val">${ts.cleanSheets}</div><div class="lbl">Clean Sheets</div></div>
       </div>
 
+      ${renderLineupPitch(mostUsedLineup, shirtColor)}
+
       <div class="card">
         <div class="card-title">Records</div>
         <div class="info-row"><span class="ir-label">Home</span><span class="ir-value">${ts.homeW}W ${ts.homeD}D ${ts.homeL}L</span></div>
@@ -3297,11 +3487,50 @@ const Render = (() => {
         ${ts.biggestLoss?`<div class="info-row"><span class="ir-label">Biggest Loss</span><span class="ir-value">${ts.biggestLoss.score} vs ${esc(ts.biggestLoss.opp)}</span></div>`:''}
       </div>
 
-      ${playerTable('topScorers','Top Scorers', topScorers, ['fullName','goals','assists','calledUp'], ['Player','Goals','Assists','Apps'])}
-      ${playerTable('topAssisters','Top Assisters', topAssisters, ['fullName','assists','goals','calledUp'], ['Player','Assists','Goals','Apps'])}
-      ${playerTable('mostApps','Most Appearances', mostApps, ['fullName','calledUp','started','goals'], ['Player','Apps','Starts','Goals'])}
-      ${mostMoM.length?playerTable('mostMoM','Player of the Match', mostMoM, ['fullName','mom','goals','calledUp'], ['Player','MoM','Goals','Apps']):''}
+      <div class="leader-grid">
+        ${leaderCard('Top Scorers', topScorers, 'goals', 'GOALS')}
+        ${leaderCard('Top Assisters', topAssisters, 'assists', 'ASSISTS')}
+      </div>
+      <div class="leader-grid">
+        ${leaderCard('Most Used', mostApps, 'calledUp', 'APPS')}
+        ${mostMoM.length ? leaderCard('Player of the Match', mostMoM, 'mom', 'MOM') : '<div></div>'}
+      </div>
     `;
+  }
+
+  // ── LEADER CARD — featured top player + short ranked list, single stat ──────
+  function leaderCard(title, players, statKey, statLabel) {
+    if (!players.length) return '<div></div>';
+    const leader = players[0];
+    const rest = players.slice(1, 5);
+    const initials = (leader.fullName||'').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+    return `
+      <div class="leader-col">
+        <div class="leader-col-title">${title.toUpperCase()}</div>
+        <div class="card leader-feature-card">
+          <div class="leader-feature">
+            <div class="leader-feature-left">
+              <div class="leader-name">${esc(shortName(leader.fullName))}</div>
+              <div class="leader-stat-val">${leader[statKey]||0}</div>
+              <div class="leader-stat-lbl">${statLabel}</div>
+            </div>
+            <div class="leader-feature-photo">
+              ${leader.photoUrl
+                ? `<img src="${esc(leader.photoUrl)}" onerror="this.outerHTML='<div class=&quot;leader-photo-fallback&quot;>${initials}</div>'">`
+                : `<div class="leader-photo-fallback">${initials}</div>`}
+            </div>
+          </div>
+        </div>
+        ${rest.length ? `
+        <div class="card leader-list-card">
+          ${rest.map((p,i) => `
+            <div class="leader-row">
+              <span class="leader-rank">${i+2}</span>
+              <span class="leader-row-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))}</span>
+              <span class="leader-row-val">${p[statKey]||0}</span>
+            </div>`).join('')}
+        </div>` : ''}
+      </div>`;
   }
 
   function playerTable(tableId, title, players, fields, headers) {
@@ -3436,6 +3665,12 @@ const Render = (() => {
             <div class="form-group"><label>Club Name</label><input id="sf-club" type="text" placeholder="e.g. SL Olivais"></div>
             <div class="form-group"><label>Home Ground</label><input id="sf-homeground" type="text" placeholder="e.g. Campo SL Olivais"></div>
             <div class="form-group"><label>Age Group</label><input id="sf-age" type="text" placeholder="e.g. U12"></div>
+            <div class="form-group"><label>Team Shirt Colour <span style="font-size:10px;font-weight:400;color:#999">(optional — defaults to brand maroon)</span></label>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input id="sf-shirtcolor" type="color" value="#B23333" style="width:44px;height:36px;padding:2px;border:1px solid var(--border);border-radius:4px">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('sf-shirtcolor').value='#B23333';document.getElementById('sf-shirtcolor').dataset.useDefault='true'">Use Default</button>
+              </div>
+            </div>
             <div class="form-group full"><label>Notes</label><textarea id="sf-notes" placeholder="Any notes about this season..."></textarea></div>
           </div>
           <div class="form-actions">
@@ -3459,6 +3694,12 @@ const Render = (() => {
             <div class="form-group"><label>Club Name</label><input id="sf-edit-club" type="text" placeholder="e.g. SL Olivais" value="${esc(State.currentSeason?.clubName||'')}"></div>
             <div class="form-group"><label>Home Ground</label><input id="sf-edit-homeground" type="text" placeholder="e.g. Campo SL Olivais" value="${esc(State.currentSeason?.homeGround||'')}"></div>
             <div class="form-group"><label>Age Group</label><input id="sf-edit-age" type="text" placeholder="e.g. U12" value="${esc(State.currentSeason?.ageGroup||'')}"></div>
+            <div class="form-group"><label>Team Shirt Colour <span style="font-size:10px;font-weight:400;color:#999">(optional — defaults to brand maroon)</span></label>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input id="sf-edit-shirtcolor" type="color" value="${esc(State.currentSeason?.shirtColor||'#B23333')}" style="width:44px;height:36px;padding:2px;border:1px solid var(--border);border-radius:4px">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('sf-edit-shirtcolor').value='#B23333'">Use Default</button>
+              </div>
+            </div>
           </div>
           <p style="font-size:11px;color:var(--muted);margin-top:6px">Editing: <strong>${esc(State.currentSeason?.seasonName||'—')}</strong> (the active season above). Home Ground auto-fills the Venue field on Home games.</p>
           <button class="btn btn-primary" style="margin-top:10px" id="btnSaveSeasonEdit">Save Changes</button>
@@ -4780,7 +5021,6 @@ function resetGameForm() {
   });
   document.getElementById('gf-venue').value='Home';
   document.getElementById('gf-compType').value='League';
-  document.getElementById('gf-oppScore').value='0';
   autoFillHomeGround();
 }
 
@@ -4806,7 +5046,7 @@ async function saveGame() {
   if (!State.currentSeasonId) { Toast.error('No active season.'); return; }
 
   const existingId = document.getElementById('gf-id').value;
-  const game = {
+  let game = {
     seasonId: State.currentSeasonId,
     date,
     gameTime: gameTime || null,
@@ -4816,11 +5056,18 @@ async function saveGame() {
     competitionType: document.getElementById('gf-compType').value,
     competitionName: document.getElementById('gf-compName').value.trim()||null,
     venue: document.getElementById('gf-ground').value.trim()||null,
-    opponentScore: parseInt(document.getElementById('gf-oppScore').value)||0,
     teamNotes: document.getElementById('gf-notes').value.trim()||null,
     createdAt: new Date().toISOString(),
   };
-  if (existingId) game.gameId = parseInt(existingId);
+  if (existingId) {
+    game.gameId = parseInt(existingId);
+    // Preserve the opponent score already recorded via the Goals tab —
+    // this form no longer has an Opponent Score field, so never reset it.
+    const existingGame = await DB.get('games', game.gameId);
+    game.opponentScore = existingGame ? (existingGame.opponentScore||0) : 0;
+  } else {
+    game.opponentScore = 0;
+  }
   await Backup.create('before-save');
   await DB.put('games', game);
   Toast.show(existingId?'Game updated.':'Game added.');
@@ -4840,7 +5087,6 @@ async function editGame(id) {
   document.getElementById('gf-compType').value = g.competitionType||'League';
   document.getElementById('gf-compName').value = g.competitionName||'';
   document.getElementById('gf-ground').value = g.venue||'';
-  document.getElementById('gf-oppScore').value = g.opponentScore||0;
   document.getElementById('gf-notes').value = g.teamNotes||'';
   document.getElementById('gf-id').value = id;
   document.getElementById('gameFormTitle').textContent = 'Edit Game';
@@ -4992,7 +5238,7 @@ async function renderSquadListTab(gameId) {
 
     el.innerHTML = `
       <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Tap a player to add them to the squad for this game. Use this as soon as you know who's available — before match day.</p>
-      ${prevGame ? `<button class="btn btn-secondary btn-sm" style="margin-bottom:10px" onclick="copySquadFromPreviousGame(${gameId},${prevGame.gameId})">&#128203; Copy Squad from ${esc(prevGame.opponent)} (${fmtDate(prevGame.date)})</button>` : ''}
+      ${(prevGame && calledUpCount===0) ? `<button class="btn btn-secondary btn-sm" style="margin-bottom:10px" onclick="copySquadFromPreviousGame(${gameId},${prevGame.gameId})">&#128203; Copy Squad from ${esc(prevGame.opponent)} (${fmtDate(prevGame.date)})</button>` : ''}
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px">In squad: <strong style="color:var(--dark)" id="gdSquadCount">${calledUpCount}</strong> / ${players.length}</div>
       <div class="who-played-list">
         ${players.map(p => {
@@ -5002,7 +5248,8 @@ async function renderSquadListTab(gameId) {
             <div class="wp-info">
               <span class="wp-num">${p.shirtNumber||'—'}</span>
               <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor">${esc(p.trackingLabel||'★')}</span>`:''}</span>
-              ${calledUp?'<span style="margin-left:auto;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
+              ${calledUp&&p.primaryPosition?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px">${esc(p.primaryPosition)}</span>`:''}
+              ${calledUp?'<span style="margin-left:6px;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
             </div>
           </div>`;
         }).join('')}
@@ -5087,7 +5334,8 @@ async function renderStartingXITab(gameId) {
             <div class="wp-info">
               <span class="wp-num">${p.shirtNumber||'—'}</span>
               <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))}</span>
-              <span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:auto">${isStarter?'Starter':'Sub'}</span>
+              ${p.primaryPosition?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px">${esc(p.primaryPosition)}</span>`:''}
+              <span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:${p.primaryPosition?'6px':'auto'}">${isStarter?'Starter':'Sub'}</span>
             </div>
           </div>`;
         }).join('')}
@@ -5396,11 +5644,13 @@ document.addEventListener('click', async e => {
   if (t.id==='btnCreateSeason') {
     const name = document.getElementById('sf-name')?.value.trim();
     if (!name) { Toast.error('Season name is required.'); return; }
+    const shirtColorInput = document.getElementById('sf-shirtcolor');
     const season = {
       seasonName: name,
       clubName: document.getElementById('sf-club')?.value.trim()||null,
       homeGround: document.getElementById('sf-homeground')?.value.trim()||null,
       ageGroup: document.getElementById('sf-age')?.value.trim()||null,
+      shirtColor: (shirtColorInput && shirtColorInput.value !== '#b23333' && shirtColorInput.value !== '#B23333') ? shirtColorInput.value : null,
       notes: document.getElementById('sf-notes')?.value.trim()||null,
       createdAt: new Date().toISOString(),
     };
@@ -5415,11 +5665,14 @@ document.addEventListener('click', async e => {
 
   if (t.id==='btnSaveSeasonEdit') {
     if (!State.currentSeasonId) { Toast.error('No active season.'); return; }
+    const editShirtInput = document.getElementById('sf-edit-shirtcolor');
+    const editShirtVal = editShirtInput ? editShirtInput.value : '';
     const updated = {
       ...State.currentSeason,
       clubName:   document.getElementById('sf-edit-club')?.value.trim()||null,
       homeGround: document.getElementById('sf-edit-homeground')?.value.trim()||null,
       ageGroup:   document.getElementById('sf-edit-age')?.value.trim()||null,
+      shirtColor: (editShirtVal && editShirtVal.toUpperCase() !== '#B23333') ? editShirtVal : null,
     };
     await Backup.create('before-save');
     await DB.put('seasons', updated);
