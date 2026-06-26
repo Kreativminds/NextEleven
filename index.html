@@ -3707,7 +3707,7 @@ async function renderPlayerClubHistory(playerId) {
         <div class="timeline-item">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
             <div style="display:flex;gap:12px;align-items:flex-start">
-              ${c.logoUrl?`<img src="${esc(c.logoUrl)}" style="width:40px;height:40px;object-fit:contain;border-radius:4px;flex-shrink:0" onerror="this.style.display='none'">`:
+              ${c.logoUrl?`<img src="${esc(c.logoUrl)}" style="width:40px;height:40px;object-fit:contain;border-radius:4px;flex-shrink:0;background:#f0f0f0" onerror="this.outerHTML='<div style=&quot;width:40px;height:40px;background:#fde8e8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;color:#b03030&quot; title=&quot;Image failed to load&quot;>&#9888;</div>'">`:
               `<div style="width:40px;height:40px;background:#f0f0f0;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">&#127944;</div>`}
               <div>
                 <div class="ti-title">${esc(c.clubName)} ${c.ageGroup?`<span class="pos-pill">${esc(c.ageGroup)}</span>`:''} ${c.level?`<span class="pos-pill">${esc(c.level)}</span>`:''}</div>
