@@ -2033,6 +2033,8 @@ const TR = {
     // ── PLAYER PORTAL — EXPANDED NAV ──
     pp_nav_dashboard:'Dashboard', pp_nav_games:'Games', pp_nav_clubs:'Club History',
     pp_training_tab_new:'New Session', pp_training_tab_history:'History',
+    pp_assist_by:'Assist by',
+    pp_not_called_up_section:'Not called up',
     games_ground_autofilled:'&#10003; Auto-filled from season Home Ground: {ground}',
     games_no_home_ground_set:'No Home Ground set for this season yet. <a href="#" onclick="event.preventDefault();Nav.go(\'settings\')" style="color:var(--black);font-weight:700">Set one in Settings</a> to auto-fill this field next time.',
     set_lbl_home_ground:'Home Ground',
@@ -2816,6 +2818,8 @@ const TR = {
     // ── PLAYER PORTAL — EXPANDED NAV ──
     pp_nav_dashboard:'Dashboard', pp_nav_games:'Jogos', pp_nav_clubs:'Histórico de Clubes',
     pp_training_tab_new:'Nova Sessão', pp_training_tab_history:'Histórico',
+    pp_assist_by:'Assistência de',
+    pp_not_called_up_section:'Não convocados',
     games_ground_autofilled:'&#10003; Preenchido automaticamente a partir do Recinto da época: {ground}',
     games_no_home_ground_set:'Ainda não definiu o Recinto desta época. <a href="#" onclick="event.preventDefault();Nav.go(\'settings\')" style="color:var(--black);font-weight:700">Defina um nas Definições</a> para preencher automaticamente da próxima vez.',
     set_lbl_home_ground:'Recinto',
@@ -5272,7 +5276,7 @@ async function renderPlayerPortalHome() {
         const gTheirs = parseInt(g.opponentScore)||0;
         const gRes = Calc.result(gOurs, gTheirs);
         const gVisible = isGameResultVisible(g);
-        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">
+        return `<div onclick="openPortalGameViewer(${g.gameId})" style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer">
           <div>
             <div style="font-weight:700;font-size:13px">${esc(g.opponent)} <span style="font-weight:400;color:var(--muted);font-size:11px">${homeAwayLabel(g.homeAway)}</span></div>
             <div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(g.date)}</div>
@@ -5367,8 +5371,8 @@ async function renderPlayerPortalGames() {
         const gTheirs = parseInt(g.opponentScore)||0;
         const gRes = Calc.result(gOurs, gTheirs);
         const gVisible = isGameResultVisible(g);
-        return `<div class="wp-row">
-          <div class="wp-info" style="cursor:default">
+        return `<div class="wp-row" onclick="openPortalGameViewer(${g.gameId})" style="cursor:pointer">
+          <div class="wp-info">
             <span class="wp-num">${gVisible?gRes:'—'}</span>
             <span class="wp-name">${esc(g.opponent)}</span>
             <span class="pos-pill" style="margin-left:auto">${fmtDate(g.date)}</span>
@@ -5378,6 +5382,69 @@ async function renderPlayerPortalGames() {
       }).join('')}
     </div>`}
   `;
+}
+
+// ── PORTAL — GAME DETAIL VIEWER (read-only) ──────────────────────────────────
+// Shared by both Home's last-games list and the full Games list. Shows the
+// full squad: who started, who came off the bench, who didn't make the
+// squad at all, and every goal/assist — exactly the same underlying data
+// the guardian sees in Game Detail, but presented as a plain list with
+// zero edit, save, or delete controls anywhere.
+async function openPortalGameViewer(gameId) {
+  const game = await DB.get('games', gameId);
+  if (!game) return;
+  const gp = await DB.getAll('gamePlayers', 'gameId', gameId);
+  const players = await DB.getAll('players', 'seasonId', State.currentSeasonId);
+  const playerName = (id) => shortName(players.find(p => p.playerId === id)?.fullName || '—');
+
+  const ourScore = Calc.teamGoals(gp);
+  const theirScore = parseInt(game.opponentScore) || 0;
+  const res = Calc.result(ourScore, theirScore);
+  const visible = isGameResultVisible(game);
+  const scoreDisplay = Calc.homeAwayScore(game.homeAway, ourScore, theirScore);
+
+  const calledUp = gp.filter(r => r.calledUp).sort((a,b) => (a.role==='Starter'?0:1) - (b.role==='Starter'?0:1));
+  const notCalledUp = players.filter(p => !gp.find(r => r.playerId === p.playerId && r.calledUp));
+  const scorers = gp.filter(r => (parseInt(r.goals)||0) > 0);
+  const assisters = gp.filter(r => (parseInt(r.assists)||0) > 0);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'rm-form-overlay open';
+  overlay.id = 'portalGameViewerOverlay';
+  overlay.innerHTML = `
+    <div class="rm-form" style="max-width:480px">
+      <h2>${esc(game.opponent)}</h2>
+      <div style="display:flex;gap:8px;align-items:center;margin:6px 0 14px;flex-wrap:wrap">
+        <span class="pos-pill">${fmtDate(game.date)}</span>
+        <span style="font-size:11px;color:var(--muted)">${homeAwayLabel(game.homeAway)}</span>
+        ${visible ? `<span class="badge badge-${res}">${res}</span><strong style="font-size:16px">${scoreDisplay.home}–${scoreDisplay.away}</strong>` : `<span class="td-muted" style="font-size:11px">${I18n.t('games_status_upcoming')}</span>`}
+      </div>
+
+      ${visible && (scorers.length || assisters.length) ? `
+      <div style="margin-bottom:14px">
+        ${scorers.map(r => `<div style="font-size:12px;margin-bottom:3px">&#9917; ${playerName(r.playerId)} ${r.goals>1?`x${r.goals}`:''}</div>`).join('')}
+        ${assisters.map(r => `<div style="font-size:12px;margin-bottom:3px;color:var(--muted)">&#127919; ${I18n.t('pp_assist_by')} ${playerName(r.playerId)}</div>`).join('')}
+      </div>` : ''}
+
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">${I18n.t('gd_role_starter')}</div>
+        ${calledUp.filter(r=>r.role==='Starter').map(r => `<div style="font-size:13px;padding:4px 0">${playerName(r.playerId)} ${r.positionPlayed?`<span class="pos-pill">${esc(r.positionPlayed)}</span>`:''} ${r.captain?'&#127894;':''}</div>`).join('') || `<div style="font-size:12px;color:var(--muted)">—</div>`}
+      </div>
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">${I18n.t('gd_role_sub')}</div>
+        ${calledUp.filter(r=>r.role==='Sub').map(r => `<div style="font-size:13px;padding:4px 0">${playerName(r.playerId)} ${r.positionPlayed?`<span class="pos-pill">${esc(r.positionPlayed)}</span>`:''}</div>`).join('') || `<div style="font-size:12px;color:var(--muted)">—</div>`}
+      </div>
+      ${notCalledUp.length ? `
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">${I18n.t('pp_not_called_up_section')}</div>
+        <div style="font-size:12px;color:var(--muted)">${notCalledUp.map(p=>shortName(p.fullName)).join(', ')}</div>
+      </div>` : ''}
+
+      <div class="form-actions" style="margin-top:16px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="document.getElementById('portalGameViewerOverlay').remove()">${I18n.t('tr_btn_close')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
 }
 
 // ── PORTAL — CLUB HISTORY (read-only) ────────────────────────────────────────
@@ -7015,11 +7082,20 @@ const Nav = (() => {
       nameEl.innerHTML = `${pageMeta[section].icon} ${I18n.t(pageMeta[section].key)}`;
     }
 
-    if (section === 'home')      await renderPlayerPortalHome();
-    if (section === 'dashboard') await renderPlayerPortalStats();
-    if (section === 'training')  await renderPlayerTrainingShell(State.portalPlayerId);
-    if (section === 'games')     await renderPlayerPortalGames();
-    if (section === 'clubs')     await renderPlayerPortalClubs();
+    try {
+      if (section === 'home')      await renderPlayerPortalHome();
+      if (section === 'dashboard') await renderPlayerPortalStats();
+      if (section === 'training')  await renderPlayerTrainingShell(State.portalPlayerId);
+      if (section === 'games')     await renderPlayerPortalGames();
+      if (section === 'clubs')     await renderPlayerPortalClubs();
+    } catch(err) {
+      // Show the real error directly on the page instead of leaving it
+      // silently blank — async errors here would otherwise only appear in
+      // the browser console, invisible on a phone with no way to check it.
+      const el = document.getElementById(`pp-sec-${section}`);
+      if (el) el.innerHTML = `<div class="empty"><strong>Something went wrong loading this page.</strong><p style="font-family:monospace;font-size:11px;color:#b03030;margin-top:8px">${esc(err.message)}</p></div>`;
+      console.error('[goPortal] render error for section', section, err);
+    }
   }
 
   return { go, refresh, current: () => current, goPortal };
