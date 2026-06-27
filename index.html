@@ -7061,8 +7061,19 @@ const Nav = (() => {
   // go(), so there is no shared code path that could accidentally expose a
   // guardian-only section to the portal.
   async function goPortal(section) {
-    document.querySelectorAll('#playerPortal .section').forEach(s => s.style.display = 'none');
-    document.getElementById(`pp-sec-${section}`).style.display = '';
+    _debugModeCache = true; // force the debug panel on for the portal right now — no toggle needed
+    ensureDebugPanel();
+    gdDebugLog(`goPortal('${section}') called`);
+
+    const allSections = document.querySelectorAll('#playerPortal .section');
+    gdDebugLog(`found ${allSections.length} .section elements inside #playerPortal`);
+    allSections.forEach(s => s.style.display = 'none');
+
+    const target = document.getElementById(`pp-sec-${section}`);
+    gdDebugLog(`target element pp-sec-${section} exists: ${!!target}`);
+    if (!target) { gdDebugLog(`ABORT — no element with id pp-sec-${section} found in the DOM`); return; }
+    target.style.display = '';
+
     document.querySelectorAll('#portalMobileMenu .nav-link[data-portal-section]').forEach(l => {
       l.classList.toggle('active', l.dataset.portalSection === section);
     });
@@ -7082,16 +7093,20 @@ const Nav = (() => {
       nameEl.innerHTML = `${pageMeta[section].icon} ${I18n.t(pageMeta[section].key)}`;
     }
 
+    gdDebugLog(`State.portalPlayerId = ${State.portalPlayerId}, State.currentSeasonId = ${State.currentSeasonId}`);
+
     try {
-      if (section === 'home')      await renderPlayerPortalHome();
-      if (section === 'dashboard') await renderPlayerPortalStats();
-      if (section === 'training')  await renderPlayerTrainingShell(State.portalPlayerId);
-      if (section === 'games')     await renderPlayerPortalGames();
-      if (section === 'clubs')     await renderPlayerPortalClubs();
+      if (section === 'home')      { gdDebugLog('calling renderPlayerPortalHome()'); await renderPlayerPortalHome(); gdDebugLog('renderPlayerPortalHome() finished OK'); }
+      if (section === 'dashboard') { gdDebugLog('calling renderPlayerPortalStats()'); await renderPlayerPortalStats(); gdDebugLog('renderPlayerPortalStats() finished OK'); }
+      if (section === 'training')  { gdDebugLog('calling renderPlayerTrainingShell()'); await renderPlayerTrainingShell(State.portalPlayerId); gdDebugLog('renderPlayerTrainingShell() finished OK'); }
+      if (section === 'games')     { gdDebugLog('calling renderPlayerPortalGames()'); await renderPlayerPortalGames(); gdDebugLog('renderPlayerPortalGames() finished OK'); }
+      if (section === 'clubs')     { gdDebugLog('calling renderPlayerPortalClubs()'); await renderPlayerPortalClubs(); gdDebugLog('renderPlayerPortalClubs() finished OK'); }
+      gdDebugLog(`target.innerHTML.length after render = ${target.innerHTML.length}`);
     } catch(err) {
       // Show the real error directly on the page instead of leaving it
       // silently blank — async errors here would otherwise only appear in
       // the browser console, invisible on a phone with no way to check it.
+      gdDebugLog(`ERROR in ${section}: ${err.message}`);
       const el = document.getElementById(`pp-sec-${section}`);
       if (el) el.innerHTML = `<div class="empty"><strong>Something went wrong loading this page.</strong><p style="font-family:monospace;font-size:11px;color:#b03030;margin-top:8px">${esc(err.message)}</p></div>`;
       console.error('[goPortal] render error for section', section, err);
