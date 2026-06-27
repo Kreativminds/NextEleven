@@ -892,7 +892,36 @@ function renderAuthGate() {
     <div id="acc-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
     <button class="btn btn-primary" id="acc-submit-btn" style="width:100%" onclick="handleAccountSubmit()">${I18n.t('acc_btn_login')}</button>
     <p style="font-size:11px;color:var(--muted);margin-top:14px;text-align:center">${I18n.t('acc_gate_offline_note')}</p>
+    <div style="text-align:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+      <a href="#" onclick="event.preventDefault();handleEmergencyBypass()" style="font-size:12px;color:var(--muted);text-decoration:underline">${I18n.t('acc_emergency_bypass')}</a>
+    </div>
   `;
+}
+
+// ── EMERGENCY OFFLINE BYPASS ──────────────────────────────────────────────────
+// Creates a temporary local-only session — no Supabase call at all, so it
+// works with zero internet and zero dependency on email confirmation links.
+// This unblocks using the app immediately (e.g. right before a game starts)
+// when real login is broken or unreachable. The data stays fully usable
+// locally; it just won't sync to the cloud until a real account logs in
+// later, at which point the existing local-data-claiming logic picks it up
+// exactly like any other first login.
+async function handleEmergencyBypass() {
+  Confirm.show(I18n.t('acc_bypass_confirm_title'), I18n.t('acc_bypass_confirm_body'), async () => {
+    const fakeSession = {
+      accessToken: null,
+      refreshToken: null,
+      userId: 'local-temp-' + Date.now(),
+      email: null,
+      expiresAt: null,
+      isEmergencyBypass: true,
+    };
+    await DB.put('appMeta', { metaKey: 'authSession', value: fakeSession });
+    await Auth.loadSession();
+    document.getElementById('authGate').style.display = 'none';
+    await continueAppLoadAfterLogin();
+    Toast.show(I18n.t('acc_bypass_active'));
+  });
 }
 
 // ── ACCOUNT CARD — Settings → Cloud Sync tab ─────────────────────────────────
@@ -1659,6 +1688,10 @@ const TR = {
     acc_data_claimed:'{n} existing record(s) on this device are now linked to your account. Tap Sync Now to upload them.',
     acc_gate_intro:'Log in or create a free account to use NextEleven. After your first login, you can keep working fully offline.',
     acc_gate_offline_note:'Internet is only needed once, for this first login. After that, the app opens normally even with no connection.',
+    acc_emergency_bypass:'Having trouble logging in? Continue without an account for now',
+    acc_bypass_confirm_title:'Continue Without an Account',
+    acc_bypass_confirm_body:'This lets you use the app right now without logging in. Your data stays on this device and will not sync to the cloud until you log into a real account later — nothing will be lost, it just stays local until then. Continue?',
+    acc_bypass_active:'Working offline without an account. Log in later to enable cloud sync.',
     games_ground_autofilled:'&#10003; Auto-filled from season Home Ground: {ground}',
     games_no_home_ground_set:'No Home Ground set for this season yet. <a href="#" onclick="event.preventDefault();Nav.go(\'settings\')" style="color:var(--black);font-weight:700">Set one in Settings</a> to auto-fill this field next time.',
     set_lbl_home_ground:'Home Ground',
@@ -2362,6 +2395,10 @@ const TR = {
     acc_data_claimed:'{n} registo(s) existentes neste dispositivo estão agora associados à sua conta. Toque em Sincronizar Agora para os enviar.',
     acc_gate_intro:'Inicie sessão ou crie uma conta gratuita para usar o NextEleven. Após o primeiro login, pode continuar a trabalhar totalmente offline.',
     acc_gate_offline_note:'A internet só é necessária uma vez, para este primeiro login. Depois disso, a aplicação abre normalmente mesmo sem ligação.',
+    acc_emergency_bypass:'Problemas a iniciar sessão? Continuar sem conta por agora',
+    acc_bypass_confirm_title:'Continuar Sem Conta',
+    acc_bypass_confirm_body:'Isto permite usar a aplicação agora sem iniciar sessão. Os seus dados ficam neste dispositivo e não sincronizam com a nuvem até iniciar sessão numa conta real mais tarde — nada se perde, fica apenas local até então. Continuar?',
+    acc_bypass_active:'A trabalhar offline sem conta. Inicie sessão mais tarde para ativar a sincronização.',
     games_ground_autofilled:'&#10003; Preenchido automaticamente a partir do Recinto da época: {ground}',
     games_no_home_ground_set:'Ainda não definiu o Recinto desta época. <a href="#" onclick="event.preventDefault();Nav.go(\'settings\')" style="color:var(--black);font-weight:700">Defina um nas Definições</a> para preencher automaticamente da próxima vez.',
     set_lbl_home_ground:'Recinto',
