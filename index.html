@@ -9286,14 +9286,16 @@ async function continueAppLoadAfterLogin() {
 // it does not update itself while a page is just sitting open. If you load
 // Home while a game is still in progress and then never navigate away, the
 // page keeps showing "in progress" even after the cutoff passes, because
-// nothing re-renders it. This timer re-renders Home/Dashboard every 2
-// minutes if either is the currently open page, so a finished game's result
-// appears on its own without needing to leave and come back.
+// nothing re-renders it. This timer re-renders Home/Dashboard/Team Summary
+// every 2 minutes if one of them is the currently open page, so a finished
+// game's result and season totals update on their own without needing to
+// leave and come back.
 setInterval(() => {
   if (!Auth.isLoggedIn()) return;
   const current = Nav.current();
   if (current === 'home') Render.home();
   if (current === 'dashboard') Render.dashboard();
+  if (current === 'teamSummary') Render.teamSummary();
 }, 120000);
 
 // Auto-sync when coming back online
