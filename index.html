@@ -538,7 +538,12 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
         <div class="form-grid">
           <div class="form-group"><label data-i18n="games_lbl_date">Date *</label><input id="gf-date" type="date"></div>
           <div class="form-group"><label data-i18n="games_lbl_time">Game Time</label><input id="gf-time" type="time"></div>
-          <div class="form-group"><label data-i18n="games_lbl_opponent">Opponent *</label><input id="gf-opp" type="text" placeholder="Opponent club name"></div>
+          <div class="form-group">
+            <label data-i18n="games_lbl_opponent">Opponent *</label>
+            <input id="gf-opp" type="text" list="gf-opp-list" placeholder="Opponent club name" autocomplete="off" oninput="onOpponentInputChange(this.value)">
+            <datalist id="gf-opp-list"></datalist>
+            <div id="gf-opp-newhint" style="display:none;font-size:11px;color:var(--muted);margin-top:4px"></div>
+          </div>
           <div class="form-group"><label data-i18n="games_lbl_homeaway">Home / Away</label>
             <select id="gf-venue"><option value="Home" data-i18n="venue_home">Home</option><option value="Away" data-i18n="venue_away">Away</option><option value="Neutral" data-i18n="venue_neutral">Neutral</option></select>
           </div>
@@ -766,7 +771,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 // ══════════════════════════════════════════════════════════════════════════════
 const CONFIG = {
   APP_VERSION: '1.1.0',
-  SCHEMA_VERSION: 6,
+  SCHEMA_VERSION: 8,
   DB_NAME: 'footballSquadTrackerDB',
   MAX_BACKUPS: 30,
   FULL_GAME_MINS: 80,
@@ -814,6 +819,184 @@ function compTypeLabel(value) {
 function homeAwayLabel(value) {
   const map = { 'Home': 'venue_home', 'Away': 'venue_away', 'Neutral': 'venue_neutral' };
   return map[value] ? I18n.t(map[value]) : (value || '');
+}
+
+// ── OPPONENTS CATALOGUE ──────────────────────────────────────────────────────
+// Starter list of club names that compete in the Lisbon district Sub-14
+// (AFL "II Divisão") competition for the 2025/26 season, found via web
+// search of AFL's public competition pages. Names only — no logos, no
+// divisional/series grouping carried over, since none of that is needed
+// here. Add a logo to any of these any time, or add any club not listed.
+const AFL_SUB14_II_DIVISAO_SEED = [
+  'Cadaval','Coutada','Ericeirense','Janitas','Livramento','Mafra "A"','Malveira "B"','Torreense','Venda Pinheiro','Vila Verde "A"',
+  'Alenquer','Alverca "B"','Aveiras','Bragadense','Carregado "A"','Castanheira','Santa Iria','Tojal','UD Recreio','Vialonga','Vilafranquense 1957','Zambujalense',
+  'Bobadelense','Camarate','Carregado "B"','Desp. O. Moscavide','Falcons','Frielas','Olivais "A"','Ponte Frielas "B"','Povoense','Sacavenense "B"','Sanjoanense','Santa Maria "B"',
+  '3FFF','Alta Lisboa','Col S J Brito','Cultural "B"','Musgueira','Olivais Sul','Oriental','Palmense','Sporting SAD FF','Vitória',
+  'Atlético','Belenenses "C"','Benfica SAD "B"','Casa Pia "C"','CIF','Damaiense "B"','EF Belém "C"','Futebol Benfica','Olivais "B"','Santa Maria "C"','Sporting SAD "B"','Unidos',
+  'AD Amadora','Belenenses "B"','Bless Academy','Caneças "A"','Casa Pia "B"','CF Estrela "B"','Cultural "A"','Damaiense "A"','EF Belém "A"','EFBO "B"','Tenente Valdez "A"',
+];
+
+async function seedOpponentsIfEmpty() {
+  const existing = await DB.getAll('opponents');
+  if (existing.length > 0) return; // never overwrite — this only runs once on a truly empty catalogue
+  for (const name of AFL_SUB14_II_DIVISAO_SEED) {
+    await DB.put('opponents', {
+      opponentName: name,
+      ageGroup: 'Sub-14',
+      level: 'AFL II Divisão',
+      logoUrl: null,
+      notes: null,
+    });
+  }
+}
+
+// ── OPPONENTS CATALOGUE — SETTINGS TAB ───────────────────────────────────────
+async function renderOpponentsTab() {
+  const el = document.getElementById('stab-panel-opponents');
+  if (!el) return;
+  const all = await DB.getAll('opponents');
+  all.sort((a,b) => (a.opponentName||'').localeCompare(b.opponentName||''));
+
+  el.innerHTML = `
+    <div class="settings-section">
+      <h3>${I18n.t('opp_catalogue_title')}</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px">${I18n.t('opp_catalogue_desc')}</p>
+
+      <div class="form-panel" style="margin-bottom:16px">
+        <h3>${I18n.t('opp_form_add_title')}</h3>
+        <div class="form-grid">
+          <div class="form-group"><label>${I18n.t('opp_lbl_name')}</label><input id="opp-name" type="text" placeholder="e.g. Sporting CP"></div>
+          <div class="form-group"><label>${I18n.t('opp_lbl_agegroup')}</label><input id="opp-age" type="text" placeholder="e.g. Sub-14"></div>
+          <div class="form-group"><label>${I18n.t('opp_lbl_level')}</label><input id="opp-level" type="text" placeholder="e.g. AFL II Divisão"></div>
+          <div class="form-group"><label>${I18n.t('opp_lbl_logo')}</label><input id="opp-logo" type="url" placeholder="https://..."></div>
+          <div class="form-group full"><label>${I18n.t('opp_lbl_notes')}</label><textarea id="opp-notes" placeholder=""></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" id="btnSaveOpponent">${I18n.t('common_save')}</button>
+        </div>
+        <input type="hidden" id="opp-id">
+      </div>
+
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('opp_count', {n: all.length})}</div>
+      ${!all.length ? `<div class="empty"><strong>${I18n.t('opp_empty_title')}</strong><p>${I18n.t('opp_empty_desc')}</p></div>` : `
+      <div class="who-played-list">
+        ${all.map(o => `
+          <div class="wp-row">
+            <div class="wp-info" style="cursor:default">
+              ${o.logoUrl
+                ? `<img src="${esc(o.logoUrl)}" style="width:28px;height:28px;object-fit:contain;border-radius:4px;flex-shrink:0;background:#f0f0f0" onerror="this.outerHTML='<div style=&quot;width:28px;height:28px;background:#fde8e8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;color:#b03030&quot;>&#9888;</div>'">`
+                : `<span class="wp-num">&#127944;</span>`}
+              <span class="wp-name">${esc(o.opponentName)}</span>
+              ${o.ageGroup?`<span class="pos-pill" style="margin-left:6px">${esc(o.ageGroup)}</span>`:''}
+              ${o.level?`<span class="pos-pill">${esc(o.level)}</span>`:''}
+              <span style="margin-left:auto;display:flex;gap:6px;flex-shrink:0">
+                <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();editOpponent(${o.opponentId})">${I18n.t('common_edit')}</button>
+                <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteOpponent(${o.opponentId})">${I18n.t('common_delete')}</button>
+              </span>
+            </div>
+          </div>`).join('')}
+      </div>`}
+    </div>`;
+}
+
+function resetOpponentForm() {
+  ['opp-name','opp-age','opp-level','opp-logo','opp-notes','opp-id'].forEach(id => {
+    const e = document.getElementById(id); if (e) e.value = '';
+  });
+}
+
+async function editOpponent(id) {
+  const o = await DB.get('opponents', id);
+  if (!o) return;
+  document.getElementById('opp-name').value = o.opponentName||'';
+  document.getElementById('opp-age').value = o.ageGroup||'';
+  document.getElementById('opp-level').value = o.level||'';
+  document.getElementById('opp-logo').value = o.logoUrl||'';
+  document.getElementById('opp-notes').value = o.notes||'';
+  document.getElementById('opp-id').value = id;
+  document.getElementById('opp-name').scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+async function saveOpponentFromForm() {
+  const name = document.getElementById('opp-name').value.trim();
+  if (!name) { Toast.error(I18n.t('opp_err_name_required')); return; }
+  const existingId = document.getElementById('opp-id').value;
+  const data = {
+    opponentName: name,
+    ageGroup: document.getElementById('opp-age').value.trim()||null,
+    level: document.getElementById('opp-level').value.trim()||null,
+    logoUrl: document.getElementById('opp-logo').value.trim()||null,
+    notes: document.getElementById('opp-notes').value.trim()||null,
+  };
+  if (existingId) data.opponentId = parseInt(existingId);
+  try {
+    await DB.put('opponents', data);
+    Toast.show(existingId ? I18n.t('opp_updated') : I18n.t('opp_added'));
+    resetOpponentForm();
+    await renderOpponentsTab();
+  } catch(err) {
+    Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
+  }
+}
+
+async function deleteOpponent(id) {
+  Confirm.show(I18n.t('opp_confirm_delete_title'), I18n.t('opp_confirm_delete_body'), async () => {
+    await DB.del('opponents', id);
+    Toast.show(I18n.t('ch_deleted'));
+    await renderOpponentsTab();
+  });
+}
+
+// ── OPPONENT DROPDOWN — ADD/EDIT GAME FORM ───────────────────────────────────
+// Populates the <datalist> backing the Opponent field with every catalogue
+// name, so typing offers autocomplete suggestions while still allowing any
+// free-text name for a one-off opponent that isn't catalogued.
+async function populateOpponentDatalist() {
+  const list = document.getElementById('gf-opp-list');
+  if (!list) return;
+  const all = await DB.getAll('opponents');
+  all.sort((a,b) => (a.opponentName||'').localeCompare(b.opponentName||''));
+  list.innerHTML = all.map(o => `<option value="${esc(o.opponentName)}"></option>`).join('');
+  window._opponentCatalogueNames = all.map(o => o.opponentName);
+}
+
+// As the user types, show a small inline hint + shortcut if what they've
+// typed doesn't match any catalogue entry yet — lets them add it to the
+// catalogue on the spot without leaving the Add Game form, but never
+// blocks saving the game either way.
+function onOpponentInputChange(value) {
+  const hint = document.getElementById('gf-opp-newhint');
+  if (!hint) return;
+  const trimmed = value.trim();
+  const names = window._opponentCatalogueNames || [];
+  const isExactMatch = names.some(n => n.toLowerCase() === trimmed.toLowerCase());
+  if (trimmed && !isExactMatch) {
+    hint.style.display = '';
+    hint.innerHTML = `${I18n.t('opp_dropdown_add_new')} <a href="#" onclick="event.preventDefault();quickAddOpponentFromGameForm('${esc(trimmed).replace(/'/g,"\\'")}')" style="color:var(--black);font-weight:700">${esc(trimmed)}</a>`;
+  } else {
+    hint.style.display = 'none';
+  }
+}
+
+async function quickAddOpponentFromGameForm(name) {
+  try {
+    await DB.put('opponents', { opponentName: name, ageGroup: null, level: null, logoUrl: null, notes: null });
+    Toast.show(I18n.t('opp_added'));
+    await populateOpponentDatalist();
+    document.getElementById('gf-opp-newhint').style.display = 'none';
+  } catch(err) {
+    Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
+  }
+}
+
+// Looks up a catalogue opponent by exact name match (case-insensitive) —
+// used to find a logo to display for a game, without storing a hard
+// foreign-key link (games keep storing opponent as plain text, matched
+// by name at display time, so this works for both old and new games).
+async function findOpponentByName(name) {
+  if (!name) return null;
+  const all = await DB.getAll('opponents');
+  return all.find(o => (o.opponentName||'').toLowerCase() === name.trim().toLowerCase()) || null;
 }
 
 // ── MOST USED LINEUP ─────────────────────────────────────────────────────────
@@ -1223,6 +1406,54 @@ const TR = {
     set_season_mgmt:'Season Management',
     set_create_season:'Create New Season',
     set_lbl_season_name:'Season Name *',
+    set_lbl_start_year:'Start Year *',
+    set_season_name_preview:'Season:',
+    set_err_season_year:'Enter a valid start year.',
+
+    // ── INJURY MODAL ──
+    inj_modal_manage:'Manage Injury', inj_modal_mark:'Mark as Injured',
+    inj_lbl_status:'Status',
+    inj_status_injured:'Injured', inj_status_recovered:'Not Injured / Recovered',
+    inj_lbl_start:'Start Date', inj_lbl_end:'Expected End Date',
+    inj_lbl_type:'Injury Type', inj_type_not_specified:'— Not specified —',
+    inj_type_foot:'Foot', inj_type_leg:'Leg', inj_type_knee:'Knee', inj_type_ankle:'Ankle',
+    inj_type_head:'Head', inj_type_body:'Body / Torso', inj_type_arm:'Arm',
+    inj_type_shoulder:'Shoulder', inj_type_other:'Other',
+    inj_lbl_notes:'Notes (optional)',
+    inj_notes_placeholder:'e.g. mild ankle sprain, expected back in 2 weeks',
+    inj_btn_history:'History',
+    inj_btn_close:'Close',
+    inj_history_title:'Injury History',
+    inj_history_empty:'No injury history recorded for this player yet.',
+    inj_unknown_season:'Unknown season',
+
+    // ── TEAM SUMMARY — INJURY REPORT ──
+    ts_injuries_title:'Injuries This Season',
+    ts_injuries_current_count:'{n} player(s) currently injured:',
+    ts_injuries_none_active:'No players currently injured.',
+    ts_injuries_season_total:'{n} injury record(s) this season across {players} player(s).',
+
+    // ── OPPONENTS CATALOGUE ──
+    set_tab_opponents_catalogue:'Opponents',
+    opp_catalogue_title:'Opponents Catalogue',
+    opp_catalogue_desc:'A reusable list of teams you play against, built once and shared across every season — no need to re-add a club just because a new season started. Logo is optional; add one any time if you find one worth using.',
+    opp_form_add_title:'Add / Edit Opponent',
+    opp_lbl_name:'Club Name *',
+    opp_lbl_agegroup:'Age Group',
+    opp_lbl_level:'Level / Division',
+    opp_lbl_logo:'Logo URL (optional)',
+    opp_lbl_notes:'Notes',
+    opp_count:'{n} opponent(s) in catalogue',
+    opp_empty_title:'No opponents yet',
+    opp_empty_desc:'Add a club above, or add one directly from the Add Game form when you next create a game.',
+    opp_err_name_required:'Club name is required.',
+    opp_updated:'Opponent updated.', opp_added:'Opponent added.',
+    opp_confirm_delete_title:'Delete Opponent',
+    opp_confirm_delete_body:'Delete this opponent from the catalogue? Existing games already linked to it will keep showing its name, but will no longer show its logo.',
+    opp_dropdown_placeholder:'Search or add opponent...',
+    opp_dropdown_add_new:'+ Add new opponent:',
+    opp_dropdown_no_match:'No match — type a name and tap below to add it',
+    opp_import_dupes_skipped:'already in catalogue, skipped',
     set_lbl_home_ground:'Home Ground',
     set_lbl_age_group:'Age Group',
     set_lbl_club_name:'Club Name',
@@ -1854,6 +2085,54 @@ const TR = {
     set_season_mgmt:'Gestão de Épocas',
     set_create_season:'Criar Nova Época',
     set_lbl_season_name:'Nome da Época *',
+    set_lbl_start_year:'Ano de Início *',
+    set_season_name_preview:'Época:',
+    set_err_season_year:'Indique um ano de início válido.',
+
+    // ── INJURY MODAL ──
+    inj_modal_manage:'Gerir Lesão', inj_modal_mark:'Marcar como Lesionado',
+    inj_lbl_status:'Estado',
+    inj_status_injured:'Lesionado', inj_status_recovered:'Não Lesionado / Recuperado',
+    inj_lbl_start:'Data de Início', inj_lbl_end:'Data Prevista de Regresso',
+    inj_lbl_type:'Tipo de Lesão', inj_type_not_specified:'— Não especificado —',
+    inj_type_foot:'Pé', inj_type_leg:'Perna', inj_type_knee:'Joelho', inj_type_ankle:'Tornozelo',
+    inj_type_head:'Cabeça', inj_type_body:'Tronco', inj_type_arm:'Braço',
+    inj_type_shoulder:'Ombro', inj_type_other:'Outra',
+    inj_lbl_notes:'Notas (opcional)',
+    inj_notes_placeholder:'ex.: entorse leve do tornozelo, regresso previsto em 2 semanas',
+    inj_btn_history:'Histórico',
+    inj_btn_close:'Fechar',
+    inj_history_title:'Histórico de Lesões',
+    inj_history_empty:'Ainda não há histórico de lesões registado para este jogador.',
+    inj_unknown_season:'Época desconhecida',
+
+    // ── TEAM SUMMARY — INJURY REPORT ──
+    ts_injuries_title:'Lesões Nesta Época',
+    ts_injuries_current_count:'{n} jogador(es) atualmente lesionado(s):',
+    ts_injuries_none_active:'Nenhum jogador atualmente lesionado.',
+    ts_injuries_season_total:'{n} registo(s) de lesão nesta época, em {players} jogador(es).',
+
+    // ── OPPONENTS CATALOGUE ──
+    set_tab_opponents_catalogue:'Adversários',
+    opp_catalogue_title:'Catálogo de Adversários',
+    opp_catalogue_desc:'Uma lista reutilizável das equipas que enfrenta, criada uma vez e partilhada por todas as épocas — não precisa de voltar a adicionar um clube só porque começou uma nova época. O logótipo é opcional; adicione um a qualquer momento se encontrar um que valha a pena usar.',
+    opp_form_add_title:'Adicionar / Editar Adversário',
+    opp_lbl_name:'Nome do Clube *',
+    opp_lbl_agegroup:'Escalão',
+    opp_lbl_level:'Nível / Divisão',
+    opp_lbl_logo:'URL do Logótipo (opcional)',
+    opp_lbl_notes:'Notas',
+    opp_count:'{n} adversário(s) no catálogo',
+    opp_empty_title:'Ainda sem adversários',
+    opp_empty_desc:'Adicione um clube acima, ou adicione um diretamente a partir do formulário Adicionar Jogo na próxima vez que criar um jogo.',
+    opp_err_name_required:'O nome do clube é obrigatório.',
+    opp_updated:'Adversário atualizado.', opp_added:'Adversário adicionado.',
+    opp_confirm_delete_title:'Eliminar Adversário',
+    opp_confirm_delete_body:'Eliminar este adversário do catálogo? Os jogos já associados a ele continuarão a mostrar o nome, mas deixarão de mostrar o logótipo.',
+    opp_dropdown_placeholder:'Pesquisar ou adicionar adversário...',
+    opp_dropdown_add_new:'+ Adicionar novo adversário:',
+    opp_dropdown_no_match:'Sem correspondência — escreva um nome e toque abaixo para o adicionar',
+    opp_import_dupes_skipped:'já no catálogo, ignorado(s)',
     set_lbl_home_ground:'Recinto',
     set_lbl_age_group:'Escalão',
     set_lbl_club_name:'Nome do Clube',
@@ -2309,6 +2588,19 @@ const DB = (() => {
         if (!db.objectStoreNames.contains('injuries')) {
           const inj = db.createObjectStore('injuries', { keyPath: 'injuryId', autoIncrement: true });
           inj.createIndex('playerId', 'playerId', { unique: false });
+          inj.createIndex('seasonId', 'seasonId', { unique: false });
+        } else {
+          // Upgrading from an older schema where injuries existed but had
+          // no seasonId index yet.
+          const tx = e.currentTarget.transaction;
+          const injStore = tx.objectStore('injuries');
+          if (!injStore.indexNames.contains('seasonId')) {
+            injStore.createIndex('seasonId', 'seasonId', { unique: false });
+          }
+        }
+        if (!db.objectStoreNames.contains('opponents')) {
+          const opp = db.createObjectStore('opponents', { keyPath: 'opponentId', autoIncrement: true });
+          opp.createIndex('opponentName', 'opponentName', { unique: false });
         }
       };
       req.onsuccess = e => { _db = e.target.result; resolve(_db); };
@@ -4458,11 +4750,12 @@ const Render = (() => {
         <td>${p.secondaryPosition||'—'}</td>
         <td>${p.dominantFoot||'—'}</td>
         <td>${p.dateOfBirth?fmtDate(p.dateOfBirth):'—'}</td>
-        <td>${injury?`<span class="badge" style="background:#fde8e8;color:#b03030" title="${esc(injury.injuryType||'')} ${esc(injury.notes||'')}">&#129460; ${I18n.t('squad_status_injured')}</span>`:`<span style="color:#2a7a3b;font-size:11px">&#10003; ${I18n.t('squad_status_fit')}</span>`}</td>
+        <td>${injury?`<span class="badge" style="background:#fde8e8;color:#b03030" title="${esc(injuryTypeLabel(injury.injuryType)||'')} ${esc(injury.notes||'')}">&#129460; ${I18n.t('squad_status_injured')}</span>`:`<span style="color:#2a7a3b;font-size:11px">&#10003; ${I18n.t('squad_status_fit')}</span>`}</td>
         <td>
           <button class="btn btn-secondary btn-sm" onclick="editPlayer(${p.playerId})">${I18n.t('common_edit')}</button>
           <button class="btn btn-secondary btn-sm" onclick="archivePlayer(${p.playerId},${!p.isActive})" style="margin-left:4px">${p.isActive?I18n.t('common_archive'):I18n.t('common_restore')}</button>
           <button class="btn ${injury?'btn-danger':'btn-secondary'} btn-sm" onclick="openInjuryModal(${p.playerId})" style="margin-left:4px">${injury?I18n.t('squad_btn_manage_injury'):I18n.t('squad_btn_add_injury')}</button>
+          <button class="btn btn-secondary btn-sm" onclick="openInjuryHistoryModal(${p.playerId})" style="margin-left:4px">${I18n.t('inj_btn_history')}</button>
         </td>
       </tr>`;
     }).join('');
@@ -4533,11 +4826,21 @@ const Render = (() => {
       return `<th class="${extraClass}" style="cursor:pointer;user-select:none" onclick="gamesSort('${key}')">${label}${arrow}</th>`;
     }
 
+    const allOpponents = await DB.getAll('opponents');
+    const opponentLogoByName = {};
+    allOpponents.forEach(o => { if (o.logoUrl) opponentLogoByName[(o.opponentName||'').toLowerCase()] = o.logoUrl; });
+
     const rows = enriched.map(g => {
       const gVisible = isGameResultVisible(g);
+      const logoUrl = opponentLogoByName[(g.opponent||'').toLowerCase()];
       return `<tr style="cursor:pointer" onclick="openGameDetail(${g.gameId})">
         <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
-        <td class="col-sticky-name">${esc(g.opponent)}</td>
+        <td class="col-sticky-name">
+          <span style="display:flex;align-items:center;gap:6px">
+            ${logoUrl?`<img src="${esc(logoUrl)}" style="width:18px;height:18px;object-fit:contain;border-radius:3px;flex-shrink:0" onerror="this.style.display='none'">`:''}
+            ${esc(g.opponent)}
+          </span>
+        </td>
         <td>${g.homeAway?homeAwayLabel(g.homeAway):'—'}</td>
         <td><span style="font-size:11px;color:var(--muted)">${g.competitionType?compTypeLabel(g.competitionType):'—'}</span></td>
         <td class="td-bold">${gVisible?(()=>{const s=Calc.homeAwayScore(g.homeAway,g._our,g._their);return s.home+' — '+s.away;})():'<span class="td-muted" style="font-weight:400;font-size:11px">—</span>'}</td>
@@ -4586,15 +4889,19 @@ const Render = (() => {
     const res = Calc.result(ourScore, theirScore);
     const displayScore = Calc.homeAwayScore(game.homeAway, ourScore, theirScore);
     const currentTab = State.gameDetailTab || 'squad';
+    const matchedOpponent = await findOpponentByName(game.opponent);
 
     const debugOn = await isDebugModeOn();
 
     el.innerHTML = `
       <div class="game-header">
         <div class="game-header-top">
-          <div>
-            <div class="game-title">${esc(game.opponent)}</div>
-            <div class="game-meta">${game.date?fmtDate(game.date):'—'} · ${homeAwayLabel(game.homeAway)} · ${compTypeLabel(game.competitionType)} ${game.competitionName?'· '+esc(game.competitionName):''} ${game.venue?'· '+esc(game.venue):''}</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            ${matchedOpponent?.logoUrl ? `<img src="${esc(matchedOpponent.logoUrl)}" style="width:36px;height:36px;object-fit:contain;border-radius:4px;flex-shrink:0;background:#f0f0f0" onerror="this.style.display='none'">` : ''}
+            <div>
+              <div class="game-title">${esc(game.opponent)}</div>
+              <div class="game-meta">${game.date?fmtDate(game.date):'—'} · ${homeAwayLabel(game.homeAway)} · ${compTypeLabel(game.competitionType)} ${game.competitionName?'· '+esc(game.competitionName):''} ${game.venue?'· '+esc(game.venue):''}</div>
+            </div>
           </div>
           <div>
             <div class="game-score" id="liveScore">${displayScore.home} — ${displayScore.away}</div>
@@ -4838,6 +5145,20 @@ const Render = (() => {
     const mostUsedLineup = buildMostUsedLineup(players, finishedGames, allGP);
     const shirtColor = State.currentSeason?.shirtColor || '#B23333';
 
+    // Squad-wide injury report for this season
+    const allPlayers = await DB.getAll('players','seasonId',State.currentSeasonId);
+    const allInjuriesThisSeason = (await DB.getAll('injuries','seasonId',State.currentSeasonId));
+    const injuriesByPlayer = {};
+    allInjuriesThisSeason.forEach(inj => {
+      if (!injuriesByPlayer[inj.playerId]) injuriesByPlayer[inj.playerId] = [];
+      injuriesByPlayer[inj.playerId].push(inj);
+    });
+    const currentlyInjured = allPlayers.filter(p => {
+      const list = injuriesByPlayer[p.playerId] || [];
+      return list.some(i => i.status === 'Injured');
+    });
+    const playersWithHistory = allPlayers.filter(p => (injuriesByPlayer[p.playerId]||[]).length > 0);
+
     el.innerHTML = `
       <div class="stat-grid">
         <div class="stat-card"><div class="val">${ts.played}</div><div class="lbl">${I18n.t('ts_played')}</div></div>
@@ -4860,6 +5181,23 @@ const Render = (() => {
         <div class="info-row"><span class="ir-label">${I18n.t('ts_best_unbeaten')}</span><span class="ir-value">${ts.bestUnbeaten} ${I18n.t('ts_games_suffix')}</span></div>
         ${ts.biggestWin?`<div class="info-row"><span class="ir-label">${I18n.t('ts_biggest_win')}</span><span class="ir-value">${ts.biggestWin.score} ${I18n.t('ts_vs')} ${esc(ts.biggestWin.opp)}</span></div>`:''}
         ${ts.biggestLoss?`<div class="info-row"><span class="ir-label">${I18n.t('ts_biggest_loss')}</span><span class="ir-value">${ts.biggestLoss.score} ${I18n.t('ts_vs')} ${esc(ts.biggestLoss.opp)}</span></div>`:''}
+      </div>
+
+      <div class="card">
+        <div class="card-title">${I18n.t('ts_injuries_title')}</div>
+        ${currentlyInjured.length ? `
+          <p style="font-size:11px;color:var(--muted);margin-bottom:8px">${I18n.t('ts_injuries_current_count', {n: currentlyInjured.length})}</p>
+          ${currentlyInjured.map(p => {
+            const inj = (injuriesByPlayer[p.playerId]||[]).find(i => i.status === 'Injured');
+            return `<div class="info-row">
+              <span class="ir-label">${esc(shortName(p.fullName))}</span>
+              <span class="ir-value" style="color:#b03030">${inj?.injuryType?injuryTypeLabel(inj.injuryType):I18n.t('inj_type_not_specified')}${inj?.startDate?' · '+fmtDate(inj.startDate):''}</span>
+            </div>`;
+          }).join('')}
+        ` : `<p style="font-size:12px;color:#2a7a3b;font-weight:700;margin-bottom:0">${I18n.t('ts_injuries_none_active')}</p>`}
+        ${playersWithHistory.length ? `
+          <p style="font-size:11px;color:var(--muted);margin-top:12px;margin-bottom:0">${I18n.t('ts_injuries_season_total', {n: allInjuriesThisSeason.length, players: playersWithHistory.length})}</p>
+        ` : ''}
       </div>
 
       <div class="leader-grid">
@@ -5024,6 +5362,7 @@ const Render = (() => {
       <!-- Settings Tabs -->
       <div class="tab-bar-row">
         <button class="import-tab active-tab" id="stab-seasons" onclick="switchSettingsTab('seasons')">${I18n.t('set_tab_seasons')}</button>
+        <button class="import-tab" id="stab-opponents" onclick="switchSettingsTab('opponents')">${I18n.t('set_tab_opponents_catalogue')}</button>
         <button class="import-tab" id="stab-import" onclick="switchSettingsTab('import')">${I18n.t('set_tab_import')}</button>
         <button class="import-tab" id="stab-sync" onclick="switchSettingsTab('sync')">${I18n.t('set_tab_sync')}</button>
         <button class="import-tab" id="stab-backup" onclick="switchSettingsTab('backup')">${I18n.t('set_tab_backup')}</button>
@@ -5038,7 +5377,11 @@ const Render = (() => {
         <div class="form-panel" style="margin-bottom:12px">
           <h3>${I18n.t('set_create_season')}</h3>
           <div class="form-grid">
-            <div class="form-group"><label>${I18n.t('set_lbl_season_name')}</label><input id="sf-name" type="text" placeholder="e.g. 2025/26"></div>
+            <div class="form-group"><label>${I18n.t('set_lbl_start_year')}</label>
+              <input id="sf-startyear" type="number" min="2000" max="2100" value="${new Date().getMonth()>=6?new Date().getFullYear():new Date().getFullYear()-1}" oninput="updateSeasonNamePreview()">
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">${I18n.t('set_season_name_preview')} <strong id="sf-name-preview" style="color:var(--dark)"></strong></div>
+              <input type="hidden" id="sf-name">
+            </div>
             <div class="form-group"><label>${I18n.t('set_lbl_club_name')}</label><input id="sf-club" type="text" placeholder="e.g. SL Olivais"></div>
             <div class="form-group"><label>${I18n.t('set_lbl_home_ground')}</label><input id="sf-homeground" type="text" placeholder="e.g. Campo SL Olivais"></div>
             <div class="form-group"><label>${I18n.t('set_lbl_age_group')}</label><input id="sf-age" type="text" placeholder="e.g. U12"></div>
@@ -5095,6 +5438,9 @@ const Render = (() => {
         </div>
       </div>
       </div><!-- end stab-panel-seasons -->
+
+      <!-- OPPONENTS CATALOGUE TAB -->
+      <div id="stab-panel-opponents" style="display:none"></div>
 
       <!-- IMPORT TAB — redirects to import section to avoid duplicate IDs -->
       <div id="stab-panel-import" style="display:none">
@@ -5294,6 +5640,7 @@ const Render = (() => {
 
     // Default to seasons tab
     switchSettingsTab('seasons');
+    updateSeasonNamePreview();
 
     // Update sync status bar and pending count
     Sync.updateSyncUI();
@@ -6057,6 +6404,7 @@ function attachEvents() {
     document.getElementById('gf-date').value = new Date().toISOString().split('T')[0];
     document.getElementById('addGamePanel').classList.remove('panel-hidden');
     document.getElementById('addGamePanel').scrollIntoView({behavior:'smooth'});
+    populateOpponentDatalist();
   });
   // Auto-calculate arrival time when game time or venue changes
   document.getElementById('gf-time')?.addEventListener('change', () => {
@@ -6209,6 +6557,14 @@ function closePlayerCardPopup() {
 
 // ── INJURY TRACKING ──────────────────────────────────────────────────────────
 const INJURY_TYPES = ['Foot','Leg','Knee','Ankle','Head','Body / Torso','Arm','Shoulder','Other'];
+const INJURY_TYPE_KEYS = {
+  'Foot':'inj_type_foot', 'Leg':'inj_type_leg', 'Knee':'inj_type_knee', 'Ankle':'inj_type_ankle',
+  'Head':'inj_type_head', 'Body / Torso':'inj_type_body', 'Arm':'inj_type_arm',
+  'Shoulder':'inj_type_shoulder', 'Other':'inj_type_other',
+};
+function injuryTypeLabel(value) {
+  return INJURY_TYPE_KEYS[value] ? I18n.t(INJURY_TYPE_KEYS[value]) : (value || '');
+}
 
 async function openInjuryModal(playerId) {
   const p = await DB.get('players', playerId);
@@ -6222,27 +6578,63 @@ async function openInjuryModal(playerId) {
   overlay.id = 'injuryModalOverlay';
   overlay.innerHTML = `
     <div class="rm-form" style="max-width:420px">
-      <h2>${active?'Manage Injury':'Mark as Injured'} — ${esc(shortName(p.fullName))}</h2>
+      <h2>${active?I18n.t('inj_modal_manage'):I18n.t('inj_modal_mark')} — ${esc(shortName(p.fullName))}</h2>
       <div class="form-grid">
-        <div class="form-group"><label>Status</label>
+        <div class="form-group"><label>${I18n.t('inj_lbl_status')}</label>
           <select id="inj-status">
-            <option value="Injured" ${(!active||active.status==='Injured')?'selected':''}>Injured</option>
-            <option value="Not Injured" ${active&&active.status!=='Injured'?'selected':''}>Not Injured / Recovered</option>
+            <option value="Injured" ${(!active||active.status==='Injured')?'selected':''}>${I18n.t('inj_status_injured')}</option>
+            <option value="Not Injured" ${active&&active.status!=='Injured'?'selected':''}>${I18n.t('inj_status_recovered')}</option>
           </select>
         </div>
-        <div class="form-group"><label>Start Date</label><input type="date" id="inj-start" value="${active?.startDate||today}"></div>
-        <div class="form-group"><label>Expected End Date</label><input type="date" id="inj-end" value="${active?.endDate||''}"></div>
-        <div class="form-group full"><label>Injury Type</label>
+        <div class="form-group"><label>${I18n.t('inj_lbl_start')}</label><input type="date" id="inj-start" value="${active?.startDate||today}"></div>
+        <div class="form-group"><label>${I18n.t('inj_lbl_end')}</label><input type="date" id="inj-end" value="${active?.endDate||''}"></div>
+        <div class="form-group full"><label>${I18n.t('inj_lbl_type')}</label>
           <select id="inj-type">
-            <option value="">— Not specified —</option>
-            ${INJURY_TYPES.map(t=>`<option ${active?.injuryType===t?'selected':''}>${t}</option>`).join('')}
+            <option value="">${I18n.t('inj_type_not_specified')}</option>
+            ${INJURY_TYPES.map(t=>`<option value="${t}" ${active?.injuryType===t?'selected':''}>${injuryTypeLabel(t)}</option>`).join('')}
           </select>
         </div>
-        <div class="form-group full"><label>Notes (optional)</label><textarea id="inj-notes" placeholder="e.g. mild ankle sprain, expected back in 2 weeks">${esc(active?.notes||'')}</textarea></div>
+        <div class="form-group full"><label>${I18n.t('inj_lbl_notes')}</label><textarea id="inj-notes" placeholder="${I18n.t('inj_notes_placeholder')}">${esc(active?.notes||'')}</textarea></div>
       </div>
       <div class="form-actions" style="margin-top:16px;justify-content:flex-end">
-        <button class="btn btn-secondary" onclick="document.getElementById('injuryModalOverlay').remove()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveInjury(${playerId}, ${active?active.injuryId:'null'})">Save</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('injuryModalOverlay').remove()">${I18n.t('common_cancel')}</button>
+        <button class="btn btn-primary" onclick="saveInjury(${playerId}, ${active?active.injuryId:'null'})">${I18n.t('common_save')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function openInjuryHistoryModal(playerId) {
+  const p = await DB.get('players', playerId);
+  if (!p) return;
+  const allInjuries = await DB.getAll('injuries', 'playerId', playerId);
+  allInjuries.sort((a,b) => new Date(b.startDate||0) - new Date(a.startDate||0));
+
+  const seasons = await DB.getAll('seasons');
+  const seasonName = (id) => seasons.find(s => s.seasonId === id)?.seasonName || I18n.t('inj_unknown_season');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'rm-form-overlay open';
+  overlay.id = 'injuryHistoryOverlay';
+  overlay.innerHTML = `
+    <div class="rm-form" style="max-width:480px">
+      <h2>${I18n.t('inj_history_title')} — ${esc(shortName(p.fullName))}</h2>
+      ${!allInjuries.length ? `<p style="font-size:13px;color:var(--muted);margin-top:8px">${I18n.t('inj_history_empty')}</p>` : `
+      <div class="timeline-list" style="margin-top:12px;max-height:60vh;overflow-y:auto">
+        ${allInjuries.map(inj => `
+          <div class="timeline-item">
+            <div class="ti-title">
+              <span class="badge" style="background:${inj.status==='Injured'?'#fde8e8':'#e6f4ea'};color:${inj.status==='Injured'?'#b03030':'#2a7a3b'}">
+                ${inj.status==='Injured'?I18n.t('inj_status_injured'):I18n.t('inj_status_recovered')}
+              </span>
+              ${inj.injuryType?`<span class="pos-pill">${esc(injuryTypeLabel(inj.injuryType))}</span>`:''}
+            </div>
+            <div class="ti-meta">${seasonName(inj.seasonId)} · ${inj.startDate?fmtDate(inj.startDate):'—'}${inj.endDate?' → '+fmtDate(inj.endDate):''}</div>
+            ${inj.notes?`<div class="ti-desc">${esc(inj.notes)}</div>`:''}
+          </div>`).join('')}
+      </div>`}
+      <div class="form-actions" style="margin-top:16px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="document.getElementById('injuryHistoryOverlay').remove()">${I18n.t('inj_btn_close')}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -6256,7 +6648,16 @@ async function saveInjury(playerId, existingInjuryId) {
   const notes = document.getElementById('inj-notes').value.trim() || null;
 
   const record = { playerId, status, startDate, endDate, injuryType, notes };
-  if (existingInjuryId) record.injuryId = existingInjuryId;
+  if (existingInjuryId) {
+    record.injuryId = existingInjuryId;
+    // Preserve the season this injury originally belonged to — editing it
+    // later (e.g. marking recovered) should never move it to whichever
+    // season happens to be active at the moment of the edit.
+    const existing = await DB.get('injuries', existingInjuryId);
+    record.seasonId = existing?.seasonId ?? State.currentSeasonId;
+  } else {
+    record.seasonId = State.currentSeasonId;
+  }
 
   try {
     await DB.put('injuries', record);
@@ -6388,6 +6789,7 @@ async function editGame(id) {
   document.getElementById('gameFormTitle').textContent = I18n.t('games_form_edit_title');
   document.getElementById('addGamePanel').classList.remove('panel-hidden');
   document.getElementById('addGamePanel').scrollIntoView({behavior:'smooth'});
+  await populateOpponentDatalist();
 }
 
 async function deleteGame(id) {
@@ -6944,11 +7346,14 @@ document.addEventListener('click', async e => {
     return;
   }
   if (t.id==='btnCreateSeason') {
-    const name = document.getElementById('sf-name')?.value.trim();
-    if (!name) { Toast.error(I18n.t('set_err_season_name')); return; }
+    const yearInput = document.getElementById('sf-startyear');
+    const startYear = parseInt(yearInput?.value);
+    if (!startYear || startYear < 2000 || startYear > 2100) { Toast.error(I18n.t('set_err_season_year')); return; }
+    const name = buildSeasonName(startYear);
     const shirtColorInput = document.getElementById('sf-shirtcolor');
     const season = {
       seasonName: name,
+      startYear,
       clubName: document.getElementById('sf-club')?.value.trim()||null,
       homeGround: document.getElementById('sf-homeground')?.value.trim()||null,
       ageGroup: document.getElementById('sf-age')?.value.trim()||null,
@@ -6963,6 +7368,10 @@ document.addEventListener('click', async e => {
     Toast.show(I18n.t('set_season_created', {name}));
     await buildTrackedNav();
     await Render.settings();
+  }
+
+  if (t.id==='btnSaveOpponent') {
+    await saveOpponentFromForm();
   }
 
   if (t.id==='btnSaveSeasonEdit') {
@@ -7035,7 +7444,7 @@ async function init() {
     // If a store is missing, the IndexedDB upgrade didn't run (version mismatch
     // or interrupted upgrade). Force a clean reopen rather than running silently
     // broken for the rest of the session.
-    const requiredStores = ['appMeta','seasons','players','games','gamePlayers','goalEvents','events','playerGameStats','achievements','clubHistory','injuries'];
+    const requiredStores = ['appMeta','seasons','players','games','gamePlayers','goalEvents','events','playerGameStats','achievements','clubHistory','injuries','opponents'];
     const missing = requiredStores.filter(s => !DB.hasStore(s));
     if (missing.length) {
       console.error('[init] Missing IndexedDB stores after open:', missing);
@@ -7050,6 +7459,26 @@ async function init() {
 
     await loadMeta();
     await Sync.loadConfig();
+
+    // One-time migration: stamp seasonId onto any injury records saved before
+    // injuries were season-tracked, using the current season as a reasonable
+    // assumption since they were created while it was active.
+    const injuryMigrationDone = await DB.get('appMeta', 'injurySeasonMigrationDone');
+    if (!injuryMigrationDone && State.currentSeasonId) {
+      try {
+        const allInjuries = await DB.getAll('injuries');
+        const toFix = allInjuries.filter(i => !i.seasonId);
+        for (const inj of toFix) {
+          inj.seasonId = State.currentSeasonId;
+          await DB.put('injuries', inj);
+        }
+        await _origPut('appMeta', { metaKey: 'injurySeasonMigrationDone', value: true });
+      } catch(e) { console.error('[init] injury season migration failed:', e); }
+    }
+
+    // Seed the opponents catalogue once, only if it's genuinely empty —
+    // never overwrites or duplicates anything the user has already added.
+    try { await seedOpponentsIfEmpty(); } catch(e) { console.error('[init] opponent seed failed:', e); }
 
     // Backup at most once per 24 hours
     const lastBackupMeta = await DB.get('appMeta', 'lastAutoBackupAt');
@@ -7489,23 +7918,50 @@ async function confirmImport(type, validated) {
   if (!toImport.length) return;
   await Backup.create('before-import');
   let count = 0;
+  let skippedDupes = 0;
+  const existingOpponentNames = type === 'opponents'
+    ? (await DB.getAll('opponents')).map(o => (o.opponentName||'').toLowerCase())
+    : [];
   for (const r of toImport) {
     const store = type==='players' ? 'players' : type==='games' ? 'games' : 'opponents';
+    if (store === 'opponents' && existingOpponentNames.includes((r.data.opponentName||'').toLowerCase())) {
+      skippedDupes++;
+      continue; // already in the catalogue — never create a duplicate entry
+    }
     await DB.put(store, r.data);
     count++;
   }
-  dbgLog('Import done: ' + count + ' rows written to ' + type);
-  Toast.show(count + ' ' + type + ' imported successfully.');
+  dbgLog('Import done: ' + count + ' rows written to ' + type + (skippedDupes ? `, ${skippedDupes} duplicate opponents skipped` : ''));
+  Toast.show(count + ' ' + type + ' imported successfully.' + (skippedDupes ? ` (${skippedDupes} ${I18n.t('opp_import_dupes_skipped')})` : ''));
   const previewId = 'import' + type.charAt(0).toUpperCase() + type.slice(1) + 'Preview';
   const el = document.getElementById(previewId);
   if (el) el.innerHTML = '<div style="padding:10px;background:#f0faf2;border-radius:3px;font-size:13px;color:#2a7a3b;font-weight:600">&#10003; Import complete — ' + count + ' rows added.</div>';
   window['_importData_' + type] = null;
 }
 
+// Season name is always auto-generated from the start year as "YYYY/YY" —
+// never freely typed, so it can never drift into an inconsistent format.
+function buildSeasonName(startYear) {
+  const y = parseInt(startYear);
+  if (!y || isNaN(y)) return '';
+  const endYY = String((y + 1) % 100).padStart(2, '0');
+  return `${y}/${endYY}`;
+}
+
+function updateSeasonNamePreview() {
+  const yearInput = document.getElementById('sf-startyear');
+  const preview = document.getElementById('sf-name-preview');
+  const hidden = document.getElementById('sf-name');
+  if (!yearInput || !preview || !hidden) return;
+  const name = buildSeasonName(yearInput.value);
+  preview.textContent = name || '—';
+  hidden.value = name;
+}
+
 function switchSettingsTab(tab) {
   State.currentSettingsTab = tab;
   try { sessionStorage.setItem('squadTracker_settingsTab', tab); } catch(e) {}
-  ['seasons','import','sync','backup','danger'].forEach(t => {
+  ['seasons','opponents','import','sync','backup','danger'].forEach(t => {
     const panel = document.getElementById(`stab-panel-${t}`);
     const btn   = document.getElementById(`stab-${t}`);
     if (panel) panel.style.display = t === tab ? '' : 'none';
@@ -7515,6 +7971,9 @@ function switchSettingsTab(tab) {
   if (tab === 'import') {
     switchImportTab('players');
     renderImportSection();
+  }
+  if (tab === 'opponents') {
+    renderOpponentsTab();
   }
 }
 
