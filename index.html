@@ -799,7 +799,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 // ══════════════════════════════════════════════════════════════════════════════
 const CONFIG = {
   APP_VERSION: '1.1.0',
-  SCHEMA_VERSION: 8,
+  SCHEMA_VERSION: 9,
   DB_NAME: 'footballSquadTrackerDB',
   MAX_BACKUPS: 30,
   FULL_GAME_MINS: 80,
@@ -1220,6 +1220,68 @@ async function deleteOpponent(id) {
     Toast.show(I18n.t('ch_deleted'));
     await renderOpponentsTab();
   });
+}
+
+// ── TRAINING SESSIONS — data layer ───────────────────────────────────────────
+// Permission model: every session has createdBy = 'player' or 'guardian'.
+// The player can edit/delete only their own ('player') sessions. Guardian-
+// created sessions are visible and completable by the player (they can fill
+// in actual results once done) but never deletable or re-assignable by him.
+// The guardian can see everything but never edit a player-created session's
+// content — only view it. This is enforced in the UI layer (no edit/delete
+// controls shown when not permitted) — see renderTrainingTab and the player
+// portal for where each side's buttons are conditionally shown.
+
+async function getTrainingSessionsForPlayer(playerId, seasonId) {
+  const all = await DB.getAll('trainingSessions', 'playerId', playerId);
+  return seasonId ? all.filter(s => s.seasonId === seasonId) : all;
+}
+
+async function saveTrainingSession(session) {
+  // session = { trainingSessionId?, playerId, seasonId, title, scheduledDate,
+  //             status, createdBy, drills: [...], notes }
+  if (!session.playerId) throw new Error('Training session must have a playerId.');
+  if (!session.createdBy) throw new Error('Training session must have a createdBy.');
+  return DB.put('trainingSessions', session);
+}
+
+async function deleteTrainingSession(id, requestingAs) {
+  const existing = await DB.get('trainingSessions', id);
+  if (!existing) return;
+  // Enforce the permission rule even if a UI bug ever lets the call through —
+  // the player can only delete their own sessions, never a guardian-assigned one.
+  if (requestingAs === 'player' && existing.createdBy !== 'player') {
+    throw new Error('Players cannot delete sessions created by a guardian.');
+  }
+  await DB.del('trainingSessions', id);
+}
+
+function canEditTrainingSession(session, requestingAs) {
+  if (requestingAs === 'guardian') return false; // guardian never edits session content, only views
+  return session.createdBy === 'player'; // player can only edit their own
+}
+function canDeleteTrainingSession(session, requestingAs) {
+  if (requestingAs === 'guardian') return false;
+  return session.createdBy === 'player';
+}
+
+// Calculates a simple per-drill-type running total across a player's
+// completed sessions this season — used for the progress view.
+async function getTrainingProgress(playerId, seasonId) {
+  const sessions = (await getTrainingSessionsForPlayer(playerId, seasonId)).filter(s => s.status === 'Completed');
+  const totals = {}; // drillType -> { sessionCount, fieldSums: {fieldKey: sum} }
+  sessions.forEach(s => {
+    (s.drills||[]).forEach(d => {
+      if (!totals[d.drillType]) totals[d.drillType] = { sessionCount: 0, fieldSums: {} };
+      totals[d.drillType].sessionCount++;
+      const drillDef = DRILL_TYPES.find(dt => dt.key === d.drillType);
+      (drillDef?.fields||[]).forEach(f => {
+        if (f.isText) return;
+        totals[d.drillType].fieldSums[f.key] = (totals[d.drillType].fieldSums[f.key]||0) + (parseFloat(d[f.key])||0);
+      });
+    });
+  });
+  return { sessions, totals };
 }
 
 // ── OPPONENT DROPDOWN — ADD/EDIT GAME FORM ───────────────────────────────────
@@ -1670,7 +1732,7 @@ const TR = {
 
     // ── TRACKED PLAYER TAB BAR ──
     tptab_overview:'Overview', tptab_stats:'Stats', tptab_log:'Match Log',
-    tptab_clubs:'Club History', tptab_ach:'Achievements', tptab_events:'Events',
+    tptab_clubs:'Club History', tptab_ach:'Achievements', tptab_events:'Events', tptab_training:'Training',
     tp_btn_export_pdf:'Export PDF',
 
     // ── SETTINGS — TABS ──
@@ -1756,6 +1818,47 @@ const TR = {
     acc_bypass_confirm_body:'This lets you use the app right now without logging in. Your data stays on this device and will not sync to the cloud until you log into a real account later — nothing will be lost, it just stays local until then. Continue?',
     acc_bypass_active:'Working offline without an account. Log in later to enable cloud sync.',
     acc_nav_no_email:'Working offline, no account',
+
+    // ── TRAINING — DRILL TYPES ──
+    drill_juggling:'Juggling', drill_zigzag:'Zigzag / Dribbling', drill_long_shots:'Long Shots',
+    drill_crosses:'Crosses', drill_short_passing:'Short Passing', drill_shooting:'Shooting',
+    drill_fitness:'Fitness / Running', drill_ball_control:'Ball Control', drill_other:'Other',
+    drillf_duration_min:'Duration (min)', drillf_left_touches:'Left Foot Touches', drillf_right_touches:'Right Foot Touches',
+    drillf_obstacles:'Obstacles / Cones', drillf_best_time_sec:'Best Time (sec)', drillf_attempts:'Attempts',
+    drillf_shots_taken:'Shots Taken', drillf_shots_on_target:'Shots on Target', drillf_distance_m:'Distance (m)',
+    drillf_crosses_attempted:'Crosses Attempted', drillf_crosses_completed:'Crosses Completed',
+    drillf_passes_attempted:'Passes Attempted', drillf_passes_completed:'Passes Completed',
+    drillf_distance_km:'Distance (km)', drillf_sprints:'Sprints',
+    drillf_touches:'Touches', drillf_errors:'Drops / Errors', drillf_description:'Description',
+
+    // ── TRAINING TAB UI ──
+    tr_title:'Training Sessions',
+    tr_btn_create_for_player:'+ Create Session for {name}',
+    tr_status_scheduled:'Scheduled', tr_status_completed:'Completed',
+    tr_created_by_player:'Self-created', tr_created_by_guardian:'Assigned by guardian',
+    tr_empty_title:'No training sessions yet',
+    tr_empty_desc_guardian:'Create one for {name}, or wait for them to log their own.',
+    tr_col_date:'Date', tr_col_title:'Title', tr_col_status:'Status', tr_col_source:'Source',
+    tr_btn_view:'View',
+    tr_form_title:'New Training Session',
+    tr_lbl_title:'Title *', tr_lbl_date:'Date',
+    tr_lbl_drills:'Drills',
+    tr_btn_add_drill:'+ Add Drill',
+    tr_lbl_drill_type:'Drill Type',
+    tr_btn_remove_drill:'Remove',
+    tr_lbl_notes:'Notes',
+    tr_err_title_required:'Title is required.',
+    tr_saved:'Training session saved.',
+    tr_confirm_delete_title:'Delete Training Session',
+    tr_confirm_delete_body:'Delete this training session? This cannot be undone.',
+    tr_err_cannot_delete:'You cannot delete a session created by the other side.',
+    tr_err_cannot_edit:'This session was created by {who} and cannot be edited by you.',
+    tr_view_title:'Training Session',
+    tr_btn_mark_completed:'Mark as Completed',
+    tr_btn_edit:'Edit', tr_btn_delete:'Delete', tr_btn_close:'Close',
+    tr_progress_title:'Progress This Season',
+    tr_progress_sessions_suffix:'sessions',
+    tr_progress_empty:'Complete a session to start tracking progress.',
     games_ground_autofilled:'&#10003; Auto-filled from season Home Ground: {ground}',
     games_no_home_ground_set:'No Home Ground set for this season yet. <a href="#" onclick="event.preventDefault();Nav.go(\'settings\')" style="color:var(--black);font-weight:700">Set one in Settings</a> to auto-fill this field next time.',
     set_lbl_home_ground:'Home Ground',
@@ -2378,7 +2481,7 @@ const TR = {
 
     // ── TRACKED PLAYER TAB BAR ──
     tptab_overview:'Resumo', tptab_stats:'Estatísticas', tptab_log:'Registo de Jogos',
-    tptab_clubs:'Histórico de Clubes', tptab_ach:'Conquistas', tptab_events:'Eventos',
+    tptab_clubs:'Histórico de Clubes', tptab_ach:'Conquistas', tptab_events:'Eventos', tptab_training:'Treino',
     tp_btn_export_pdf:'Exportar PDF',
 
     // ── SETTINGS — TABS ──
@@ -2464,6 +2567,47 @@ const TR = {
     acc_bypass_confirm_body:'Isto permite usar a aplicação agora sem iniciar sessão. Os seus dados ficam neste dispositivo e não sincronizam com a nuvem até iniciar sessão numa conta real mais tarde — nada se perde, fica apenas local até então. Continuar?',
     acc_bypass_active:'A trabalhar offline sem conta. Inicie sessão mais tarde para ativar a sincronização.',
     acc_nav_no_email:'A trabalhar offline, sem conta',
+
+    // ── TRAINING — DRILL TYPES ──
+    drill_juggling:'Embaixadinhas', drill_zigzag:'Slalom / Condução', drill_long_shots:'Remates de Longe',
+    drill_crosses:'Cruzamentos', drill_short_passing:'Passe Curto', drill_shooting:'Finalização',
+    drill_fitness:'Condição Física / Corrida', drill_ball_control:'Controlo de Bola', drill_other:'Outro',
+    drillf_duration_min:'Duração (min)', drillf_left_touches:'Toques com o Pé Esquerdo', drillf_right_touches:'Toques com o Pé Direito',
+    drillf_obstacles:'Obstáculos / Cones', drillf_best_time_sec:'Melhor Tempo (seg)', drillf_attempts:'Tentativas',
+    drillf_shots_taken:'Remates Efetuados', drillf_shots_on_target:'Remates à Baliza', drillf_distance_m:'Distância (m)',
+    drillf_crosses_attempted:'Cruzamentos Tentados', drillf_crosses_completed:'Cruzamentos Certos',
+    drillf_passes_attempted:'Passes Tentados', drillf_passes_completed:'Passes Certos',
+    drillf_distance_km:'Distância (km)', drillf_sprints:'Sprints',
+    drillf_touches:'Toques', drillf_errors:'Perdas de Bola / Erros', drillf_description:'Descrição',
+
+    // ── TRAINING TAB UI ──
+    tr_title:'Sessões de Treino',
+    tr_btn_create_for_player:'+ Criar Sessão para {name}',
+    tr_status_scheduled:'Agendada', tr_status_completed:'Concluída',
+    tr_created_by_player:'Criada por ele(a)', tr_created_by_guardian:'Atribuída pelo encarregado',
+    tr_empty_title:'Ainda sem sessões de treino',
+    tr_empty_desc_guardian:'Crie uma para {name}, ou espere que ele(a) registe a sua própria.',
+    tr_col_date:'Data', tr_col_title:'Título', tr_col_status:'Estado', tr_col_source:'Origem',
+    tr_btn_view:'Ver',
+    tr_form_title:'Nova Sessão de Treino',
+    tr_lbl_title:'Título *', tr_lbl_date:'Data',
+    tr_lbl_drills:'Exercícios',
+    tr_btn_add_drill:'+ Adicionar Exercício',
+    tr_lbl_drill_type:'Tipo de Exercício',
+    tr_btn_remove_drill:'Remover',
+    tr_lbl_notes:'Notas',
+    tr_err_title_required:'O título é obrigatório.',
+    tr_saved:'Sessão de treino guardada.',
+    tr_confirm_delete_title:'Eliminar Sessão de Treino',
+    tr_confirm_delete_body:'Eliminar esta sessão de treino? Esta ação não pode ser desfeita.',
+    tr_err_cannot_delete:'Não pode eliminar uma sessão criada pelo outro lado.',
+    tr_err_cannot_edit:'Esta sessão foi criada por {who} e não pode ser editada por si.',
+    tr_view_title:'Sessão de Treino',
+    tr_btn_mark_completed:'Marcar como Concluída',
+    tr_btn_edit:'Editar', tr_btn_delete:'Eliminar', tr_btn_close:'Fechar',
+    tr_progress_title:'Progresso Nesta Época',
+    tr_progress_sessions_suffix:'sessões',
+    tr_progress_empty:'Conclua uma sessão para começar a acompanhar o progresso.',
     games_ground_autofilled:'&#10003; Preenchido automaticamente a partir do Recinto da época: {ground}',
     games_no_home_ground_set:'Ainda não definiu o Recinto desta época. <a href="#" onclick="event.preventDefault();Nav.go(\'settings\')" style="color:var(--black);font-weight:700">Defina um nas Definições</a> para preencher automaticamente da próxima vez.',
     set_lbl_home_ground:'Recinto',
@@ -2934,6 +3078,12 @@ const DB = (() => {
         if (!db.objectStoreNames.contains('opponents')) {
           const opp = db.createObjectStore('opponents', { keyPath: 'opponentId', autoIncrement: true });
           opp.createIndex('opponentName', 'opponentName', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('trainingSessions')) {
+          const ts = db.createObjectStore('trainingSessions', { keyPath: 'trainingSessionId', autoIncrement: true });
+          ts.createIndex('playerId', 'playerId', { unique: false });
+          ts.createIndex('seasonId', 'seasonId', { unique: false });
+          ts.createIndex('status', 'status', { unique: false });
         }
       };
       req.onsuccess = e => { _db = e.target.result; resolve(_db); };
@@ -3783,6 +3933,7 @@ async function buildTrackedNav() {
         <button class="import-tab active-tab" id="tab-overview-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'overview')">${I18n.t('tptab_overview')}</button>
         <button class="import-tab" id="tab-stats-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'stats')">${I18n.t('tptab_stats')}</button>
         <button class="import-tab" id="tab-log-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'log')">${I18n.t('tptab_log')}</button>
+        <button class="import-tab" id="tab-training-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'training')">${I18n.t('tptab_training')}</button>
         <button class="import-tab" id="tab-clubs-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'clubs')">${I18n.t('tptab_clubs')}</button>
         <button class="import-tab" id="tab-ach-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'ach')">${I18n.t('tptab_ach')}</button>
         <button class="import-tab" id="tab-events-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'events')">${I18n.t('tptab_events')}</button>
@@ -3790,6 +3941,7 @@ async function buildTrackedNav() {
       <div id="tracked-content-${p.playerId}"></div>
       <div id="tracked-stats-${p.playerId}" style="display:none"></div>
       <div id="tracked-log-${p.playerId}" style="display:none"></div>
+      <div id="tracked-training-${p.playerId}" style="display:none"></div>
       <div id="tracked-clubs-${p.playerId}" style="display:none"></div>
       <div id="tracked-ach-${p.playerId}" style="display:none"></div>
       <div id="tracked-events-${p.playerId}" style="display:none"></div>
@@ -3804,6 +3956,7 @@ function switchTrackedTab(playerId, tab) {
     overview: `tracked-content-${playerId}`,
     stats:    `tracked-stats-${playerId}`,
     log:      `tracked-log-${playerId}`,
+    training: `tracked-training-${playerId}`,
     clubs:    `tracked-clubs-${playerId}`,
     ach:      `tracked-ach-${playerId}`,
     events:   `tracked-events-${playerId}`,
@@ -3812,6 +3965,7 @@ function switchTrackedTab(playerId, tab) {
     overview: `tab-overview-${playerId}`,
     stats:    `tab-stats-${playerId}`,
     log:      `tab-log-${playerId}`,
+    training: `tab-training-${playerId}`,
     clubs:    `tab-clubs-${playerId}`,
     ach:      `tab-ach-${playerId}`,
     events:   `tab-events-${playerId}`,
@@ -3822,16 +3976,77 @@ function switchTrackedTab(playerId, tab) {
     if (el)  el.style.display  = t === tab ? '' : 'none';
     if (btn) btn.classList.toggle('active-tab', t === tab);
   });
-  if (tab === 'stats')  renderExtendedStats(playerId);
-  if (tab === 'log')    renderMatchLog(playerId);
-  if (tab === 'clubs')  renderPlayerClubHistory(playerId);
-  if (tab === 'ach')    renderPlayerAchievements(playerId);
-  if (tab === 'events') renderPlayerEvents(playerId);
+  if (tab === 'stats')    renderExtendedStats(playerId);
+  if (tab === 'log')      renderMatchLog(playerId);
+  if (tab === 'training') renderPlayerTraining(playerId, 'guardian');
+  if (tab === 'clubs')    renderPlayerClubHistory(playerId);
+  if (tab === 'ach')      renderPlayerAchievements(playerId);
+  if (tab === 'events')   renderPlayerEvents(playerId);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // EXTENDED STATS
 // ══════════════════════════════════════════════════════════════════════════════
+// ── TRAINING — DRILL TYPES ───────────────────────────────────────────────────
+// Each drill type has its own relevant metric fields. List is intentionally
+// flexible to extend later — add a new entry here, with EN/PT i18n keys for
+// both the drill name and each metric label, same pattern as EXT_STAT_FIELDS.
+const DRILL_TYPES = [
+  { key: 'juggling', i18nKey: 'drill_juggling', fields: [
+    { key: 'durationMin',     i18nKey: 'drillf_duration_min' },
+    { key: 'leftFootTouches', i18nKey: 'drillf_left_touches' },
+    { key: 'rightFootTouches',i18nKey: 'drillf_right_touches' },
+  ]},
+  { key: 'zigzag', i18nKey: 'drill_zigzag', fields: [
+    { key: 'durationMin', i18nKey: 'drillf_duration_min' },
+    { key: 'obstacles',   i18nKey: 'drillf_obstacles' },
+    { key: 'bestTimeSec', i18nKey: 'drillf_best_time_sec' },
+    { key: 'attempts',    i18nKey: 'drillf_attempts' },
+  ]},
+  { key: 'longShots', i18nKey: 'drill_long_shots', fields: [
+    { key: 'shotsTaken',    i18nKey: 'drillf_shots_taken' },
+    { key: 'shotsOnTarget', i18nKey: 'drillf_shots_on_target' },
+    { key: 'distanceM',     i18nKey: 'drillf_distance_m' },
+  ]},
+  { key: 'crosses', i18nKey: 'drill_crosses', fields: [
+    { key: 'crossesAttempted', i18nKey: 'drillf_crosses_attempted' },
+    { key: 'crossesCompleted', i18nKey: 'drillf_crosses_completed' },
+  ]},
+  { key: 'shortPassing', i18nKey: 'drill_short_passing', fields: [
+    { key: 'durationMin',     i18nKey: 'drillf_duration_min' },
+    { key: 'passesAttempted', i18nKey: 'drillf_passes_attempted' },
+    { key: 'passesCompleted', i18nKey: 'drillf_passes_completed' },
+  ]},
+  { key: 'shooting', i18nKey: 'drill_shooting', fields: [
+    { key: 'shotsTaken',    i18nKey: 'drillf_shots_taken' },
+    { key: 'shotsOnTarget', i18nKey: 'drillf_shots_on_target' },
+  ]},
+  { key: 'fitness', i18nKey: 'drill_fitness', fields: [
+    { key: 'durationMin', i18nKey: 'drillf_duration_min' },
+    { key: 'distanceKm',  i18nKey: 'drillf_distance_km' },
+    { key: 'sprints',     i18nKey: 'drillf_sprints' },
+  ]},
+  { key: 'ballControl', i18nKey: 'drill_ball_control', fields: [
+    { key: 'durationMin', i18nKey: 'drillf_duration_min' },
+    { key: 'touches',     i18nKey: 'drillf_touches' },
+    { key: 'errors',      i18nKey: 'drillf_errors' },
+  ]},
+  { key: 'other', i18nKey: 'drill_other', fields: [
+    { key: 'durationMin', i18nKey: 'drillf_duration_min' },
+    { key: 'description', i18nKey: 'drillf_description', isText: true },
+  ]},
+];
+
+function drillTypeLabel(key) {
+  const d = DRILL_TYPES.find(d => d.key === key);
+  return d ? I18n.t(d.i18nKey) : (key || '');
+}
+function drillFieldLabel(drillKey, fieldKey) {
+  const d = DRILL_TYPES.find(d => d.key === drillKey);
+  const f = d?.fields.find(f => f.key === fieldKey);
+  return f ? I18n.t(f.i18nKey) : fieldKey;
+}
+
 const EXT_STAT_FIELDS = [
   { section: 'Shooting', sectionKey: 'ext_sec_shooting', fields: [
     { key: 'shotsOnTarget',  label: 'Shots on Target',  i18nKey: 'ext_shotsOnTarget' },
@@ -4524,6 +4739,261 @@ const EVENT_TYPE_ICONS = {
   'Other':      '&#128197;',
 };
 
+// ── TRAINING TAB — shared between guardian view and player portal ──────────
+// viewAs is 'guardian' or 'player' — controls which buttons are shown.
+// Guardian: can see everything, create sessions FOR the player, cannot edit
+// or delete a player-created session.
+// Player: can see everything, create/edit/delete only their OWN sessions,
+// can mark a guardian-assigned session as completed (filling in results)
+// but cannot delete or reassign it.
+async function renderPlayerTraining(playerId, viewAs) {
+  const el = document.getElementById(viewAs === 'player' ? 'playerPortalTrainingContent' : `tracked-training-${playerId}`);
+  if (!el) return;
+  const player = await DB.get('players', playerId);
+  if (!player) return;
+
+  const sessions = await getTrainingSessionsForPlayer(playerId, State.currentSeasonId);
+  sessions.sort((a,b) => new Date(b.scheduledDate||0) - new Date(a.scheduledDate||0));
+
+  const { totals } = await getTrainingProgress(playerId, State.currentSeasonId);
+  const progressKeys = Object.keys(totals);
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <h3 style="font-size:14px;font-weight:700">${I18n.t('tr_title')} — ${esc(shortName(player.fullName))}</h3>
+      <button class="btn btn-primary btn-sm" onclick="openTrainingForm(${playerId},'${viewAs}')">+ ${viewAs==='guardian' ? I18n.t('tr_btn_create_for_player', {name: shortName(player.fullName)}) : I18n.t('tr_form_title')}</button>
+    </div>
+
+    <div id="trainingFormPanel-${playerId}" class="form-panel panel-hidden" style="margin-bottom:16px"></div>
+
+    ${progressKeys.length ? `
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${I18n.t('tr_progress_title')}</div>
+      ${progressKeys.map(drillKey => {
+        const t = totals[drillKey];
+        const fieldEntries = Object.entries(t.fieldSums);
+        return `<div style="margin-bottom:10px">
+          <div style="font-size:12px;font-weight:700;margin-bottom:4px">${drillTypeLabel(drillKey)} <span style="color:var(--muted);font-weight:400">(${t.sessionCount} ${I18n.t('tr_progress_sessions_suffix')})</span></div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap">
+            ${fieldEntries.map(([fk,sum]) => `<div style="font-size:11px;color:var(--muted)">${drillFieldLabel(drillKey,fk)}: <strong style="color:var(--dark)">${sum}</strong></div>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : `<p style="font-size:12px;color:var(--muted);margin-bottom:14px">${I18n.t('tr_progress_empty')}</p>`}
+
+    ${!sessions.length ? `<div class="empty"><strong>${I18n.t('tr_empty_title')}</strong><p>${viewAs==='guardian' ? I18n.t('tr_empty_desc_guardian',{name:shortName(player.fullName)}) : ''}</p></div>` : `
+    <div class="who-played-list">
+      ${sessions.map(s => `
+        <div class="wp-row" onclick="openTrainingViewer(${s.trainingSessionId},'${viewAs}')" style="cursor:pointer">
+          <div class="wp-info">
+            <span class="wp-num">${s.status==='Completed'?'&#10003;':'&#128197;'}</span>
+            <span class="wp-name">${esc(s.title)}</span>
+            <span class="pos-pill" style="margin-left:auto">${s.scheduledDate?fmtDate(s.scheduledDate):'—'}</span>
+            <span class="wp-role-pill ${s.status==='Completed'?'wp-role-starter':'wp-role-sub'}" style="margin-left:6px">${s.status==='Completed'?I18n.t('tr_status_completed'):I18n.t('tr_status_scheduled')}</span>
+          </div>
+        </div>`).join('')}
+    </div>`}
+  `;
+}
+
+// ── CREATE / EDIT FORM — dynamic drill rows ──────────────────────────────────
+let _trainingFormDrills = []; // working list of drills while the form is open
+let _trainingFormPlayerId = null;
+let _trainingFormViewAs = null;
+let _trainingFormEditingId = null;
+
+async function openTrainingForm(playerId, viewAs, existingSessionId) {
+  const panel = document.getElementById(`trainingFormPanel-${playerId}`);
+  if (!panel) return;
+  _trainingFormPlayerId = playerId;
+  _trainingFormViewAs = viewAs;
+  _trainingFormEditingId = existingSessionId || null;
+
+  let existing = null;
+  if (existingSessionId) {
+    existing = await DB.get('trainingSessions', existingSessionId);
+    if (existing && !canEditTrainingSession(existing, viewAs)) {
+      Toast.error(I18n.t('tr_err_cannot_edit', {who: existing.createdBy === 'player' ? I18n.t('tr_created_by_player') : I18n.t('tr_created_by_guardian')}));
+      return;
+    }
+  }
+
+  _trainingFormDrills = existing ? JSON.parse(JSON.stringify(existing.drills||[])) : [];
+
+  panel.innerHTML = `
+    <h3>${I18n.t('tr_form_title')}</h3>
+    <div class="form-grid">
+      <div class="form-group full"><label>${I18n.t('tr_lbl_title')}</label><input id="tr-title" type="text" value="${esc(existing?.title||'')}"></div>
+      <div class="form-group"><label>${I18n.t('tr_lbl_date')}</label><input id="tr-date" type="date" value="${existing?.scheduledDate||new Date().toISOString().split('T')[0]}"></div>
+    </div>
+    <div style="margin:12px 0">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">${I18n.t('tr_lbl_drills')}</label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addTrainingDrillRow(${playerId})">${I18n.t('tr_btn_add_drill')}</button>
+      </div>
+      <div id="trainingDrillRows-${playerId}"></div>
+    </div>
+    <div class="form-group full"><label>${I18n.t('tr_lbl_notes')}</label><textarea id="tr-notes">${esc(existing?.notes||'')}</textarea></div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveTrainingFormSession()">${I18n.t('common_save')}</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('trainingFormPanel-${playerId}').classList.add('panel-hidden')">${I18n.t('common_cancel')}</button>
+    </div>
+  `;
+  panel.classList.remove('panel-hidden');
+  renderTrainingDrillRows(playerId);
+  panel.scrollIntoView({behavior:'smooth'});
+}
+
+function addTrainingDrillRow(playerId) {
+  _trainingFormDrills.push({ drillType: DRILL_TYPES[0].key });
+  renderTrainingDrillRows(playerId);
+}
+
+function removeTrainingDrillRow(playerId, index) {
+  _trainingFormDrills.splice(index, 1);
+  renderTrainingDrillRows(playerId);
+}
+
+function updateTrainingDrillType(playerId, index, newType) {
+  // Reset to a fresh object for the new type so leftover fields from the
+  // previous drill type don't linger invisibly in the saved record.
+  _trainingFormDrills[index] = { drillType: newType };
+  renderTrainingDrillRows(playerId);
+}
+
+function updateTrainingDrillField(index, fieldKey, value, isText) {
+  _trainingFormDrills[index][fieldKey] = isText ? value : (parseFloat(value)||0);
+}
+
+function renderTrainingDrillRows(playerId) {
+  const el = document.getElementById(`trainingDrillRows-${playerId}`);
+  if (!el) return;
+  el.innerHTML = _trainingFormDrills.map((drill, i) => {
+    const def = DRILL_TYPES.find(d => d.key === drill.drillType) || DRILL_TYPES[0];
+    return `
+      <div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <select style="flex:1" onchange="updateTrainingDrillType(${playerId},${i},this.value)">
+            ${DRILL_TYPES.map(d => `<option value="${d.key}" ${d.key===drill.drillType?'selected':''}>${drillTypeLabel(d.key)}</option>`).join('')}
+          </select>
+          <button type="button" class="btn btn-danger btn-sm" onclick="removeTrainingDrillRow(${playerId},${i})">${I18n.t('tr_btn_remove_drill')}</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">
+          ${def.fields.map(f => `
+            <div>
+              <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:2px">${drillFieldLabel(def.key, f.key)}</label>
+              ${f.isText
+                ? `<input type="text" value="${esc(drill[f.key]||'')}" oninput="updateTrainingDrillField(${i},'${f.key}',this.value,true)" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:3px;font-size:13px">`
+                : `<input type="number" min="0" value="${drill[f.key]||0}" oninput="updateTrainingDrillField(${i},'${f.key}',this.value,false)" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:3px;font-size:13px">`}
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }).join('') || `<p style="font-size:12px;color:var(--muted)">—</p>`;
+}
+
+async function saveTrainingFormSession() {
+  const title = document.getElementById('tr-title')?.value.trim();
+  if (!title) { Toast.error(I18n.t('tr_err_title_required')); return; }
+  const playerId = _trainingFormPlayerId;
+  const viewAs = _trainingFormViewAs;
+
+  const session = {
+    playerId,
+    seasonId: State.currentSeasonId,
+    title,
+    scheduledDate: document.getElementById('tr-date')?.value || null,
+    notes: document.getElementById('tr-notes')?.value.trim() || null,
+    drills: JSON.parse(JSON.stringify(_trainingFormDrills)),
+  };
+
+  if (_trainingFormEditingId) {
+    const existing = await DB.get('trainingSessions', _trainingFormEditingId);
+    if (!existing || !canEditTrainingSession(existing, viewAs)) {
+      Toast.error(I18n.t('tr_err_cannot_edit', {who: existing?.createdBy === 'player' ? I18n.t('tr_created_by_player') : I18n.t('tr_created_by_guardian')}));
+      return;
+    }
+    session.trainingSessionId = _trainingFormEditingId;
+    session.status = existing.status;
+    session.createdBy = existing.createdBy; // ownership never changes on edit
+  } else {
+    session.status = 'Scheduled';
+    session.createdBy = viewAs; // 'guardian' or 'player' — whoever created it now
+  }
+
+  try {
+    await saveTrainingSession(session);
+    Toast.show(I18n.t('tr_saved'));
+    document.getElementById(`trainingFormPanel-${playerId}`)?.classList.add('panel-hidden');
+    await renderPlayerTraining(playerId, viewAs);
+  } catch(err) {
+    Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
+  }
+}
+
+// ── VIEWER — view a single session, with permission-aware action buttons ────
+async function openTrainingViewer(sessionId, viewAs) {
+  const session = await DB.get('trainingSessions', sessionId);
+  if (!session) return;
+  const player = await DB.get('players', session.playerId);
+  const canEdit = canEditTrainingSession(session, viewAs);
+  const canDelete = canDeleteTrainingSession(session, viewAs);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'rm-form-overlay open';
+  overlay.id = 'trainingViewerOverlay';
+  overlay.innerHTML = `
+    <div class="rm-form" style="max-width:480px">
+      <h2>${esc(session.title)}</h2>
+      <div style="display:flex;gap:8px;align-items:center;margin:6px 0 14px;flex-wrap:wrap">
+        <span class="wp-role-pill ${session.status==='Completed'?'wp-role-starter':'wp-role-sub'}">${session.status==='Completed'?I18n.t('tr_status_completed'):I18n.t('tr_status_scheduled')}</span>
+        <span class="pos-pill">${session.scheduledDate?fmtDate(session.scheduledDate):'—'}</span>
+        <span style="font-size:11px;color:var(--muted)">${session.createdBy==='player'?I18n.t('tr_created_by_player'):I18n.t('tr_created_by_guardian')}</span>
+      </div>
+      ${(session.drills||[]).length ? session.drills.map(d => {
+        const def = DRILL_TYPES.find(dt => dt.key === d.drillType);
+        return `<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px">
+          <div style="font-size:12px;font-weight:700;margin-bottom:6px">${drillTypeLabel(d.drillType)}</div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap">
+            ${(def?.fields||[]).map(f => `<div style="font-size:11px;color:var(--muted)">${drillFieldLabel(d.drillType,f.key)}: <strong style="color:var(--dark)">${esc(String(d[f.key]??'—'))}</strong></div>`).join('')}
+          </div>
+        </div>`;
+      }).join('') : ''}
+      ${session.notes?`<p style="font-size:12px;color:var(--muted);margin-top:8px">${esc(session.notes)}</p>`:''}
+      <div class="form-actions" style="margin-top:16px;justify-content:flex-end;flex-wrap:wrap">
+        ${session.status!=='Completed' ? `<button class="btn btn-secondary" onclick="markTrainingSessionCompleted(${sessionId},'${viewAs}')">${I18n.t('tr_btn_mark_completed')}</button>` : ''}
+        ${canEdit ? `<button class="btn btn-secondary" onclick="document.getElementById('trainingViewerOverlay').remove();openTrainingForm(${session.playerId},'${viewAs}',${sessionId})">${I18n.t('tr_btn_edit')}</button>` : ''}
+        ${canDelete ? `<button class="btn btn-danger" onclick="confirmDeleteTrainingSession(${sessionId},'${viewAs}')">${I18n.t('tr_btn_delete')}</button>` : ''}
+        <button class="btn btn-secondary" onclick="document.getElementById('trainingViewerOverlay').remove()">${I18n.t('tr_btn_close')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function markTrainingSessionCompleted(sessionId, viewAs) {
+  const session = await DB.get('trainingSessions', sessionId);
+  if (!session) return;
+  session.status = 'Completed';
+  await saveTrainingSession(session);
+  document.getElementById('trainingViewerOverlay')?.remove();
+  Toast.show(I18n.t('tr_saved'));
+  await renderPlayerTraining(session.playerId, viewAs);
+}
+
+function confirmDeleteTrainingSession(sessionId, viewAs) {
+  if (!window.confirm(I18n.t('tr_confirm_delete_body'))) return;
+  (async () => {
+    const session = await DB.get('trainingSessions', sessionId);
+    try {
+      await deleteTrainingSession(sessionId, viewAs);
+      document.getElementById('trainingViewerOverlay')?.remove();
+      Toast.show(I18n.t('ch_deleted'));
+      if (session) await renderPlayerTraining(session.playerId, viewAs);
+    } catch(err) {
+      Toast.error(err.message);
+    }
+  })();
+}
+
 async function renderPlayerEvents(playerId) {
   const el = document.getElementById(`tracked-events-${playerId}`);
   if (!el) return;
@@ -4753,7 +5223,7 @@ async function handleSyncDownload() {
 // DB PUT WRAPPER — marks records as modified for sync
 // ══════════════════════════════════════════════════════════════════════════════
 const _origPut = DB.put.bind(DB);
-const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries']);
+const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries','trainingSessions']);
 
 DB.put = async function(store, obj) {
   if (SYNC_STORES_SET.has(store) && obj) {
@@ -7917,7 +8387,7 @@ async function init() {
     // If a store is missing, the IndexedDB upgrade didn't run (version mismatch
     // or interrupted upgrade). Force a clean reopen rather than running silently
     // broken for the rest of the session.
-    const requiredStores = ['appMeta','seasons','players','games','gamePlayers','goalEvents','events','playerGameStats','achievements','clubHistory','injuries','opponents'];
+    const requiredStores = ['appMeta','seasons','players','games','gamePlayers','goalEvents','events','playerGameStats','achievements','clubHistory','injuries','opponents','trainingSessions'];
     const missing = requiredStores.filter(s => !DB.hasStore(s));
     if (missing.length) {
       console.error('[init] Missing IndexedDB stores after open:', missing);
