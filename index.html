@@ -1036,6 +1036,7 @@ function setupPlayerPortalNav() {
   const menu = document.getElementById('portalMobileMenu');
   if (hamburger && menu) {
     hamburger.addEventListener('click', () => menu.classList.toggle('open'));
+    window.addEventListener('scroll', () => menu.classList.remove('open'), { passive: true });
     _portalNavWired = true;
   }
 }
@@ -5413,7 +5414,10 @@ async function openPortalGameViewer(gameId) {
   overlay.id = 'portalGameViewerOverlay';
   overlay.innerHTML = `
     <div class="rm-form" style="max-width:480px">
-      <h2>${esc(game.opponent)}</h2>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <h2 style="margin:0">${esc(game.opponent)}</h2>
+        <button onclick="document.getElementById('portalGameViewerOverlay').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;padding:0 4px" aria-label="Close">&#10005;</button>
+      </div>
       <div style="display:flex;gap:8px;align-items:center;margin:6px 0 14px;flex-wrap:wrap">
         <span class="pos-pill">${fmtDate(game.date)}</span>
         <span style="font-size:11px;color:var(--muted)">${homeAwayLabel(game.homeAway)}</span>
@@ -7083,6 +7087,7 @@ const Nav = (() => {
       l.classList.toggle('active', l.dataset.portalSection === section);
     });
     State.currentPortalSection = section;
+    try { sessionStorage.setItem('squadTracker_lastPortalSection', section); } catch(e) {}
 
     // Show the current page's icon + name in the header bar, replacing the
     // NextEleven wordmark while on a sub-page — as requested.
@@ -7830,6 +7835,13 @@ function attachEvents() {
   document.getElementById('hamburger').addEventListener('click', () => {
     document.getElementById('mobileMenu').classList.toggle('open');
   });
+
+  // Close the mobile menu if the page scrolls while it's open — a menu
+  // sitting fixed on top of content the person is actively scrolling past
+  // reads as a stuck overlay rather than a deliberate choice to keep it open.
+  window.addEventListener('scroll', () => {
+    document.getElementById('mobileMenu')?.classList.remove('open');
+  }, { passive: true });
 
   // Confirm dialog
   document.getElementById('dialogConfirm').addEventListener('click', () => Confirm.resolve(true));
@@ -9016,7 +9028,14 @@ async function init() {
         document.getElementById('playerPortal').style.display = 'flex';
         document.getElementById('playerPortalName').textContent = shortName(portalPlayer.fullName);
         setupPlayerPortalNav();
-        await Nav.goPortal('home');
+        let restoredPortalSection = 'home';
+        try {
+          const savedPortalSection = sessionStorage.getItem('squadTracker_lastPortalSection');
+          if (savedPortalSection && document.getElementById(`pp-sec-${savedPortalSection}`)) {
+            restoredPortalSection = savedPortalSection;
+          }
+        } catch(e) {}
+        await Nav.goPortal(restoredPortalSection);
         return; // stop here — never fall through to the guardian gate or app
       } else {
         // The player record this PIN pointed to no longer exists — clear
