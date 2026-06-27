@@ -558,7 +558,10 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
             <select id="gf-compType"><option value="League" data-i18n="comp_league">League</option><option value="Cup" data-i18n="comp_cup">Cup</option><option value="Friendly" data-i18n="comp_friendly">Friendly</option><option value="Tournament" data-i18n="comp_tournament">Tournament</option><option value="Trial" data-i18n="comp_trial">Trial</option></select>
           </div>
           <div class="form-group"><label data-i18n="games_lbl_compname">Competition Name</label><input id="gf-compName" type="text" placeholder="e.g. Liga Revelação"></div>
-          <div class="form-group"><label data-i18n="games_lbl_ground">Venue / Ground</label><input id="gf-ground" type="text" placeholder="e.g. Estádio Municipal"></div>
+          <div class="form-group"><label data-i18n="games_lbl_ground">Venue / Ground</label>
+            <input id="gf-ground" type="text" placeholder="e.g. Estádio Municipal">
+            <div id="gf-ground-hint" style="display:none;font-size:11px;color:var(--muted);margin-top:4px"></div>
+          </div>
           <div class="form-group full"><label data-i18n="games_lbl_notes">Team Notes</label><textarea id="gf-notes" placeholder="General notes about this game..."></textarea></div>
         </div>
         <div class="form-actions">
@@ -848,6 +851,130 @@ async function seedOpponentsIfEmpty() {
       notes: null,
     });
   }
+}
+
+// ── OPPONENTS CATALOGUE — SETTINGS TAB ───────────────────────────────────────
+// ── ACCOUNT CARD — Settings → Cloud Sync tab ─────────────────────────────────
+// Login is only required to enable cloud sync. The app works fully offline,
+// with full local data, whether or not anyone is signed in.
+function renderAccountCard() {
+  const el = document.getElementById('accountCard');
+  if (!el) return;
+
+  if (Auth.isLoggedIn()) {
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-weight:700;font-size:13px">${I18n.t('acc_logged_in_as')}</div>
+          <div style="font-size:13px;color:var(--muted)">${esc(Auth.getEmail()||'')}</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="handleLogout()">${I18n.t('acc_btn_logout')}</button>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin-top:10px">${I18n.t('acc_logged_in_note')}</p>
+    `;
+    return;
+  }
+
+  el.innerHTML = `
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">${I18n.t('acc_logged_out_note')}</p>
+    <div class="tab-bar-row" style="margin-bottom:14px">
+      <button class="import-tab active-tab" id="acc-tab-login" onclick="switchAccountFormTab('login')">${I18n.t('acc_tab_login')}</button>
+      <button class="import-tab" id="acc-tab-signup" onclick="switchAccountFormTab('signup')">${I18n.t('acc_tab_signup')}</button>
+    </div>
+    <div class="form-grid" style="margin-bottom:12px">
+      <div class="form-group full"><label>${I18n.t('acc_lbl_email')}</label><input id="acc-email" type="email" placeholder="you@example.com" autocomplete="email"></div>
+      <div class="form-group full"><label>${I18n.t('acc_lbl_password')}</label><input id="acc-password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
+    </div>
+    <div id="acc-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
+    <button class="btn btn-primary" id="acc-submit-btn" onclick="handleAccountSubmit()">${I18n.t('acc_btn_login')}</button>
+  `;
+}
+
+let _accountFormMode = 'login';
+function switchAccountFormTab(mode) {
+  _accountFormMode = mode;
+  document.getElementById('acc-tab-login')?.classList.toggle('active-tab', mode==='login');
+  document.getElementById('acc-tab-signup')?.classList.toggle('active-tab', mode==='signup');
+  const btn = document.getElementById('acc-submit-btn');
+  if (btn) btn.textContent = mode === 'login' ? I18n.t('acc_btn_login') : I18n.t('acc_btn_signup');
+  const pwInput = document.getElementById('acc-password');
+  if (pwInput) pwInput.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+  const err = document.getElementById('acc-error');
+  if (err) err.style.display = 'none';
+}
+
+async function handleAccountSubmit() {
+  const email = document.getElementById('acc-email')?.value.trim();
+  const password = document.getElementById('acc-password')?.value;
+  const errEl = document.getElementById('acc-error');
+  if (errEl) errEl.style.display = 'none';
+  if (!email || !password) {
+    if (errEl) { errEl.textContent = I18n.t('acc_err_required'); errEl.style.display = ''; }
+    return;
+  }
+  if (password.length < 6) {
+    if (errEl) { errEl.textContent = I18n.t('acc_err_password_short'); errEl.style.display = ''; }
+    return;
+  }
+  try {
+    if (_accountFormMode === 'login') {
+      await Auth.login(email, password);
+      Toast.show(I18n.t('acc_login_success'));
+    } else {
+      const result = await Auth.signUp(email, password);
+      if (!result.access_token) {
+        // Supabase may require email confirmation before issuing a session
+        Toast.show(I18n.t('acc_signup_check_email'));
+      } else {
+        Toast.show(I18n.t('acc_signup_success'));
+      }
+    }
+    renderAccountCard();
+    Sync.updateSyncUI();
+    if (Auth.isLoggedIn()) await claimLocalDataForAccount();
+  } catch(err) {
+    if (errEl) { errEl.textContent = err.message; errEl.style.display = ''; }
+  }
+}
+
+// ── DATA MIGRATION — claim existing local data for the now-logged-in account ──
+// Runs once, automatically, right after a successful login or sign-up on a
+// device that already has local data from before accounts existed. Every
+// local record gets tagged with this account's user id and is marked for
+// re-sync, so the next sync correctly pushes it under the right owner.
+// Safe to run more than once — it only touches records that don't already
+// belong to this exact account.
+async function claimLocalDataForAccount() {
+  const userId = Auth.getUserId();
+  if (!userId) return;
+  const alreadyClaimed = await DB.get('appMeta', 'dataClaimedByUserId');
+  if (alreadyClaimed?.value === userId) return; // already done for this account on this device
+
+  let claimed = 0;
+  for (const store of SYNC_STORES_SET) {
+    let records;
+    try { records = await DB.getAll(store); } catch(e) { continue; }
+    for (const record of records) {
+      if (record.userId === userId) continue;
+      record.userId = userId;
+      record.syncStatus = record.cloudId ? 'modified' : 'local'; // force re-push so the cloud row gets user_id too
+      await _origPut(store, record);
+      claimed++;
+    }
+  }
+  await _origPut('appMeta', { metaKey: 'dataClaimedByUserId', value: userId });
+  if (claimed > 0) {
+    Toast.show(I18n.t('acc_data_claimed', {n: claimed}));
+  }
+}
+
+async function handleLogout() {
+  Confirm.show(I18n.t('acc_confirm_logout_title'), I18n.t('acc_confirm_logout_body'), async () => {
+    await Auth.logout();
+    Toast.show(I18n.t('acc_logout_success'));
+    renderAccountCard();
+    Sync.updateSyncUI();
+  });
 }
 
 // ── OPPONENTS CATALOGUE — SETTINGS TAB ───────────────────────────────────────
@@ -1454,6 +1581,28 @@ const TR = {
     opp_dropdown_add_new:'+ Add new opponent:',
     opp_dropdown_no_match:'No match — type a name and tap below to add it',
     opp_import_dupes_skipped:'already in catalogue, skipped',
+
+    // ── ACCOUNT / AUTH ──
+    acc_title:'Account',
+    acc_logged_in_as:'Logged in as',
+    acc_logged_in_note:'Your data syncs to the cloud under this account only — no one else can see or modify it, even with the same app.',
+    acc_logged_out_note:'Log in or create a free account to sync your data to the cloud and access it from other devices. The app works fully offline without one.',
+    acc_tab_login:'Log In', acc_tab_signup:'Sign Up',
+    acc_lbl_email:'Email', acc_lbl_password:'Password',
+    acc_btn_login:'Log In', acc_btn_signup:'Create Account',
+    acc_btn_logout:'Log Out',
+    acc_err_required:'Email and password are required.',
+    acc_err_password_short:'Password must be at least 6 characters.',
+    acc_login_success:'Logged in.',
+    acc_signup_success:'Account created — you are now logged in.',
+    acc_signup_check_email:'Account created — check your email to confirm before logging in.',
+    acc_logout_success:'Logged out.',
+    acc_confirm_logout_title:'Log Out',
+    acc_confirm_logout_body:'You will need to log in again to sync. Your local data on this device is not affected.',
+    acc_err_login_required:'Log in first to sync with the cloud.',
+    acc_data_claimed:'{n} existing record(s) on this device are now linked to your account. Tap Sync Now to upload them.',
+    games_ground_autofilled:'&#10003; Auto-filled from season Home Ground: {ground}',
+    games_no_home_ground_set:'No Home Ground set for this season yet. <a href="#" onclick="event.preventDefault();Nav.go(\'settings\')" style="color:var(--black);font-weight:700">Set one in Settings</a> to auto-fill this field next time.',
     set_lbl_home_ground:'Home Ground',
     set_lbl_age_group:'Age Group',
     set_lbl_club_name:'Club Name',
@@ -2133,6 +2282,28 @@ const TR = {
     opp_dropdown_add_new:'+ Adicionar novo adversário:',
     opp_dropdown_no_match:'Sem correspondência — escreva um nome e toque abaixo para o adicionar',
     opp_import_dupes_skipped:'já no catálogo, ignorado(s)',
+
+    // ── ACCOUNT / AUTH ──
+    acc_title:'Conta',
+    acc_logged_in_as:'Sessão iniciada como',
+    acc_logged_in_note:'Os seus dados sincronizam com a nuvem apenas nesta conta — mais ninguém os pode ver ou alterar, mesmo usando a mesma aplicação.',
+    acc_logged_out_note:'Inicie sessão ou crie uma conta gratuita para sincronizar os seus dados com a nuvem e acedê-los noutros dispositivos. A aplicação funciona totalmente offline sem isso.',
+    acc_tab_login:'Iniciar Sessão', acc_tab_signup:'Criar Conta',
+    acc_lbl_email:'Email', acc_lbl_password:'Palavra-passe',
+    acc_btn_login:'Iniciar Sessão', acc_btn_signup:'Criar Conta',
+    acc_btn_logout:'Terminar Sessão',
+    acc_err_required:'O email e a palavra-passe são obrigatórios.',
+    acc_err_password_short:'A palavra-passe deve ter pelo menos 6 caracteres.',
+    acc_login_success:'Sessão iniciada.',
+    acc_signup_success:'Conta criada — sessão iniciada.',
+    acc_signup_check_email:'Conta criada — verifique o seu email para confirmar antes de iniciar sessão.',
+    acc_logout_success:'Sessão terminada.',
+    acc_confirm_logout_title:'Terminar Sessão',
+    acc_confirm_logout_body:'Terá de iniciar sessão novamente para sincronizar. Os seus dados locais neste dispositivo não são afetados.',
+    acc_err_login_required:'Inicie sessão primeiro para sincronizar com a nuvem.',
+    acc_data_claimed:'{n} registo(s) existentes neste dispositivo estão agora associados à sua conta. Toque em Sincronizar Agora para os enviar.',
+    games_ground_autofilled:'&#10003; Preenchido automaticamente a partir do Recinto da época: {ground}',
+    games_no_home_ground_set:'Ainda não definiu o Recinto desta época. <a href="#" onclick="event.preventDefault();Nav.go(\'settings\')" style="color:var(--black);font-weight:700">Defina um nas Definições</a> para preencher automaticamente da próxima vez.',
     set_lbl_home_ground:'Recinto',
     set_lbl_age_group:'Escalão',
     set_lbl_club_name:'Nome do Clube',
@@ -4359,6 +4530,7 @@ async function handleSyncTest() {
 }
 
 async function handleSyncNow() {
+  if (!Auth.isLoggedIn()) { Toast.error(I18n.t('acc_err_login_required')); return; }
   await Sync.run(false);
   Sync.updateSyncUI();
   // Refresh current section without resetting location
@@ -4371,12 +4543,14 @@ async function handleSyncNow() {
 }
 
 async function handleSyncUpload() {
+  if (!Auth.isLoggedIn()) { Toast.error(I18n.t('acc_err_login_required')); return; }
   Toast.show(I18n.t('sync_uploading_all'));
   await Sync.uploadAll();
   Sync.updateSyncUI();
 }
 
 async function handleSyncReset() {
+  if (!Auth.isLoggedIn()) { Toast.error(I18n.t('acc_err_login_required')); return; }
   Confirm.show(
     I18n.t('sync_confirm_reset_title'),
     I18n.t('sync_confirm_reset_body'),
@@ -4402,6 +4576,7 @@ async function handleSyncReset() {
 }
 
 async function handleSyncDownload() {
+  if (!Auth.isLoggedIn()) { Toast.error(I18n.t('acc_err_login_required')); return; }
   Toast.show(I18n.t('sync_downloading_all'));
   await Sync.downloadAll();
   await loadMeta();
@@ -5588,6 +5763,12 @@ const Render = (() => {
 
       <!-- SYNC TAB -->
       <div id="stab-panel-sync" style="display:none">
+      <!-- Account — login required for cloud sync, app works fully offline without it -->
+      <div class="settings-section">
+        <h3>&#128100; ${I18n.t('acc_title')}</h3>
+        <div class="card" id="accountCard"></div>
+      </div>
+
       <!-- Cloud Sync -->
       <div class="settings-section">
         <h3>&#9729; ${I18n.t('set_cloud_sync')}</h3>
@@ -5598,7 +5779,6 @@ const Render = (() => {
           <div class="form-grid" style="margin-bottom:12px">
             <div class="form-group full"><label>${I18n.t('set_lbl_supabase_url')}</label><input id="sync-url" type="url" placeholder="https://xxxx.supabase.co" value="${syncCfg.url||''}"></div>
             <div class="form-group full"><label>${I18n.t('set_lbl_supabase_key')}</label><input id="sync-key" type="text" placeholder="eyJhbGci..." value="${syncCfg.anonKey||''}"></div>
-            <div class="form-group"><label>${I18n.t('set_lbl_family_id')}</label><input id="sync-family" type="text" placeholder="e.g. mabere-family" value="${syncCfg.familyId||''}"></div>
             <div class="form-group"><label>${I18n.t('set_lbl_device_name')}</label><input id="sync-device" type="text" placeholder="e.g. Victor Phone" value="${syncCfg.deviceName||''}"></div>
           </div>
           <div class="btn-group" style="margin-bottom:12px;flex-wrap:wrap">
@@ -5986,6 +6166,92 @@ function handlePasteImport(type) {
 // ══════════════════════════════════════════════════════════════════════════════
 // SYNC MODULE
 // ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+// AUTH — Supabase email/password authentication.
+// Session (access token + user id) is cached in memory and persisted to
+// IndexedDB appMeta so the person stays logged in across app restarts,
+// fully offline-capable — login is only needed to enable cloud sync, never
+// to use the app itself.
+// ══════════════════════════════════════════════════════════════════════════════
+const Auth = (() => {
+  let _session = null; // { accessToken, refreshToken, userId, email, expiresAt }
+
+  function isLoggedIn() { return !!_session; }
+  function getUserId() { return _session?.userId || null; }
+  function getAccessToken() { return _session?.accessToken || null; }
+  function getEmail() { return _session?.email || null; }
+
+  function _supabaseAuthBase() {
+    const url = Sync.getRawConfig().url;
+    if (!url) throw new Error('Sync not configured — set up Supabase URL first.');
+    return url.replace(/\/$/, '') + '/auth/v1/';
+  }
+
+  async function _authRequest(path, body) {
+    const anonKey = Sync.getRawConfig().anonKey;
+    if (!anonKey) throw new Error('Sync not configured — set up Supabase anon key first.');
+    const res = await fetch(_supabaseAuthBase() + path, {
+      method: 'POST',
+      headers: { 'apikey': anonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.error_description || data?.msg || data?.message || ('Auth error ' + res.status);
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  function _storeSession(data) {
+    _session = {
+      accessToken:  data.access_token,
+      refreshToken: data.refresh_token,
+      userId:       data.user?.id,
+      email:        data.user?.email,
+      expiresAt:    Date.now() + (data.expires_in || 3600) * 1000,
+    };
+    return DB.put('appMeta', { metaKey: 'authSession', value: _session });
+  }
+
+  async function loadSession() {
+    const m = await DB.get('appMeta', 'authSession');
+    if (m && m.value) {
+      _session = m.value;
+      // If the access token has expired, try to refresh it silently.
+      if (_session.expiresAt && Date.now() > _session.expiresAt && _session.refreshToken) {
+        try { await refresh(); } catch(e) { _session = null; await DB.del('appMeta','authSession').catch(()=>{}); }
+      }
+    }
+  }
+
+  async function signUp(email, password) {
+    const data = await _authRequest('signup', { email, password });
+    if (data.access_token) await _storeSession(data);
+    return data;
+  }
+
+  async function login(email, password) {
+    const data = await _authRequest('token?grant_type=password', { email, password });
+    await _storeSession(data);
+    return data;
+  }
+
+  async function refresh() {
+    if (!_session?.refreshToken) throw new Error('No refresh token available.');
+    const data = await _authRequest('token?grant_type=refresh_token', { refresh_token: _session.refreshToken });
+    await _storeSession(data);
+    return data;
+  }
+
+  async function logout() {
+    _session = null;
+    await DB.del('appMeta', 'authSession').catch(()=>{});
+  }
+
+  return { isLoggedIn, getUserId, getAccessToken, getEmail, loadSession, signUp, login, refresh, logout };
+})();
+
 const Sync = (() => {
   // Config loaded from IndexedDB appMeta
   let _cfg = { url:'', anonKey:'', familyId:'', deviceId:'', deviceName:'' };
@@ -6007,8 +6273,10 @@ const Sync = (() => {
   }
 
   function isConfigured() {
-    return !!((_cfg.url||'').trim() && (_cfg.anonKey||'').trim() && (_cfg.familyId||'').trim());
+    return !!((_cfg.url||'').trim() && (_cfg.anonKey||'').trim());
   }
+
+  function getRawConfig() { return { url: _cfg.url, anonKey: _cfg.anonKey }; }
 
   function isOnline() { return navigator.onLine; }
 
@@ -6070,6 +6338,7 @@ const Sync = (() => {
 
   async function supabaseRequest(method, table, body, params) {
     if (!isConfigured()) throw new Error('Sync not configured.');
+    if (!Auth.isLoggedIn()) throw new Error('Not logged in — sign in to sync your data to the cloud.');
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
     let url = base + table;
     const qs = params ? new URLSearchParams(params).toString() : '';
@@ -6081,11 +6350,15 @@ const Sync = (() => {
       ? 'return=representation'
       : 'return=representation';
 
+    // Use the logged-in user's real access token, never the anon key, for
+    // any request that touches user data — this is what makes auth.uid()
+    // resolve correctly in the RLS policies on the database side. The anon
+    // key alone carries no user identity at all.
     const res = await fetch(url, {
       method,
       headers: {
         'apikey':        _cfg.anonKey,
-        'Authorization': 'Bearer ' + _cfg.anonKey,
+        'Authorization': 'Bearer ' + Auth.getAccessToken(),
         'Content-Type':  'application/json',
         'Prefer':        prefer,
       },
@@ -6100,9 +6373,10 @@ const Sync = (() => {
   }
 
   async function testConnection() {
-    if (!isConfigured()) return { ok: false, msg: 'Missing URL, key, or family ID.' };
+    if (!isConfigured()) return { ok: false, msg: 'Missing URL or key.' };
+    if (!Auth.isLoggedIn()) return { ok: false, msg: 'Not logged in.' };
     try {
-      await supabaseRequest('GET', 'seasons', null, { family_id: 'eq.' + _cfg.familyId, limit: '1' });
+      await supabaseRequest('GET', 'seasons', null, { user_id: 'eq.' + Auth.getUserId(), limit: '1' });
       _status = 'connected';
       return { ok: true, msg: 'Connection successful.' };
     } catch(e) {
@@ -6113,7 +6387,7 @@ const Sync = (() => {
 
   // ── PUSH: local → cloud ────────────────────────────────────────────────────
   async function push() {
-    if (!isConfigured() || !isOnline()) return 0;
+    if (!isConfigured() || !isOnline() || !Auth.isLoggedIn()) return 0;
     let pushed = 0;
     for (const store of SYNC_STORES) {
       let records;
@@ -6131,7 +6405,8 @@ const Sync = (() => {
         delete payloadClean.syncStatus;
 
         const cloudRow = {
-          family_id:  _cfg.familyId,
+          user_id:    Auth.getUserId(),
+          family_id:  _cfg.familyId || null,
           device_id:  _cfg.deviceId,
           local_id:   localId,
           payload:    payloadClean,
@@ -6153,6 +6428,19 @@ const Sync = (() => {
               cloudRow,
               { id: 'eq.' + record.cloudId }
             );
+            // A PATCH blocked by row-level security returns HTTP 200/204 with
+            // an empty array, not an error — Postgres silently updated zero
+            // rows rather than rejecting the request. This happens for old
+            // rows still owned by no one (user_id is null), which the app
+            // itself cannot fix — see data_migration_pass3.sql. Detect that
+            // here instead of wrongly marking it as synced: fall back to
+            // creating a fresh row owned by this account so the data is
+            // never lost or stuck silently unsynced.
+            if (!result || result.length === 0) {
+              log('PATCH affected 0 rows (likely unowned old row, see Pass 3 migration) — inserting fresh instead | store:' + store);
+              delete cloudRow.id;
+              result = await supabaseRequest('POST', storeToTable(store), cloudRow);
+            }
           } else {
             // INSERT new row — no id field sent, Supabase generates it
             result = await supabaseRequest('POST', storeToTable(store), cloudRow);
@@ -6177,9 +6465,9 @@ const Sync = (() => {
 
   // ── PULL: cloud → local ────────────────────────────────────────────────────
   async function pull() {
-    if (!isConfigured() || !isOnline()) return 0;
+    if (!isConfigured() || !isOnline() || !Auth.isLoggedIn()) return 0;
     let pulled = 0;
-    const sinceParam = _lastSync ? { family_id: 'eq.'+_cfg.familyId, updated_at: 'gt.'+_lastSync } : { family_id: 'eq.'+_cfg.familyId };
+    const sinceParam = _lastSync ? { user_id: 'eq.'+Auth.getUserId(), updated_at: 'gt.'+_lastSync } : { user_id: 'eq.'+Auth.getUserId() };
     for (const store of SYNC_STORES) {
       let cloudRecords;
       try { cloudRecords = await supabaseRequest('GET', storeToTable(store), null, sinceParam); } catch(e) { log('Pull error '+store+': '+e.message); continue; }
@@ -6327,15 +6615,16 @@ const Sync = (() => {
   function getStatus() { return { status:_status, lastSync:_lastSync, pendingCount:_pendingCount, configured:isConfigured(), online:isOnline() }; }
   function fmtDateTime(d) { if(!d)return'—'; return new Date(d).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
 
-  // ── DELETE ALL CLOUD ROWS FOR FAMILY ─────────────────────────────────────
+  // ── DELETE ALL CLOUD ROWS FOR THE LOGGED-IN USER ─────────────────────────
   async function supabaseDelete(table) {
+    if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
-    const url = base + table + '?' + new URLSearchParams({ family_id: 'eq.' + _cfg.familyId }).toString();
+    const url = base + table + '?' + new URLSearchParams({ user_id: 'eq.' + Auth.getUserId() }).toString();
     const res = await fetch(url, {
       method: 'DELETE',
       headers: {
         'apikey': _cfg.anonKey,
-        'Authorization': 'Bearer ' + _cfg.anonKey,
+        'Authorization': 'Bearer ' + Auth.getAccessToken(),
         'Prefer': 'return=minimal',
       },
     });
@@ -6345,7 +6634,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig };
 })();
 
 function attachEvents() {
@@ -6723,12 +7012,33 @@ function resetGameForm() {
 
 // Auto-fill the Venue/Ground field from the season's Home Ground when Home is selected.
 // Only overwrites if the ground field is currently empty, so manual edits are never lost.
+// Always shows a visible hint explaining what happened, so this never fails silently.
 function autoFillHomeGround() {
   const venueSel = document.getElementById('gf-venue');
   const groundEl = document.getElementById('gf-ground');
+  const hint = document.getElementById('gf-ground-hint');
   if (!venueSel || !groundEl) return;
-  if (venueSel.value === 'Home' && !groundEl.value.trim() && State.currentSeason?.homeGround) {
-    groundEl.value = State.currentSeason.homeGround;
+
+  if (venueSel.value !== 'Home') {
+    if (hint) hint.style.display = 'none';
+    return;
+  }
+
+  const homeGround = State.currentSeason?.homeGround;
+  if (!homeGround) {
+    if (hint) {
+      hint.style.display = '';
+      hint.innerHTML = I18n.t('games_no_home_ground_set');
+    }
+    return;
+  }
+
+  if (!groundEl.value.trim()) {
+    groundEl.value = homeGround;
+  }
+  if (hint) {
+    hint.style.display = '';
+    hint.textContent = I18n.t('games_ground_autofilled', {ground: homeGround});
   }
 }
 
@@ -7459,6 +7769,7 @@ async function init() {
 
     await loadMeta();
     await Sync.loadConfig();
+    await Auth.loadSession();
 
     // One-time migration: stamp seasonId onto any injury records saved before
     // injuries were season-tracked, using the current season as a reasonable
@@ -7974,6 +8285,9 @@ function switchSettingsTab(tab) {
   }
   if (tab === 'opponents') {
     renderOpponentsTab();
+  }
+  if (tab === 'sync') {
+    renderAccountCard();
   }
 }
 
