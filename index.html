@@ -442,21 +442,24 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
      and only Training has any write capability at all (see Pass 1/2 rules).
      ══════════════════════════════════════════════════════════════════════════ -->
 <div id="playerPortal" style="display:none;min-height:100vh;flex-direction:column;background:var(--bg)">
-  <nav style="position:static;flex-wrap:wrap;height:auto;min-height:var(--nav-h);padding:8px 16px">
+  <nav style="position:static">
     <div class="nav-brand">
       <div class="nav-logo-mark"><span>11</span></div>
-      <div class="nav-wordmark">Next<b>Eleven</b></div>
+      <div class="nav-wordmark" id="playerPortalPageName">Next<b>Eleven</b></div>
       <span class="nav-season" id="playerPortalName"></span>
     </div>
-    <div class="portal-nav-links">
-      <button class="nav-account-btn nav-account-btn-active" data-portal-section="home" onclick="Nav.goPortal('home')">&#127968; <span data-i18n="pp_nav_home">Home</span></button>
-      <button class="nav-account-btn" data-portal-section="dashboard" onclick="Nav.goPortal('dashboard')">&#128202; <span data-i18n="pp_nav_dashboard">Dashboard</span></button>
-      <button class="nav-account-btn" data-portal-section="training" onclick="Nav.goPortal('training')">&#9917; <span data-i18n="pp_nav_training">Training</span></button>
-      <button class="nav-account-btn" data-portal-section="games" onclick="Nav.goPortal('games')">&#127944; <span data-i18n="pp_nav_games">Games</span></button>
-      <button class="nav-account-btn" data-portal-section="clubs" onclick="Nav.goPortal('clubs')">&#127942; <span data-i18n="pp_nav_clubs">Club History</span></button>
-    </div>
-    <button class="nav-account-btn" onclick="handlePlayerPortalExit()" title="">&#128274;</button>
+    <button class="nav-account-btn" onclick="handlePlayerPortalExit()" title="" style="margin-right:6px">&#128274;</button>
+    <button class="hamburger" id="portalHamburger" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
   </nav>
+  <div class="mobile-menu" id="portalMobileMenu">
+    <button class="nav-link" data-portal-section="home" onclick="Nav.goPortal('home');document.getElementById('portalMobileMenu').classList.remove('open')">&#127968; <span data-i18n="pp_nav_home">Home</span></button>
+    <button class="nav-link" data-portal-section="dashboard" onclick="Nav.goPortal('dashboard');document.getElementById('portalMobileMenu').classList.remove('open')">&#128202; <span data-i18n="pp_nav_dashboard">Dashboard</span></button>
+    <button class="nav-link" data-portal-section="training" onclick="Nav.goPortal('training');document.getElementById('portalMobileMenu').classList.remove('open')">&#9917; <span data-i18n="pp_nav_training">Training</span></button>
+    <button class="nav-link" data-portal-section="games" onclick="Nav.goPortal('games');document.getElementById('portalMobileMenu').classList.remove('open')">&#127944; <span data-i18n="pp_nav_games">Games</span></button>
+    <button class="nav-link" data-portal-section="clubs" onclick="Nav.goPortal('clubs');document.getElementById('portalMobileMenu').classList.remove('open')">&#127942; <span data-i18n="pp_nav_clubs">Club History</span></button>
+  </div>
   <div class="main-content">
     <div class="section active" id="pp-sec-home"></div>
     <div class="section" id="pp-sec-dashboard" style="display:none"></div>
@@ -1014,11 +1017,27 @@ async function handlePlayerPinSubmit() {
   document.getElementById('authGate').style.display = 'none';
   document.getElementById('playerPortal').style.display = 'flex';
   document.getElementById('playerPortalName').textContent = shortName(match.fullName);
+  setupPlayerPortalNav();
   // Make sure the season/meta context is loaded the same way the guardian
   // app loads it, since the portal reuses the same season-scoped data.
   await loadMeta();
   await Nav.goPortal('home');
   Toast.show(I18n.t('acc_player_login_success', {name: shortName(match.fullName)}));
+}
+
+// Wires the portal's hamburger menu open/close — separate from the
+// guardian app's attachEvents(), since the portal never runs that function
+// at all. Called once whenever the portal becomes visible (fresh PIN login
+// or session restore on refresh), guarded so it never double-binds.
+let _portalNavWired = false;
+function setupPlayerPortalNav() {
+  if (_portalNavWired) return;
+  const hamburger = document.getElementById('portalHamburger');
+  const menu = document.getElementById('portalMobileMenu');
+  if (hamburger && menu) {
+    hamburger.addEventListener('click', () => menu.classList.toggle('open'));
+    _portalNavWired = true;
+  }
 }
 
 // ── EMERGENCY OFFLINE BYPASS ──────────────────────────────────────────────────
@@ -6977,10 +6996,25 @@ const Nav = (() => {
   async function goPortal(section) {
     document.querySelectorAll('#playerPortal .section').forEach(s => s.style.display = 'none');
     document.getElementById(`pp-sec-${section}`).style.display = '';
-    document.querySelectorAll('#playerPortal .nav-account-btn[data-portal-section]').forEach(l => {
-      l.classList.toggle('nav-account-btn-active', l.dataset.portalSection === section);
+    document.querySelectorAll('#portalMobileMenu .nav-link[data-portal-section]').forEach(l => {
+      l.classList.toggle('active', l.dataset.portalSection === section);
     });
     State.currentPortalSection = section;
+
+    // Show the current page's icon + name in the header bar, replacing the
+    // NextEleven wordmark while on a sub-page — as requested.
+    const pageMeta = {
+      home:      { icon: '&#127968;', key: 'pp_nav_home' },
+      dashboard: { icon: '&#128202;', key: 'pp_nav_dashboard' },
+      training:  { icon: '&#9917;',  key: 'pp_nav_training' },
+      games:     { icon: '&#127944;', key: 'pp_nav_games' },
+      clubs:     { icon: '&#127942;', key: 'pp_nav_clubs' },
+    };
+    const nameEl = document.getElementById('playerPortalPageName');
+    if (nameEl && pageMeta[section]) {
+      nameEl.innerHTML = `${pageMeta[section].icon} ${I18n.t(pageMeta[section].key)}`;
+    }
+
     if (section === 'home')      await renderPlayerPortalHome();
     if (section === 'dashboard') await renderPlayerPortalStats();
     if (section === 'training')  await renderPlayerTrainingShell(State.portalPlayerId);
@@ -8885,6 +8919,7 @@ async function init() {
         document.getElementById('loading').style.display = 'none';
         document.getElementById('playerPortal').style.display = 'flex';
         document.getElementById('playerPortalName').textContent = shortName(portalPlayer.fullName);
+        setupPlayerPortalNav();
         await Nav.goPortal('home');
         return; // stop here — never fall through to the guardian gate or app
       } else {
