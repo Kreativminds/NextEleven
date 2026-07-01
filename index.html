@@ -2099,6 +2099,10 @@ const TR = {
     tr_drill_meta_line:'{duration} min · {difficulty} · {equipment}',
     tr_drill_not_done:'Not done',
     tr_progress_skipped_suffix:'skipped',
+    tr_completion_intro:'Enter what {name} actually did in this session, or mark a drill as not done.',
+    tr_btn_save_and_complete:'Save & Mark Completed',
+    tr_auto_name_prefix:'Training',
+    tr_auto_name_more:'more',
 
     // ── DRILL LIBRARY — DRILL NAMES ──
     drilllib_warmUp:'Warm-Up',
@@ -2921,6 +2925,10 @@ const TR = {
     tr_drill_meta_line:'{duration} min · {difficulty} · {equipment}',
     tr_drill_not_done:'Não realizado',
     tr_progress_skipped_suffix:'não realizadas',
+    tr_completion_intro:'Introduza o que {name} realmente fez nesta sessão, ou marque um exercício como não realizado.',
+    tr_btn_save_and_complete:'Guardar e Marcar como Concluída',
+    tr_auto_name_prefix:'Treino',
+    tr_auto_name_more:'mais',
 
     // ── DRILL LIBRARY — DRILL NAMES ──
     drilllib_warmUp:'Aquecimento',
@@ -5369,7 +5377,7 @@ async function renderPlayerTraining(playerId, viewAs) {
     ${!sessions.length ? `<div class="empty"><strong>${I18n.t('tr_empty_title')}</strong><p>${viewAs==='guardian' ? I18n.t('tr_empty_desc_guardian',{name:shortName(player.fullName)}) : ''}</p></div>` : `
     <div class="who-played-list">
       ${sessions.map(s => `
-        <div class="wp-row" onclick="openTrainingViewer(${s.trainingSessionId},'${viewAs}')" style="cursor:pointer">
+        <div class="wp-row" onclick="gdDebugLog('training row clicked: session '+${s.trainingSessionId});openTrainingViewer(${s.trainingSessionId},'${viewAs}')" style="cursor:pointer">
           <div class="wp-info">
             <span class="wp-num">${s.status==='Completed'?'&#10003;':'&#128197;'}</span>
             <span class="wp-name">${esc(s.title)}</span>
@@ -5386,6 +5394,8 @@ let _trainingFormDrills = []; // working list of drills while the form is open
 let _trainingFormPlayerId = null;
 let _trainingFormViewAs = null;
 let _trainingFormEditingId = null;
+let _trainingCompletionSessionId = null;
+let _trainingCompletionViewAs = null;
 
 async function openTrainingForm(playerId, viewAs, existingSessionId) {
   const panel = document.getElementById(`trainingFormPanel-${playerId}`);
@@ -5404,12 +5414,13 @@ async function openTrainingForm(playerId, viewAs, existingSessionId) {
   }
 
   _trainingFormDrills = existing ? JSON.parse(JSON.stringify(existing.drills||[])) : getDefaultSessionDrills();
+  const autoTitle = existing ? existing.title : buildAutoSessionName(new Date().toISOString().split('T')[0], _trainingFormDrills);
 
   panel.innerHTML = `
     <h3>${I18n.t('tr_form_title')}</h3>
     <div class="form-grid">
-      <div class="form-group full"><label>${I18n.t('tr_lbl_title')}</label><input id="tr-title" type="text" value="${esc(existing?.title||'')}"></div>
-      <div class="form-group"><label>${I18n.t('tr_lbl_date')}</label><input id="tr-date" type="date" value="${existing?.scheduledDate||new Date().toISOString().split('T')[0]}"></div>
+      <div class="form-group full"><label>${I18n.t('tr_lbl_title')}</label><input id="tr-title" type="text" value="${esc(autoTitle||'')}"></div>
+      <div class="form-group"><label>${I18n.t('tr_lbl_date')}</label><input id="tr-date" type="date" value="${existing?.scheduledDate||new Date().toISOString().split('T')[0]}" onchange="refreshAutoSessionName(${playerId})"></div>
     </div>
     <div style="margin:12px 0">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -5425,18 +5436,59 @@ async function openTrainingForm(playerId, viewAs, existingSessionId) {
     </div>
   `;
   panel.classList.remove('panel-hidden');
-  renderTrainingDrillRows(playerId);
+  renderTrainingDrillRows(playerId, 'plan');
   panel.scrollIntoView({behavior:'smooth'});
 }
 
-function addTrainingDrillRow(playerId) {
-  _trainingFormDrills.push({ drillType: DRILL_TYPES[0].key });
-  renderTrainingDrillRows(playerId);
+// Builds a short, readable session name from the date plus a summary of
+// selected drills — e.g. "Training – 01/07 – Warm-Up, Sit-Ups & Push-Ups"
+// or, with more drills than fit cleanly, "Training – 01/07 – Warm-Up +3 more".
+// Capped so it never runs long regardless of how many drills are selected.
+function buildAutoSessionName(dateStr, drills) {
+  const dateLabel = dateStr ? fmtDate(dateStr) : '';
+  const names = (drills||[]).map(d => {
+    if (d.libraryKey) return libDrillDisplayName(d.libraryKey);
+    if (d.drillType) return drillTypeLabel(d.drillType);
+    return null;
+  }).filter(Boolean);
+
+  let summary = '';
+  if (names.length === 0) summary = '';
+  else if (names.length <= 2) summary = names.join(', ');
+  else summary = `${names[0]} +${names.length-1} ${I18n.t('tr_auto_name_more')}`;
+
+  const parts = [I18n.t('tr_auto_name_prefix')];
+  if (dateLabel) parts.push(dateLabel);
+  if (summary) parts.push(summary);
+  return parts.join(' – ');
 }
 
-function removeTrainingDrillRow(playerId, index) {
+// Called whenever the drill list or date changes on the CREATE form — only
+// updates the title if it still matches what auto-naming would have
+// produced a moment ago (i.e. the person hasn't typed their own title yet),
+// so this never overwrites a name someone has deliberately customised.
+let _lastAutoTitle = '';
+function refreshAutoSessionName(playerId) {
+  const titleInput = document.getElementById('tr-title');
+  const dateInput = document.getElementById('tr-date');
+  if (!titleInput || !dateInput) return;
+  const newAutoTitle = buildAutoSessionName(dateInput.value, _trainingFormDrills);
+  if (!titleInput.value.trim() || titleInput.value === _lastAutoTitle) {
+    titleInput.value = newAutoTitle;
+  }
+  _lastAutoTitle = newAutoTitle;
+}
+
+function addTrainingDrillRow(playerId, mode = 'plan') {
+  _trainingFormDrills.push({ drillType: DRILL_TYPES[0].key });
+  renderTrainingDrillRows(playerId, mode);
+  if (mode === 'plan') refreshAutoSessionName(playerId);
+}
+
+function removeTrainingDrillRow(playerId, index, mode = 'plan') {
   _trainingFormDrills.splice(index, 1);
-  renderTrainingDrillRows(playerId);
+  renderTrainingDrillRows(playerId, mode);
+  if (mode === 'plan') refreshAutoSessionName(playerId);
 }
 
 function updateTrainingDrillType(playerId, index, newType) {
@@ -5455,8 +5507,8 @@ function updateTrainingDrillField(index, fieldKey, value, isText) {
 // row itself stays in the session and its history — never silently deleted
 // — so there's an honest, visible record of what was and wasn't done, and
 // how often, over time. Unchecking restores it to normal editable numeric
-// entry starting from zero.
-function toggleTrainingDrillSkipped(playerId, index, skipped) {
+// entry starting from zero. Only relevant in 'perform' mode.
+function toggleTrainingDrillSkipped(playerId, index, skipped, mode = 'perform') {
   const drill = _trainingFormDrills[index];
   drill.skipped = skipped;
   if (skipped) {
@@ -5465,10 +5517,15 @@ function toggleTrainingDrillSkipped(playerId, index, skipped) {
     const fields = libDrill ? libDrill.scoreFields : (def ? def.fields : []);
     fields.forEach(f => { if (!f.isText) drill[f.key] = 0; });
   }
-  renderTrainingDrillRows(playerId);
+  renderTrainingDrillRows(playerId, mode);
 }
 
-function renderTrainingDrillRows(playerId) {
+// mode 'plan' = creation form: just pick which drills are part of the
+// session, no results entry, no Not Done toggle — that belongs to the
+// moment the drill actually happens, not when it's being planned.
+// mode 'perform' = completion form: full editing of actual results plus
+// the Not Done toggle, shown once the session is actually being closed out.
+function renderTrainingDrillRows(playerId, mode = 'plan') {
   const el = document.getElementById(`trainingDrillRows-${playerId}`);
   if (!el) return;
 
@@ -5483,7 +5540,7 @@ function renderTrainingDrillRows(playerId) {
     return `
       <div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;${drill.skipped?'background:#faf5f0':''}">
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-          <select style="flex:1;min-width:0;max-width:100%;box-sizing:border-box" onchange="updateTrainingDrillSelection(${playerId},${i},this.value)" ${drill.skipped?'disabled':''}>
+          <select style="flex:1;min-width:0;max-width:100%;box-sizing:border-box" onchange="updateTrainingDrillSelection(${playerId},${i},this.value,'${mode}')" ${drill.skipped?'disabled':''}>
             <optgroup label="${I18n.t('tr_drill_library_group')}">
               ${categories.map(cat => DRILL_LIBRARY.filter(d=>d.category===cat).map(d =>
                 `<option value="lib:${d.key}" ${libDrill?.key===d.key?'selected':''}>${esc(libDrillDisplayName(d.key))} (${esc(cat)})</option>`
@@ -5493,13 +5550,14 @@ function renderTrainingDrillRows(playerId) {
               ${DRILL_TYPES.map(d => `<option value="gen:${d.key}" ${!libDrill && d.key===drill.drillType?'selected':''}>${drillTypeLabel(d.key)}</option>`).join('')}
             </optgroup>
           </select>
-          <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0" onclick="removeTrainingDrillRow(${playerId},${i})">${I18n.t('tr_btn_remove_drill')}</button>
+          <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0" onclick="removeTrainingDrillRow(${playerId},${i},'${mode}')">${I18n.t('tr_btn_remove_drill')}</button>
         </div>
 
+        ${mode==='perform' ? `
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px;cursor:pointer;color:${drill.skipped?'#b26a2a':'var(--muted)'}">
-          <input type="checkbox" ${drill.skipped?'checked':''} onchange="toggleTrainingDrillSkipped(${playerId},${i},this.checked)">
+          <input type="checkbox" ${drill.skipped?'checked':''} onchange="toggleTrainingDrillSkipped(${playerId},${i},this.checked,'${mode}')">
           ${I18n.t('tr_drill_not_done')}
-        </label>
+        </label>` : ''}
 
         ${libDrill ? `
         <div style="background:#f8f8f8;border-radius:4px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--dark)">
@@ -5510,6 +5568,7 @@ function renderTrainingDrillRows(playerId) {
           <div style="color:var(--muted)">${I18n.t('tr_drill_meta_line', {duration: libDrill.durationMin, difficulty: libDrill.difficulty, equipment: libDrill.equipment})}</div>
         </div>` : ''}
 
+        ${mode==='perform' ? `
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">
           ${scoreFields.map(f => {
             const fieldKey = f.key;
@@ -5523,21 +5582,22 @@ function renderTrainingDrillRows(playerId) {
                 : `<input type="number" min="0" value="${drill.skipped?0:(drill[fieldKey]||0)}" oninput="updateTrainingDrillField(${i},'${fieldKey}',this.value,false)" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:3px;font-size:13px" ${drill.skipped?'disabled':''}>`}
             </div>`;
           }).join('')}
-        </div>
+        </div>` : ''}
       </div>`;
   }).join('') || `<p style="font-size:12px;color:var(--muted)">—</p>`;
 }
 
 // "lib:wallPassing100" or "gen:juggling" — encodes which list the selection
 // came from, since library and generic drills have different shapes.
-function updateTrainingDrillSelection(playerId, index, value) {
+function updateTrainingDrillSelection(playerId, index, value, mode = 'plan') {
   const [kind, key] = value.split(':');
   if (kind === 'lib') {
     _trainingFormDrills[index] = { libraryKey: key, drillType: null };
   } else {
     _trainingFormDrills[index] = { drillType: key, libraryKey: null };
   }
-  renderTrainingDrillRows(playerId);
+  renderTrainingDrillRows(playerId, mode);
+  if (mode === 'plan') refreshAutoSessionName(playerId);
 }
 
 
@@ -5620,7 +5680,7 @@ async function openTrainingViewer(sessionId, viewAs) {
       }).join('') : ''}
       ${session.notes?`<p style="font-size:12px;color:var(--muted);margin-top:8px">${esc(session.notes)}</p>`:''}
       <div class="form-actions" style="margin-top:16px;justify-content:flex-end;flex-wrap:wrap">
-        ${session.status!=='Completed' ? `<button class="btn btn-secondary" onclick="markTrainingSessionCompleted(${sessionId},'${viewAs}')">${I18n.t('tr_btn_mark_completed')}</button>` : ''}
+        ${session.status!=='Completed' ? `<button class="btn btn-secondary" onclick="document.getElementById('trainingViewerOverlay').remove();openTrainingCompletionForm(${sessionId},'${viewAs}')">${I18n.t('tr_btn_mark_completed')}</button>` : ''}
         ${canEdit ? `<button class="btn btn-secondary" onclick="document.getElementById('trainingViewerOverlay').remove();openTrainingForm(${session.playerId},'${viewAs}',${sessionId})">${I18n.t('tr_btn_edit')}</button>` : ''}
         ${canDelete ? `<button class="btn btn-danger" onclick="confirmDeleteTrainingSession(${sessionId},'${viewAs}')">${I18n.t('tr_btn_delete')}</button>` : ''}
         <button class="btn btn-secondary" onclick="document.getElementById('trainingViewerOverlay').remove()">${I18n.t('tr_btn_close')}</button>
@@ -5629,14 +5689,98 @@ async function openTrainingViewer(sessionId, viewAs) {
   document.body.appendChild(overlay);
 }
 
-async function markTrainingSessionCompleted(sessionId, viewAs) {
+// ── COMPLETION FORM — enter what actually happened, then mark done ─────────
+// This is the "perform" moment: the session already exists (planned earlier,
+// possibly with default drills already in it), and now the person is
+// actually recording what they did — real numbers, or "Not Done" for
+// anything skipped. Available to guardian and player alike, since either
+// side may be the one logging results after the fact.
+async function openTrainingCompletionForm(sessionId, viewAs) {
   const session = await DB.get('trainingSessions', sessionId);
   if (!session) return;
+  const player = await DB.get('players', session.playerId);
+
+  _trainingFormDrills = JSON.parse(JSON.stringify(session.drills||[]));
+  _trainingCompletionSessionId = sessionId;
+  _trainingCompletionViewAs = viewAs;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'rm-form-overlay open';
+  overlay.id = 'trainingCompletionOverlay';
+  overlay.innerHTML = `
+    <div class="rm-form" style="max-width:480px">
+      <h2>${esc(session.title)}</h2>
+      <p style="font-size:12px;color:var(--muted);margin:6px 0 14px">${I18n.t('tr_completion_intro', {name: shortName(player?.fullName||'')})}</p>
+      <div id="trainingDrillRows-completion"></div>
+      <div class="form-actions" style="margin-top:16px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="document.getElementById('trainingCompletionOverlay').remove()">${I18n.t('common_cancel')}</button>
+        <button class="btn btn-primary" onclick="saveTrainingCompletion()">${I18n.t('tr_btn_save_and_complete')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  renderTrainingCompletionRows();
+}
+
+// Separate, minimal row renderer for the completion overlay — reuses the
+// same drill-editing pieces (score fields, Not Done toggle) but targets the
+// overlay's own container rather than the training-tab form panel, since
+// this can be opened from the session viewer on any page, not just the
+// Training tab itself.
+function renderTrainingCompletionRows() {
+  const el = document.getElementById('trainingDrillRows-completion');
+  if (!el) return;
+  el.innerHTML = _trainingFormDrills.map((drill, i) => {
+    const libDrill = drill.libraryKey ? getLibraryDrill(drill.libraryKey) : null;
+    const def = !libDrill ? (DRILL_TYPES.find(d => d.key === drill.drillType) || DRILL_TYPES[0]) : null;
+    const scoreFields = libDrill ? libDrill.scoreFields : (def ? def.fields : []);
+    const label = libDrill ? libDrillDisplayName(drill.libraryKey) : drillTypeLabel(drill.drillType);
+
+    return `
+      <div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;${drill.skipped?'background:#faf5f0':''}">
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px">${esc(label)}</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px;cursor:pointer;color:${drill.skipped?'#b26a2a':'var(--muted)'}">
+          <input type="checkbox" ${drill.skipped?'checked':''} onchange="toggleTrainingCompletionSkipped(${i},this.checked)">
+          ${I18n.t('tr_drill_not_done')}
+        </label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">
+          ${scoreFields.map(f => {
+            const fieldKey = f.key;
+            const fieldLabel = libDrill ? f.label : drillFieldLabel(drill.drillType, f.key);
+            const isText = !libDrill && f.isText;
+            return `
+            <div>
+              <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:2px">${esc(fieldLabel)}</label>
+              ${isText
+                ? `<input type="text" value="${esc(drill[fieldKey]||'')}" oninput="updateTrainingDrillField(${i},'${fieldKey}',this.value,true);" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:3px;font-size:13px" ${drill.skipped?'disabled':''} onchange="renderTrainingCompletionRows()">`
+                : `<input type="number" min="0" value="${drill.skipped?0:(drill[fieldKey]||0)}" oninput="updateTrainingDrillField(${i},'${fieldKey}',this.value,false)" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:3px;font-size:13px" ${drill.skipped?'disabled':''}>`}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }).join('') || `<p style="font-size:12px;color:var(--muted)">${I18n.t('tr_progress_empty')}</p>`;
+}
+
+function toggleTrainingCompletionSkipped(index, skipped) {
+  const drill = _trainingFormDrills[index];
+  drill.skipped = skipped;
+  if (skipped) {
+    const libDrill = drill.libraryKey ? getLibraryDrill(drill.libraryKey) : null;
+    const def = !libDrill ? (DRILL_TYPES.find(d => d.key === drill.drillType) || DRILL_TYPES[0]) : null;
+    const fields = libDrill ? libDrill.scoreFields : (def ? def.fields : []);
+    fields.forEach(f => { if (!f.isText) drill[f.key] = 0; });
+  }
+  renderTrainingCompletionRows();
+}
+
+async function saveTrainingCompletion() {
+  const session = await DB.get('trainingSessions', _trainingCompletionSessionId);
+  if (!session) return;
+  session.drills = JSON.parse(JSON.stringify(_trainingFormDrills));
   session.status = 'Completed';
   await saveTrainingSession(session);
-  document.getElementById('trainingViewerOverlay')?.remove();
+  document.getElementById('trainingCompletionOverlay')?.remove();
   Toast.show(I18n.t('tr_saved'));
-  await renderPlayerTraining(session.playerId, viewAs);
+  await renderPlayerTraining(session.playerId, _trainingCompletionViewAs);
 }
 
 function confirmDeleteTrainingSession(sessionId, viewAs) {
