@@ -35,7 +35,7 @@ a{color:#111;text-decoration:none}
 }
 
 /* ── LAYOUT ───────────────────────────────────────────────────────────────── */
-#app{display:flex;flex-direction:column;min-height:100vh;max-width:100vw;overflow-x:hidden}
+#app{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh;max-width:100vw;overflow-x:hidden}
 .main-content{margin-top:var(--nav-h);padding:20px;max-width:1200px;width:100%;margin-left:auto;margin-right:auto;flex:1;overflow-x:hidden}
 
 /* ── NAV ──────────────────────────────────────────────────────────────────── */
@@ -47,6 +47,7 @@ nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--nav
 .nav-wordmark{font-size:15px;font-weight:800;letter-spacing:.2px;color:#fff}
 .nav-wordmark b{color:#B23333}
 .nav-season{color:#9aa5b1;font-size:10px;font-weight:500;margin-left:6px;border-left:1px solid rgba(255,255,255,.2);padding-left:8px}
+.nav-page-name{color:#fff;font-size:13px;font-weight:700;margin-left:8px;padding-left:8px;border-left:1px solid rgba(255,255,255,.25);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nav-links{display:flex;gap:2px;align-items:center}
 .portal-nav-links{display:flex;gap:2px;align-items:center;flex-wrap:wrap;justify-content:center;width:100%;order:3}
 .nav-link{color:#ccc;font-size:12px;padding:6px 10px;border-radius:var(--radius);cursor:pointer;border:none;background:none;white-space:nowrap;transition:all .15s}
@@ -424,7 +425,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
      least once. After a successful login, the session persists locally so
      the app opens directly into itself on every later visit, with or
      without internet — only the very first login/signup needs connectivity. -->
-<div id="authGate" style="display:none;min-height:100vh;align-items:center;justify-content:center;padding:24px;background:var(--bg)">
+<div id="authGate" style="display:none;min-height:100vh;min-height:100dvh;align-items:center;justify-content:center;padding:24px;background:var(--bg)">
   <div style="max-width:380px;width:100%">
     <div style="text-align:center;margin-bottom:28px">
       <div class="nav-logo-mark" style="width:48px;height:48px;margin:0 auto 12px"><span style="font-size:20px">11</span></div>
@@ -442,11 +443,12 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
      write action available here is built fresh, specifically for the player,
      and only Training has any write capability at all (see Pass 1/2 rules).
      ══════════════════════════════════════════════════════════════════════════ -->
-<div id="playerPortal" style="display:none;min-height:100vh;max-width:100vw;overflow-x:hidden;flex-direction:column;background:var(--bg)">
+<div id="playerPortal" style="display:none;min-height:100vh;min-height:100dvh;max-width:100vw;overflow-x:hidden;flex-direction:column;background:var(--bg)">
   <nav>
     <div class="nav-brand">
       <div class="nav-logo-mark"><span>11</span></div>
-      <div class="nav-wordmark" id="playerPortalPageName">Next<b>Eleven</b></div>
+      <div class="nav-wordmark">Next<b>Eleven</b></div>
+      <span class="nav-page-name" id="portalNavPageName" style="display:none"></span>
       <span class="nav-season" id="playerPortalName"></span>
     </div>
     <button class="hamburger" id="portalHamburger" aria-label="Menu">
@@ -488,6 +490,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
   <div class="nav-brand">
     <div class="nav-logo-mark"><span>11</span></div>
     <div class="nav-wordmark">Next<b>Eleven</b></div>
+    <span class="nav-page-name" id="navPageName" style="display:none"></span>
     <span class="nav-season" id="navSeason">No season</span>
   </div>
   <div class="nav-links" id="navLinks">
@@ -1134,6 +1137,70 @@ function switchAccountFormTab(mode) {
   if (err) err.style.display = 'none';
 }
 
+// ── SCROLL-TRIGGERED PAGE NAME IN NAV ────────────────────────────────────────
+// Whenever the active page's own <h1> heading scrolls out of view at the top
+// of the screen, the nav bar picks up that page's name so the person always
+// knows where they are — then hides it again once the real heading scrolls
+// back into view, so it's never shown twice. Works automatically for any
+// current or future page, since it just watches for whichever .page-header
+// h1 is inside the currently-visible section — no per-page wiring needed.
+let _pageNameObserver = null;
+let _pageNameScrollFallback = null;
+function setupPageNameOnScroll() {
+  if (_pageNameObserver) { _pageNameObserver.disconnect(); _pageNameObserver = null; }
+  if (_pageNameScrollFallback) { window.removeEventListener('scroll', _pageNameScrollFallback); _pageNameScrollFallback = null; }
+
+  const isGuardianActive = document.getElementById('app').style.display !== 'none';
+  const navLabelId = isGuardianActive ? 'navPageName' : 'portalNavPageName';
+  const labelEl = document.getElementById(navLabelId);
+  if (!labelEl) return;
+
+  // Find the heading belonging to whichever section is actually visible
+  // right now — guardian app uses .section.active, the portal uses inline
+  // display:block/none on its .section elements. Not every page wraps its
+  // heading in .page-header (Home uses a plain <h2> welcome banner instead),
+  // so this checks the common .page-header h1 pattern first, then falls
+  // back to the first h1 or h2 found anywhere in the active section.
+  let heading = null;
+  const guardianSection = document.querySelector('#app .section.active');
+  const portalSection = Array.from(document.querySelectorAll('#playerPortal .section'))
+    .find(s => s.style.display !== 'none');
+  const activeSection = guardianSection || portalSection;
+  if (activeSection) {
+    heading = activeSection.querySelector('.page-header h1, .page-header h2')
+      || activeSection.querySelector('h1, h2');
+  }
+
+  if (!heading) {
+    // Some pages (e.g. Squad) have no heading element at all to observe —
+    // fall back to a plain scroll-position check instead, so the name still
+    // appears once you've scrolled a reasonable amount, rather than never
+    // appearing at all on those pages.
+    _pageNameScrollFallback = () => {
+      labelEl.style.display = window.scrollY > 80 ? '' : 'none';
+    };
+    window.addEventListener('scroll', _pageNameScrollFallback, { passive: true });
+    return;
+  }
+
+  const activeNav = isGuardianActive
+    ? document.querySelector('#app nav')
+    : document.querySelector('#playerPortal nav');
+  const navHeight = activeNav?.offsetHeight || 52;
+
+  _pageNameObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      // Heading is out of view above the viewport (scrolled past it) → show
+      // the nav label. Heading is visible again → hide it. Using
+      // intersectionRatio rather than isIntersecting alone avoids a flash
+      // when the heading is only partially covered by the fixed nav.
+      labelEl.style.display = entry.intersectionRatio === 0 ? '' : 'none';
+    });
+  }, { root: null, threshold: 0, rootMargin: `-${navHeight}px 0px 0px 0px` });
+
+  _pageNameObserver.observe(heading);
+}
+
 async function handleAccountSubmit() {
   const email = document.getElementById('acc-email')?.value.trim();
   const password = document.getElementById('acc-password')?.value;
@@ -1424,15 +1491,25 @@ function canDeleteTrainingSession(session, requestingAs) {
 // completed sessions this season — used for the progress view.
 async function getTrainingProgress(playerId, seasonId) {
   const sessions = (await getTrainingSessionsForPlayer(playerId, seasonId)).filter(s => s.status === 'Completed');
-  const totals = {}; // drillType -> { sessionCount, fieldSums: {fieldKey: sum} }
+  const totals = {}; // drillKey -> { sessionCount, skippedCount, fieldSums: {fieldKey: sum} }
   sessions.forEach(s => {
     (s.drills||[]).forEach(d => {
-      if (!totals[d.drillType]) totals[d.drillType] = { sessionCount: 0, fieldSums: {} };
-      totals[d.drillType].sessionCount++;
-      const drillDef = DRILL_TYPES.find(dt => dt.key === d.drillType);
-      (drillDef?.fields||[]).forEach(f => {
+      // Library drills (including the default warm-up / sit-ups+push-ups)
+      // are keyed by libraryKey; older generic-category drills are keyed by
+      // drillType. Both need to be counted — this previously only handled
+      // drillType, which silently excluded every library drill from totals.
+      const key = d.libraryKey || d.drillType;
+      if (!key) return;
+      if (!totals[key]) totals[key] = { sessionCount: 0, skippedCount: 0, fieldSums: {}, isLibrary: !!d.libraryKey };
+      totals[key].sessionCount++;
+      if (d.skipped) totals[key].skippedCount++;
+
+      const fields = d.libraryKey
+        ? (getLibraryDrill(d.libraryKey)?.scoreFields || [])
+        : (DRILL_TYPES.find(dt => dt.key === d.drillType)?.fields || []);
+      fields.forEach(f => {
         if (f.isText) return;
-        totals[d.drillType].fieldSums[f.key] = (totals[d.drillType].fieldSums[f.key]||0) + (parseFloat(d[f.key])||0);
+        totals[key].fieldSums[f.key] = (totals[key].fieldSums[f.key]||0) + (parseFloat(d[f.key])||0);
       });
     });
   });
@@ -2020,8 +2097,12 @@ const TR = {
     tr_drill_objective:'Objective', tr_drill_instructions:'Instructions',
     tr_drill_coaching_points:'Coaching Points', tr_drill_progression:'Progression',
     tr_drill_meta_line:'{duration} min · {difficulty} · {equipment}',
+    tr_drill_not_done:'Not done',
+    tr_progress_skipped_suffix:'skipped',
 
     // ── DRILL LIBRARY — DRILL NAMES ──
+    drilllib_warmUp:'Warm-Up',
+    drilllib_situpsPushups:'Sit-Ups & Push-Ups',
     drilllib_wallPassing100:'Wall Passing 100',
     drilllib_firstTouchWallControl:'First Touch Wall Control',
     drilllib_twoTouchWallPassing:'Two Touch Wall Passing',
@@ -2838,8 +2919,12 @@ const TR = {
     tr_drill_objective:'Objetivo', tr_drill_instructions:'Instruções',
     tr_drill_coaching_points:'Pontos-Chave', tr_drill_progression:'Progressão',
     tr_drill_meta_line:'{duration} min · {difficulty} · {equipment}',
+    tr_drill_not_done:'Não realizado',
+    tr_progress_skipped_suffix:'não realizadas',
 
     // ── DRILL LIBRARY — DRILL NAMES ──
+    drilllib_warmUp:'Aquecimento',
+    drilllib_situpsPushups:'Abdominais e Flexões',
     drilllib_wallPassing100:'100 Passes à Parede',
     drilllib_firstTouchWallControl:'Controlo de Primeiro Toque à Parede',
     drilllib_twoTouchWallPassing:'Passe a Dois Toques na Parede',
@@ -4354,6 +4439,24 @@ function drillFieldLabel(drillKey, fieldKey) {
 // which is why each drill defines its own fields rather than sharing one
 // fixed shape.
 const DRILL_LIBRARY = [
+  // These two are auto-added to every new training session (see
+  // getDefaultSessionDrills) — every session starts with a warm-up and a
+  // strength block already present, editable or markable as "not done"
+  // rather than forcing you to add them manually every time.
+  { key:'warmUp', category:'Warm-Up', type:'Solo', durationMin:10, difficulty:'Easy', equipment:'None', isDefault:true,
+    objective:'Prepare the body for training and reduce injury risk.',
+    instructions:'Light jogging, dynamic stretches, and gradual increase in intensity for 10 minutes before starting the main session.',
+    coachingPoints:'Keep the pace easy, focus on loosening up joints and muscles, not on speed.',
+    progression:'Add football-specific movements (high knees, side shuffles) as fitness improves.',
+    scoreFields:[{key:'durationMin',label:'Duration (min)'}],
+    defaultValues:{durationMin:10} },
+  { key:'situpsPushups', category:'Strength', type:'Solo', durationMin:5, difficulty:'Easy', equipment:'None', isDefault:true,
+    objective:'Build core and upper body strength to support overall athletic performance.',
+    instructions:'Complete at least 20 sit-ups and 20 push-ups, with good form prioritised over speed.',
+    coachingPoints:'Controlled movement, full range of motion, breathe steadily.',
+    progression:'Increase reps or add a second set as strength improves.',
+    scoreFields:[{key:'situps',label:'Sit-Ups Completed'},{key:'pushups',label:'Push-Ups Completed'}],
+    defaultValues:{situps:20,pushups:20} },
   { key:'wallPassing100', category:'Passing', type:'Solo', durationMin:10, difficulty:'Easy', equipment:'Ball, Wall',
     objective:'Improve passing accuracy and first touch with both feet.',
     instructions:'Pass 25 times with the right foot, 25 with the left foot, then alternate until reaching 100 passes. Stand 3 to 5 metres from the wall.',
@@ -4506,6 +4609,20 @@ function getLibraryDrill(key) {
 
 function libDrillDisplayName(key) {
   return I18n.t('drilllib_' + key);
+}
+
+// Builds the drill rows every NEW training session starts with — currently
+// the warm-up and sit-ups/push-ups block, both pre-filled with their usual
+// default numbers and marked not-skipped. Fully editable afterward: change
+// the numbers, or flag "not done" to zero it out while keeping the row
+// visible in history (see the skipped flag below) — never silently deleted.
+function getDefaultSessionDrills() {
+  return DRILL_LIBRARY.filter(d => d.isDefault).map(d => ({
+    libraryKey: d.key,
+    drillType: null,
+    skipped: false,
+    ...d.defaultValues,
+  }));
 }
 
 const EXT_STAT_FIELDS = [
@@ -5233,10 +5350,17 @@ async function renderPlayerTraining(playerId, viewAs) {
       ${progressKeys.map(drillKey => {
         const t = totals[drillKey];
         const fieldEntries = Object.entries(t.fieldSums);
+        const label = t.isLibrary ? libDrillDisplayName(drillKey) : drillTypeLabel(drillKey);
+        const doneCount = t.sessionCount - t.skippedCount;
         return `<div style="margin-bottom:10px">
-          <div style="font-size:12px;font-weight:700;margin-bottom:4px">${drillTypeLabel(drillKey)} <span style="color:var(--muted);font-weight:400">(${t.sessionCount} ${I18n.t('tr_progress_sessions_suffix')})</span></div>
+          <div style="font-size:12px;font-weight:700;margin-bottom:4px">${esc(label)}
+            <span style="color:var(--muted);font-weight:400">(${doneCount} ${I18n.t('tr_progress_sessions_suffix')}${t.skippedCount?', '+t.skippedCount+' '+I18n.t('tr_progress_skipped_suffix'):''})</span>
+          </div>
           <div style="display:flex;gap:14px;flex-wrap:wrap">
-            ${fieldEntries.map(([fk,sum]) => `<div style="font-size:11px;color:var(--muted)">${drillFieldLabel(drillKey,fk)}: <strong style="color:var(--dark)">${sum}</strong></div>`).join('')}
+            ${fieldEntries.map(([fk,sum]) => {
+              const fLabel = t.isLibrary ? (getLibraryDrill(drillKey)?.scoreFields.find(f=>f.key===fk)?.label || fk) : drillFieldLabel(drillKey,fk);
+              return `<div style="font-size:11px;color:var(--muted)">${esc(fLabel)}: <strong style="color:var(--dark)">${sum}</strong></div>`;
+            }).join('')}
           </div>
         </div>`;
       }).join('')}
@@ -5279,7 +5403,7 @@ async function openTrainingForm(playerId, viewAs, existingSessionId) {
     }
   }
 
-  _trainingFormDrills = existing ? JSON.parse(JSON.stringify(existing.drills||[])) : [];
+  _trainingFormDrills = existing ? JSON.parse(JSON.stringify(existing.drills||[])) : getDefaultSessionDrills();
 
   panel.innerHTML = `
     <h3>${I18n.t('tr_form_title')}</h3>
@@ -5326,6 +5450,24 @@ function updateTrainingDrillField(index, fieldKey, value, isText) {
   _trainingFormDrills[index][fieldKey] = isText ? value : (parseFloat(value)||0);
 }
 
+// Marks a drill as not performed this session. Values are zeroed (so totals
+// and progress views aren't inflated by a drill that didn't happen) but the
+// row itself stays in the session and its history — never silently deleted
+// — so there's an honest, visible record of what was and wasn't done, and
+// how often, over time. Unchecking restores it to normal editable numeric
+// entry starting from zero.
+function toggleTrainingDrillSkipped(playerId, index, skipped) {
+  const drill = _trainingFormDrills[index];
+  drill.skipped = skipped;
+  if (skipped) {
+    const libDrill = drill.libraryKey ? getLibraryDrill(drill.libraryKey) : null;
+    const def = !libDrill ? (DRILL_TYPES.find(d => d.key === drill.drillType) || DRILL_TYPES[0]) : null;
+    const fields = libDrill ? libDrill.scoreFields : (def ? def.fields : []);
+    fields.forEach(f => { if (!f.isText) drill[f.key] = 0; });
+  }
+  renderTrainingDrillRows(playerId);
+}
+
 function renderTrainingDrillRows(playerId) {
   const el = document.getElementById(`trainingDrillRows-${playerId}`);
   if (!el) return;
@@ -5339,9 +5481,9 @@ function renderTrainingDrillRows(playerId) {
     const scoreFields = libDrill ? libDrill.scoreFields : (def ? def.fields : []);
 
     return `
-      <div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px">
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-          <select style="flex:1" onchange="updateTrainingDrillSelection(${playerId},${i},this.value)">
+      <div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;${drill.skipped?'background:#faf5f0':''}">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+          <select style="flex:1;min-width:0;max-width:100%;box-sizing:border-box" onchange="updateTrainingDrillSelection(${playerId},${i},this.value)" ${drill.skipped?'disabled':''}>
             <optgroup label="${I18n.t('tr_drill_library_group')}">
               ${categories.map(cat => DRILL_LIBRARY.filter(d=>d.category===cat).map(d =>
                 `<option value="lib:${d.key}" ${libDrill?.key===d.key?'selected':''}>${esc(libDrillDisplayName(d.key))} (${esc(cat)})</option>`
@@ -5351,8 +5493,13 @@ function renderTrainingDrillRows(playerId) {
               ${DRILL_TYPES.map(d => `<option value="gen:${d.key}" ${!libDrill && d.key===drill.drillType?'selected':''}>${drillTypeLabel(d.key)}</option>`).join('')}
             </optgroup>
           </select>
-          <button type="button" class="btn btn-danger btn-sm" onclick="removeTrainingDrillRow(${playerId},${i})">${I18n.t('tr_btn_remove_drill')}</button>
+          <button type="button" class="btn btn-danger btn-sm" style="flex-shrink:0" onclick="removeTrainingDrillRow(${playerId},${i})">${I18n.t('tr_btn_remove_drill')}</button>
         </div>
+
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px;cursor:pointer;color:${drill.skipped?'#b26a2a':'var(--muted)'}">
+          <input type="checkbox" ${drill.skipped?'checked':''} onchange="toggleTrainingDrillSkipped(${playerId},${i},this.checked)">
+          ${I18n.t('tr_drill_not_done')}
+        </label>
 
         ${libDrill ? `
         <div style="background:#f8f8f8;border-radius:4px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--dark)">
@@ -5372,8 +5519,8 @@ function renderTrainingDrillRows(playerId) {
             <div>
               <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:2px">${esc(fieldLabel)}</label>
               ${isText
-                ? `<input type="text" value="${esc(drill[fieldKey]||'')}" oninput="updateTrainingDrillField(${i},'${fieldKey}',this.value,true)" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:3px;font-size:13px">`
-                : `<input type="number" min="0" value="${drill[fieldKey]||0}" oninput="updateTrainingDrillField(${i},'${fieldKey}',this.value,false)" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:3px;font-size:13px">`}
+                ? `<input type="text" value="${esc(drill[fieldKey]||'')}" oninput="updateTrainingDrillField(${i},'${fieldKey}',this.value,true)" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:3px;font-size:13px" ${drill.skipped?'disabled':''}>`
+                : `<input type="number" min="0" value="${drill.skipped?0:(drill[fieldKey]||0)}" oninput="updateTrainingDrillField(${i},'${fieldKey}',this.value,false)" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:3px;font-size:13px" ${drill.skipped?'disabled':''}>`}
             </div>`;
           }).join('')}
         </div>
@@ -5454,11 +5601,20 @@ async function openTrainingViewer(sessionId, viewAs) {
         <span style="font-size:11px;color:var(--muted)">${session.createdBy==='player'?I18n.t('tr_created_by_player'):I18n.t('tr_created_by_guardian')}</span>
       </div>
       ${(session.drills||[]).length ? session.drills.map(d => {
-        const def = DRILL_TYPES.find(dt => dt.key === d.drillType);
-        return `<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px">
-          <div style="font-size:12px;font-weight:700;margin-bottom:6px">${drillTypeLabel(d.drillType)}</div>
+        const libDrill = d.libraryKey ? getLibraryDrill(d.libraryKey) : null;
+        const def = !libDrill ? DRILL_TYPES.find(dt => dt.key === d.drillType) : null;
+        const label = libDrill ? libDrillDisplayName(d.libraryKey) : drillTypeLabel(d.drillType);
+        const fields = libDrill ? libDrill.scoreFields : (def?.fields || []);
+        return `<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;${d.skipped?'background:#faf5f0':''}">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <span style="font-size:12px;font-weight:700">${esc(label)}</span>
+            ${d.skipped?`<span class="pos-pill" style="background:#f0d9c0;color:#8a5a20">${I18n.t('tr_drill_not_done')}</span>`:''}
+          </div>
           <div style="display:flex;gap:14px;flex-wrap:wrap">
-            ${(def?.fields||[]).map(f => `<div style="font-size:11px;color:var(--muted)">${drillFieldLabel(d.drillType,f.key)}: <strong style="color:var(--dark)">${esc(String(d[f.key]??'—'))}</strong></div>`).join('')}
+            ${fields.map(f => {
+              const fLabel = libDrill ? f.label : drillFieldLabel(d.drillType,f.key);
+              return `<div style="font-size:11px;color:var(--muted)">${esc(fLabel)}: <strong style="color:var(--dark)">${esc(String(d[f.key]??'—'))}</strong></div>`;
+            }).join('')}
           </div>
         </div>`;
       }).join('') : ''}
@@ -7562,6 +7718,31 @@ const Nav = (() => {
     // render section
     await refresh(section);
     window.scrollTo(0,0);
+
+    // Populate the scroll-triggered nav label directly from whatever the
+    // page's own <h1> actually says — this is what makes the mechanism work
+    // automatically for any future page without needing a maintained name
+    // map: the label always matches the real heading because it IS the real
+    // heading's text, just echoed into the nav once you scroll past it.
+    // Use the nav button's own label as the page name — more reliable than
+    // scraping page content (which varies: some pages have no heading at
+    // all, Home's only heading is a "Welcome to NextEleven" banner that
+    // isn't a useful page label). The nav button text is always correct,
+    // already translated, and exists for every current and future page.
+    // Use the nav button's own label as the page name — more reliable than
+    // scraping page content (which varies: some pages have no heading at
+    // all, Home's only heading is a "Welcome to NextEleven" banner that
+    // isn't a useful page label). Most nav buttons wrap their text in a
+    // data-nav-label span, but the tracked-player buttons (added per
+    // tracked player) just put the player's name directly in the button
+    // with no wrapping span — so this falls back to the button's own text
+    // when no inner span is found, covering that page and any future
+    // button built the same simple way.
+    const navBtnEl = document.querySelector(`.nav-link[data-section="${section}"]`);
+    const navBtn = navBtnEl?.querySelector('[data-nav-label]');
+    const navLabel = document.getElementById('navPageName');
+    if (navLabel) navLabel.textContent = navBtn ? navBtn.textContent.trim() : (navBtnEl ? navBtnEl.textContent.trim() : '');
+    setupPageNameOnScroll();
   }
 
   async function refresh(section) {
@@ -7614,24 +7795,6 @@ const Nav = (() => {
     State.currentPortalSection = section;
     try { sessionStorage.setItem('squadTracker_lastPortalSection', section); } catch(e) {}
 
-    // Show the current page's icon + name in the header bar, replacing the
-    // NextEleven wordmark while on a sub-page — as requested.
-    const pageMeta = {
-      home:      { icon: '&#127968;', key: 'pp_nav_home' },
-      dashboard: { icon: '&#128202;', key: 'pp_nav_dashboard' },
-      stats:     { icon: '&#9889;',  key: 'pp_nav_stats' },
-      training:  { icon: '&#9917;',  key: 'pp_nav_training' },
-      games:     { icon: '&#127944;', key: 'pp_nav_games' },
-      clubs:     { icon: '&#127942;', key: 'pp_nav_clubs' },
-      achievements: { icon: '&#127941;', key: 'pp_nav_achievements' },
-      events:    { icon: '&#128197;', key: 'pp_nav_events' },
-      teamsummary: { icon: '&#128202;', key: 'pp_nav_teamsummary' },
-    };
-    const nameEl = document.getElementById('playerPortalPageName');
-    if (nameEl && pageMeta[section]) {
-      nameEl.innerHTML = `${pageMeta[section].icon} ${I18n.t(pageMeta[section].key)}`;
-    }
-
     gdDebugLog(`State.portalPlayerId = ${State.portalPlayerId}, State.currentSeasonId = ${State.currentSeasonId}`);
 
     try {
@@ -7645,6 +7808,16 @@ const Nav = (() => {
       if (section === 'events')    { gdDebugLog('calling renderPlayerPortalEvents()'); await renderPlayerPortalEvents(); gdDebugLog('renderPlayerPortalEvents() finished OK'); }
       if (section === 'teamsummary') { gdDebugLog('calling renderPlayerPortalTeamSummary()'); await renderPlayerPortalTeamSummary(); gdDebugLog('renderPlayerPortalTeamSummary() finished OK'); }
       gdDebugLog(`target.innerHTML.length after render = ${target.innerHTML.length}`);
+
+      // Populate the scroll-triggered nav label directly from the page's own
+      // <h1> text — same zero-maintenance approach as the guardian side, so
+      // any future portal page works automatically with no extra wiring.
+      // Use the portal nav button's own label — same reliable approach as
+      // the guardian side, works for every current and future portal page.
+      const navBtn = document.querySelector(`.nav-link[data-portal-section="${section}"] [data-i18n]`);
+      const navLabel = document.getElementById('portalNavPageName');
+      if (navLabel) navLabel.textContent = navBtn ? navBtn.textContent.trim() : '';
+      setupPageNameOnScroll();
     } catch(err) {
       // Show the real error directly on the page instead of leaving it
       // silently blank — async errors here would otherwise only appear in
