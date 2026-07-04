@@ -11291,12 +11291,29 @@ async function renderSquadListTab(gameId) {
     const calledUpCount = existingGP.filter(r=>r.calledUp).length;
     gdDebugLog(`squad tab: ${players.length} players, ${calledUpCount} called up`);
 
-    // Find most recent previous game (by date, before this game's date) to offer copy
+    // Find the previous game to offer a squad copy from. For a tournament
+    // game, this must be the previous game IN THE SAME TOURNAMENT — not
+    // just the most recent season game overall, since a tournament's squad
+    // (season players + temp players) is specific to that tournament and
+    // has nothing to do with the regular season's last league/friendly
+    // match. Falls back to season-wide only if this game isn't part of a
+    // tournament, or it's the tournament's first game with nothing earlier
+    // to copy from.
     const thisGame = await DB.get('games', gameId);
-    const allGames = (await DB.getAll('games','seasonId', State.currentSeasonId))
-      .filter(g => g.gameId !== gameId && g.date && (!thisGame?.date || g.date <= thisGame.date))
-      .sort((a,b) => new Date(b.date) - new Date(a.date));
-    const prevGame = allGames[0] || null;
+    const allSeasonGames = await DB.getAll('games','seasonId', State.currentSeasonId);
+    let prevGame = null;
+    if (thisGame?.tournamentId) {
+      const tournamentGames = allSeasonGames
+        .filter(g => g.gameId !== gameId && g.date && g.tournamentId === thisGame.tournamentId && (!thisGame.date || g.date <= thisGame.date))
+        .sort((a,b) => new Date(b.date) - new Date(a.date));
+      prevGame = tournamentGames[0] || null;
+    }
+    if (!prevGame) {
+      const allGames = allSeasonGames
+        .filter(g => g.gameId !== gameId && g.date && (!thisGame?.date || g.date <= thisGame.date))
+        .sort((a,b) => new Date(b.date) - new Date(a.date));
+      prevGame = allGames[0] || null;
+    }
 
     el.innerHTML = `
       <p style="font-size:12px;color:var(--muted);margin-bottom:10px">${I18n.t('gd_squad_hint')}</p>
@@ -11345,14 +11362,30 @@ async function copySquadFromPreviousGame(gameId, prevGameId) {
     try {
       const prevGP = await DB.getAll('gamePlayers','gameId', prevGameId);
       const calledUpPrev = prevGP.filter(r => r.calledUp);
+      let copiedCount = 0;
       for (const prev of calledUpPrev) {
-        const gp = await getOrCreateGP(gameId, prev.playerId);
-        gp.calledUp = true;
-        gp.role = prev.role || 'Sub';
-        gp.playedFullGame = (gp.role === 'Starter');
-        await DB.put('gamePlayers', gp);
+        if (prev.playerId) {
+          const gp = await getOrCreateGP(gameId, prev.playerId);
+          gp.calledUp = true;
+          gp.role = prev.role || 'Sub';
+          gp.playedFullGame = (gp.role === 'Starter');
+          await DB.put('gamePlayers', gp);
+          copiedCount++;
+        } else if (prev.tempPlayerId) {
+          // Temp players (tournament guests) were previously silently
+          // skipped here entirely — only season players ever got copied.
+          // For a tournament squad, which often includes borrowed/guest
+          // players, this meant "copy previous squad" quietly dropped
+          // exactly the players most likely to be tournament-specific.
+          const gp = await getOrCreateGPForTemp(gameId, prev.tempPlayerId);
+          gp.calledUp = true;
+          gp.role = prev.role || 'Sub';
+          gp.playedFullGame = (gp.role === 'Starter');
+          await DB.put('gamePlayers', gp);
+          copiedCount++;
+        }
       }
-      Toast.show(I18n.t('gd_copy_done', {n: calledUpPrev.length}));
+      Toast.show(I18n.t('gd_copy_done', {n: copiedCount}));
       await renderSquadListTab(gameId);
       await refreshGameHeaderScore(gameId);
     } catch(err) {
