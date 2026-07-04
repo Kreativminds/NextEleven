@@ -5570,6 +5570,12 @@ async function openTournamentForm(tournamentId) {
 async function saveTournamentFromForm(tournamentId) {
   const name = document.getElementById('tf-name')?.value.trim();
   if (!name) { Toast.error(I18n.t('tourn_err_name_required')); return; }
+  // Re-fetch fresh here, not reused from when the form first opened — if a
+  // temp player was added while this form was open (via the "+ Add Temp
+  // Player" button on top of it), that link already exists in the database
+  // by now. Using a stale in-memory copy of the tournament from page-load
+  // time would silently overwrite that just-added link the moment Save is
+  // clicked, which was the actual bug being reported.
   const existing = tournamentId ? await getTournamentById(tournamentId) : null;
   const tournament = {
     seasonId: State.currentSeasonId,
@@ -5667,7 +5673,7 @@ async function saveTemporaryPlayerFromForm(tempPlayerId, tournamentId) {
   }
 
   document.getElementById('tempPlayerFormOverlay')?.remove();
-  Toast.show(I18n.t('tempp_saved'));
+  Toast.show(I18n.t('tempp_saved') + ` [DEBUG: linked to tournament ${tournamentId}, team now has ${tournamentId ? (await getTournamentById(tournamentId))?.team?.temporaryPlayerIds?.length : '?'} temp player(s)]`);
 
   // Refresh the temp players list inside the still-open tournament form,
   // if it's the one that triggered this — so a newly added or edited
