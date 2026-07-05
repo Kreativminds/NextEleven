@@ -1288,6 +1288,7 @@ async function renderAccountCodeBlock() {
       return;
     }
     const code = rows[0].account_code;
+    const claimed = !!rows[0].code_claimed;
     blockEl.innerHTML = `
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">${I18n.t('acc_account_code_label')}</div>
       <div style="display:flex;align-items:center;gap:10px">
@@ -1295,9 +1296,43 @@ async function renderAccountCodeBlock() {
         <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('${esc(code)}');Toast.show(I18n.t('acc_code_copied'))">${I18n.t('acc_btn_copy')}</button>
       </div>
       <p style="font-size:11px;color:var(--muted);margin-top:6px">${I18n.t('acc_code_hint')}</p>
+      ${claimed ? `
+        <p style="font-size:11px;color:var(--muted);margin-top:8px">${I18n.t('acc_code_locked_note')}</p>
+      ` : `
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <p style="font-size:11px;color:var(--muted);margin-bottom:6px">${I18n.t('acc_code_claim_intro')}</p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="claim-code-input" type="text" maxlength="20" placeholder="VMABERE" style="flex:1;min-width:120px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:14px;letter-spacing:1px;text-transform:uppercase">
+            <button class="btn btn-primary btn-sm" onclick="handleClaimAccountCode()">${I18n.t('acc_btn_claim_code')}</button>
+          </div>
+          <div id="claim-code-error" style="display:none;font-size:11px;color:#b03030;margin-top:6px"></div>
+        </div>
+      `}
     `;
   } catch(err) {
     blockEl.innerHTML = `<div style="font-size:11px;color:var(--muted)">${I18n.t('acc_code_unavailable')}</div>`;
+  }
+}
+
+async function handleClaimAccountCode() {
+  const input = document.getElementById('claim-code-input');
+  const errEl = document.getElementById('claim-code-error');
+  if (errEl) errEl.style.display = 'none';
+  const newCode = input?.value.trim();
+  if (!newCode) return;
+
+  if (!window.confirm(I18n.t('acc_code_claim_confirm', {code: newCode.toUpperCase()}))) return;
+
+  try {
+    const result = await Sync.claimAccountCode(newCode);
+    if (!result || !result.success) {
+      if (errEl) { errEl.textContent = result?.message || I18n.t('acc_code_unavailable'); errEl.style.display = ''; }
+      return;
+    }
+    Toast.show(I18n.t('acc_code_claimed'));
+    await renderAccountCodeBlock(); // refresh to show the now-locked state
+  } catch(err) {
+    if (errEl) { errEl.textContent = err.message; errEl.style.display = ''; }
   }
 }
 
@@ -2490,6 +2525,11 @@ const TR = {
     acc_account_code_label:'Your Account Code',
     acc_code_hint:'Share this code with your player, along with their PIN, so they can log in on a new phone.',
     acc_code_hint_short:'Share this with the PIN above for login on a new phone.',
+    acc_code_locked_note:'This Account Code is permanent and cannot be changed.',
+    acc_code_claim_intro:'Want an easier code to remember? Set a permanent one now — once saved, it cannot be changed.',
+    acc_btn_claim_code:'Claim Code',
+    acc_code_claim_confirm:'Set "{code}" as your permanent Account Code? This cannot be undone.',
+    acc_code_claimed:'Your Account Code is now permanent.',
     acc_code_unavailable:'Account Code unavailable right now — check your connection and try again.',
     acc_btn_copy:'Copy', acc_code_copied:'Account Code copied.',
     acc_btn_player_login:'Enter',
@@ -3408,6 +3448,11 @@ const TR = {
     acc_account_code_label:'O Seu Código da Conta',
     acc_code_hint:'Partilhe este código com o seu jogador, junto com o PIN dele, para que possa iniciar sessão num novo telemóvel.',
     acc_code_hint_short:'Partilhe isto com o PIN acima para iniciar sessão num novo telemóvel.',
+    acc_code_locked_note:'Este Código da Conta é permanente e não pode ser alterado.',
+    acc_code_claim_intro:'Quer um código mais fácil de lembrar? Defina um permanente agora — depois de guardado, não pode ser alterado.',
+    acc_btn_claim_code:'Reivindicar Código',
+    acc_code_claim_confirm:'Definir "{code}" como o seu Código da Conta permanente? Isto não pode ser desfeito.',
+    acc_code_claimed:'O seu Código da Conta é agora permanente.',
     acc_code_unavailable:'Código da Conta indisponível de momento — verifique a sua ligação e tente novamente.',
     acc_btn_copy:'Copiar', acc_code_copied:'Código da Conta copiado.',
     acc_btn_player_login:'Entrar',
@@ -10431,6 +10476,31 @@ const Sync = (() => {
     return supabaseRequest('GET', 'profiles', null, { id: 'eq.' + Auth.getUserId() });
   }
 
+  // Calls the claim_account_code RPC — runs as the logged-in user (not
+  // security definer), so it can only ever touch the caller's own profile
+  // row. The RPC itself enforces format, uniqueness, and the one-time-only
+  // rule; this is just the plumbing to reach it with proper auth headers.
+  async function claimAccountCode(newCode) {
+    if (!isConfigured()) throw new Error('Sync not configured.');
+    if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
+    const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
+    const res = await fetch(base + 'rpc/claim_account_code', {
+      method: 'POST',
+      headers: {
+        'apikey':        _cfg.anonKey,
+        'Authorization': 'Bearer ' + Auth.getAccessToken(),
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({ p_new_code: newCode }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error('Claim failed: ' + res.status + ' ' + err.slice(0,200));
+    }
+    const rows = await res.json();
+    return rows && rows.length ? rows[0] : { success: false, message: 'No response from server.' };
+  }
+
   // ── PLAYER PIN LOGIN — new device, no prior login ─────────────────────────
   // Deliberately separate from supabaseRequest above: this must work with
   // NO authentication at all, using only the public anon key — that's the
@@ -10754,7 +10824,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, fetchOwnProfile };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, fetchOwnProfile, claimAccountCode };
 })();
 
 function attachEvents() {
