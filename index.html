@@ -2489,6 +2489,7 @@ const TR = {
     acc_loading_code:'Loading your Account Code...',
     acc_account_code_label:'Your Account Code',
     acc_code_hint:'Share this code with your player, along with their PIN, so they can log in on a new phone.',
+    acc_code_hint_short:'Share this with the PIN above for login on a new phone.',
     acc_code_unavailable:'Account Code unavailable right now — check your connection and try again.',
     acc_btn_copy:'Copy', acc_code_copied:'Account Code copied.',
     acc_btn_player_login:'Enter',
@@ -3406,6 +3407,7 @@ const TR = {
     acc_loading_code:'A carregar o seu Código da Conta...',
     acc_account_code_label:'O Seu Código da Conta',
     acc_code_hint:'Partilhe este código com o seu jogador, junto com o PIN dele, para que possa iniciar sessão num novo telemóvel.',
+    acc_code_hint_short:'Partilhe isto com o PIN acima para iniciar sessão num novo telemóvel.',
     acc_code_unavailable:'Código da Conta indisponível de momento — verifique a sua ligação e tente novamente.',
     acc_btn_copy:'Copiar', acc_code_copied:'Código da Conta copiado.',
     acc_btn_player_login:'Entrar',
@@ -10995,6 +10997,9 @@ async function openPortalPinModal(playerId) {
       <div class="form-grid">
         <div class="form-group full"><label>${I18n.t('acc_lbl_pin')}</label><input id="pin-value" type="text" inputmode="numeric" maxlength="8" value="${esc(p.viewerPin||'')}" placeholder="e.g. 4821" style="text-align:center;font-size:20px;letter-spacing:3px"></div>
       </div>
+      <div id="pinModalAccountCode" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:11px;color:var(--muted)">${I18n.t('acc_loading_code')}</div>
+      </div>
       <div class="form-actions" style="margin-top:16px;justify-content:flex-end">
         ${p.viewerPin ? `<button class="btn btn-danger" onclick="removePortalPin(${playerId})">${I18n.t('acc_btn_remove_pin')}</button>` : ''}
         <button class="btn btn-secondary" onclick="document.getElementById('pinModalOverlay').remove()">${I18n.t('common_cancel')}</button>
@@ -11002,6 +11007,32 @@ async function openPortalPinModal(playerId) {
       </div>
     </div>`;
   document.body.appendChild(overlay);
+  // Reuses the exact same profile fetch already built for Settings — this
+  // is the same code, not a new lookup, so it's kept correct in one place.
+  renderPinModalAccountCode();
+}
+
+async function renderPinModalAccountCode() {
+  const blockEl = document.getElementById('pinModalAccountCode');
+  if (!blockEl) return;
+  try {
+    const rows = await Sync.fetchOwnProfile();
+    if (!rows || !rows.length) {
+      blockEl.innerHTML = `<div style="font-size:11px;color:var(--muted)">${I18n.t('acc_code_unavailable')}</div>`;
+      return;
+    }
+    const code = rows[0].account_code;
+    blockEl.innerHTML = `
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">${I18n.t('acc_account_code_label')}</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="font-size:18px;font-weight:700;letter-spacing:2px">${esc(code)}</div>
+        <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('${esc(code)}');Toast.show(I18n.t('acc_code_copied'))">${I18n.t('acc_btn_copy')}</button>
+      </div>
+      <p style="font-size:10px;color:var(--muted);margin-top:4px">${I18n.t('acc_code_hint_short')}</p>
+    `;
+  } catch(err) {
+    blockEl.innerHTML = `<div style="font-size:11px;color:var(--muted)">${I18n.t('acc_code_unavailable')}</div>`;
+  }
 }
 
 async function savePortalPin(playerId) {
