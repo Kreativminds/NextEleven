@@ -12369,7 +12369,7 @@ async function continueAppLoadAfterLogin() {
     attachEvents();
     await buildTrackedNav();
     await initAdmin();
-    if (await isDebugModeOn()) { ensureDebugPanel(); gdDebugLog('App loaded — debug mode active'); }
+    if (await isDebugModeOn()) { ensureDebugPanel(); gdDebugLog('App loaded — debug mode active'); gdDebugLog('BUILD MARKER: 2026-07-05-2200-pin-debug'); }
     document.getElementById('loading').style.display = 'none';
     document.getElementById('authGate').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
