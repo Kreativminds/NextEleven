@@ -10419,8 +10419,10 @@ const Sync = (() => {
     // ever reintroduced later)
     for (const [k, v] of Object.entries(DEFAULTS)) {
       const existing = await DB.get('appMeta', k);
+      if (typeof gdDebugLog === 'function') gdDebugLog(`[CONFIG DEBUG] seeding check for ${k}: existing=${JSON.stringify(existing)}`);
       if (!existing || !existing.value) {
         await DB.put('appMeta', { metaKey: k, value: v });
+        if (typeof gdDebugLog === 'function') gdDebugLog(`[CONFIG DEBUG] seeded default for ${k}`);
       }
     }
 
@@ -10429,6 +10431,7 @@ const Sync = (() => {
       const m = await DB.get('appMeta', k);
       if (m) _cfg[k === 'supabaseUrl' ? 'url' : k === 'supabaseAnonKey' ? 'anonKey' : k] = m.value || '';
     }
+    if (typeof gdDebugLog === 'function') gdDebugLog(`[CONFIG DEBUG] final _cfg.url=${_cfg.url ? '(set, length '+_cfg.url.length+')' : '(EMPTY)'} _cfg.anonKey=${_cfg.anonKey ? '(set, length '+_cfg.anonKey.length+')' : '(EMPTY)'}`);
     // Auto-generate deviceId if missing
     if (!_cfg.deviceId) {
       _cfg.deviceId = 'dev-' + Math.random().toString(36).slice(2,10);
