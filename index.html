@@ -1138,28 +1138,47 @@ async function handlePlayerPinSubmit() {
     if (errEl) { errEl.textContent = I18n.t('acc_err_pin_required'); errEl.style.display = ''; }
     return;
   }
+  // Account Code is now always required — this was a real bug: the old
+  // "fast local path" below checked the PIN alone, with no regard for
+  // whether a code was even entered, on any device that already had
+  // player data synced locally. That meant PIN-only login worked exactly
+  // on the devices where the two-factor design mattered most (an
+  // already-synced guardian/player device someone else picks up). The
+  // Account Code must now be present and correct before any PIN check
+  // happens at all, online or offline.
+  if (!enteredCode) {
+    if (errEl) { errEl.textContent = I18n.t('acc_err_code_required'); errEl.style.display = ''; }
+    return;
+  }
 
-  // Fast path: this device already has the player's data locally (already
-  // synced at some point) — works fully offline, no network needed.
-  const allPlayers = await DB.getAll('players');
-  let match = allPlayers.find(p => p.viewerPin && p.viewerPin === enteredPin);
+  // Validate the Account Code itself first — locally if this device has a
+  // cached copy of the guardian's own code (from being the guardian's own
+  // device), otherwise via the network RPC. Either way, a wrong code stops
+  // the process here, before the PIN is ever checked against anything.
+  let codeValid = false;
+  const cachedCode = (await DB.get('appMeta', 'ownAccountCode'))?.value;
+  if (cachedCode && cachedCode.toUpperCase() === enteredCode.toUpperCase()) {
+    codeValid = true;
+  }
 
-  // New-device path: nothing local matches — if an Account Code was given,
-  // try the secure server-side RPC instead. This is what makes PIN login
-  // work on a brand-new phone that's never synced with this account before.
+  let match = null;
+  if (codeValid) {
+    // Fast path: correct code confirmed locally, safe to check PIN against
+    // this device's own synced player data, fully offline.
+    const allPlayers = await DB.getAll('players');
+    match = allPlayers.find(p => p.viewerPin && p.viewerPin === enteredPin);
+  }
+
   if (!match) {
-    if (!enteredCode) {
-      if (errEl) { errEl.textContent = I18n.t('acc_err_pin_invalid'); errEl.style.display = ''; }
-      return;
-    }
+    // Either the code didn't match locally, or the local PIN check found
+    // nothing — try the secure server-side RPC, which independently
+    // re-validates BOTH the code and the PIN together, never one alone.
     try {
       const rpcResult = await Sync.validatePlayerPinRemote(enteredCode, enteredPin);
       if (!rpcResult) {
         if (errEl) { errEl.textContent = I18n.t('acc_err_pin_invalid'); errEl.style.display = ''; }
         return;
       }
-      // Pull down just this one player's data so the portal has something
-      // to actually show, then proceed with the normal login flow below.
       match = await Sync.bootstrapPlayerFromRemote(rpcResult);
       if (!match) {
         if (errEl) { errEl.textContent = I18n.t('acc_err_pin_invalid'); errEl.style.display = ''; }
@@ -1289,6 +1308,10 @@ async function renderAccountCodeBlock() {
     }
     const code = rows[0].account_code;
     const claimed = !!rows[0].code_claimed;
+    // Cached locally so Player Portal login can validate the Account Code
+    // offline on this device — without this, the offline fast path would
+    // have no way to confirm a code is correct at all.
+    await DB.put('appMeta', { metaKey: 'ownAccountCode', value: code });
     blockEl.innerHTML = `
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">${I18n.t('acc_account_code_label')}</div>
       <div style="display:flex;align-items:center;gap:10px">
@@ -2535,6 +2558,7 @@ const TR = {
     acc_btn_player_login:'Enter',
     acc_player_pin_note:'Ask your guardian if you don\'t have a PIN yet.',
     acc_err_pin_required:'Enter your PIN.',
+    acc_err_code_required:'Enter your Account Code.',
     acc_err_pin_invalid:'That PIN doesn\'t match any player. Check with your guardian.',
     acc_player_login_success:'Welcome, {name}!',
 
@@ -3458,6 +3482,7 @@ const TR = {
     acc_btn_player_login:'Entrar',
     acc_player_pin_note:'Pergunte ao seu encarregado se ainda não tem um PIN.',
     acc_err_pin_required:'Introduza o seu PIN.',
+    acc_err_code_required:'Introduza o Código da Conta.',
     acc_err_pin_invalid:'Esse PIN não corresponde a nenhum jogador. Verifique com o seu encarregado.',
     acc_player_login_success:'Bem-vindo, {name}!',
 
@@ -4476,9 +4501,19 @@ const Roadmap = (() => {
 })();
 
 // ── Admin guard ────────────────────────────────────────────────────────────────
+// Previously checked a hardcoded family_id string, which is visible to
+// anyone viewing this file's public source on GitHub Pages and could be
+// copied into any other install. Now checks the real super_admin role from
+// the profiles table instead — an actual authenticated, server-verified
+// check, not a guessable local string match.
 async function isAdmin() {
-  const m = await DB.get('appMeta', 'familyId');
-  return m && m.value === 'vmabere';
+  if (!Auth.isLoggedIn()) return false;
+  try {
+    const rows = await Sync.fetchOwnProfile();
+    return !!(rows && rows.length && rows[0].role === 'super_admin');
+  } catch(err) {
+    return false;
+  }
 }
 
 async function initAdmin() {
@@ -10364,15 +10399,24 @@ const Sync = (() => {
 
   function isOnline() { return navigator.onLine; }
 
-  // ── PRE-CONFIGURED SUPABASE DEFAULTS ─────────────────────────────────────
+  // ── SUPABASE CONFIG ───────────────────────────────────────────────────────
+  // Pre-configured so the app connects automatically with zero setup for
+  // any user — exactly like any normal app (you don't configure Facebook's
+  // database when you log in). The anon key is designed by Supabase to be
+  // public-facing; it carries no special privileges by itself. The actual
+  // security boundary is Row Level Security, verified correct throughout
+  // this project — every table only ever returns rows matching the
+  // logged-in user's own auth.uid(). Anyone can see this URL/key, but RLS
+  // means they still can't read or write anyone else's data with it.
   const DEFAULTS = {
     supabaseUrl:    'https://wicydcvdakqopodbxtrl.supabase.co',
     supabaseAnonKey:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpY3lkY3ZkYWtxb3BvZGJ4dHJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MDA5NTUsImV4cCI6MjA5NzE3Njk1NX0._sIaztNAGi9ffuL8qz84G-q_h5TIKTYbyjcnD9VwbE0',
-    familyId:       'vmabere',
   };
 
   async function loadConfig() {
-    // Seed defaults into DB if not already saved
+    // Seed defaults into DB if not already saved (no-op now that DEFAULTS
+    // is empty, kept so this loop still works correctly if defaults are
+    // ever reintroduced later)
     for (const [k, v] of Object.entries(DEFAULTS)) {
       const existing = await DB.get('appMeta', k);
       if (!existing || !existing.value) {
