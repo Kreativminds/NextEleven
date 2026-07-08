@@ -2139,6 +2139,7 @@ const TR = {
     gd_goals_hint:'Enter goals and assists for anyone in the squad — Starter or Sub.',
     gd_goals_no_squad_desc:'Go to "Squad List" first.',
     gd_their_score:'Their Score',
+    gd_own_goal_hint:'If an own goal was scored against us, add it here — not on any of our players.', gd_own_goal_btn:'Own Goal', gd_own_goal_added:'Own goal added to their score.',
     gd_lbl_goals:'Goals', gd_lbl_assists:'Assists',
     gd_added_to_squad:'Added to squad', gd_removed_from_squad:'Removed from squad',
     gd_could_not_save:'Could not save: {msg}',
@@ -3063,6 +3064,7 @@ const TR = {
     gd_goals_hint:'Introduza golos e assistências de qualquer jogador convocado — Titular ou Suplente.',
     gd_goals_no_squad_desc:'Vá primeiro a "Convocados".',
     gd_their_score:'Resultado Adversário',
+    gd_own_goal_hint:'Se foi marcado um autogolo contra nós, adicione aqui — não em nenhum dos nossos jogadores.', gd_own_goal_btn:'Autogolo', gd_own_goal_added:'Autogolo adicionado ao resultado do adversário.',
     gd_lbl_goals:'Golos', gd_lbl_assists:'Assistências',
     gd_added_to_squad:'Adicionado à convocatória', gd_removed_from_squad:'Removido da convocatória',
     gd_could_not_save:'Não foi possível guardar: {msg}',
@@ -11882,12 +11884,16 @@ async function renderSimpleGoalsTab(gameId) {
 
     const oppScoreField = `
       <div class="card" style="margin-bottom:14px;padding:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
           <div>
             <div style="font-weight:700;font-size:13px">${esc(game?.opponent||I18n.t('games_lbl_opponent'))}</div>
             <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${I18n.t('gd_their_score')}</div>
           </div>
           <input type="number" min="0" max="30" value="${game?.opponentScore||0}" style="width:64px;font-size:18px;font-weight:700;text-align:center;border:1px solid var(--border);border-radius:6px;padding:6px" onchange="simpleSetOpponentScore(${gameId},this.value)">
+        </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div style="font-size:11px;color:var(--muted)">${I18n.t('gd_own_goal_hint')}</div>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="addOwnGoalAgainstUs(${gameId})">+1 ${I18n.t('gd_own_goal_btn')}</button>
         </div>
       </div>`;
 
@@ -11986,6 +11992,26 @@ async function simpleSetOpponentScore(gameId, value) {
     await refreshGameHeaderScore(gameId);
   } catch(err) {
     gdDebugLog(`ERROR: ${err.message}`);
+    Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
+  }
+}
+
+// An own goal (one of our players accidentally scoring on their own net,
+// counting toward the OPPONENT's total) has no correct home anywhere in
+// the per-player goals list — attributing it to any of our players there
+// would incorrectly inflate his personal goal tally and season stats.
+// This adds directly to the opponent's score instead, exactly like a
+// manual score edit, without ever touching any player's own numbers.
+async function addOwnGoalAgainstUs(gameId) {
+  try {
+    const game = await DB.get('games', gameId);
+    if (!game) return;
+    game.opponentScore = (parseInt(game.opponentScore)||0) + 1;
+    await DB.put('games', game);
+    Toast.show(I18n.t('gd_own_goal_added'));
+    await refreshGameHeaderScore(gameId);
+    await renderSimpleGoalsTab(gameId);
+  } catch(err) {
     Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
   }
 }
