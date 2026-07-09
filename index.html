@@ -445,7 +445,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
      ══════════════════════════════════════════════════════════════════════════ -->
 <div id="playerPortal" style="display:none;min-height:100vh;min-height:100dvh;max-width:100vw;overflow-x:hidden;flex-direction:column;background:var(--bg)">
   <nav>
-    <div class="nav-brand">
+    <div class="nav-brand" onclick="Nav.goPortal('home')" style="cursor:pointer">
       <div class="nav-logo-mark"><span>11</span></div>
       <div class="nav-wordmark">Next<b>Eleven</b></div>
       <span class="nav-page-name" id="portalNavPageName" style="display:none"></span>
@@ -487,7 +487,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 
 <!-- NAV -->
 <nav>
-  <div class="nav-brand">
+  <div class="nav-brand" onclick="Nav.go('home')" style="cursor:pointer">
     <div class="nav-logo-mark"><span>11</span></div>
     <div class="nav-wordmark">Next<b>Eleven</b></div>
     <span class="nav-page-name" id="navPageName" style="display:none"></span>
@@ -2209,6 +2209,7 @@ const TR = {
 
     // ── GAME DETAIL ──
     gd_tab_squad:'Squad List', gd_tab_xi:'Starting XI', gd_tab_goals:'Goals', gd_tab_penalties:'Penalties',
+    gd_readonly_notice:'This game is now read-only.', gd_btn_edit:'Edit', gd_err_readonly:'This game is read-only. Tap Edit to make changes.',
     gd_autosave_note:'Changes save automatically — no Save button needed.',
     gd_btn_back:'Back to Games',
     gd_squad_hint:"Tap a player to add them to the squad for this game. Use this as soon as you know who's available — before match day.",
@@ -3152,6 +3153,7 @@ const TR = {
 
     // ── GAME DETAIL ──
     gd_tab_squad:'Convocados', gd_tab_xi:'Onze Inicial', gd_tab_goals:'Golos', gd_tab_penalties:'Grandes Penalidades',
+    gd_readonly_notice:'Este jogo está agora só de leitura.', gd_btn_edit:'Editar', gd_err_readonly:'Este jogo está só de leitura. Toque em Editar para fazer alterações.',
     gd_autosave_note:'As alterações são guardadas automaticamente — não é necessário gravar.',
     gd_btn_back:'Voltar aos Jogos',
     gd_squad_hint:'Toque num jogador para o adicionar à convocatória deste jogo. Use isto assim que souber quem está disponível — antes do dia do jogo.',
@@ -9282,6 +9284,17 @@ const Render = (() => {
     window._gdPlayers = activePlayers;
     window._gdGameId = gameId;
 
+    // Editable automatically from just before kickoff through the
+    // resolved match duration; outside that window it's read-only unless
+    // manually unlocked via the Edit button. The unlock is session-only
+    // (State, not persisted) — reopening this game later re-applies the
+    // normal automatic window rather than staying permanently unlocked.
+    const season = await DB.get('seasons', game.seasonId);
+    const autoEditable = isGameEditable(game, season);
+    const manuallyUnlocked = State.gameEditOverrides && State.gameEditOverrides[gameId];
+    const isEditable = autoEditable || manuallyUnlocked;
+    window._gdIsEditable = isEditable;
+
     const ourScore = Calc.teamGoals(existingGP, game);
     const theirScore = parseInt(game.opponentScore)||0;
     const res = Calc.result(ourScore, theirScore, game);
@@ -9308,6 +9321,12 @@ const Render = (() => {
         </div>
         ${game.teamNotes?`<div style="margin-top:10px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px">${esc(game.teamNotes)}</div>`:''}
       </div>
+
+      ${!isEditable ? `
+      <div class="card" style="margin-bottom:14px;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:#faf7f0">
+        <div style="font-size:12px;color:var(--muted)">&#128274; ${I18n.t('gd_readonly_notice')}</div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="unlockGameForEdit(${gameId})">${I18n.t('gd_btn_edit')}</button>
+      </div>` : ''}
 
       <div class="tab-bar-row" style="margin-bottom:16px">
         <button class="import-tab ${currentTab==='squad'?'active-tab':''}" id="gdtab-squad" onclick="switchSimpleTab(${gameId},'squad')">${I18n.t('gd_tab_squad')}</button>
@@ -11599,6 +11618,17 @@ function toggleGameDurationCustom() {
   custom.style.display = sel.value === 'custom' ? '' : 'none';
 }
 
+// Manually unlocks a specific game for editing, overriding the automatic
+// read-only window. Session-only (State, not persisted to IndexedDB) —
+// closing and reopening the game later re-applies the normal automatic
+// check rather than staying permanently unlocked, so a fix made today
+// doesn't silently leave last month's game editable forever.
+function unlockGameForEdit(gameId) {
+  if (!State.gameEditOverrides) State.gameEditOverrides = {};
+  State.gameEditOverrides[gameId] = true;
+  Render.gameDetail(gameId);
+}
+
 // Reads a duration select+custom pair and returns the actual minute value,
 // or null if left as the default (meaning "use the season default" for a
 // game, or "use the system default of 90" for a season).
@@ -11820,6 +11850,19 @@ function gdDebugLog(msg) {
   if (oldPanel) oldPanel.textContent = _debugLines.slice(0,8).join('\n');
 }
 
+// Shared guard for every write handler below — checked at the top of
+// each one, using the editability state already computed once per Game
+// Detail render (window._gdIsEditable). If a game is read-only and no
+// override is active, the write is blocked with a clear message rather
+// than silently succeeding or silently failing.
+function checkGameEditableOrWarn() {
+  if (window._gdIsEditable === false) {
+    Toast.error(I18n.t('gd_err_readonly'));
+    return false;
+  }
+  return true;
+}
+
 async function getOrCreateGP(gameId, playerId) {
   const all = await DB.getAll('gamePlayers','gameId',gameId);
   let gp = all.find(r => r.playerId === playerId);
@@ -11962,6 +12005,7 @@ async function renderSquadListTab(gameId) {
 }
 
 async function copySquadFromPreviousGame(gameId, prevGameId) {
+  if (!checkGameEditableOrWarn()) return;
   Confirm.show(I18n.t('gd_copy_confirm_title'), I18n.t('gd_copy_confirm_body'), async () => {
     try {
       const prevGP = await DB.getAll('gamePlayers','gameId', prevGameId);
@@ -11999,6 +12043,7 @@ async function copySquadFromPreviousGame(gameId, prevGameId) {
 }
 
 async function simpleToggleSquad(gameId, playerId) {
+  if (!checkGameEditableOrWarn()) return;
   gdDebugLog(`CLICK squad row player=${playerId}`);
   try {
     const gp = await getOrCreateGP(gameId, playerId);
@@ -12020,6 +12065,7 @@ async function simpleToggleSquad(gameId, playerId) {
 // Mirrors simpleToggleSquad exactly, for temp players — see
 // getOrCreateGPForTemp for why this stays a separate function.
 async function simpleToggleSquadTemp(gameId, tempPlayerId) {
+  if (!checkGameEditableOrWarn()) return;
   try {
     const gp = await getOrCreateGPForTemp(gameId, tempPlayerId);
     gp.calledUp = !gp.calledUp;
@@ -12099,6 +12145,7 @@ async function renderStartingXITab(gameId) {
 }
 
 async function simpleToggleStarter(gameId, playerId) {
+  if (!checkGameEditableOrWarn()) return;
   gdDebugLog(`CLICK xi row player=${playerId}`);
   try {
     const allGP = await DB.getAll('gamePlayers','gameId',gameId);
@@ -12131,6 +12178,7 @@ async function simpleToggleStarter(gameId, playerId) {
 }
 
 async function simpleToggleStarterTemp(gameId, tempPlayerId) {
+  if (!checkGameEditableOrWarn()) return;
   try {
     const allGP = await DB.getAll('gamePlayers','gameId',gameId);
     const gp = await getOrCreateGPForTemp(gameId, tempPlayerId);
@@ -12252,6 +12300,7 @@ async function renderSimpleGoalsTab(gameId) {
 }
 
 async function simpleSetField(gameId, playerId, field, value) {
+  if (!checkGameEditableOrWarn()) return;
   gdDebugLog(`CHANGE ${field} player=${playerId} value=${value}`);
   try {
     const gp = await getOrCreateGP(gameId, playerId);
@@ -12283,6 +12332,7 @@ async function recalcOurPenaltyTotal(gameId) {
 // pattern, works for goals/assists/cards without needing one function per
 // stat type.
 async function simpleSetFieldTemp(gameId, tempPlayerId, field, value) {
+  if (!checkGameEditableOrWarn()) return;
   try {
     const gp = await getOrCreateGPForTemp(gameId, tempPlayerId);
     gp[field] = parseInt(value) || 0;
@@ -12295,6 +12345,7 @@ async function simpleSetFieldTemp(gameId, tempPlayerId, field, value) {
 }
 
 async function simpleSetOpponentScore(gameId, value) {
+  if (!checkGameEditableOrWarn()) return;
   gdDebugLog(`CHANGE opponentScore value=${value}`);
   try {
     const game = await DB.get('games', gameId);
@@ -12317,6 +12368,7 @@ async function simpleSetOpponentScore(gameId, value) {
 // touching any individual player's stats. A true +/- counter (not a
 // one-way button) so a mistaken tap can always be corrected.
 async function adjustOwnGoalsForUs(gameId, delta) {
+  if (!checkGameEditableOrWarn()) return;
   try {
     const game = await DB.get('games', gameId);
     if (!game) return;
@@ -12436,6 +12488,7 @@ async function renderPenaltiesTab(gameId) {
 }
 
 async function simpleSetPenaltiesForThem(gameId, value) {
+  if (!checkGameEditableOrWarn()) return;
   try {
     const game = await DB.get('games', gameId);
     if (!game) return;
