@@ -6273,21 +6273,25 @@ async function renderTournamentPlayerSelection(tournament) {
     if (allPlayers[0]) gdDebugLog(`[TOURN SQUAD DEBUG] sample player: ${JSON.stringify(allPlayers[0])}`);
   }
   const selectedIds = tournament.team?.playerIds || [];
+  const rowsHtml = allPlayers.map(p => {
+    const checked = selectedIds.includes(p.playerId);
+    return `<div class="wp-row ${checked?'wp-active':''}" onclick="toggleTournamentPlayer(${tournament.tournamentId},${p.playerId})">
+            <div class="wp-info">
+              <span class="wp-num" style="color:#111">${esc(p.shirtNumber||'—')}</span>
+              <span class="wp-name" style="color:#111">${esc(shortName(p.fullName))}</span>
+              ${checked?'<span style="margin-left:auto;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
+            </div>
+          </div>`;
+  }).join('');
+  if (typeof gdDebugLog === 'function' && allPlayers[0]) {
+    gdDebugLog(`[TOURN SQUAD DEBUG] first row HTML: ${rowsHtml.slice(0, 300)}`);
+  }
   return `
     <div style="margin-bottom:10px">
       <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">${I18n.t('tourn_players_label')}</div>
       <p style="font-size:11px;color:var(--muted);margin-bottom:8px">${I18n.t('tourn_players_hint')}</p>
       <div class="who-played-list" style="max-height:280px;overflow-y:auto">
-        ${allPlayers.map(p => {
-          const checked = selectedIds.includes(p.playerId);
-          return `<div class="wp-row ${checked?'wp-active':''}" onclick="toggleTournamentPlayer(${tournament.tournamentId},${p.playerId})">
-            <div class="wp-info">
-              <span class="wp-num">${p.shirtNumber||'—'}</span>
-              <span class="wp-name">${esc(shortName(p.fullName))}</span>
-              ${checked?'<span style="margin-left:auto;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
-            </div>
-          </div>`;
-        }).join('')}
+        ${rowsHtml}
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:6px">${I18n.t('tourn_players_count', {n: selectedIds.length, total: allPlayers.length})}</div>
     </div>`;
