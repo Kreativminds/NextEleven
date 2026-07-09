@@ -927,6 +927,18 @@ function isGameResultVisible(game) {
     const endOfDay = new Date(`${game.date}T23:59:59`);
     return now > endOfDay;
   }
+  // If the game's scheduled kickoff has already passed — whether today or
+  // an earlier day — treat it as visible immediately, without waiting for
+  // the 90+15 minute buffer below. That buffer exists to avoid showing a
+  // live match as "finished" while it might still genuinely be in
+  // progress on the day itself, but it has no useful purpose once the
+  // game's own scheduled kickoff time has already fully elapsed — e.g. a
+  // shorter tournament match (many tournaments use reduced match lengths,
+  // not a full 90 minutes), or a result entered well after the match
+  // actually happened.
+  if (now.getTime() > gameDateTime.getTime()) {
+    return true;
+  }
   const cutoff = new Date(gameDateTime.getTime() + (CONFIG.MATCH_DURATION_MINS + CONFIG.RESULT_VISIBILITY_BUFFER_MINS) * 60000);
   return now >= cutoff;
 }
@@ -6991,7 +7003,7 @@ async function renderMatchLog(playerId) {
     const gps = allGP.filter(r => r.gameId === g.gameId);
     const our = Calc.teamGoals(gps, g);
     const their = parseInt(g.opponentScore)||0;
-    return { game: g, gp, _our: our, _their: their, _res: Calc.result(our,their) };
+    return { game: g, gp, _our: our, _their: their, _res: Calc.result(our,their,g) };
   });
 
   const sortKey = el.dataset.sortKey || 'date';
@@ -8108,7 +8120,7 @@ async function renderPlayerPortalStats() {
           const gps = allGP.filter(r => r.gameId === g.gameId);
           const our = Calc.teamGoals(gps, g);
           const their = parseInt(g.opponentScore)||0;
-          const res = Calc.result(our, their);
+          const res = Calc.result(our, their, g);
           const visible = isGameResultVisible(g);
           if (!visible) return `<div class="form-badge" onclick="openPortalGameViewer(${g.gameId})" style="cursor:pointer"><div class="fb-result badge" style="background:#f0f0f0;color:#999">···</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">${I18n.t('tp_form_upcoming')}</div></div>`;
           if (!gp||!gp.calledUp) return `<div class="form-badge" onclick="openPortalGameViewer(${g.gameId})" style="cursor:pointer"><div class="fb-result badge badge-${res}">${res}</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">${I18n.t('tp_form_dnp')}</div></div>`;
@@ -9087,7 +9099,7 @@ const Render = (() => {
       const gps = allGP.filter(r=>r.gameId===g.gameId);
       const our = Calc.teamGoals(gps, g);
       const their = parseInt(g.opponentScore)||0;
-      return { ...g, _our: our, _their: their, _res: Calc.result(our, their) };
+      return { ...g, _our: our, _their: their, _res: Calc.result(our, their, g) };
     });
 
     const sortKey = el.dataset.sortKey || 'date';
@@ -9129,7 +9141,7 @@ const Render = (() => {
         <td>${g.homeAway?homeAwayLabel(g.homeAway):'—'}</td>
         <td><span style="font-size:11px;color:var(--muted)">${g.competitionType?compTypeLabel(g.competitionType):'—'}</span></td>
         <td class="td-bold">${gVisible?(()=>{const s=Calc.homeAwayScore(g.homeAway,g._our,g._their);return s.home+' — '+s.away;})():'<span class="td-muted" style="font-weight:400;font-size:11px">—</span>'}</td>
-        <td>${gVisible?`<span class="badge badge-${g._res}">${g._res}</span>`:`<span class="td-muted" style="font-size:11px">${I18n.t('games_status_upcoming')}</span>`}</td>
+        <td>${gVisible?`<span class="badge badge-${g._res}">${g._res}</span>${(g.ourPenaltyGoals!==undefined && g.ourPenaltyGoals!==null && g.penaltiesForThem!==undefined && g.penaltiesForThem!==null)?` <span style="font-size:10px;color:var(--muted);font-weight:700">${g.ourPenaltyGoals}-${g.penaltiesForThem} P</span>`:''}`:`<span class="td-muted" style="font-size:11px">${I18n.t('games_status_upcoming')}</span>`}</td>
         <td onclick="event.stopPropagation()">
           <button class="btn btn-secondary btn-sm" onclick="editGame(${g.gameId})">${I18n.t('common_edit')}</button>
           <button class="btn btn-danger btn-sm" onclick="deleteGame(${g.gameId})" style="margin-left:4px">${I18n.t('common_delete')}</button>
@@ -9210,7 +9222,7 @@ const Render = (() => {
           </div>
           <div>
             <div class="game-score" id="liveScore">${displayScore.home} — ${displayScore.away}</div>
-            <div class="game-score-sub"><span class="badge badge-${res}" id="liveResult">${res}</span></div>
+            <div class="game-score-sub"><span class="badge badge-${res}" id="liveResult">${res}</span>${(game.ourPenaltyGoals!==undefined && game.ourPenaltyGoals!==null && game.penaltiesForThem!==undefined && game.penaltiesForThem!==null)?` <span id="liveResultPens" style="font-size:11px;color:var(--muted);font-weight:700">${game.ourPenaltyGoals}-${game.penaltiesForThem} P</span>`:''}</div>
           </div>
         </div>
         ${game.teamNotes?`<div style="margin-top:10px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px">${esc(game.teamNotes)}</div>`:''}
@@ -9276,7 +9288,7 @@ const Render = (() => {
       const gps = allGP.filter(r=>r.gameId===g.gameId);
       const our = Calc.teamGoals(gps, g);
       const their = parseInt(g.opponentScore)||0;
-      return { game:g, gp, _our:our, _their:their, _res:Calc.result(our,their) };
+      return { game:g, gp, _our:our, _their:their, _res:Calc.result(our,their,g) };
     });
     const ovSortFns = {
       date:     (a,b) => new Date(a.game.date||0) - new Date(b.game.date||0),
@@ -9358,7 +9370,7 @@ const Render = (() => {
             const gps = allGP.filter(r=>r.gameId===g.gameId);
             const our = Calc.teamGoals(gps, g);
             const their = parseInt(g.opponentScore)||0;
-            const res = Calc.result(our,their);
+            const res = Calc.result(our,their,g);
             const visible = isGameResultVisible(g);
             if (!visible) return `<div class="form-badge"><div class="fb-result badge" style="background:#f0f0f0;color:#999">···</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">${I18n.t('tp_form_upcoming')}</div></div>`;
             if (!gp||!gp.calledUp) return `<div class="form-badge"><div class="fb-result badge badge-${res}">${res}</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">${I18n.t('tp_form_dnp')}</div></div>`;
@@ -12264,6 +12276,25 @@ async function refreshGameHeaderScore(gameId) {
   const resultEl = document.getElementById('liveResult');
   if (scoreEl) scoreEl.textContent = `${s.home} — ${s.away}`;
   if (resultEl) { resultEl.textContent = res; resultEl.className = `badge badge-${res}`; }
+  // Keep the shootout indicator (e.g. "5-4 P") in sync too — this was
+  // previously only ever set at initial render, so entering penalty
+  // counts wouldn't make it appear/update until the page was reloaded.
+  const hasShootout = game.ourPenaltyGoals!==undefined && game.ourPenaltyGoals!==null && game.penaltiesForThem!==undefined && game.penaltiesForThem!==null;
+  let pensEl = document.getElementById('liveResultPens');
+  if (hasShootout) {
+    const pensText = `${game.ourPenaltyGoals}-${game.penaltiesForThem} P`;
+    if (pensEl) {
+      pensEl.textContent = pensText;
+    } else if (resultEl) {
+      pensEl = document.createElement('span');
+      pensEl.id = 'liveResultPens';
+      pensEl.style.cssText = 'font-size:11px;color:var(--muted);font-weight:700;margin-left:6px';
+      pensEl.textContent = pensText;
+      resultEl.insertAdjacentElement('afterend', pensEl);
+    }
+  } else if (pensEl) {
+    pensEl.remove();
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
