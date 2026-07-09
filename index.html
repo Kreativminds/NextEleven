@@ -2164,6 +2164,7 @@ const TR = {
     tempp_name:'Name', tempp_shirt:'Shirt Number', tempp_position:'Preferred Position', tempp_notes:'Notes',
     tempp_saved:'Temporary player saved.', tempp_err_name_required:'Name is required.',
     common_edit:'Edit', common_delete:'Delete', common_archive:'Archive', common_restore:'Restore',
+    games_more_options:'More options',
 
     // ── POSITIONS ──
     pos_select:'Select...', pos_none:'None',
@@ -3115,6 +3116,7 @@ const TR = {
     tempp_name:'Nome', tempp_shirt:'Número da Camisola', tempp_position:'Posição Preferida', tempp_notes:'Notas',
     tempp_saved:'Jogador temporário guardado.', tempp_err_name_required:'O nome é obrigatório.',
     common_edit:'Editar', common_delete:'Eliminar', common_archive:'Arquivar', common_restore:'Restaurar',
+    games_more_options:'Mais opções',
 
     // ── POSITIONS ──
     pos_select:'Selecionar...', pos_none:'Nenhuma',
@@ -9373,9 +9375,16 @@ const Render = (() => {
             ` : `<span class="pos-pill">${I18n.t('games_status_upcoming')}</span>`}
           </div>
         </div>
-        <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)" onclick="event.stopPropagation()">
+        <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);align-items:center" onclick="event.stopPropagation()">
           <button class="btn btn-secondary btn-sm" onclick="editGame(${g.gameId})">${I18n.t('common_edit')}</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteGame(${g.gameId})">${I18n.t('common_delete')}</button>
+          ${gVisible ? `
+            <button class="btn btn-secondary btn-sm" onclick="toggleGameMoreMenu(${g.gameId})" title="${I18n.t('games_more_options')}" style="padding:6px 10px">&#8942;</button>
+            <div id="gameMoreMenu-${g.gameId}" style="display:none;margin-left:auto">
+              <button class="btn btn-danger btn-sm" onclick="deleteGame(${g.gameId})">${I18n.t('common_delete')}</button>
+            </div>
+          ` : `
+            <button class="btn btn-danger btn-sm" onclick="deleteGame(${g.gameId})">${I18n.t('common_delete')}</button>
+          `}
         </div>
       </div>`;
     }).join('');
@@ -11910,6 +11919,15 @@ async function editGame(id) {
   document.getElementById('addGamePanel').classList.remove('panel-hidden');
   document.getElementById('addGamePanel').scrollIntoView({behavior:'smooth'});
   await populateOpponentDatalist();
+}
+
+// Reveals the Delete option for a played game, which is otherwise hidden
+// behind this extra tap by design — deleting a completed match with real
+// history behind it deserves more friction than deleting an upcoming
+// fixture, without needing a whole new confirmation flow.
+function toggleGameMoreMenu(gameId) {
+  const menu = document.getElementById(`gameMoreMenu-${gameId}`);
+  if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
 }
 
 async function deleteGame(id) {
