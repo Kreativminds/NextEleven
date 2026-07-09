@@ -2120,6 +2120,7 @@ const TR = {
     squad_btn_manage_injury:'Manage Injury',
     squad_btn_add_injury:'+ Injury',
     squad_archived_badge:'Archived',
+    squad_btn_show_archived:'Show Archived ({n})', squad_btn_hide_archived:'Hide Archived',
     squad_col_num:'#', squad_col_name:'Name', squad_col_position:'Position', squad_col_pos2:'2nd Pos',
     squad_col_foot:'Foot', squad_col_dob:'DOB', squad_tracked_label_default:'Tracked',
 
@@ -3057,6 +3058,7 @@ const TR = {
     squad_btn_manage_injury:'Gerir Lesão',
     squad_btn_add_injury:'+ Lesão',
     squad_archived_badge:'Arquivado',
+    squad_btn_show_archived:'Mostrar Arquivados ({n})', squad_btn_hide_archived:'Ocultar Arquivados',
     squad_col_num:'#', squad_col_name:'Nome', squad_col_position:'Posição', squad_col_pos2:'2ª Pos',
     squad_col_foot:'Pé', squad_col_dob:'D. Nasc.', squad_tracked_label_default:'Acompanhado',
 
@@ -8997,11 +8999,26 @@ const Render = (() => {
     });
     players.sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99)||(a.fullName||'').localeCompare(b.fullName||''));
 
+    // Archived players (e.g. left the club, moved up an age group) are
+    // hidden from the main list by default — they were previously shown
+    // mixed in with a small badge, which made the list of players you can
+    // actually pick from harder to scan as a squad accumulates leavers
+    // season over season. A toggle reveals them separately, still with
+    // restore available, rather than removing the data.
+    const archivedCount = players.filter(p => !p.isActive).length;
+    const showArchived = !!State.squadShowArchived;
+    if (!showArchived) players = players.filter(p => p.isActive);
+
     if (search) players = players.filter(p=>p.fullName.toLowerCase().includes(search.toLowerCase()));
     if (posFilter) players = players.filter(p=>p.primaryPosition===posFilter);
 
+    const archivedToggle = archivedCount ? `
+      <div style="margin-bottom:10px">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleSquadShowArchived()">${showArchived ? I18n.t('squad_btn_hide_archived') : I18n.t('squad_btn_show_archived', {n: archivedCount})}</button>
+      </div>` : '';
+
     if (!players.length) {
-      el.innerHTML = `<div class="empty"><strong>${I18n.t('squad_no_players_title')}</strong><p>${I18n.t('squad_no_players_desc')}</p></div>`;
+      el.innerHTML = archivedToggle + `<div class="empty"><strong>${I18n.t('squad_no_players_title')}</strong><p>${I18n.t('squad_no_players_desc')}</p></div>`;
       return;
     }
 
@@ -9052,7 +9069,7 @@ const Render = (() => {
       </tr>`;
     }).join('');
 
-    el.innerHTML = `
+    el.innerHTML = archivedToggle + `
       <div class="game-detail-table-wrap">
         <table class="game-detail-table">
           <thead><tr>
@@ -11442,8 +11459,13 @@ async function archivePlayer(id, restore) {
       await Backup.create('before-delete');
       await DB.put('players', p);
       Toast.show(restore ? I18n.t('squad_restored_toast') : I18n.t('squad_archived_toast'));
-      await Render.squad();
+      await Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||'');
     });
+}
+
+function toggleSquadShowArchived() {
+  State.squadShowArchived = !State.squadShowArchived;
+  Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||'');
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
