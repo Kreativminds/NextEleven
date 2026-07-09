@@ -4433,18 +4433,16 @@ const Calc = (() => {
   }
 
   // Third parameter is optional and backward compatible — every existing
-  // 2-argument call behaves exactly as before. When a game object is
-  // passed and the match is level, a recorded shootout (ourPenaltyGoals
-  // vs penaltiesForThem) decides the result as a win or loss, matching
-  // real football convention — a shootout win is recorded as a W, not a D,
-  // even though the scoreline itself stays as the actual draw.
+  // Official FIFA/UEFA convention: a match decided on penalties after a
+  // draw is recorded as a DRAW in the result/statistics — goals, goal
+  // difference, and W/D/L all reflect the actual scoreline. The shootout
+  // only ever decides progression to the next round, never the recorded
+  // result. (This function briefly converted a shootout win into a W;
+  // that was incorrect and has been reverted to match the real rule.)
+  // The 'game' parameter is now unused here but kept so every existing
+  // call site (which already passes it) doesn't need to change.
   function result(ourGoals, theirGoals, game) {
     const o = parseInt(ourGoals)||0, t = parseInt(theirGoals)||0;
-    if (o === t && game && (game.ourPenaltyGoals !== undefined && game.ourPenaltyGoals !== null) && (game.penaltiesForThem !== undefined && game.penaltiesForThem !== null)) {
-      const ourPens = parseInt(game.ourPenaltyGoals) || 0;
-      const theirPens = parseInt(game.penaltiesForThem) || 0;
-      if (ourPens !== theirPens) return ourPens > theirPens ? 'W' : 'L';
-    }
     return o > t ? 'W' : o < t ? 'L' : 'D';
   }
 
@@ -6270,6 +6268,10 @@ async function renderTournamentOutcomeSummary(tournament) {
 async function renderTournamentPlayerSelection(tournament) {
   const allPlayers = (await DB.getAll('players', 'seasonId', tournament.seasonId)).filter(p => p.isActive)
     .sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99));
+  if (typeof gdDebugLog === 'function') {
+    gdDebugLog(`[TOURN SQUAD DEBUG] tournament.seasonId=${tournament.seasonId} allPlayers.length=${allPlayers.length}`);
+    if (allPlayers[0]) gdDebugLog(`[TOURN SQUAD DEBUG] sample player: ${JSON.stringify(allPlayers[0])}`);
+  }
   const selectedIds = tournament.team?.playerIds || [];
   return `
     <div style="margin-bottom:10px">
@@ -6417,12 +6419,17 @@ async function renderTournamentSummaryPage(tournamentIdRaw) {
           const res = Calc.result(our, their, g);
           const visible = isGameResultVisible(g);
           const logoUrl = opponentLogoByName[(g.opponent||'').toLowerCase()];
+          const hasPens = g.ourPenaltyGoals!==undefined && g.ourPenaltyGoals!==null && g.penaltiesForThem!==undefined && g.penaltiesForThem!==null;
           return `<div class="wp-row" style="cursor:pointer" onclick="openGameDetail(${g.gameId})">
             <div class="wp-info">
               ${logoUrl?`<img src="${esc(logoUrl)}" style="width:18px;height:18px;object-fit:contain;border-radius:3px" onerror="this.style.display='none'">`:''}
               <span class="wp-name">${esc(g.opponent)}</span>
               <span class="pos-pill" style="margin-left:auto">${g.date?fmtDate(g.date):'—'}${g.stage?' · '+esc(g.stage):''}</span>
-              ${visible?`<span class="badge badge-${res}" style="margin-left:6px">${res}</span>`:`<span class="pos-pill" style="margin-left:6px">${I18n.t('games_status_upcoming')}</span>`}
+              ${visible?`
+                <span style="font-size:12px;font-weight:700;margin-left:6px">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their,g.neutralSide);return s.home+'-'+s.away;})()}</span>
+                ${hasPens?`<span style="font-size:10px;color:var(--muted);font-weight:700;margin-left:4px">${g.ourPenaltyGoals}-${g.penaltiesForThem}P</span>`:''}
+                <span class="badge badge-${res}" style="margin-left:6px">${res}</span>
+              ` : `<span class="pos-pill" style="margin-left:6px">${I18n.t('games_status_upcoming')}</span>`}
             </div>
           </div>`;
         }).join('')}
