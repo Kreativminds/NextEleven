@@ -684,8 +684,8 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
         <input type="hidden" id="gf-id">
       </div>
       <div class="tab-bar-row" style="margin-bottom:14px">
-        <button class="import-tab active-tab" id="gamestab-main" onclick="switchGamesMainTab('main')">${I18n.t('games_tab_main')}</button>
-        <button class="import-tab" id="gamestab-tournaments" onclick="switchGamesMainTab('tournaments')">${I18n.t('games_tab_tournaments')}</button>
+        <button class="import-tab active-tab" id="gamestab-main" onclick="switchGamesMainTab('main')" data-i18n="games_tab_main">League &amp; Friendlies</button>
+        <button class="import-tab" id="gamestab-tournaments" onclick="switchGamesMainTab('tournaments')" data-i18n="games_tab_tournaments">Tournaments</button>
       </div>
       <div id="gamesMainView">
         <div class="search-bar">
@@ -2233,6 +2233,7 @@ const TR = {
     games_all_competitions:'All competitions',
     games_tab_main:'League & Friendlies', games_tab_tournaments:'Tournaments',
     tourn_games_count_suffix:'games', tourn_no_games_yet:'No games added to this tournament yet.',
+    tourn_all_stages:'All stages', tourn_no_games_match_stage:'No games match that stage.',
     games_no_games_title:'No games logged yet',
     games_no_games_desc:'Add your first game using the button above.',
     games_back_to_games:'Back to Games',
@@ -3183,6 +3184,7 @@ const TR = {
     games_all_competitions:'Todas as competições',
     games_tab_main:'Liga e Amigáveis', games_tab_tournaments:'Torneios',
     tourn_games_count_suffix:'jogos', tourn_no_games_yet:'Ainda sem jogos adicionados a este torneio.',
+    tourn_all_stages:'Todas as fases', tourn_no_games_match_stage:'Nenhum jogo corresponde a essa fase.',
     games_no_games_title:'Ainda sem jogos registados',
     games_no_games_desc:'Adicione o seu primeiro jogo usando o botão acima.',
     games_back_to_games:'Voltar aos Jogos',
@@ -5985,22 +5987,44 @@ function switchGamesMainTab(tab) {
 // Shows every tournament this season, each with its own linked games
 // listed underneath — genuinely separated from the main League/Cup/
 // Friendly/Trial list, not just filtered within one shared table.
-async function renderTournamentGamesTab() {
+async function renderTournamentGamesTab(stageSearch='') {
   const el = document.getElementById('gamesTournamentsContent');
   if (!el) return;
   const tournaments = await getTournamentsForSeason(State.currentSeasonId);
   tournaments.sort((a,b) => new Date(b.startDate||0) - new Date(a.startDate||0));
   const allGames = await DB.getAll('games','seasonId',State.currentSeasonId);
   const allGP = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
+  const allOpponents = await DB.getAll('opponents');
+  const opponentLogoByName = {};
+  allOpponents.forEach(o => { if (o.logoUrl) opponentLogoByName[(o.opponentName||'').toLowerCase()] = o.logoUrl; });
 
   el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">${I18n.t('tourn_section_title')}</div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="openTournamentForm(null)">${I18n.t('tourn_btn_create')}</button>
     </div>
+    <div class="search-bar" style="margin-bottom:14px">
+      <select id="tournStageSearch" onchange="renderTournamentGamesTab(this.value)">
+        <option value="">${I18n.t('tourn_all_stages')}</option>
+        <option value="Group Stage" ${stageSearch==='Group Stage'?'selected':''}>${I18n.t('stage_group')}</option>
+        <option value="Round of 16" ${stageSearch==='Round of 16'?'selected':''}>${I18n.t('stage_r16')}</option>
+        <option value="Quarter-Final" ${stageSearch==='Quarter-Final'?'selected':''}>${I18n.t('stage_qf')}</option>
+        <option value="Semi-Final" ${stageSearch==='Semi-Final'?'selected':''}>${I18n.t('stage_sf')}</option>
+        <option value="Final" ${stageSearch==='Final'?'selected':''}>${I18n.t('stage_final')}</option>
+        <option value="Gold Final" ${stageSearch==='Gold Final'?'selected':''}>${I18n.t('stage_gold_final')}</option>
+        <option value="Silver Final" ${stageSearch==='Silver Final'?'selected':''}>${I18n.t('stage_silver_final')}</option>
+        <option value="Bronze Final" ${stageSearch==='Bronze Final'?'selected':''}>${I18n.t('stage_bronze_final')}</option>
+      </select>
+    </div>
     ${!tournaments.length ? `<div class="empty"><strong>${I18n.t('tourn_empty')}</strong></div>` : tournaments.map(t => {
-      const tGames = allGames.filter(g => g.tournamentId === t.tournamentId)
-        .sort((a,b) => gameSortKey(a) - gameSortKey(b));
+      // Most recent game first — using full date+time, so two games on
+      // the same day (very common in a tournament) still order correctly
+      // by actual kickoff time, not just calendar date.
+      let tGames = allGames.filter(g => g.tournamentId === t.tournamentId)
+        .sort((a,b) => gameSortKey(b) - gameSortKey(a));
+      if (stageSearch) {
+        tGames = tGames.filter(g => g.stage === stageSearch);
+      }
       return `
       <div class="card" style="margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:pointer" onclick="openTournamentForm(${t.tournamentId})">
@@ -6010,23 +6034,33 @@ async function renderTournamentGamesTab() {
           </div>
           <span class="pos-pill">${tGames.length} ${I18n.t('tourn_games_count_suffix')}</span>
         </div>
-        ${!tGames.length ? `<p style="font-size:12px;color:var(--muted)">${I18n.t('tourn_no_games_yet')}</p>` : `
-        <div class="who-played-list">
-          ${tGames.map(g => {
-            const gps = allGP.filter(r => r.gameId === g.gameId);
-            const our = Calc.teamGoals(gps, g);
-            const their = parseInt(g.opponentScore)||0;
-            const res = Calc.result(our, their, g);
-            const visible = isGameResultVisible(g);
-            return `<div class="wp-row" style="cursor:pointer" onclick="openGameDetail(${g.gameId})">
-              <div class="wp-info">
-                <span class="wp-name">${esc(g.opponent)}</span>
-                <span class="pos-pill" style="margin-left:auto">${g.date?fmtDate(g.date):'—'}</span>
-                ${visible?`<span class="badge badge-${res}" style="margin-left:6px">${res}</span>`:`<span class="pos-pill" style="margin-left:6px">${I18n.t('games_status_upcoming')}</span>`}
+        ${!tGames.length ? `<p style="font-size:12px;color:var(--muted)">${stageSearch?I18n.t('tourn_no_games_match_stage'):I18n.t('tourn_no_games_yet')}</p>` : tGames.map(g => {
+          const gps = allGP.filter(r => r.gameId === g.gameId);
+          const our = Calc.teamGoals(gps, g);
+          const their = parseInt(g.opponentScore)||0;
+          const res = Calc.result(our, their, g);
+          const visible = isGameResultVisible(g);
+          const logoUrl = opponentLogoByName[(g.opponent||'').toLowerCase()];
+          const hasPens = g.ourPenaltyGoals!==undefined && g.ourPenaltyGoals!==null && g.penaltiesForThem!==undefined && g.penaltiesForThem!==null;
+          return `<div class="card" style="margin-bottom:8px;padding:10px;cursor:pointer;background:#fafafa" onclick="openGameDetail(${g.gameId})">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+              <div style="min-width:0">
+                <div style="display:flex;align-items:center;gap:6px">
+                  ${logoUrl?`<img src="${esc(logoUrl)}" style="width:18px;height:18px;object-fit:contain;border-radius:3px;flex-shrink:0" onerror="this.style.display='none'">`:''}
+                  <span style="font-weight:700;font-size:13px">${esc(g.opponent)}</span>
+                </div>
+                <div style="font-size:11px;color:var(--muted);margin-top:2px">${g.date?fmtDate(g.date):'—'}${g.stage?' · '+esc(g.stage):''}</div>
               </div>
-            </div>`;
-          }).join('')}
-        </div>`}
+              <div style="text-align:right;flex-shrink:0">
+                ${visible ? `
+                  <span class="badge badge-${res}">${res}</span>
+                  <div style="font-size:14px;font-weight:700;margin-top:2px">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their,g.neutralSide);return s.home+' — '+s.away;})()}</div>
+                  ${hasPens?`<div style="font-size:10px;color:var(--muted);font-weight:700">${g.ourPenaltyGoals}-${g.penaltiesForThem} P</div>`:''}
+                ` : `<span class="pos-pill">${I18n.t('games_status_upcoming')}</span>`}
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
       </div>`;
     }).join('')}
   `;
@@ -9306,77 +9340,45 @@ const Render = (() => {
     }
 
     const allGP = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
-
-    // Pre-compute score/result for sorting
-    const enriched = games.map(g => {
-      const gps = allGP.filter(r=>r.gameId===g.gameId);
-      const our = Calc.teamGoals(gps, g);
-      const their = parseInt(g.opponentScore)||0;
-      return { ...g, _our: our, _their: their, _res: Calc.result(our, their, g) };
-    });
-
-    const sortKey = el.dataset.sortKey || 'date';
-    const sortDir = el.dataset.sortDir || 'desc';
-    const sortFns = {
-      date:            (a,b) => gameSortKey(a) - gameSortKey(b),
-      opponent:        (a,b) => (a.opponent||'').localeCompare(b.opponent||''),
-      homeAway:        (a,b) => (a.homeAway||'').localeCompare(b.homeAway||''),
-      competitionType: (a,b) => (a.competitionType||'').localeCompare(b.competitionType||''),
-      score:           (a,b) => (a._our - a._their) - (b._our - b._their),
-      result:          (a,b) => (a._res||'').localeCompare(b._res||''),
-    };
-    enriched.sort((a,b) => {
-      const fn = sortFns[sortKey] || sortFns.date;
-      return sortDir === 'asc' ? fn(a,b) : fn(b,a);
-    });
-
-    function thSort(key, label, extraClass='') {
-      const active = sortKey === key;
-      const arrow  = active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
-      return `<th class="${extraClass}" style="cursor:pointer;user-select:none" onclick="gamesSort('${key}')">${label}${arrow}</th>`;
-    }
-
     const allOpponents = await DB.getAll('opponents');
     const opponentLogoByName = {};
     allOpponents.forEach(o => { if (o.logoUrl) opponentLogoByName[(o.opponentName||'').toLowerCase()] = o.logoUrl; });
 
-    const rows = enriched.map(g => {
+    // Most recent game first, using full date+time (not just date), so two
+    // games on the same day still order correctly by actual kickoff time.
+    const sorted = [...games].sort((a,b) => gameSortKey(b) - gameSortKey(a));
+
+    el.innerHTML = sorted.map(g => {
+      const gps = allGP.filter(r=>r.gameId===g.gameId);
+      const our = Calc.teamGoals(gps, g);
+      const their = parseInt(g.opponentScore)||0;
+      const res = Calc.result(our, their, g);
       const gVisible = isGameResultVisible(g);
       const logoUrl = opponentLogoByName[(g.opponent||'').toLowerCase()];
-      return `<tr style="cursor:pointer" onclick="openGameDetail(${g.gameId})">
-        <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
-        <td class="col-sticky-name">
-          <span style="display:flex;align-items:center;gap:6px">
-            ${logoUrl?`<img src="${esc(logoUrl)}" style="width:18px;height:18px;object-fit:contain;border-radius:3px;flex-shrink:0" onerror="this.style.display='none'">`:''}
-            ${esc(g.opponent)}
-          </span>
-        </td>
-        <td>${g.homeAway?homeAwayLabel(g.homeAway):'—'}</td>
-        <td><span style="font-size:11px;color:var(--muted)">${g.competitionType?compTypeLabel(g.competitionType):'—'}</span></td>
-        <td class="td-bold">${gVisible?(()=>{const s=Calc.homeAwayScore(g.homeAway,g._our,g._their,g.neutralSide);return s.home+' — '+s.away;})():'<span class="td-muted" style="font-weight:400;font-size:11px">—</span>'}</td>
-        <td>${gVisible?`<span class="badge badge-${g._res}">${g._res}</span>${(g.ourPenaltyGoals!==undefined && g.ourPenaltyGoals!==null && g.penaltiesForThem!==undefined && g.penaltiesForThem!==null)?` <span style="font-size:10px;color:var(--muted);font-weight:700">${g.ourPenaltyGoals}-${g.penaltiesForThem} P</span>`:''}`:`<span class="td-muted" style="font-size:11px">${I18n.t('games_status_upcoming')}</span>`}</td>
-        <td onclick="event.stopPropagation()">
+      const hasPens = g.ourPenaltyGoals!==undefined && g.ourPenaltyGoals!==null && g.penaltiesForThem!==undefined && g.penaltiesForThem!==null;
+      return `<div class="card" style="margin-bottom:10px;cursor:pointer" onclick="openGameDetail(${g.gameId})">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <div style="min-width:0">
+            <div style="display:flex;align-items:center;gap:6px">
+              ${logoUrl?`<img src="${esc(logoUrl)}" style="width:20px;height:20px;object-fit:contain;border-radius:3px;flex-shrink:0" onerror="this.style.display='none'">`:''}
+              <span style="font-weight:700;font-size:14px">${esc(g.opponent)}</span>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${g.date?fmtDate(g.date):'—'} · ${g.homeAway?homeAwayLabel(g.homeAway):'—'} · ${g.competitionType?compTypeLabel(g.competitionType):'—'}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            ${gVisible ? `
+              <span class="badge badge-${res}">${res}</span>
+              <div style="font-size:15px;font-weight:700;margin-top:2px">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their,g.neutralSide);return s.home+' — '+s.away;})()}</div>
+              ${hasPens?`<div style="font-size:10px;color:var(--muted);font-weight:700">${g.ourPenaltyGoals}-${g.penaltiesForThem} P</div>`:''}
+            ` : `<span class="pos-pill">${I18n.t('games_status_upcoming')}</span>`}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)" onclick="event.stopPropagation()">
           <button class="btn btn-secondary btn-sm" onclick="editGame(${g.gameId})">${I18n.t('common_edit')}</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteGame(${g.gameId})" style="margin-left:4px">${I18n.t('common_delete')}</button>
-        </td>
-      </tr>`;
-    }).join('');
-
-    el.innerHTML = `
-      <div class="game-detail-table-wrap">
-        <table class="game-detail-table">
-          <thead><tr>
-            ${thSort('date',I18n.t('games_col_date'),'col-sticky-num')}
-            ${thSort('opponent',I18n.t('games_col_opponent'),'col-sticky-name')}
-            ${thSort('homeAway',I18n.t('games_col_homeaway'))}
-            ${thSort('competitionType',I18n.t('games_col_competition'))}
-            ${thSort('score',I18n.t('games_col_score'))}
-            ${thSort('result',I18n.t('games_col_result'))}
-            <th>${I18n.t('squad_col_actions')}</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+          <button class="btn btn-danger btn-sm" onclick="deleteGame(${g.gameId})">${I18n.t('common_delete')}</button>
+        </div>
       </div>`;
+    }).join('');
   }
 
   // ── GAME DETAIL ────────────────────────────────────────────────────────────
