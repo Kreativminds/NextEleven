@@ -500,6 +500,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
     <button class="nav-link" data-section="games"><span data-nav-label>Games</span></button>
     <span id="trackedNavLinks"></span>
     <button class="nav-link" data-section="teamSummary"><span data-nav-label>Team Summary</span></button>
+    <button class="nav-link" data-section="tournSummary"><span data-nav-label>Tournament Summary</span></button>
     <button class="nav-link" data-section="settings"><span data-nav-label>Settings</span></button>
     <button class="nav-link" data-section="help">? <span data-nav-label>Help</span></button>
     <button class="nav-link" id="adminNavBtn" data-section="admin" style="display:none;background:rgba(255,200,0,.15);color:#ffd700">&#9881; <span data-nav-label>Admin</span></button>
@@ -517,6 +518,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
   <button class="nav-link" data-section="games"><span data-nav-label>Games</span></button>
   <span id="trackedMobileLinks"></span>
   <button class="nav-link" data-section="teamSummary"><span data-nav-label>Team Summary</span></button>
+  <button class="nav-link" data-section="tournSummary"><span data-nav-label>Tournament Summary</span></button>
   <button class="nav-link" data-section="settings"><span data-nav-label>Settings</span></button>
   <button class="nav-link" data-section="help">? <span data-nav-label>Help</span></button>
   <button class="nav-link" id="adminNavBtnMobile" data-section="admin" style="display:none;color:#ffd700">&#9881; <span data-nav-label>Admin</span></button>
@@ -749,6 +751,18 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
       <button class="btn btn-secondary btn-sm no-print" onclick="window.print()">Export PDF</button>
     </div>
     <div id="teamSummaryContent"></div>
+  </div>
+
+  <!-- TOURNAMENT SUMMARY -->
+  <div class="section" id="sec-tournSummary">
+    <div class="page-header">
+      <div><h1 data-i18n="tournsum_title">Tournament Summary</h1><div class="page-header-sub" id="tournSummarySubtitle"></div></div>
+    </div>
+    <div class="form-group" style="max-width:320px;margin-bottom:16px">
+      <label data-i18n="tournsum_select_label">Tournament</label>
+      <select id="tournSummarySelect" onchange="renderTournamentSummaryPage(this.value)"></select>
+    </div>
+    <div id="tournSummaryContent"></div>
   </div>
 
   <!-- ACHIEVEMENTS -->
@@ -2159,6 +2173,16 @@ const TR = {
     tourn_empty:'No tournaments yet.',
     tempp_new_title:'Add Temporary Player', tempp_edit_title:'Edit Temporary Player',
     tourn_players_label:'Tournament Squad',
+    tournsum_title:'Tournament Summary', tournsum_select_label:'Tournament',
+    tournsum_record:'Record', tournsum_goal_diff:'Goal Diff',
+    tournsum_analytics:'Analytics', tournsum_win_rate:'Win Rate', tournsum_pts_match:'Pts / Match',
+    tournsum_avg_scored:'Avg Scored', tournsum_avg_conceded:'Avg Conceded',
+    tournsum_total_goals:'Total Goals', tournsum_goals_against:'Goals Against',
+    tournsum_tactics:'Tournament Stats', tournsum_phase_split:'Phase Split',
+    tournsum_grp_abbr:'Grp', tournsum_po_abbr:'PO', tournsum_goal_margin:'Goal Margin',
+    tournsum_clean_sheets:'Clean Sheets', tournsum_scoring_matches:'Scoring Matches',
+    tournsum_top_players:'Top Players', tournsum_no_scorers:'No goals recorded yet.',
+    tournsum_matches:'Matches',
     tourn_players_hint:'Select the season players attending this tournament. Only these players (plus any guests) will be available in every game linked to this tournament.',
     tourn_players_count:'{n} of {total} selected',
     tempp_name:'Name', tempp_shirt:'Shirt Number', tempp_position:'Preferred Position', tempp_notes:'Notes',
@@ -3111,6 +3135,16 @@ const TR = {
     tourn_empty:'Ainda sem torneios.',
     tempp_new_title:'Adicionar Jogador Temporário', tempp_edit_title:'Editar Jogador Temporário',
     tourn_players_label:'Plantel do Torneio',
+    tournsum_title:'Resumo do Torneio', tournsum_select_label:'Torneio',
+    tournsum_record:'Registo', tournsum_goal_diff:'Diferença de Golos',
+    tournsum_analytics:'Análise', tournsum_win_rate:'Taxa de Vitórias', tournsum_pts_match:'Pts / Jogo',
+    tournsum_avg_scored:'Média Marcados', tournsum_avg_conceded:'Média Sofridos',
+    tournsum_total_goals:'Total de Golos', tournsum_goals_against:'Golos Sofridos',
+    tournsum_tactics:'Estatísticas do Torneio', tournsum_phase_split:'Divisão de Fases',
+    tournsum_grp_abbr:'Grp', tournsum_po_abbr:'PO', tournsum_goal_margin:'Margem de Golos',
+    tournsum_clean_sheets:'Jogos sem Sofrer', tournsum_scoring_matches:'Jogos a Marcar',
+    tournsum_top_players:'Melhores Jogadores', tournsum_no_scorers:'Ainda sem golos registados.',
+    tournsum_matches:'Jogos',
     tourn_players_hint:'Selecione os jogadores da época que vão a este torneio. Apenas estes jogadores (mais quaisquer convidados) estarão disponíveis em todos os jogos ligados a este torneio.',
     tourn_players_count:'{n} de {total} selecionados',
     tempp_name:'Nome', tempp_shirt:'Número da Camisola', tempp_position:'Posição Preferida', tempp_notes:'Notas',
@@ -4533,6 +4567,43 @@ const Calc = (() => {
     return s;
   }
 
+  // Reuses teamSeasonStats directly — it already just processes whatever
+  // game list it's given, with no assumption about season vs. tournament
+  // scope. This adds the extra derived metrics specific to the
+  // Tournament Summary view (win rate %, points/match, averages, phase
+  // split, clean sheet / scoring match ratios, goal margin).
+  function tournamentStats(games, allGP) {
+    const base = teamSeasonStats(games, allGP);
+    const played = base.played || 0;
+    const winRate = played ? Math.round((base.wins / played) * 100) : 0;
+    const points = base.wins * 3 + base.draws;
+    const ptsPerMatch = played ? (points / played).toFixed(2) : '0.00';
+    const avgScored = played ? (base.goalsFor / played).toFixed(2) : '0.00';
+    const avgConceded = played ? (base.goalsAgainst / played).toFixed(2) : '0.00';
+    const scoringMatches = games.filter(g => {
+      const gps = allGP.filter(r => r.gameId === g.gameId);
+      return teamGoals(gps, g) > 0;
+    }).length;
+    const goalMargin = played ? ((base.goalsFor - base.goalsAgainst) / played).toFixed(2) : '0.00';
+
+    // Phase split: how many games fall into "Group Stage" vs anything
+    // else (treated generically as "Playoff" — Round of 16, Quarter,
+    // Semi, Final, Gold/Silver/Bronze Final all count as playoff rounds).
+    let groupCount = 0, playoffCount = 0, noStageCount = 0;
+    games.forEach(g => {
+      if (!g.stage) noStageCount++;
+      else if (g.stage === 'Group Stage') groupCount++;
+      else playoffCount++;
+    });
+
+    return {
+      ...base,
+      winRate, points, ptsPerMatch, avgScored, avgConceded,
+      scoringMatches, cleanSheets: base.cleanSheets, played,
+      goalMargin, groupCount, playoffCount, noStageCount,
+    };
+  }
+
   function playerSeasonStats(playerId, games, allGP) {
     let calledUp=0,started=0,subbed=0,goals=0,assists=0,yellow=0,red=0,mom=0,fullGames=0,partial=0;
     games.forEach(g => {
@@ -4551,7 +4622,7 @@ const Calc = (() => {
     return {calledUp,started,subbed,goals,assists,yellow,red,mom,fullGames,partial,minutes:estimatedMins(fullGames,partial)};
   }
 
-  return { teamGoals, result, homeAwayScore, goalContributions, arrivalTime, lorenzoStats, teamSeasonStats, playerSeasonStats, estimatedMins };
+  return { teamGoals, result, homeAwayScore, goalContributions, arrivalTime, lorenzoStats, teamSeasonStats, tournamentStats, playerSeasonStats, estimatedMins };
 })();
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -6219,6 +6290,170 @@ async function renderTournamentPlayerSelection(tournament) {
       <div style="font-size:11px;color:var(--muted);margin-top:6px">${I18n.t('tourn_players_count', {n: selectedIds.length, total: allPlayers.length})}</div>
     </div>`;
 }
+
+// ── TOURNAMENT SUMMARY — top-level page, parallel to season Team Summary ────
+async function tournSummary() {
+  const sub = document.getElementById('tournSummarySubtitle');
+  if (sub) sub.textContent = State.currentSeason?.seasonName || '';
+
+  const sel = document.getElementById('tournSummarySelect');
+  if (!sel) return;
+  const tournaments = await getTournamentsForSeason(State.currentSeasonId);
+  tournaments.sort((a,b) => new Date(b.startDate||0) - new Date(a.startDate||0));
+
+  if (!tournaments.length) {
+    sel.innerHTML = '';
+    document.getElementById('tournSummaryContent').innerHTML = `<div class="empty"><strong>${I18n.t('tourn_empty')}</strong></div>`;
+    return;
+  }
+
+  const previousSelection = sel.value;
+  sel.innerHTML = tournaments.map(t => `<option value="${t.tournamentId}">${esc(t.name)}</option>`).join('');
+  // Keep whatever was already selected if it's still valid, otherwise
+  // default to the most recent tournament — matches how the dropdown
+  // should behave across re-renders (e.g. after editing a tournament).
+  const stillValid = tournaments.some(t => String(t.tournamentId) === previousSelection);
+  sel.value = stillValid ? previousSelection : String(tournaments[0].tournamentId);
+
+  await renderTournamentSummaryPage(sel.value);
+}
+
+async function renderTournamentSummaryPage(tournamentIdRaw) {
+  const el = document.getElementById('tournSummaryContent');
+  if (!el) return;
+  const tournamentId = parseInt(tournamentIdRaw);
+  const tournament = await getTournamentById(tournamentId);
+  if (!tournament) { el.innerHTML = `<div class="empty"><strong>${I18n.t('tourn_empty')}</strong></div>`; return; }
+
+  const [allGames, players, allGP, allTempPlayers] = await Promise.all([
+    DB.getAll('games','seasonId',State.currentSeasonId),
+    DB.getAll('players','seasonId',State.currentSeasonId),
+    DB.getAll('gamePlayers','seasonId',State.currentSeasonId),
+    getTemporaryPlayersForSeason(State.currentSeasonId),
+  ]);
+  const tGames = allGames.filter(g => g.tournamentId === tournamentId);
+
+  if (!tGames.length) {
+    el.innerHTML = `<div class="empty"><strong>${I18n.t('tourn_no_games_yet')}</strong></div>`;
+    return;
+  }
+
+  // Only finished games count toward the stats — matches the same rule
+  // season Team Summary already uses, so the two pages stay consistent
+  // in how they define "counts yet."
+  const finishedGames = tGames.filter(g => isGameResultVisible(g));
+  const ts = Calc.tournamentStats(finishedGames, allGP);
+
+  // Player stats scoped to this tournament only — reuses the same
+  // playerSeasonStats calculation, just fed this tournament's games
+  // instead of the whole season's, so season totals elsewhere are
+  // completely unaffected by anything happening here.
+  const tournPlayerIds = tournament.team?.playerIds?.length
+    ? players.filter(p => tournament.team.playerIds.includes(p.playerId))
+    : players.filter(p => p.isActive);
+  const pStats = tournPlayerIds.map(p => ({
+    ...p, ...Calc.playerSeasonStats(p.playerId, finishedGames, allGP)
+  }));
+  const topScorers = [...pStats].sort((a,b)=>b.goals-a.goals).filter(p=>p.calledUp>0).slice(0,10);
+
+  const allOpponents = await DB.getAll('opponents');
+  const opponentLogoByName = {};
+  allOpponents.forEach(o => { if (o.logoUrl) opponentLogoByName[(o.opponentName||'').toLowerCase()] = o.logoUrl; });
+
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${I18n.t('tournsum_record')}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">${I18n.t('tournsum_record')}</div><div style="font-size:22px;font-weight:700">${ts.wins}-${ts.draws}-${ts.losses}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">${I18n.t('tournsum_goal_diff')}</div><div style="font-size:22px;font-weight:700">${ts.goalDiff>0?'+':''}${ts.goalDiff}</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${I18n.t('tournsum_analytics')}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">${I18n.t('tournsum_win_rate')}</div><div style="font-size:18px;font-weight:700">${ts.winRate}%</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">${I18n.t('tournsum_pts_match')}</div><div style="font-size:18px;font-weight:700">${ts.ptsPerMatch}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">${I18n.t('tournsum_avg_scored')}</div><div style="font-size:18px;font-weight:700">${ts.avgScored}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">${I18n.t('tournsum_avg_conceded')}</div><div style="font-size:18px;font-weight:700">${ts.avgConceded}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">${I18n.t('tournsum_total_goals')}</div><div style="font-size:18px;font-weight:700">${ts.goalsFor}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">${I18n.t('tournsum_goals_against')}</div><div style="font-size:18px;font-weight:700">${ts.goalsAgainst}</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${I18n.t('tournsum_tactics')}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">${I18n.t('tournsum_phase_split')}</div><div style="font-size:15px;font-weight:700">${ts.groupCount} ${I18n.t('tournsum_grp_abbr')}, ${ts.playoffCount} ${I18n.t('tournsum_po_abbr')}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">${I18n.t('tournsum_goal_margin')}</div><div style="font-size:18px;font-weight:700">${ts.goalMargin}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">${I18n.t('tournsum_clean_sheets')}</div><div style="font-size:18px;font-weight:700">${ts.cleanSheets}/${ts.played}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">${I18n.t('tournsum_scoring_matches')}</div><div style="font-size:18px;font-weight:700">${ts.scoringMatches}/${ts.played}</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${I18n.t('tournsum_top_players')}</div>
+      ${!topScorers.length ? `<p style="font-size:12px;color:var(--muted)">${I18n.t('tournsum_no_scorers')}</p>` : `
+      <div class="who-played-list">
+        ${topScorers.map(p => `
+          <div class="wp-row">
+            <div class="wp-info">
+              <span class="wp-num">${p.shirtNumber||'—'}</span>
+              <span class="wp-name">${esc(shortName(p.fullName))}</span>
+              <span class="pos-pill" style="margin-left:auto">${p.calledUp} GP</span>
+              <span class="pos-pill" style="margin-left:6px">${p.goals} G</span>
+            </div>
+          </div>`).join('')}
+      </div>`}
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${I18n.t('tournsum_matches')}</div>
+      <div class="who-played-list">
+        ${[...tGames].sort((a,b)=>gameSortKey(b)-gameSortKey(a)).map(g => {
+          const gps = allGP.filter(r => r.gameId === g.gameId);
+          const our = Calc.teamGoals(gps, g);
+          const their = parseInt(g.opponentScore)||0;
+          const res = Calc.result(our, their, g);
+          const visible = isGameResultVisible(g);
+          const logoUrl = opponentLogoByName[(g.opponent||'').toLowerCase()];
+          return `<div class="wp-row" style="cursor:pointer" onclick="openGameDetail(${g.gameId})">
+            <div class="wp-info">
+              ${logoUrl?`<img src="${esc(logoUrl)}" style="width:18px;height:18px;object-fit:contain;border-radius:3px" onerror="this.style.display='none'">`:''}
+              <span class="wp-name">${esc(g.opponent)}</span>
+              <span class="pos-pill" style="margin-left:auto">${g.date?fmtDate(g.date):'—'}${g.stage?' · '+esc(g.stage):''}</span>
+              ${visible?`<span class="badge badge-${res}" style="margin-left:6px">${res}</span>`:`<span class="pos-pill" style="margin-left:6px">${I18n.t('games_status_upcoming')}</span>`}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">${I18n.t('tourn_players_label')}</div>
+      <div class="who-played-list">
+        ${tournPlayerIds.map(p => `
+          <div class="wp-row">
+            <div class="wp-info">
+              <span class="wp-num">${p.shirtNumber||'—'}</span>
+              <span class="wp-name">${esc(shortName(p.fullName))}</span>
+            </div>
+          </div>`).join('')}
+        ${(tournament.team?.temporaryPlayerIds||[]).map(tpId => {
+          const tp = allTempPlayers.find(t => t.tempPlayerId === tpId);
+          if (!tp) return '';
+          return `<div class="wp-row">
+            <div class="wp-info">
+              <span class="wp-num">${tp.shirtNumber||'—'}</span>
+              <span class="wp-name">${esc(tp.name)} <span class="pos-pill">${I18n.t('gd_guest_badge')}</span></span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
 
 async function toggleTournamentPlayer(tournamentId, playerId) {
   const tournament = await getTournamentById(tournamentId);
@@ -10353,6 +10588,7 @@ const Nav = (() => {
       case 'squad':        await Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||''); break;
       case 'games':        await Render.gamesList(document.getElementById('gamesSearch')?.value||'', document.getElementById('gamesFilter')?.value||''); break;
       case 'teamSummary':  await Render.teamSummary(); break;
+      case 'tournSummary': await tournSummary(); break;
       case 'settings':     await Render.settings(); break;
       case 'help':         Render.help(); break;
       case 'admin':
@@ -13142,6 +13378,7 @@ setInterval(() => {
   if (current === 'home') Render.home();
   if (current === 'dashboard') Render.dashboard();
   if (current === 'teamSummary') Render.teamSummary();
+  if (current === 'tournSummary') tournSummary();
   // Player portal — same staleness risk applies there too.
   if (State.portalPlayerId && document.getElementById('playerPortal')?.style.display !== 'none') {
     if (State.currentPortalSection === 'home') renderPlayerPortalHome();
