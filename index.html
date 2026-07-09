@@ -962,6 +962,21 @@ function isGameResultVisible(game) {
   return now >= cutoff;
 }
 
+// Single source of truth for tournament squad locking — given a game and
+// its full active season roster, returns the correctly-locked list. If
+// the game isn't linked to a tournament, or that tournament has no player
+// selection saved yet, returns the full roster unchanged (the safe
+// fallback that makes this retrofit automatically onto every existing
+// tournament game with zero migration). Used both by gameDetail's normal
+// render and by any defensive fallback path, so there is exactly one
+// place this logic lives — no risk of the two drifting apart.
+async function getLockedPlayersForGame(game, activePlayers) {
+  if (!game?.tournamentId) return activePlayers;
+  const tournament = await getTournamentById(game.tournamentId);
+  if (!tournament?.team?.playerIds?.length) return activePlayers;
+  return activePlayers.filter(p => tournament.team.playerIds.includes(p.playerId));
+}
+
 // Resolves the real match length for a specific game: the game's own
 // override if set, else the season's default if set, else the standard
 // 90 minutes. Deliberately per-game, not tied to competition type — a
@@ -2129,6 +2144,9 @@ const TR = {
     tourn_section_title:'Tournaments', tourn_btn_create:'+ Create Tournament',
     tourn_empty:'No tournaments yet.',
     tempp_new_title:'Add Temporary Player', tempp_edit_title:'Edit Temporary Player',
+    tourn_players_label:'Tournament Squad',
+    tourn_players_hint:'Select the season players attending this tournament. Only these players (plus any guests) will be available in every game linked to this tournament.',
+    tourn_players_count:'{n} of {total} selected',
     tempp_name:'Name', tempp_shirt:'Shirt Number', tempp_position:'Preferred Position', tempp_notes:'Notes',
     tempp_saved:'Temporary player saved.', tempp_err_name_required:'Name is required.',
     common_edit:'Edit', common_delete:'Delete', common_archive:'Archive', common_restore:'Restore',
@@ -2210,6 +2228,7 @@ const TR = {
     // ── GAME DETAIL ──
     gd_tab_squad:'Squad List', gd_tab_xi:'Starting XI', gd_tab_goals:'Goals', gd_tab_penalties:'Penalties',
     gd_readonly_notice:'This game is now read-only.', gd_btn_edit:'Edit', gd_err_readonly:'This game is read-only. Tap Edit to make changes.',
+    gd_edit_mode_notice:'This game is currently in Edit mode.', gd_btn_lock:'Lock',
     gd_autosave_note:'Changes save automatically — no Save button needed.',
     gd_btn_back:'Back to Games',
     gd_squad_hint:"Tap a player to add them to the squad for this game. Use this as soon as you know who's available — before match day.",
@@ -3073,6 +3092,9 @@ const TR = {
     tourn_section_title:'Torneios', tourn_btn_create:'+ Criar Torneio',
     tourn_empty:'Ainda sem torneios.',
     tempp_new_title:'Adicionar Jogador Temporário', tempp_edit_title:'Editar Jogador Temporário',
+    tourn_players_label:'Plantel do Torneio',
+    tourn_players_hint:'Selecione os jogadores da época que vão a este torneio. Apenas estes jogadores (mais quaisquer convidados) estarão disponíveis em todos os jogos ligados a este torneio.',
+    tourn_players_count:'{n} de {total} selecionados',
     tempp_name:'Nome', tempp_shirt:'Número da Camisola', tempp_position:'Posição Preferida', tempp_notes:'Notas',
     tempp_saved:'Jogador temporário guardado.', tempp_err_name_required:'O nome é obrigatório.',
     common_edit:'Editar', common_delete:'Eliminar', common_archive:'Arquivar', common_restore:'Restaurar',
@@ -3154,6 +3176,7 @@ const TR = {
     // ── GAME DETAIL ──
     gd_tab_squad:'Convocados', gd_tab_xi:'Onze Inicial', gd_tab_goals:'Golos', gd_tab_penalties:'Grandes Penalidades',
     gd_readonly_notice:'Este jogo está agora só de leitura.', gd_btn_edit:'Editar', gd_err_readonly:'Este jogo está só de leitura. Toque em Editar para fazer alterações.',
+    gd_edit_mode_notice:'Este jogo está atualmente em modo de Edição.', gd_btn_lock:'Bloquear',
     gd_autosave_note:'As alterações são guardadas automaticamente — não é necessário gravar.',
     gd_btn_back:'Voltar aos Jogos',
     gd_squad_hint:'Toque num jogador para o adicionar à convocatória deste jogo. Use isto assim que souber quem está disponível — antes do dia do jogo.',
@@ -5890,6 +5913,7 @@ async function openTournamentForm(tournamentId) {
         <div class="form-group"><label>${I18n.t('tourn_end_date')}</label><input id="tf-end" type="date" value="${existing?.endDate||''}"></div>
         <div class="form-group full"><label>${I18n.t('tourn_notes')}</label><textarea id="tf-notes">${esc(existing?.notes||'')}</textarea></div>
       </div>
+      ${existing ? `<div data-tourn-player-section>${await renderTournamentPlayerSelection(existing)}</div>` : ''}
       ${existing ? await renderTournamentTempPlayersList(existing) : ''}
       ${existing ? `<button type="button" class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:10px" onclick="openTemporaryPlayerForm(null, ${existing.tournamentId})">+ ${I18n.t('tempp_new_title')}</button>` : ''}
       <div class="form-actions">
@@ -6067,6 +6091,58 @@ async function renderTournamentOutcomeSummary(tournament) {
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${I18n.t('tourn_outcome_label')}</div>
       <div style="font-size:15px;font-weight:700">${esc(outcomeText)}</div>
     </div>`;
+}
+
+// ── TOURNAMENT SEASON PLAYER SELECTION ───────────────────────────────────────
+// This is the actual locking mechanism: whichever season players are
+// checked here become tournament.team.playerIds, and every game linked to
+// this tournament then only shows this list (plus any guests) in
+// Squad/XI/Goals/Penalties — never the full season roster. An empty list
+// (a tournament nobody has configured yet) falls back to showing everyone,
+// so this retrofits safely onto every existing tournament game without any
+// separate migration step — locking only takes effect once you actually
+// make a selection here.
+async function renderTournamentPlayerSelection(tournament) {
+  const allPlayers = (await DB.getAll('players', 'seasonId', tournament.seasonId)).filter(p => p.isActive)
+    .sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99));
+  const selectedIds = tournament.team?.playerIds || [];
+  return `
+    <div style="margin-bottom:10px">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">${I18n.t('tourn_players_label')}</div>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:8px">${I18n.t('tourn_players_hint')}</p>
+      <div class="who-played-list" style="max-height:280px;overflow-y:auto">
+        ${allPlayers.map(p => {
+          const checked = selectedIds.includes(p.playerId);
+          return `<div class="wp-row ${checked?'wp-active':''}" onclick="toggleTournamentPlayer(${tournament.tournamentId},${p.playerId})">
+            <div class="wp-info">
+              <span class="wp-num">${p.shirtNumber||'—'}</span>
+              <span class="wp-name">${esc(shortName(p.fullName))}</span>
+              ${checked?'<span style="margin-left:auto;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">${I18n.t('tourn_players_count', {n: selectedIds.length, total: allPlayers.length})}</div>
+    </div>`;
+}
+
+async function toggleTournamentPlayer(tournamentId, playerId) {
+  const tournament = await getTournamentById(tournamentId);
+  if (!tournament) return;
+  if (!tournament.team) tournament.team = { playerIds: [], temporaryPlayerIds: [] };
+  const idx = tournament.team.playerIds.indexOf(playerId);
+  if (idx >= 0) tournament.team.playerIds.splice(idx, 1);
+  else tournament.team.playerIds.push(playerId);
+  await DB.put('tournaments', tournament);
+  // Refresh just this section in place, same pattern as the temp-players
+  // list refresh, so the rest of the open form isn't disturbed.
+  const container = document.querySelector('#tournamentFormOverlay .rm-form');
+  if (container) {
+    const freshTournament = await getTournamentById(tournamentId);
+    const newHtml = await renderTournamentPlayerSelection(freshTournament);
+    const oldSection = container.querySelector('[data-tourn-player-section]');
+    if (oldSection) oldSection.outerHTML = `<div data-tourn-player-section>${newHtml}</div>`;
+  }
 }
 
 async function renderTournamentTempPlayersList(tournament) {
@@ -9268,6 +9344,7 @@ const Render = (() => {
     // game never sees this list at all — activePlayers stays exactly as
     // it always has been.
     let tempPlayersForGame = [];
+    let lockedPlayers = activePlayers; // default: no lock, show full season squad
     console.log('[TOURN DEBUG] game.tournamentId =', game.tournamentId, typeof game.tournamentId);
     if (game.tournamentId) {
       const tournament = await getTournamentById(game.tournamentId);
@@ -9279,9 +9356,17 @@ const Render = (() => {
       } else {
         console.log('[TOURN DEBUG] tournament has NO temporaryPlayerIds, or tournament itself is null/undefined');
       }
+      // Tournament squad locking: if the tournament has an actual player
+      // selection saved, every game linked to it only shows that list —
+      // never the full season roster. An empty/unset list (a tournament
+      // nobody has configured a squad for yet) falls back to showing
+      // everyone, which is what makes this retrofit safely onto every
+      // existing tournament game with zero migration — locking only
+      // takes effect the moment a real selection exists.
+      lockedPlayers = await getLockedPlayersForGame(game, activePlayers);
     }
     window._gdTempPlayers = tempPlayersForGame;
-    window._gdPlayers = activePlayers;
+    window._gdPlayers = lockedPlayers;
     window._gdGameId = gameId;
 
     // Editable automatically from just before kickoff through the
@@ -9291,7 +9376,7 @@ const Render = (() => {
     // normal automatic window rather than staying permanently unlocked.
     const season = await DB.get('seasons', game.seasonId);
     const autoEditable = isGameEditable(game, season);
-    const manuallyUnlocked = State.gameEditOverrides && State.gameEditOverrides[gameId];
+    const manuallyUnlocked = !!(State.gameEditOverrides && State.gameEditOverrides[gameId]);
     const isEditable = autoEditable || manuallyUnlocked;
     window._gdIsEditable = isEditable;
 
@@ -9322,11 +9407,10 @@ const Render = (() => {
         ${game.teamNotes?`<div style="margin-top:10px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px">${esc(game.teamNotes)}</div>`:''}
       </div>
 
-      ${!isEditable ? `
-      <div class="card" style="margin-bottom:14px;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:#faf7f0">
-        <div style="font-size:12px;color:var(--muted)">&#128274; ${I18n.t('gd_readonly_notice')}</div>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="unlockGameForEdit(${gameId})">${I18n.t('gd_btn_edit')}</button>
-      </div>` : ''}
+      <div class="card" style="margin-bottom:14px;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:${isEditable?'#e6f4ea':'#faf7f0'}">
+        <div style="font-size:12px;color:${isEditable?'#2a7a4e':'var(--muted)'}">${isEditable?`&#9998; ${I18n.t('gd_edit_mode_notice')}`:`&#128274; ${I18n.t('gd_readonly_notice')}`}</div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleGameEditMode(${gameId})">${isEditable?I18n.t('gd_btn_lock'):I18n.t('gd_btn_edit')}</button>
+      </div>
 
       <div class="tab-bar-row" style="margin-bottom:16px">
         <button class="import-tab ${currentTab==='squad'?'active-tab':''}" id="gdtab-squad" onclick="switchSimpleTab(${gameId},'squad')">${I18n.t('gd_tab_squad')}</button>
@@ -11618,14 +11702,22 @@ function toggleGameDurationCustom() {
   custom.style.display = sel.value === 'custom' ? '' : 'none';
 }
 
-// Manually unlocks a specific game for editing, overriding the automatic
-// read-only window. Session-only (State, not persisted to IndexedDB) —
-// closing and reopening the game later re-applies the normal automatic
-// check rather than staying permanently unlocked, so a fix made today
-// doesn't silently leave last month's game editable forever.
-function unlockGameForEdit(gameId) {
+// Toggles this specific game between edit mode and read-only, regardless
+// of its automatic kickoff+duration window — this is a deliberate manual
+// override in either direction, not just an unlock. Session-only (State,
+// not persisted) — closing and reopening the game later re-applies the
+// normal automatic window rather than remembering today's manual choice
+// forever, so a fix made today doesn't silently leave last month's game
+// editable, and locking a currently-live game doesn't stay locked next
+// time you check on it mid-match.
+function toggleGameEditMode(gameId) {
   if (!State.gameEditOverrides) State.gameEditOverrides = {};
-  State.gameEditOverrides[gameId] = true;
+  // Read the same value gameDetail() would have computed as "currently
+  // showing as editable" and flip it — this correctly handles both
+  // directions: turning read-only ON for a currently-live game, and
+  // turning it OFF (unlocking) for a currently-expired one.
+  const currentlyShowing = !!window._gdIsEditable;
+  State.gameEditOverrides[gameId] = !currentlyShowing;
   Render.gameDetail(gameId);
 }
 
@@ -11856,7 +11948,7 @@ function gdDebugLog(msg) {
 // override is active, the write is blocked with a clear message rather
 // than silently succeeding or silently failing.
 function checkGameEditableOrWarn() {
-  if (window._gdIsEditable === false) {
+  if (!window._gdIsEditable) {
     Toast.error(I18n.t('gd_err_readonly'));
     return false;
   }
@@ -11930,7 +12022,9 @@ async function renderSquadListTab(gameId) {
   if (!el) { gdDebugLog('ABORTED: #gdPanel-squad not found'); return; }
   try {
     if (!window._gdPlayers || !window._gdPlayers.length) {
-      window._gdPlayers = (await DB.getAll('players','seasonId', State.currentSeasonId)).filter(p=>p.isActive).sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99));
+      const fallbackGame = await DB.get('games', gameId);
+      const fallbackActivePlayers = (await DB.getAll('players','seasonId', State.currentSeasonId)).filter(p=>p.isActive).sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99));
+      window._gdPlayers = await getLockedPlayersForGame(fallbackGame, fallbackActivePlayers);
     }
     const players = window._gdPlayers;
     const existingGP = await DB.getAll('gamePlayers','gameId',gameId);
