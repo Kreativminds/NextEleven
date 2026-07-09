@@ -623,7 +623,14 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
             <div id="gf-opp-newhint" style="display:none;font-size:11px;color:var(--muted);margin-top:4px"></div>
           </div>
           <div class="form-group"><label data-i18n="games_lbl_homeaway">Home / Away</label>
-            <select id="gf-venue"><option value="Home" data-i18n="venue_home">Home</option><option value="Away" data-i18n="venue_away">Away</option><option value="Neutral" data-i18n="venue_neutral">Neutral</option></select>
+            <select id="gf-venue" onchange="toggleNeutralSideField()"><option value="Home" data-i18n="venue_home">Home</option><option value="Away" data-i18n="venue_away">Away</option><option value="Neutral" data-i18n="venue_neutral">Neutral</option></select>
+          </div>
+          <div class="form-group" id="gf-neutral-side-group" style="display:none">
+            <label data-i18n="games_lbl_neutral_side">Neutral — treat us as</label>
+            <select id="gf-neutral-side">
+              <option value="Home" data-i18n="venue_home">Home</option>
+              <option value="Away" data-i18n="venue_away">Away</option>
+            </select>
           </div>
           <div class="form-group">
             <label><span data-i18n="games_lbl_arrival">Arrival Time</span> <span style="font-size:10px;font-weight:400;color:#999" data-i18n="games_arrival_hint">(optional — defaults to 1h before kick-off)</span></label>
@@ -2133,6 +2140,7 @@ const TR = {
     games_lbl_time:'Game Time',
     games_lbl_opponent:'Opponent *',
     games_lbl_homeaway:'Home / Away',
+    games_lbl_neutral_side:'Neutral — treat us as',
     venue_home:'Home', venue_away:'Away', venue_neutral:'Neutral',
     games_lbl_arrival:'Arrival Time',
     games_arrival_hint:'(optional — defaults to 1h before kick-off)',
@@ -3071,6 +3079,7 @@ const TR = {
     games_lbl_time:'Hora do Jogo',
     games_lbl_opponent:'Adversário *',
     games_lbl_homeaway:'Casa / Fora',
+    games_lbl_neutral_side:'Neutro — tratar-nos como',
     venue_home:'Casa', venue_away:'Fora', venue_neutral:'Neutro',
     games_lbl_arrival:'Hora de Chegada',
     games_arrival_hint:'(opcional — por defeito 1h antes do jogo)',
@@ -4311,10 +4320,11 @@ const Calc = (() => {
   // 'our'/'their' are always from the tracked team's perspective; this
   // flips them into home/away order based on game.homeAway so an Away
   // game like Sporting vs SLO displays as Sporting 1 — SLO 0, not 0-1.
-  function homeAwayScore(homeAway, ourGoals, theirGoals) {
+  function homeAwayScore(homeAway, ourGoals, theirGoals, neutralSide) {
     const o = parseInt(ourGoals)||0, t = parseInt(theirGoals)||0;
     if (homeAway === 'Away') return { home: t, away: o };
-    return { home: o, away: t }; // Home or Neutral: we're treated as home side for display
+    if (homeAway === 'Neutral' && neutralSide === 'Away') return { home: t, away: o };
+    return { home: o, away: t }; // Home, or Neutral treated as Home (the default if not set)
   }
 
   function goalContributions(goals, assists) {
@@ -7060,7 +7070,7 @@ async function renderMatchLog(playerId) {
             return `<tr>
               <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
               <td class="col-sticky-name">${esc(g.opponent)}</td>
-              <td>${resultVisible?`<span class="badge badge-${res}">${res}</span> <small class="td-muted">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their);return s.home+'-'+s.away;})()}</small>`:`<span class="td-muted" style="font-size:11px">${I18n.t('tp_form_upcoming')}</span>`}</td>
+              <td>${resultVisible?`<span class="badge badge-${res}">${res}</span> <small class="td-muted">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their,g.neutralSide);return s.home+'-'+s.away;})()}</small>`:`<span class="td-muted" style="font-size:11px">${I18n.t('tp_form_upcoming')}</span>`}</td>
               <td><span class="badge ${gp.role==='Starter'?'badge-starter':'badge-sub'}">${gp.role==='Starter'?I18n.t('gd_role_starter'):(gp.role==='Sub'?I18n.t('gd_role_sub'):(gp.role||'—'))}</span></td>
               <td><span class="pos-pill">${gp.positionPlayed||'—'}</span></td>
               <td class="td-center td-bold">${resultVisible?(gp.goals||0):'—'}</td>
@@ -8046,7 +8056,7 @@ async function renderPlayerPortalHome() {
             <div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(g.date)}</div>
           </div>
           <div style="text-align:right;flex-shrink:0">
-            ${gVisible ? `<span class="badge badge-${gRes}">${gRes}</span> <span style="font-size:15px;font-weight:700;margin-left:6px">${(()=>{const s=Calc.homeAwayScore(g.homeAway,gOurs,gTheirs);return s.home+'–'+s.away;})()}</span>${gHasPens?` <span style="font-size:10px;color:var(--muted);font-weight:700">${g.ourPenaltyGoals}-${g.penaltiesForThem} P</span>`:''}` : `<span class="td-muted" style="font-size:11px">${I18n.t('home_in_progress')}</span>`}
+            ${gVisible ? `<span class="badge badge-${gRes}">${gRes}</span> <span style="font-size:15px;font-weight:700;margin-left:6px">${(()=>{const s=Calc.homeAwayScore(g.homeAway,gOurs,gTheirs,g.neutralSide);return s.home+'–'+s.away;})()}</span>${gHasPens?` <span style="font-size:10px;color:var(--muted);font-weight:700">${g.ourPenaltyGoals}-${g.penaltiesForThem} P</span>`:''}` : `<span class="td-muted" style="font-size:11px">${I18n.t('home_in_progress')}</span>`}
           </div>
         </div>`;
       }).join('')}
@@ -8127,7 +8137,7 @@ async function renderPlayerPortalStats() {
           const visible = isGameResultVisible(g);
           if (!visible) return `<div class="form-badge" onclick="openPortalGameViewer(${g.gameId})" style="cursor:pointer"><div class="fb-result badge" style="background:#f0f0f0;color:#999">···</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">${I18n.t('tp_form_upcoming')}</div></div>`;
           if (!gp||!gp.calledUp) return `<div class="form-badge" onclick="openPortalGameViewer(${g.gameId})" style="cursor:pointer"><div class="fb-result badge badge-${res}">${res}</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">${I18n.t('tp_form_dnp')}</div></div>`;
-          const fbs = Calc.homeAwayScore(g.homeAway, our, their);
+          const fbs = Calc.homeAwayScore(g.homeAway, our, their, g.neutralSide);
           return `<div class="form-badge" onclick="openPortalGameViewer(${g.gameId})" style="cursor:pointer"><div class="fb-result badge badge-${res}">${res}</div><div class="fb-stat">${fbs.home}-${fbs.away}</div><div class="fb-stat">G:${gp.goals||0} A:${gp.assists||0}</div></div>`;
         }).join('')}
       </div>
@@ -8192,7 +8202,7 @@ async function renderPlayerPortalGames() {
             <span class="wp-num">${gVisible?gRes:'—'}</span>
             <span class="wp-name">${esc(g.opponent)}</span>
             <span class="pos-pill" style="margin-left:auto">${fmtDate(g.date)}</span>
-            <span style="margin-left:6px;font-size:12px;font-weight:700">${gVisible?(()=>{const s=Calc.homeAwayScore(g.homeAway,gOurs,gTheirs);return s.home+'–'+s.away;})():I18n.t('games_status_upcoming')}</span>
+            <span style="margin-left:6px;font-size:12px;font-weight:700">${gVisible?(()=>{const s=Calc.homeAwayScore(g.homeAway,gOurs,gTheirs,g.neutralSide);return s.home+'–'+s.away;})():I18n.t('games_status_upcoming')}</span>
           </div>
         </div>`;
       }).join('')}
@@ -8222,7 +8232,7 @@ async function openPortalGameViewer(gameId) {
   const theirScore = parseInt(game.opponentScore) || 0;
   const res = Calc.result(ourScore, theirScore, game);
   const visible = isGameResultVisible(game);
-  const scoreDisplay = Calc.homeAwayScore(game.homeAway, ourScore, theirScore);
+  const scoreDisplay = Calc.homeAwayScore(game.homeAway, ourScore, theirScore, game.neutralSide);
 
   const calledUp = gp.filter(r => r.calledUp).sort((a,b) => (a.role==='Starter'?0:1) - (b.role==='Starter'?0:1));
   const notCalledUp = players.filter(p => !gp.find(r => r.playerId === p.playerId && r.calledUp));
@@ -8847,7 +8857,7 @@ const Render = (() => {
             <div style="text-align:right;flex-shrink:0">
               ${gVisible ? `
               <span class="badge badge-${gRes}">${gRes}</span>
-              <span style="font-size:15px;font-weight:700;margin-left:6px">${(()=>{const s=Calc.homeAwayScore(g.homeAway,gOurs,gTheirs);return s.home+'–'+s.away;})()}</span>
+              <span style="font-size:15px;font-weight:700;margin-left:6px">${(()=>{const s=Calc.homeAwayScore(g.homeAway,gOurs,gTheirs,g.neutralSide);return s.home+'–'+s.away;})()}</span>
               ${gHasPens?`<span style="font-size:10px;color:var(--muted);font-weight:700;margin-left:4px">${g.ourPenaltyGoals}-${g.penaltiesForThem} P</span>`:''}
               ` : `<span class="td-muted" style="font-size:11px">${I18n.t('home_in_progress')}</span>`}
             </div>
@@ -9160,7 +9170,7 @@ const Render = (() => {
         </td>
         <td>${g.homeAway?homeAwayLabel(g.homeAway):'—'}</td>
         <td><span style="font-size:11px;color:var(--muted)">${g.competitionType?compTypeLabel(g.competitionType):'—'}</span></td>
-        <td class="td-bold">${gVisible?(()=>{const s=Calc.homeAwayScore(g.homeAway,g._our,g._their);return s.home+' — '+s.away;})():'<span class="td-muted" style="font-weight:400;font-size:11px">—</span>'}</td>
+        <td class="td-bold">${gVisible?(()=>{const s=Calc.homeAwayScore(g.homeAway,g._our,g._their,g.neutralSide);return s.home+' — '+s.away;})():'<span class="td-muted" style="font-weight:400;font-size:11px">—</span>'}</td>
         <td>${gVisible?`<span class="badge badge-${g._res}">${g._res}</span>${(g.ourPenaltyGoals!==undefined && g.ourPenaltyGoals!==null && g.penaltiesForThem!==undefined && g.penaltiesForThem!==null)?` <span style="font-size:10px;color:var(--muted);font-weight:700">${g.ourPenaltyGoals}-${g.penaltiesForThem} P</span>`:''}`:`<span class="td-muted" style="font-size:11px">${I18n.t('games_status_upcoming')}</span>`}</td>
         <td onclick="event.stopPropagation()">
           <button class="btn btn-secondary btn-sm" onclick="editGame(${g.gameId})">${I18n.t('common_edit')}</button>
@@ -9224,7 +9234,7 @@ const Render = (() => {
     const ourScore = Calc.teamGoals(existingGP, game);
     const theirScore = parseInt(game.opponentScore)||0;
     const res = Calc.result(ourScore, theirScore, game);
-    const displayScore = Calc.homeAwayScore(game.homeAway, ourScore, theirScore);
+    const displayScore = Calc.homeAwayScore(game.homeAway, ourScore, theirScore, game.neutralSide);
     const currentTab = State.gameDetailTab || 'squad';
     const matchedOpponent = await findOpponentByName(game.opponent);
 
@@ -9394,7 +9404,7 @@ const Render = (() => {
             const visible = isGameResultVisible(g);
             if (!visible) return `<div class="form-badge"><div class="fb-result badge" style="background:#f0f0f0;color:#999">···</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">${I18n.t('tp_form_upcoming')}</div></div>`;
             if (!gp||!gp.calledUp) return `<div class="form-badge"><div class="fb-result badge badge-${res}">${res}</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">${I18n.t('tp_form_dnp')}</div></div>`;
-            const fbs = Calc.homeAwayScore(g.homeAway, our, their);
+            const fbs = Calc.homeAwayScore(g.homeAway, our, their, g.neutralSide);
             return `<div class="form-badge"><div class="fb-result badge badge-${res}">${res}</div><div class="fb-stat">${fbs.home}-${fbs.away}</div><div class="fb-stat">G:${gp.goals||0} A:${gp.assists||0}</div></div>`;
           }).join('')}
         </div>
@@ -9424,7 +9434,7 @@ const Render = (() => {
               return `<tr>
                 <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
                 <td class="col-sticky-name">${esc(g.opponent)}</td>
-                <td><span class="badge badge-${res}">${res}</span> <small class="td-muted">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their);return s.home+'-'+s.away;})()}</small></td>
+                <td><span class="badge badge-${res}">${res}</span> <small class="td-muted">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their,g.neutralSide);return s.home+'-'+s.away;})()}</small></td>
                 <td><span class="badge ${gp.role==='Starter'?'badge-starter':'badge-sub'}">${gp.role==='Starter'?I18n.t('gd_role_starter'):(gp.role==='Sub'?I18n.t('gd_role_sub'):(gp.role||'—'))}</span></td>
                 <td><span class="pos-pill">${gp.positionPlayed||'—'}</span></td>
                 <td class="td-center td-bold">${gp.goals||0}</td>
@@ -11476,6 +11486,8 @@ function resetGameForm() {
     const el=document.getElementById(id);if(el)el.value='';
   });
   document.getElementById('gf-venue').value='Home';
+  document.getElementById('gf-neutral-side').value='Home';
+  toggleNeutralSideField();
   document.getElementById('gf-compType').value='League';
   document.getElementById('gf-stage').value='';
   autoFillHomeGround();
@@ -11494,6 +11506,15 @@ async function populateTournamentDropdown(selectedTournamentId) {
 // Auto-fill the Venue/Ground field from the season's Home Ground when Home is selected.
 // Only overwrites if the ground field is currently empty, so manual edits are never lost.
 // Always shows a visible hint explaining what happened, so this never fails silently.
+// Shows the "treat us as Home/Away" selector only when Neutral is chosen —
+// a neutral venue still needs a nominal side for score-order and home/away
+// stat-split purposes, since "neither" isn't a meaningful display choice.
+function toggleNeutralSideField() {
+  const venue = document.getElementById('gf-venue')?.value;
+  const group = document.getElementById('gf-neutral-side-group');
+  if (group) group.style.display = venue === 'Neutral' ? '' : 'none';
+}
+
 function autoFillHomeGround() {
   const venueSel = document.getElementById('gf-venue');
   const groundEl = document.getElementById('gf-ground');
@@ -11541,6 +11562,7 @@ async function saveGame() {
     arrivalTime: arrivalTime || null,
     opponent: opp,
     homeAway: document.getElementById('gf-venue').value,
+    neutralSide: document.getElementById('gf-venue').value === 'Neutral' ? (document.getElementById('gf-neutral-side')?.value || 'Home') : null,
     competitionType: document.getElementById('gf-compType').value,
     competitionName: document.getElementById('gf-compName').value.trim()||null,
     tournamentId: document.getElementById('gf-tournament')?.value ? parseInt(document.getElementById('gf-tournament').value) : null,
@@ -11574,6 +11596,8 @@ async function editGame(id) {
   document.getElementById('gf-arrivalTime').value = g.arrivalTime||'';
   document.getElementById('gf-opp').value = g.opponent||'';
   document.getElementById('gf-venue').value = g.homeAway||'Home';
+  document.getElementById('gf-neutral-side').value = g.neutralSide || 'Home';
+  toggleNeutralSideField();
   document.getElementById('gf-compType').value = g.competitionType||'League';
   document.getElementById('gf-compName').value = g.competitionName||'';
   populateTournamentDropdown(g.tournamentId);
@@ -12296,7 +12320,7 @@ async function refreshGameHeaderScore(gameId) {
   const ourScore = Calc.teamGoals(existingGP, game);
   const theirScore = parseInt(game.opponentScore)||0;
   const res = Calc.result(ourScore, theirScore, game);
-  const s = Calc.homeAwayScore(game.homeAway, ourScore, theirScore);
+  const s = Calc.homeAwayScore(game.homeAway, ourScore, theirScore, game.neutralSide);
   const scoreEl = document.getElementById('liveScore');
   const resultEl = document.getElementById('liveResult');
   if (scoreEl) scoreEl.textContent = `${s.home} — ${s.away}`;
