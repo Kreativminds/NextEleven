@@ -2162,6 +2162,12 @@ const TR = {
     tourn_outcome_label:'Tournament Outcome',
     tourn_outcome_no_stages:'Add a Stage to your games to track how far you went.',
     tourn_outcome_no_games:'No games yet.', tourn_outcome_runnerup:'Runner-up: {stage}',
+    ach_title_champion:'🏆 Champion', ach_title_stage_winner:'{stage} Winner', ach_title_finalist:'Finalist',
+    ach_title_stage_runnerup:'{stage} Runner-up', ach_title_semifinalist:'Semi-finalist', ach_title_quarterfinalist:'Quarter-finalist',
+    ach_title_r16:'Round of 16', ach_title_group_stage:'Group Stage', ach_title_participant:'Participant',
+    ach_btn_remove_auto:'Remove from Achievements',
+    tourn_confirm_delete_title:'Delete Tournament?', tourn_confirm_delete_body:'This removes the tournament and its auto-generated achievements. Games already linked to it are not deleted.',
+    tourn_deleted:'Tournament deleted.',
     tourn_tap_hint:'Tap a tournament to see its full summary.',
     tourn_outcome_won:'Winner: {stage}',
     tourn_outcome_reached:'Reached: {stage}',
@@ -3126,6 +3132,12 @@ const TR = {
     tourn_outcome_label:'Resultado do Torneio',
     tourn_outcome_no_stages:'Adicione uma Fase aos seus jogos para acompanhar até onde chegou.',
     tourn_outcome_no_games:'Ainda sem jogos.', tourn_outcome_runnerup:'Vice-campeão: {stage}',
+    ach_title_champion:'🏆 Campeão', ach_title_stage_winner:'Vencedor {stage}', ach_title_finalist:'Finalista',
+    ach_title_stage_runnerup:'Vice-campeão {stage}', ach_title_semifinalist:'Meia-finalista', ach_title_quarterfinalist:'Quartos-finalista',
+    ach_title_r16:'Oitavos de Final', ach_title_group_stage:'Fase de Grupos', ach_title_participant:'Participante',
+    ach_btn_remove_auto:'Remover dos Feitos',
+    tourn_confirm_delete_title:'Eliminar Torneio?', tourn_confirm_delete_body:'Isto remove o torneio e os seus feitos gerados automaticamente. Os jogos já ligados não são eliminados.',
+    tourn_deleted:'Torneio eliminado.',
     tourn_tap_hint:'Toque num torneio para ver o resumo completo.',
     tourn_outcome_won:'Vencedor: {stage}',
     tourn_outcome_reached:'Alcançou: {stage}',
@@ -6014,6 +6026,7 @@ async function openTournamentForm(tournamentId) {
       <div class="form-actions">
         <button class="btn btn-primary" onclick="saveTournamentFromForm(${tournamentId ?? 'null'})">${I18n.t('common_save')}</button>
         <button class="btn btn-secondary" onclick="document.getElementById('tournamentFormOverlay').remove()">${I18n.t('common_cancel')}</button>
+        ${existing ? `<button class="btn btn-danger" onclick="deleteTournament(${existing.tournamentId})">${I18n.t('common_delete')}</button>` : ''}
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -6040,10 +6053,29 @@ async function saveTournamentFromForm(tournamentId) {
     team: existing?.team || { playerIds: [], temporaryPlayerIds: [] },
   };
   if (tournamentId) tournament.tournamentId = tournamentId;
-  await createTournament(tournament);
+  const savedId = await createTournament(tournament);
   document.getElementById('tournamentFormOverlay')?.remove();
   Toast.show(I18n.t('tourn_saved'));
+  await syncTournamentAchievements(tournamentId || savedId);
   renderTournamentGamesTab();
+}
+
+// Minimal delete for a tournament — soft-deletes the tournament record
+// and its linked auto-generated achievements together, since those
+// achievements exist only as a reflection of this tournament's history.
+// Games already linked to this tournament are NOT deleted — they simply
+// become ordinary games with a dangling tournamentId, same as any other
+// data relationship in this app; the guardian can reassign or delete them
+// separately if needed.
+async function deleteTournament(tournamentId) {
+  Confirm.show(I18n.t('tourn_confirm_delete_title'), I18n.t('tourn_confirm_delete_body'), async () => {
+    await Backup.create('before-delete');
+    await DB.softDelete('tournaments', tournamentId);
+    await removeAchievementsForTournament(tournamentId);
+    document.getElementById('tournamentFormOverlay')?.remove();
+    Toast.show(I18n.t('tourn_deleted'));
+    renderTournamentGamesTab();
+  });
 }
 
 // ── GAMES PAGE — MAIN / TOURNAMENTS TAB SWITCH ──────────────────────────────
@@ -6225,7 +6257,7 @@ async function getTournamentOutcome(tournament) {
   const games = await DB.getAll('games', 'seasonId', tournament.seasonId);
   const tournGames = games.filter(g => g.tournamentId === tournament.tournamentId);
   if (!tournGames.length) {
-    return { emoji: '', label: I18n.t('tourn_outcome_no_games'), tier: 'none', status: 'none', source: 'no_games' };
+    return { emoji: '', label: I18n.t('tourn_outcome_no_games'), tier: 'none', status: 'none', source: 'no_games', achievementTitle: null };
   }
 
   // Highest-stage game reached, in bracket-priority order — a Bronze
@@ -6239,7 +6271,7 @@ async function getTournamentOutcome(tournament) {
   }
 
   if (!furthestGame) {
-    return { emoji: '', label: I18n.t('tourn_outcome_no_stages'), tier: 'none', status: 'unknown', source: 'no_stage_data' };
+    return { emoji: '', label: I18n.t('tourn_outcome_no_stages'), tier: 'none', status: 'unknown', source: 'no_stage_data', achievementTitle: null };
   }
 
   const allGP = await DB.getAll('gamePlayers', 'gameId', furthestGame.gameId);
@@ -6253,22 +6285,132 @@ async function getTournamentOutcome(tournament) {
   if (isFinal && won) {
     // Which specific medal tier, based on which Final was actually won.
     const emoji = stage === 'Gold Final' ? '🏆' : stage === 'Silver Final' ? '🥈' : stage === 'Bronze Final' ? '🥉' : '🏆';
-    return { emoji, label: I18n.t('tourn_outcome_won', {stage}), tier: stage, status: 'won', source: 'derived' };
+    const achievementTitle = stage === 'Final' ? I18n.t('ach_title_champion') : I18n.t('ach_title_stage_winner', {stage});
+    return { emoji, label: I18n.t('tourn_outcome_won', {stage}), tier: stage, status: 'won', source: 'derived', achievementTitle };
   }
   if (isFinal && !won) {
     // Reached a Final but lost it — a real, distinct outcome from winning,
     // still notable (runner-up), never conflated with the win case.
     const emoji = stage === 'Gold Final' ? '🥈' : stage === 'Silver Final' ? '🥉' : stage === 'Bronze Final' ? '' : '🥈';
-    return { emoji, label: I18n.t('tourn_outcome_runnerup', {stage}), tier: stage, status: 'runnerup', source: 'derived' };
+    const achievementTitle = stage === 'Final' ? I18n.t('ach_title_finalist') : I18n.t('ach_title_stage_runnerup', {stage});
+    return { emoji, label: I18n.t('tourn_outcome_runnerup', {stage}), tier: stage, status: 'runnerup', source: 'derived', achievementTitle };
   }
   // Any non-Final stage (eliminated in groups, lost in a semi, etc.) —
-  // reported plainly as "reached X", no medal implied.
-  return { emoji: '', label: I18n.t('tourn_outcome_reached', {stage}), tier: stage, status: 'eliminated', source: 'derived' };
+  // reported plainly as "reached X", no medal implied. Still generates a
+  // participation-style achievement per the approved plan — every
+  // tournament played becomes part of the player's history, trophy or not.
+  const stageAchievementTitles = {
+    'Semi-Final': I18n.t('ach_title_semifinalist'),
+    'Quarter-Final': I18n.t('ach_title_quarterfinalist'),
+    'Round of 16': I18n.t('ach_title_r16'),
+    'Group Stage': I18n.t('ach_title_group_stage'),
+  };
+  const achievementTitle = stageAchievementTitles[stage] || I18n.t('ach_title_participant');
+  return { emoji: '', label: I18n.t('tourn_outcome_reached', {stage}), tier: stage, status: 'eliminated', source: 'derived', achievementTitle };
 }
 
 // Thin formatter for contexts that want the existing prominent-banner look
 // (currently the Edit Tournament form) — pulls its data from
 // getTournamentOutcome rather than computing anything itself.
+// ── TOURNAMENT ACHIEVEMENTS — auto-generated, single shared entry point ──────
+// Called after anything that could change a tournament's outcome (a game's
+// score/penalties/stage saved, or the tournament itself saved). Computes
+// the outcome via getTournamentOutcome — the one existing source of truth,
+// nothing duplicated here — and syncs one achievement per player in the
+// tournament's squad.
+//
+// Fingerprint = tournamentId + playerId + outcome label + tier. If a
+// dismissed achievement's fingerprint still matches the current outcome,
+// it stays dismissed (the user's choice is respected). If the outcome has
+// genuinely changed (a corrected score, a later game reached), the old
+// entry is updated/undismissed rather than left stale, since a changed
+// outcome is new information the user hasn't seen or dismissed yet.
+async function syncTournamentAchievements(tournamentId) {
+  const tournament = await getTournamentById(tournamentId);
+  if (!tournament) return;
+  const outcome = await getTournamentOutcome(tournament);
+  // Nothing worth recording yet (no games, or no stage data at all) — do
+  // not create a placeholder achievement for an unplayed/unconfigured
+  // tournament.
+  if (!outcome.achievementTitle) return;
+
+  const fingerprint = `${tournamentId}|${outcome.label}|${outcome.tier}`;
+
+  const players = await DB.getAll('players', 'seasonId', tournament.seasonId);
+  const squadPlayers = tournament.team?.playerIds?.length
+    ? players.filter(p => tournament.team.playerIds.includes(p.playerId))
+    : players.filter(p => p.isActive);
+
+  const allAchievements = await DB.getAll('achievements');
+
+  for (const player of squadPlayers) {
+    const existing = allAchievements.find(a =>
+      a.tournamentId === tournamentId && a.playerId === player.playerId && a.autoGenerated
+    );
+
+    if (existing) {
+      const sameOutcome = existing.outcomeFingerprint === fingerprint;
+      if (sameOutcome && existing.dismissed) {
+        // User already saw and dismissed this exact outcome — respect
+        // that choice, do nothing.
+        continue;
+      }
+      if (sameOutcome && !existing.dismissed) {
+        // Nothing changed and it's still visible — no write needed.
+        continue;
+      }
+      // Outcome genuinely changed since this was created/dismissed —
+      // update in place and clear any prior dismissal, since this is new
+      // information the user hasn't had a chance to see yet.
+      existing.title = outcome.achievementTitle;
+      existing.description = `${tournament.name}${tournament.location ? ' · ' + tournament.location : ''}`;
+      existing.date = tournament.endDate || tournament.startDate || null;
+      existing.category = 'Trophy';
+      existing.outcomeFingerprint = fingerprint;
+      existing.dismissed = false;
+      await DB.put('achievements', existing);
+    } else {
+      await DB.put('achievements', {
+        playerId: player.playerId,
+        seasonId: tournament.seasonId,
+        title: outcome.achievementTitle,
+        date: tournament.endDate || tournament.startDate || null,
+        category: 'Trophy',
+        description: `${tournament.name}${tournament.location ? ' · ' + tournament.location : ''}`,
+        tournamentId: tournamentId,
+        autoGenerated: true,
+        dismissed: false,
+        outcomeFingerprint: fingerprint,
+      });
+    }
+  }
+}
+
+// Dismisses (hides) one player's auto-generated achievement for a
+// tournament — distinct from deleting a manual achievement. The record
+// stays in the database with dismissed:true, so syncTournamentAchievements
+// can tell "already seen and dismissed this outcome" apart from "never
+// generated yet," and won't silently bring it back unless the outcome
+// itself actually changes.
+async function dismissTournamentAchievement(achievementId) {
+  const a = await DB.get('achievements', achievementId);
+  if (!a) return;
+  a.dismissed = true;
+  await DB.put('achievements', a);
+}
+
+// When a tournament is deleted, its auto-generated achievements go with
+// it — they're a reflection of that tournament's history, not independent
+// records the user created themselves.
+async function removeAchievementsForTournament(tournamentId) {
+  const all = await DB.getAll('achievements');
+  const linked = all.filter(a => a.tournamentId === tournamentId && a.autoGenerated);
+  for (const a of linked) {
+    await DB.softDelete('achievements', a.achievementId);
+  }
+}
+
+
 async function renderTournamentOutcomeSummary(tournament) {
   const outcome = await getTournamentOutcome(tournament);
   if (outcome.status === 'none') return '';
@@ -7747,7 +7889,7 @@ async function renderPlayerAchievements(playerId) {
   const player = players.find(p => p.playerId === playerId);
   if (!player) return;
 
-  const all = (await DB.getAll('achievements')).filter(a => !a.playerId || a.playerId === playerId);
+  const all = (await DB.getAll('achievements')).filter(a => (!a.playerId || a.playerId === playerId) && !a.dismissed);
   all.sort((a,b) => gameSortKey(b) - gameSortKey(a));
 
   const catLabel = c => ({Trophy:I18n.t('cat_trophy'),Award:I18n.t('cat_award'),Milestone:I18n.t('cat_milestone'),Personal:I18n.t('cat_personal'),Team:I18n.t('cat_team')}[c] || c || '');
@@ -7786,8 +7928,12 @@ async function renderPlayerAchievements(playerId) {
               ${a.description?`<div class="ti-desc">${esc(a.description)}</div>`:''}
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0">
-              <button class="btn btn-secondary btn-sm" onclick="editAchievementEntry(${playerId},${a.achievementId})">${I18n.t('common_edit')}</button>
-              <button class="btn btn-danger btn-sm" onclick="deleteAchievementEntry(${playerId},${a.achievementId})">${I18n.t('common_delete')}</button>
+              ${a.autoGenerated ? `
+                <button class="btn btn-secondary btn-sm" onclick="dismissTournamentAchievement(${a.achievementId});renderPlayerAchievements(${playerId})">${I18n.t('ach_btn_remove_auto')}</button>
+              ` : `
+                <button class="btn btn-secondary btn-sm" onclick="editAchievementEntry(${playerId},${a.achievementId})">${I18n.t('common_edit')}</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteAchievementEntry(${playerId},${a.achievementId})">${I18n.t('common_delete')}</button>
+              `}
             </div>
           </div>
         </div>`).join('')}
@@ -7837,10 +7983,22 @@ async function saveAchievementEntry(playerId) {
 }
 
 async function deleteAchievementEntry(playerId, id) {
+  if (typeof gdDebugLog === 'function') gdDebugLog(`[ACH DEBUG] deleteAchievementEntry called playerId=${playerId} id=${id}`);
   Confirm.show(I18n.t('ach_confirm_delete_title'), I18n.t('ach_confirm_delete_body'), async () => {
-    await DB.softDelete('achievements', id);
-    Toast.show(I18n.t('ch_deleted'));
-    await renderPlayerAchievements(playerId);
+    if (typeof gdDebugLog === 'function') gdDebugLog(`[ACH DEBUG] confirm callback firing for id=${id}`);
+    try {
+      const before = await DB.get('achievements', id);
+      if (typeof gdDebugLog === 'function') gdDebugLog(`[ACH DEBUG] record before delete: ${JSON.stringify(before)}`);
+      await DB.softDelete('achievements', id);
+      const after = await DB.get('achievements', id);
+      if (typeof gdDebugLog === 'function') gdDebugLog(`[ACH DEBUG] record after delete: ${JSON.stringify(after)}`);
+      Toast.show(I18n.t('ch_deleted'));
+      await renderPlayerAchievements(playerId);
+      if (typeof gdDebugLog === 'function') gdDebugLog(`[ACH DEBUG] renderPlayerAchievements re-run complete`);
+    } catch(err) {
+      if (typeof gdDebugLog === 'function') gdDebugLog(`[ACH DEBUG] ERROR: ${err.message}`);
+      Toast.error(err.message);
+    }
   });
 }
 
@@ -8827,7 +8985,7 @@ async function renderPlayerPortalAchievements() {
   const playerId = State.portalPlayerId;
   // achievements has no playerId index — fetch everything and filter here,
   // same pattern as the working guardian Achievements tab.
-  const all = (await DB.getAll('achievements')).filter(a => a.playerId === playerId);
+  const all = (await DB.getAll('achievements')).filter(a => a.playerId === playerId && !a.dismissed);
   all.sort((a,b) => gameSortKey(b) - gameSortKey(a));
   const catLabel = c => ({Trophy:I18n.t('cat_trophy'),Award:I18n.t('cat_award'),Milestone:I18n.t('cat_milestone'),Personal:I18n.t('cat_personal'),Team:I18n.t('cat_team')}[c] || c || '');
 
@@ -12198,6 +12356,12 @@ async function saveGame() {
   document.getElementById('addGamePanel').classList.add('panel-hidden');
   resetGameForm();
   await Render.gamesList();
+  // A Stage edit here can change the tournament's furthest-reached game,
+  // and therefore its outcome — this form doesn't go through
+  // refreshGameHeaderScore at all, so it needs its own sync trigger.
+  if (game.tournamentId) {
+    await syncTournamentAchievements(game.tournamentId);
+  }
 }
 
 async function editGame(id) {
@@ -13002,6 +13166,12 @@ async function refreshGameHeaderScore(gameId) {
     }
   } else if (pensEl) {
     pensEl.remove();
+  }
+  // A score, penalty, or stage change can change the tournament's
+  // outcome — resync its achievements from here, the one place that
+  // already runs after every such edit.
+  if (game.tournamentId) {
+    await syncTournamentAchievements(game.tournamentId);
   }
 }
 
