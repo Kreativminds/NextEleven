@@ -2169,6 +2169,7 @@ const TR = {
     tourn_confirm_delete_title:'Delete Tournament?', tourn_confirm_delete_body:'This removes the tournament and its auto-generated achievements. Games already linked to it are not deleted.',
     tourn_deleted:'Tournament deleted.',
     tourn_tap_hint:'Tap a tournament to see its full summary.',
+    tourn_show_games:'Show Games', tourn_hide_games:'Hide Games',
     tourn_outcome_won:'Winner: {stage}',
     tourn_outcome_reached:'Reached: {stage}',
     tourn_outcome_stage:'Currently in: {stage}',
@@ -3139,6 +3140,7 @@ const TR = {
     tourn_confirm_delete_title:'Eliminar Torneio?', tourn_confirm_delete_body:'Isto remove o torneio e os seus feitos gerados automaticamente. Os jogos já ligados não são eliminados.',
     tourn_deleted:'Torneio eliminado.',
     tourn_tap_hint:'Toque num torneio para ver o resumo completo.',
+    tourn_show_games:'Mostrar Jogos', tourn_hide_games:'Ocultar Jogos',
     tourn_outcome_won:'Vencedor: {stage}',
     tourn_outcome_reached:'Alcançou: {stage}',
     tourn_outcome_stage:'Atualmente em: {stage}',
@@ -6079,6 +6081,16 @@ async function deleteTournament(tournamentId) {
 }
 
 // ── GAMES PAGE — MAIN / TOURNAMENTS TAB SWITCH ──────────────────────────────
+// Expands/collapses a single tournament card's inline game list, without
+// navigating away — restores quick access to an individual game (and its
+// Edit toggle in Game Detail) directly from the Tournaments tab, while
+// keeping the compact, outcome-first card as the default view.
+function toggleTournamentCardExpand(tournamentId) {
+  if (!State.expandedTournamentCards) State.expandedTournamentCards = {};
+  State.expandedTournamentCards[tournamentId] = !State.expandedTournamentCards[tournamentId];
+  renderTournamentGamesTab();
+}
+
 function switchGamesMainTab(tab) {
   const mainView = document.getElementById('gamesMainView');
   const tournView = document.getElementById('gamesTournamentsView');
@@ -6107,17 +6119,42 @@ async function renderTournamentGamesTab() {
 
   const tournamentCardsHtml = !tournaments.length ? `<div class="empty"><strong>${I18n.t('tourn_empty')}</strong></div>` : (await Promise.all(tournaments.map(async t => {
       await syncTournamentAchievements(t.tournamentId);
-      const tGames = allGames.filter(g => g.tournamentId === t.tournamentId);
+      const tGames = allGames.filter(g => g.tournamentId === t.tournamentId)
+        .sort((a,b) => gameSortKey(b) - gameSortKey(a));
       const outcome = await getTournamentOutcome(t);
+      const isExpanded = State.expandedTournamentCards && State.expandedTournamentCards[t.tournamentId];
+      const gamesListHtml = tGames.map(g => {
+        const gps = allGP.filter(r => r.gameId === g.gameId);
+        const our = Calc.teamGoals(gps, g);
+        const their = parseInt(g.opponentScore)||0;
+        const res = Calc.result(our, their, g);
+        const visible = isGameResultVisible(g);
+        const logoUrl = opponentLogoByName[(g.opponent||'').toLowerCase()];
+        const hasPens = g.ourPenaltyGoals!==undefined && g.ourPenaltyGoals!==null && g.penaltiesForThem!==undefined && g.penaltiesForThem!==null;
+        return `<div class="wp-row" style="cursor:pointer" onclick="event.stopPropagation();openGameDetail(${g.gameId})">
+          <div class="wp-info">
+            ${logoUrl?`<img src="${esc(logoUrl)}" style="width:18px;height:18px;object-fit:contain;border-radius:3px" onerror="this.style.display='none'">`:''}
+            <span class="wp-name">${esc(g.opponent)}</span>
+            <span class="pos-pill" style="margin-left:auto">${g.date?fmtDate(g.date):'—'}${g.stage?' · '+esc(g.stage):''}</span>
+            ${visible?`
+              <span style="font-size:12px;font-weight:700;margin-left:6px">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their,g.neutralSide);return s.home+'-'+s.away;})()}</span>
+              ${hasPens?`<span style="font-size:10px;color:var(--muted);font-weight:700;margin-left:4px">${g.ourPenaltyGoals}-${g.penaltiesForThem}P</span>`:''}
+              <span class="badge badge-${res}" style="margin-left:6px">${res}</span>
+            ` : `<span class="pos-pill" style="margin-left:6px">${I18n.t('games_status_upcoming')}</span>`}
+          </div>
+        </div>`;
+      }).join('');
       return `
-      <div class="card" style="margin-bottom:10px;cursor:pointer" onclick="Nav.go('tournSummary');setTimeout(()=>{const sel=document.getElementById('tournSummarySelect');if(sel){sel.value='${t.tournamentId}';renderTournamentSummaryPage('${t.tournamentId}');}},50)">
-        <div style="display:flex;justify-content:space-between;align-items:center">
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="Nav.go('tournSummary');setTimeout(()=>{const sel=document.getElementById('tournSummarySelect');if(sel){sel.value='${t.tournamentId}';renderTournamentSummaryPage('${t.tournamentId}');}},50)">
           <div>
             <div style="font-weight:700;font-size:14px">${esc(t.name)}</div>
             <div style="font-size:12px;color:var(--muted);margin-top:2px">${outcome.emoji?outcome.emoji+' ':''}${esc(outcome.label)}</div>
           </div>
           <span class="pos-pill">${tGames.length} ${I18n.t('tourn_games_count_suffix')}</span>
         </div>
+        <button type="button" class="btn btn-secondary btn-sm" style="width:100%;margin-top:10px" onclick="toggleTournamentCardExpand(${t.tournamentId})">${isExpanded ? I18n.t('tourn_hide_games') : I18n.t('tourn_show_games')} ${isExpanded?'&#9650;':'&#9660;'}</button>
+        ${isExpanded ? `<div style="margin-top:8px">${gamesListHtml}</div>` : ''}
       </div>`;
     }))).join('');
 
