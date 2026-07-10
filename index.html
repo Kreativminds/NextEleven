@@ -2161,6 +2161,8 @@ const TR = {
     stage_final:'Final', stage_gold_final:'Gold Final', stage_silver_final:'Silver Final', stage_bronze_final:'Bronze Final',
     tourn_outcome_label:'Tournament Outcome',
     tourn_outcome_no_stages:'Add a Stage to your games to track how far you went.',
+    tourn_outcome_no_games:'No games yet.', tourn_outcome_runnerup:'Runner-up: {stage}',
+    tourn_tap_hint:'Tap a tournament to see its full summary.',
     tourn_outcome_won:'Winner: {stage}',
     tourn_outcome_reached:'Reached: {stage}',
     tourn_outcome_stage:'Currently in: {stage}',
@@ -3123,6 +3125,8 @@ const TR = {
     stage_final:'Final', stage_gold_final:'Final do Ouro', stage_silver_final:'Final da Prata', stage_bronze_final:'Final do Bronze',
     tourn_outcome_label:'Resultado do Torneio',
     tourn_outcome_no_stages:'Adicione uma Fase aos seus jogos para acompanhar até onde chegou.',
+    tourn_outcome_no_games:'Ainda sem jogos.', tourn_outcome_runnerup:'Vice-campeão: {stage}',
+    tourn_tap_hint:'Toque num torneio para ver o resumo completo.',
     tourn_outcome_won:'Vencedor: {stage}',
     tourn_outcome_reached:'Alcançou: {stage}',
     tourn_outcome_stage:'Atualmente em: {stage}',
@@ -6058,7 +6062,7 @@ function switchGamesMainTab(tab) {
 // Shows every tournament this season, each with its own linked games
 // listed underneath — genuinely separated from the main League/Cup/
 // Friendly/Trial list, not just filtered within one shared table.
-async function renderTournamentGamesTab(stageSearch='') {
+async function renderTournamentGamesTab() {
   const el = document.getElementById('gamesTournamentsContent');
   if (!el) return;
   const tournaments = await getTournamentsForSeason(State.currentSeasonId);
@@ -6069,71 +6073,28 @@ async function renderTournamentGamesTab(stageSearch='') {
   const opponentLogoByName = {};
   allOpponents.forEach(o => { if (o.logoUrl) opponentLogoByName[(o.opponentName||'').toLowerCase()] = o.logoUrl; });
 
+  const tournamentCardsHtml = !tournaments.length ? `<div class="empty"><strong>${I18n.t('tourn_empty')}</strong></div>` : (await Promise.all(tournaments.map(async t => {
+      const tGames = allGames.filter(g => g.tournamentId === t.tournamentId);
+      const outcome = await getTournamentOutcome(t);
+      return `
+      <div class="card" style="margin-bottom:10px;cursor:pointer" onclick="Nav.go('tournSummary');setTimeout(()=>{const sel=document.getElementById('tournSummarySelect');if(sel){sel.value='${t.tournamentId}';renderTournamentSummaryPage('${t.tournamentId}');}},50)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-weight:700;font-size:14px">${esc(t.name)}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">${outcome.emoji?outcome.emoji+' ':''}${esc(outcome.label)}</div>
+          </div>
+          <span class="pos-pill">${tGames.length} ${I18n.t('tourn_games_count_suffix')}</span>
+        </div>
+      </div>`;
+    }))).join('');
+
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">${I18n.t('tourn_section_title')}</div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="openTournamentForm(null)">${I18n.t('tourn_btn_create')}</button>
     </div>
-    <div class="search-bar" style="margin-bottom:14px">
-      <select id="tournStageSearch" onchange="renderTournamentGamesTab(this.value)">
-        <option value="">${I18n.t('tourn_all_stages')}</option>
-        <option value="Group Stage" ${stageSearch==='Group Stage'?'selected':''}>${I18n.t('stage_group')}</option>
-        <option value="Round of 16" ${stageSearch==='Round of 16'?'selected':''}>${I18n.t('stage_r16')}</option>
-        <option value="Quarter-Final" ${stageSearch==='Quarter-Final'?'selected':''}>${I18n.t('stage_qf')}</option>
-        <option value="Semi-Final" ${stageSearch==='Semi-Final'?'selected':''}>${I18n.t('stage_sf')}</option>
-        <option value="Final" ${stageSearch==='Final'?'selected':''}>${I18n.t('stage_final')}</option>
-        <option value="Gold Final" ${stageSearch==='Gold Final'?'selected':''}>${I18n.t('stage_gold_final')}</option>
-        <option value="Silver Final" ${stageSearch==='Silver Final'?'selected':''}>${I18n.t('stage_silver_final')}</option>
-        <option value="Bronze Final" ${stageSearch==='Bronze Final'?'selected':''}>${I18n.t('stage_bronze_final')}</option>
-      </select>
-    </div>
-    ${!tournaments.length ? `<div class="empty"><strong>${I18n.t('tourn_empty')}</strong></div>` : tournaments.map(t => {
-      // Most recent game first — using full date+time, so two games on
-      // the same day (very common in a tournament) still order correctly
-      // by actual kickoff time, not just calendar date.
-      let tGames = allGames.filter(g => g.tournamentId === t.tournamentId)
-        .sort((a,b) => gameSortKey(b) - gameSortKey(a));
-      if (stageSearch) {
-        tGames = tGames.filter(g => g.stage === stageSearch);
-      }
-      return `
-      <div class="card" style="margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:pointer" onclick="openTournamentForm(${t.tournamentId})">
-          <div>
-            <div style="font-weight:700;font-size:14px">${esc(t.name)}</div>
-            <div style="font-size:11px;color:var(--muted)">${t.location?esc(t.location)+' · ':''}${t.startDate?fmtDate(t.startDate):'—'}</div>
-          </div>
-          <span class="pos-pill">${tGames.length} ${I18n.t('tourn_games_count_suffix')}</span>
-        </div>
-        ${!tGames.length ? `<p style="font-size:12px;color:var(--muted)">${stageSearch?I18n.t('tourn_no_games_match_stage'):I18n.t('tourn_no_games_yet')}</p>` : tGames.map(g => {
-          const gps = allGP.filter(r => r.gameId === g.gameId);
-          const our = Calc.teamGoals(gps, g);
-          const their = parseInt(g.opponentScore)||0;
-          const res = Calc.result(our, their, g);
-          const visible = isGameResultVisible(g);
-          const logoUrl = opponentLogoByName[(g.opponent||'').toLowerCase()];
-          const hasPens = g.ourPenaltyGoals!==undefined && g.ourPenaltyGoals!==null && g.penaltiesForThem!==undefined && g.penaltiesForThem!==null;
-          return `<div class="card" style="margin-bottom:8px;padding:10px;cursor:pointer;background:#fafafa" onclick="openGameDetail(${g.gameId})">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-              <div style="min-width:0">
-                <div style="display:flex;align-items:center;gap:6px">
-                  ${logoUrl?`<img src="${esc(logoUrl)}" style="width:18px;height:18px;object-fit:contain;border-radius:3px;flex-shrink:0" onerror="this.style.display='none'">`:''}
-                  <span style="font-weight:700;font-size:13px">${esc(g.opponent)}</span>
-                </div>
-                <div style="font-size:11px;color:var(--muted);margin-top:2px">${g.date?fmtDate(g.date):'—'}${g.stage?' · '+esc(g.stage):''}</div>
-              </div>
-              <div style="text-align:right;flex-shrink:0">
-                ${visible ? `
-                  <span class="badge badge-${res}">${res}</span>
-                  <div style="font-size:14px;font-weight:700;margin-top:2px">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their,g.neutralSide);return s.home+' — '+s.away;})()}</div>
-                  ${hasPens?`<div style="font-size:10px;color:var(--muted);font-weight:700">${g.ourPenaltyGoals}-${g.penaltiesForThem} P</div>`:''}
-                ` : `<span class="pos-pill">${I18n.t('games_status_upcoming')}</span>`}
-              </div>
-            </div>
-          </div>`;
-        }).join('')}
-      </div>`;
-    }).join('')}
+    <div class="page-header-sub" style="margin-bottom:14px;font-size:11px;color:var(--muted)">${I18n.t('tourn_tap_hint')}</div>
+    ${tournamentCardsHtml}
   `;
 }
 
@@ -6216,12 +6177,58 @@ async function saveTemporaryPlayerFromForm(tempPlayerId, tournamentId) {
 // so it works the same way for any tournament's bracket shape (a simple
 // single Final, or a Gold/Silver/Bronze split like IberCup), not just this
 // specific tournament's structure.
-async function renderTournamentOutcomeSummary(tournament) {
+// ── SINGLE SOURCE OF TRUTH FOR TOURNAMENT OUTCOME ───────────────────────────
+// Every surface that shows "how did this tournament go" — Home, the
+// Tournaments list, Tournament Summary — calls this one function and
+// nothing else. No surface computes its own version of this logic, so
+// there's no way for them to drift apart or disagree.
+//
+// Returns structured data, not a formatted string, so each surface can
+// present it however fits that context (a compact card vs. a full page
+// header) without duplicating the derivation logic itself.
+//
+// Distinguishes Winner vs. Runner-up per bracket tier — reaching a Final
+// and winning it is a different outcome from reaching it and losing,
+// and collapsing those into one label would lose real information.
+// Finds the single tournament to show on Home, if any — one with a game
+// within the last 7 days or the next 7 days. At most one tournament is
+// ever returned, even if several technically qualify, since Home is
+// meant to surface one timely highlight, not become a second tournament
+// list (that's what the Tournaments tab and Tournament Summary are for).
+async function getActiveTournamentForHome(seasonId) {
+  const tournaments = await getTournamentsForSeason(seasonId);
+  if (!tournaments.length) return null;
+  const games = await DB.getAll('games', 'seasonId', seasonId);
+  const now = new Date();
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+
+  let best = null, bestRecency = -Infinity;
+  for (const t of tournaments) {
+    const tGames = games.filter(g => g.tournamentId === t.tournamentId && g.date);
+    for (const g of tGames) {
+      const gameTime = new Date(`${g.date}T${g.gameTime || '00:00'}`).getTime();
+      if (isNaN(gameTime)) continue;
+      const diff = gameTime - now.getTime();
+      if (Math.abs(diff) <= sevenDaysMs) {
+        // Prefer whichever qualifying game is closest to "now" — this
+        // naturally picks the most currently-relevant tournament if more
+        // than one has a game in this window.
+        const recency = -Math.abs(diff);
+        if (recency > bestRecency) { bestRecency = recency; best = t; }
+      }
+    }
+  }
+  return best;
+}
+
+async function getTournamentOutcome(tournament) {
   const games = await DB.getAll('games', 'seasonId', tournament.seasonId);
   const tournGames = games.filter(g => g.tournamentId === tournament.tournamentId);
-  if (!tournGames.length) return '';
+  if (!tournGames.length) {
+    return { emoji: '', label: I18n.t('tourn_outcome_no_games'), tier: 'none', status: 'none', source: 'no_games' };
+  }
 
-  // Highest-stage game reached, in a sensible priority order — a Bronze
+  // Highest-stage game reached, in bracket-priority order — a Bronze
   // Final only matters if no Gold/Silver Final was also played, etc.
   const stagePriority = ['Gold Final','Final','Silver Final','Bronze Final','Semi-Final','Quarter-Final','Round of 16','Group Stage'];
   const gamesWithStage = tournGames.filter(g => g.stage);
@@ -6231,28 +6238,49 @@ async function renderTournamentOutcomeSummary(tournament) {
     if (furthestGame) break;
   }
 
-  let outcomeText;
   if (!furthestGame) {
-    outcomeText = I18n.t('tourn_outcome_no_stages');
-  } else {
-    const allGP = await DB.getAll('gamePlayers', 'gameId', furthestGame.gameId);
-    const ourScore = Calc.teamGoals(allGP, furthestGame);
-    const theirScore = parseInt(furthestGame.opponentScore) || 0;
-    const res = Calc.result(ourScore, theirScore, furthestGame);
-    const isFinal = furthestGame.stage.includes('Final');
-    if (isFinal && res === 'W') {
-      outcomeText = I18n.t('tourn_outcome_won', {stage: furthestGame.stage});
-    } else if (isFinal) {
-      outcomeText = I18n.t('tourn_outcome_reached', {stage: furthestGame.stage});
-    } else {
-      outcomeText = I18n.t('tourn_outcome_stage', {stage: furthestGame.stage});
-    }
+    return { emoji: '', label: I18n.t('tourn_outcome_no_stages'), tier: 'none', status: 'unknown', source: 'no_stage_data' };
   }
 
+  const allGP = await DB.getAll('gamePlayers', 'gameId', furthestGame.gameId);
+  const ourScore = Calc.teamGoals(allGP, furthestGame);
+  const theirScore = parseInt(furthestGame.opponentScore) || 0;
+  const res = Calc.result(ourScore, theirScore, furthestGame);
+  const isFinal = furthestGame.stage.includes('Final');
+  const won = res === 'W';
+  const stage = furthestGame.stage;
+
+  if (isFinal && won) {
+    // Which specific medal tier, based on which Final was actually won.
+    const emoji = stage === 'Gold Final' ? '🏆' : stage === 'Silver Final' ? '🥈' : stage === 'Bronze Final' ? '🥉' : '🏆';
+    return { emoji, label: I18n.t('tourn_outcome_won', {stage}), tier: stage, status: 'won', source: 'derived' };
+  }
+  if (isFinal && !won) {
+    // Reached a Final but lost it — a real, distinct outcome from winning,
+    // still notable (runner-up), never conflated with the win case.
+    const emoji = stage === 'Gold Final' ? '🥈' : stage === 'Silver Final' ? '🥉' : stage === 'Bronze Final' ? '' : '🥈';
+    return { emoji, label: I18n.t('tourn_outcome_runnerup', {stage}), tier: stage, status: 'runnerup', source: 'derived' };
+  }
+  // Any non-Final stage (eliminated in groups, lost in a semi, etc.) —
+  // reported plainly as "reached X", no medal implied.
+  return { emoji: '', label: I18n.t('tourn_outcome_reached', {stage}), tier: stage, status: 'eliminated', source: 'derived' };
+}
+
+// Thin formatter for contexts that want the existing prominent-banner look
+// (currently the Edit Tournament form) — pulls its data from
+// getTournamentOutcome rather than computing anything itself.
+async function renderTournamentOutcomeSummary(tournament) {
+  const outcome = await getTournamentOutcome(tournament);
+  if (outcome.status === 'none') return '';
+  const isWin = outcome.status === 'won';
+  const bannerBg = isWin ? '#e6f4ea' : '#faf7f0';
+  const bannerBorder = isWin ? '#2a7a4e' : 'var(--border)';
+  const textColor = isWin ? '#1e5c38' : 'var(--dark)';
+
   return `
-    <div class="card" style="margin-bottom:14px;padding:12px;text-align:center;background:#faf7f0">
-      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${I18n.t('tourn_outcome_label')}</div>
-      <div style="font-size:15px;font-weight:700">${esc(outcomeText)}</div>
+    <div class="card" style="margin-bottom:16px;padding:16px;text-align:center;background:${bannerBg};border:2px solid ${bannerBorder}">
+      <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-weight:700">${I18n.t('tourn_outcome_label')}</div>
+      <div style="font-size:22px;font-weight:800;color:${textColor}">${outcome.emoji?outcome.emoji+' ':''}${esc(outcome.label)}</div>
     </div>`;
 }
 
@@ -6368,8 +6396,15 @@ async function renderTournamentSummaryPage(tournamentIdRaw) {
   const allOpponents = await DB.getAll('opponents');
   const opponentLogoByName = {};
   allOpponents.forEach(o => { if (o.logoUrl) opponentLogoByName[(o.opponentName||'').toLowerCase()] = o.logoUrl; });
+  const outcome = await getTournamentOutcome(tournament);
+  const isWin = outcome.status === 'won';
 
   el.innerHTML = `
+    <div style="text-align:center;margin-bottom:18px">
+      <div style="font-size:20px;font-weight:800">${esc(tournament.name)}</div>
+      <div style="font-size:26px;font-weight:800;margin-top:4px;color:${isWin?'#1e5c38':'var(--dark)'}">${outcome.emoji?outcome.emoji+' ':''}${esc(outcome.label)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">${tournament.startDate?fmtDate(tournament.startDate):''}${tournament.endDate?' – '+fmtDate(tournament.endDate):''}${tournament.location?' · '+esc(tournament.location):''}</div>
+    </div>
     <div class="card" style="margin-bottom:14px">
       <div class="card-title">${I18n.t('tournsum_record')}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -9299,6 +9334,22 @@ const Render = (() => {
       .sort((a,b) => new Date(b.date+'T'+(b.gameTime||'00:00')) - new Date(a.date+'T'+(a.gameTime||'00:00')));
     const lastGame = played[0] || null;
 
+    // Home tournament highlight — at most one card, only when a
+    // tournament has a game within the last or next 7 days. Tapping opens
+    // Tournament Summary directly, since that page (not this card) is the
+    // actual home of the tournament's full story.
+    const activeTournament = await getActiveTournamentForHome(State.currentSeasonId);
+    let tournamentCardHtml = '';
+    if (activeTournament) {
+      const tOutcome = await getTournamentOutcome(activeTournament);
+      const tGamesCount = games.filter(g => g.tournamentId === activeTournament.tournamentId).length;
+      tournamentCardHtml = `
+      <div class="card" style="margin-bottom:14px;cursor:pointer" onclick="Nav.go('tournSummary');setTimeout(()=>{const sel=document.getElementById('tournSummarySelect');if(sel){sel.value='${activeTournament.tournamentId}';renderTournamentSummaryPage('${activeTournament.tournamentId}');}},50)">
+        <div style="font-weight:700;font-size:14px">${esc(activeTournament.name)}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:2px">${tOutcome.emoji?tOutcome.emoji+' ':''}${esc(tOutcome.label)} · ${tGamesCount} ${I18n.t('tourn_games_count_suffix')}</div>
+      </div>`;
+    }
+
     el.innerHTML = `
       <!-- NEXT GAME — primary focus -->
       ${upcoming.length ? `
@@ -9308,6 +9359,8 @@ const Render = (() => {
         <p style="color:var(--muted);font-size:13px">${I18n.t('home_no_upcoming')}</p>
         <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="Nav.go('games');setTimeout(()=>document.getElementById('btnAddGame')?.click(),100)">+ ${I18n.t('home_btn_add_game')}</button>
       </div>`}
+
+      ${tournamentCardHtml}
 
       <!-- LAST 3 GAMES -->
       ${played.length ? `
