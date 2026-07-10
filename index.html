@@ -1369,6 +1369,105 @@ async function handleEmergencyBypass() {
   }
 }
 
+// ── SHARE TEAM CARD — Settings → Share Team section ──────────────────────────
+// Generate/Copy/Disable/Regenerate a public, no-login link for the current
+// season, per the approved spec — nothing more added here. Requires cloud
+// sync to be configured and the guardian logged in, since the underlying
+// RPCs are authenticated; if not logged in, explains that plainly instead
+// of silently failing.
+async function renderShareTeamCard() {
+  const el = document.getElementById('shareTeamContent');
+  if (!el) return;
+
+  if (!Sync.isConfigured() || !Auth.isLoggedIn()) {
+    el.innerHTML = `<p style="font-size:12px;color:var(--muted)">${I18n.t('set_share_needs_login')}</p>`;
+    return;
+  }
+  if (!State.currentSeasonId) {
+    el.innerHTML = `<p style="font-size:12px;color:var(--muted)">${I18n.t('set_share_needs_season')}</p>`;
+    return;
+  }
+
+  el.innerHTML = `<div style="font-size:11px;color:var(--muted)">${I18n.t('set_share_loading')}</div>`;
+
+  let existing = null;
+  try {
+    existing = await Sync.getTeamShareLink(State.currentSeasonId);
+  } catch(err) {
+    el.innerHTML = `<p style="font-size:12px;color:var(--red,#b03030)">${esc(err.message)}</p>`;
+    return;
+  }
+
+  if (!existing) {
+    el.innerHTML = `<button class="btn btn-primary btn-sm" onclick="handleGenerateShareLink()">${I18n.t('set_share_btn_generate')}</button>`;
+    return;
+  }
+
+  const url = buildTeamShareUrl(existing.share_token);
+  el.innerHTML = `
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${existing.enabled ? I18n.t('set_share_status_active') : I18n.t('set_share_status_disabled')}</div>
+    <div style="font-size:12px;word-break:break-all;background:var(--bg,#f2f4f7);padding:8px 10px;border-radius:4px;margin-bottom:10px">${esc(url)}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <button class="btn btn-secondary btn-sm" onclick="handleCopyShareLink('${esc(url)}')">${I18n.t('set_share_btn_copy')}</button>
+      ${existing.enabled
+        ? `<button class="btn btn-secondary btn-sm" onclick="handleToggleShareLink(false)">${I18n.t('set_share_btn_disable')}</button>`
+        : `<button class="btn btn-secondary btn-sm" onclick="handleToggleShareLink(true)">${I18n.t('set_share_btn_enable')}</button>`
+      }
+      <button class="btn btn-danger btn-sm" onclick="handleRegenerateShareLink()">${I18n.t('set_share_btn_regenerate')}</button>
+    </div>
+  `;
+}
+
+// team.html is deployed alongside index.html on the same GitHub Pages
+// origin — this derives its URL from the current page location rather
+// than hardcoding a domain, so it keeps working correctly whether this is
+// served from a custom domain or the default *.github.io path.
+function buildTeamShareUrl(token) {
+  const base = window.location.href.replace(/[^/]*$/, '');
+  return `${base}team.html?token=${encodeURIComponent(token)}`;
+}
+
+async function handleGenerateShareLink() {
+  try {
+    await Sync.generateTeamShareLink(State.currentSeasonId);
+    Toast.show(I18n.t('set_share_generated'));
+    await renderShareTeamCard();
+  } catch(err) {
+    Toast.error(err.message);
+  }
+}
+
+async function handleRegenerateShareLink() {
+  Confirm.show(I18n.t('set_share_confirm_regen_title'), I18n.t('set_share_confirm_regen_body'), async () => {
+    try {
+      await Sync.generateTeamShareLink(State.currentSeasonId);
+      Toast.show(I18n.t('set_share_generated'));
+      await renderShareTeamCard();
+    } catch(err) {
+      Toast.error(err.message);
+    }
+  });
+}
+
+async function handleToggleShareLink(enabled) {
+  try {
+    await Sync.setTeamShareEnabled(State.currentSeasonId, enabled);
+    Toast.show(enabled ? I18n.t('set_share_enabled_toast') : I18n.t('set_share_disabled_toast'));
+    await renderShareTeamCard();
+  } catch(err) {
+    Toast.error(err.message);
+  }
+}
+
+async function handleCopyShareLink(url) {
+  try {
+    await navigator.clipboard.writeText(url);
+    Toast.show(I18n.t('set_share_copied'));
+  } catch(err) {
+    Toast.error(I18n.t('set_share_copy_failed'));
+  }
+}
+
 // ── ACCOUNT CARD — Settings → Cloud Sync tab ─────────────────────────────────
 // Login is only required to enable cloud sync. The app works fully offline,
 // with full local data, whether or not anyone is signed in.
@@ -2759,6 +2858,14 @@ const TR = {
     set_editing_prefix:'Editing:',
     set_editing_suffix:'(the active season above). Home Ground auto-fills the Venue field on Home games.',
     set_btn_save_changes:'Save Changes',
+    set_share_title:'Share Team', set_share_hint:'Create a link the other team parents can open without an account — read-only, live season stats.',
+    set_share_needs_login:'Sign in to cloud sync to create a share link.', set_share_needs_season:'Create a season first.',
+    set_share_loading:'Loading…', set_share_btn_generate:'Generate Link',
+    set_share_status_active:'Active — visible to anyone with the link', set_share_status_disabled:'Disabled — link no longer works',
+    set_share_btn_copy:'Copy Link', set_share_btn_disable:'Disable', set_share_btn_enable:'Enable', set_share_btn_regenerate:'Regenerate',
+    set_share_generated:'Share link ready.', set_share_enabled_toast:'Link enabled.', set_share_disabled_toast:'Link disabled.',
+    set_share_copied:'Link copied.', set_share_copy_failed:'Could not copy — long-press the link above to copy it manually.',
+    set_share_confirm_regen_title:'Replace share link?', set_share_confirm_regen_body:'The current link will stop working immediately. Anyone who had it will need the new one.',
     set_app_info:'Application Info',
     set_lbl_app_version:'App Version', set_lbl_schema_version:'Schema Version',
     set_lbl_database:'Database', set_lbl_last_backup:'Last Backup', set_lbl_backups_stored:'Backups Stored',
@@ -3730,6 +3837,14 @@ const TR = {
     set_editing_prefix:'A editar:',
     set_editing_suffix:'(a época ativa acima). O Recinto preenche automaticamente o campo Local nos jogos em casa.',
     set_btn_save_changes:'Guardar Alterações',
+    set_share_title:'Partilhar Equipa', set_share_hint:'Crie um link que os outros pais da equipa podem abrir sem conta — só de leitura, estatísticas da época em tempo real.',
+    set_share_needs_login:'Inicie sessão na sincronização na nuvem para criar um link.', set_share_needs_season:'Crie primeiro uma época.',
+    set_share_loading:'A carregar…', set_share_btn_generate:'Gerar Link',
+    set_share_status_active:'Ativo — visível a quem tiver o link', set_share_status_disabled:'Desativado — o link já não funciona',
+    set_share_btn_copy:'Copiar Link', set_share_btn_disable:'Desativar', set_share_btn_enable:'Ativar', set_share_btn_regenerate:'Regenerar',
+    set_share_generated:'Link pronto.', set_share_enabled_toast:'Link ativado.', set_share_disabled_toast:'Link desativado.',
+    set_share_copied:'Link copiado.', set_share_copy_failed:'Não foi possível copiar — mantenha premido o link acima para copiar manualmente.',
+    set_share_confirm_regen_title:'Substituir link de partilha?', set_share_confirm_regen_body:'O link atual deixa de funcionar imediatamente. Quem o tinha vai precisar do novo.',
     set_app_info:'Informação da Aplicação',
     set_lbl_app_version:'Versão da App', set_lbl_schema_version:'Versão do Esquema',
     set_lbl_database:'Base de Dados', set_lbl_last_backup:'Última Cópia', set_lbl_backups_stored:'Cópias Guardadas',
@@ -10517,6 +10632,15 @@ const Render = (() => {
         </div>` : ''}
       </div>
 
+      <!-- Share Team -->
+      <div class="settings-section">
+        <h3>${I18n.t('set_share_title')}</h3>
+        <div class="card">
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px">${I18n.t('set_share_hint')}</p>
+          <div id="shareTeamContent"></div>
+        </div>
+      </div>
+
       <!-- App Info -->
       <div class="settings-section">
         <h3>${I18n.t('set_app_info')}</h3>
@@ -10732,6 +10856,7 @@ const Render = (() => {
     switchSettingsTab('seasons');
     updateSeasonNamePreview();
     renderAccountCard();
+    renderShareTeamCard();
 
     // Update sync status bar and pending count
     Sync.updateSyncUI();
@@ -11414,6 +11539,64 @@ const Sync = (() => {
   // security definer), so it can only ever touch the caller's own profile
   // row. The RPC itself enforces format, uniqueness, and the one-time-only
   // rule; this is just the plumbing to reach it with proper auth headers.
+  // ── TEAM SHARE LINK — generate/disable, authenticated only ────────────────
+  // Follows the exact same pattern as claimAccountCode above: authenticated
+  // Bearer token, anon key as apikey. The actual token value is generated
+  // entirely server-side inside generate_team_share_token — this call
+  // never invents or sends a token itself, only requests one.
+  async function generateTeamShareLink(seasonId) {
+    if (!isConfigured()) throw new Error('Sync not configured.');
+    if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
+    const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
+    const res = await fetch(base + 'rpc/generate_team_share_token', {
+      method: 'POST',
+      headers: {
+        'apikey':        _cfg.anonKey,
+        'Authorization': 'Bearer ' + Auth.getAccessToken(),
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({ p_season_id: seasonId }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error('Could not generate link: ' + res.status + ' ' + err.slice(0,200));
+    }
+    return await res.json(); // the raw token string
+  }
+
+  async function setTeamShareEnabled(seasonId, enabled) {
+    if (!isConfigured()) throw new Error('Sync not configured.');
+    if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
+    const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
+    const res = await fetch(base + 'rpc/set_team_share_enabled', {
+      method: 'POST',
+      headers: {
+        'apikey':        _cfg.anonKey,
+        'Authorization': 'Bearer ' + Auth.getAccessToken(),
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({ p_season_id: seasonId, p_enabled: enabled }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error('Could not update link: ' + res.status + ' ' + err.slice(0,200));
+    }
+  }
+
+  async function getTeamShareLink(seasonId) {
+    if (!isConfigured() || !Auth.isLoggedIn()) return null;
+    const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
+    const res = await fetch(base + `team_share_links?season_id=eq.${seasonId}&select=share_token,enabled`, {
+      headers: {
+        'apikey':        _cfg.anonKey,
+        'Authorization': 'Bearer ' + Auth.getAccessToken(),
+      },
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return rows && rows.length ? rows[0] : null;
+  }
+
   async function claimAccountCode(newCode) {
     if (!isConfigured()) throw new Error('Sync not configured.');
     if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
@@ -11761,7 +11944,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, fetchOwnProfile, claimAccountCode };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, getTeamShareLink };
 })();
 
 function attachEvents() {
