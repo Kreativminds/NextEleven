@@ -2289,6 +2289,7 @@ const TR = {
 
     // ── COMMON ──
     common_save:'Save', common_cancel:'Cancel', common_no:'No', common_yes:'Yes', common_close:'Close',
+    discovery_team_summary:'Team Summary is now available.', discovery_tournament_summary:'Tournament Summary is now available.',
     gd_tournament_guests:'Tournament Guests', gd_guest_badge:'Guest',
     games_lbl_tournament:'Tournament (optional)',
     games_lbl_stage:'Stage (optional)',
@@ -3295,6 +3296,7 @@ const TR = {
 
     // ── COMMON ──
     common_save:'Guardar', common_cancel:'Cancelar', common_no:'Não', common_yes:'Sim', common_close:'Fechar',
+    discovery_team_summary:'O Resumo da Equipa já está disponível.', discovery_tournament_summary:'O Resumo do Torneio já está disponível.',
     gd_tournament_guests:'Convidados do Torneio', gd_guest_badge:'Convidado',
     games_lbl_tournament:'Torneio (opcional)',
     games_lbl_stage:'Fase (opcional)',
@@ -5386,6 +5388,8 @@ async function buildTrackedNav() {
       <div id="tracked-ach-${p.playerId}" style="display:none"></div>
       <div id="tracked-events-${p.playerId}" style="display:none"></div>
     </div>`).join('');
+
+  await updateProgressiveNavVisibility();
 }
 
 function switchTrackedTab(playerId, tab) {
@@ -6179,6 +6183,72 @@ async function createTournament(tournament) {
 
   return realTournamentId;
 }
+// ── PROGRESSIVE MENU VISIBILITY ─────────────────────────────────────────────
+// Team Summary and Tournament Summary are hidden until there's real data to
+// show, so a Parent starting a new season isn't shown empty pages. Scoped
+// to the current season only — a season with zero games this year still
+// hides Team Summary even if past seasons had games.
+async function hasCurrentSeasonGames() {
+  if (!State.currentSeasonId) return false;
+  const games = await DB.getAll('games', 'seasonId', State.currentSeasonId);
+  return games.some(g => !g.isDeleted);
+}
+
+async function hasCurrentSeasonTournaments() {
+  if (!State.currentSeasonId) return false;
+  const tournaments = await getTournamentsForSeason(State.currentSeasonId);
+  return tournaments.length > 0;
+}
+
+async function shouldShowTeamSummary() { return hasCurrentSeasonGames(); }
+async function shouldShowTournamentSummary() { return hasCurrentSeasonTournaments(); }
+
+// One-time discovery message state lives in appMeta, keyed so it never
+// repeats after a refresh, and deliberately never resets even if the
+// triggering data is later deleted and recreated (per the approved spec).
+async function hasSeenDiscovery(key) {
+  const rec = await DB.get('appMeta', 'discovery_' + key);
+  return !!rec;
+}
+async function markDiscoverySeen(key) {
+  await DB.put('appMeta', { metaKey: 'discovery_' + key, value: true });
+}
+
+// The single place that actually shows/hides the nav items and fires a
+// discovery toast — called after nav builds, and after any save/import/
+// delete that could change whether a summary page now has data. Cheap to
+// call repeatedly; does nothing if nothing has changed.
+async function updateProgressiveNavVisibility() {
+  const showTeam = await shouldShowTeamSummary();
+  const showTourn = await shouldShowTournamentSummary();
+
+  document.querySelectorAll('[data-section="teamSummary"]').forEach(el => {
+    el.style.display = showTeam ? '' : 'none';
+  });
+  document.querySelectorAll('[data-section="tournSummary"]').forEach(el => {
+    el.style.display = showTourn ? '' : 'none';
+  });
+  document.querySelectorAll('[data-portal-section="teamsummary"]').forEach(el => {
+    el.style.display = showTeam ? '' : 'none';
+  });
+
+  if (showTeam && !(await hasSeenDiscovery('teamSummary'))) {
+    await markDiscoverySeen('teamSummary');
+    Toast.show(I18n.t('discovery_team_summary'));
+  }
+  if (showTourn && !(await hasSeenDiscovery('tournSummary'))) {
+    await markDiscoverySeen('tournSummary');
+    Toast.show(I18n.t('discovery_tournament_summary'));
+  }
+
+  // If the section a Parent is currently viewing just got hidden (e.g.
+  // the last game or tournament was deleted), navigate them somewhere
+  // still visible rather than leave them stranded on a page whose nav
+  // entry just disappeared.
+  if (!showTeam && Nav.current() === 'teamSummary') await Nav.go('home');
+  if (!showTourn && Nav.current() === 'tournSummary') await Nav.go('home');
+}
+
 async function getTournamentsForSeason(seasonId) {
   return DB.getAll('tournaments', 'seasonId', seasonId);
 }
