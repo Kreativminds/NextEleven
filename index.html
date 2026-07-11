@@ -6407,7 +6407,10 @@ async function renderTournamentGamesTab() {
           </div>
           <span class="pos-pill">${tGames.length} ${I18n.t('tourn_games_count_suffix')}</span>
         </div>
-        <button type="button" class="btn btn-secondary btn-sm" style="width:100%;margin-top:10px" onclick="toggleTournamentCardExpand(${t.tournamentId})">${isExpanded ? I18n.t('tourn_hide_games') : I18n.t('tourn_show_games')} ${isExpanded?'&#9650;':'&#9660;'}</button>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button type="button" class="btn btn-secondary btn-sm" style="flex:1" onclick="event.stopPropagation();openTournamentForm(${t.tournamentId})">${I18n.t('common_edit')}</button>
+          <button type="button" class="btn btn-secondary btn-sm" style="flex:1" onclick="toggleTournamentCardExpand(${t.tournamentId})">${isExpanded ? I18n.t('tourn_hide_games') : I18n.t('tourn_show_games')} ${isExpanded?'&#9650;':'&#9660;'}</button>
+        </div>
         ${isExpanded ? `<div style="margin-top:8px">${gamesListHtml}</div>` : ''}
       </div>`;
     }))).join('');
