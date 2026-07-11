@@ -485,6 +485,9 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 
 <div id="app" style="display:none">
 
+<!-- FIRST-TIME SETUP WIZARD — top-level so it can show over any section -->
+<div id="firstTimeWizardOverlay" style="display:none"></div>
+
 <!-- NAV -->
 <nav>
   <div class="nav-brand" onclick="Nav.go('home')" style="cursor:pointer">
@@ -538,6 +541,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
       <div><h1>&#127968; Home</h1><div class="page-header-sub" id="homeSubtitle"></div></div>
       <select id="homeSeasonSelect" onchange="handleHomeSeasonSwitch(this.value)" style="border:1px solid var(--border);border-radius:3px;padding:6px 10px;font-size:12px;font-weight:700"></select>
     </div>
+    <div id="gettingStartedContainer"></div>
     <div id="homeContent"></div>
   </div>
 
@@ -1192,6 +1196,1045 @@ const AFL_SUB14_II_DIVISAO_SEED = [
 // exists is reused, never duplicated — same normalization (case, accents,
 // whitespace) used for the club-achievement matching fix, since this is
 // exactly the same "two independent free-text fields must agree" problem.
+// ── CAREER PLAYER ID MIGRATION ───────────────────────────────────────────────
+// playerId identifies one player ROW in one specific season. careerPlayerId
+// is the new, permanent identity that connects the same real child across
+// every season they're carried into via the renewal flow. Every existing
+// player predates this concept, so this backfill gives any player row
+// without one a fresh, unique careerPlayerId of its own.
+//
+// Deliberately does NOT try to guess which existing rows across different
+// seasons might be "the same child" (e.g. by matching name) — that kind
+// of soft matching is exactly what caused real problems earlier tonight
+// with club-name matching, and here the stakes are higher: guessing wrong
+// would silently merge two different children's histories together.
+// Every existing player simply starts as their own distinct identity;
+// only the renewal flow going forward creates genuine, deliberate links.
+// Single shared UUID generator, used everywhere a careerPlayerId needs to
+// be created — avoids the same crypto.randomUUID-with-fallback logic
+// being duplicated (and risking drifting apart) across multiple call sites.
+function generateCareerPlayerId() {
+  return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('career-' + Date.now() + '-' + Math.random().toString(36).slice(2,10));
+}
+
+// ── SEASON RENEWAL WIZARD ────────────────────────────────────────────────────
+// Shown only when at least one season already exists (the entry button in
+// Settings is itself conditional on this). Walks: renewal question -> club
+// choice -> season details review -> player carry-over -> final review ->
+// create. State lives in one plain object for the duration of the wizard,
+// not scattered across DOM reads, so each step can safely build on the
+// last without re-deriving anything.
+let _seasonWizardState = null;
+
+function closeSeasonWizard() {
+  const el = document.getElementById('seasonWizardOverlay');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+  _seasonWizardState = null;
+}
+
+async function openSeasonWizard() {
+  const allSeasons = await DB.getAll('seasons');
+  if (!allSeasons.length) return; // entry point already hides in this case; defensive no-op
+  const mostRecent = [...allSeasons].sort((a,b) => (getSeasonStartYear(b)||0) - (getSeasonStartYear(a)||0))[0];
+
+  _seasonWizardState = { previousSeason: mostRecent };
+  renderWizardStepRenewalQuestion();
+}
+
+function renderWizardStepRenewalQuestion() {
+  const el = document.getElementById('seasonWizardOverlay');
+  if (!el) return;
+  const prev = _seasonWizardState.previousSeason;
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:440px">
+        <h3 style="margin-bottom:6px">${I18n.t('wiz_step_renewal_title')}</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">${I18n.t('wiz_step_renewal_body', {season: prev.seasonName, club: prev.clubName||'—'})}</p>
+        <div class="btn-group" style="flex-direction:column;gap:8px">
+          <button class="btn btn-primary" onclick="wizardChooseRenewalOption('renew')">${I18n.t('wiz_btn_renew_current')}</button>
+          <button class="btn btn-secondary" onclick="wizardChooseRenewalOption('existing')">${I18n.t('wiz_btn_use_another_existing')}</button>
+          <button class="btn btn-secondary" onclick="wizardChooseRenewalOption('new')">${I18n.t('wiz_btn_create_new_club_option')}</button>
+        </div>
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn btn-secondary" onclick="closeSeasonWizard()">${I18n.t('common_cancel')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function wizardChooseRenewalOption(option) {
+  _seasonWizardState.renewalOption = option;
+  if (option === 'renew') {
+    // Reuse the same club/team — no new clubTeams record, per the
+    // approved "do not duplicate the Club/Team record on renewal" rule.
+    _seasonWizardState.clubTeamId = _seasonWizardState.previousSeason.clubTeamId || null;
+    _seasonWizardState.clubName = _seasonWizardState.previousSeason.clubName || null;
+    await renderWizardStepYear();
+  } else if (option === 'existing') {
+    await renderWizardStepChooseClub(true); // true = skip straight to the existing-club picker
+  } else {
+    await renderWizardStepChooseClub(false); // false = skip straight to the new-club form
+  }
+}
+
+async function renderWizardStepChooseClub(preferExisting) {
+  const el = document.getElementById('seasonWizardOverlay');
+  if (!el) return;
+  const allClubTeams = await DB.getAll('clubTeams');
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:440px">
+        <h3 style="margin-bottom:6px">${I18n.t('wiz_step_club_title')}</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">${I18n.t('wiz_step_club_body')}</p>
+        ${allClubTeams.length ? `
+        <div class="form-group">
+          <label>${I18n.t('wiz_lbl_existing_club')}</label>
+          <select id="wiz-existing-club">
+            <option value="">${I18n.t('wiz_opt_choose')}</option>
+            ${allClubTeams.map(c => `<option value="${c.clubTeamId}">${esc(c.name)}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-primary" style="width:100%;margin-bottom:14px" onclick="wizardSelectExistingClub()">${I18n.t('wiz_btn_use_selected_club')}</button>
+        <div style="text-align:center;font-size:11px;color:var(--muted);margin:10px 0">${I18n.t('wiz_or')}</div>
+        ` : ''}
+        <div class="form-group">
+          <label>${I18n.t('wiz_lbl_new_club_name')}</label>
+          <input id="wiz-new-club-name" type="text" placeholder="e.g. FC Example">
+        </div>
+        <button class="btn btn-secondary" style="width:100%" onclick="wizardCreateNewClub()">${I18n.t('wiz_btn_create_new_club')}</button>
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn btn-secondary" onclick="renderWizardStepRenewalQuestion()">${I18n.t('wiz_btn_back')}</button>
+          <button class="btn btn-secondary" onclick="closeSeasonWizard()">${I18n.t('common_cancel')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function wizardSelectExistingClub() {
+  const sel = document.getElementById('wiz-existing-club');
+  const clubTeamId = parseInt(sel?.value);
+  if (!clubTeamId) { Toast.error(I18n.t('wiz_err_pick_club')); return; }
+  const club = await DB.get('clubTeams', clubTeamId);
+  _seasonWizardState.clubTeamId = clubTeamId;
+  _seasonWizardState.clubName = club?.name || null;
+  await renderWizardStepYear();
+}
+
+async function wizardCreateNewClub() {
+  const name = document.getElementById('wiz-new-club-name')?.value.trim();
+  if (!name) { Toast.error(I18n.t('wiz_err_club_name_required')); return; }
+  const clubTeamId = await DB.put('clubTeams', { name, createdAt: new Date().toISOString() });
+  _seasonWizardState.clubTeamId = clubTeamId;
+  _seasonWizardState.clubName = name;
+  await renderWizardStepYear();
+}
+
+// Shared progress indicator shown at the top of every wizard step, so the
+// whole flow reads as one guided sequence with a clear sense of where you
+// are and how much is left — not a series of disconnected screens.
+function wizardProgressHtml(stepNum, totalSteps, label) {
+  return `
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px">${I18n.t('wiz_step_progress', {step: stepNum, total: totalSteps})} · ${esc(label)}</div>
+      <div style="height:4px;background:var(--border);border-radius:2px;margin-top:6px;overflow:hidden">
+        <div style="height:100%;width:${Math.round((stepNum/totalSteps)*100)}%;background:var(--black);border-radius:2px"></div>
+      </div>
+    </div>`;
+}
+
+async function renderWizardStepYear() {
+  const el = document.getElementById('seasonWizardOverlay');
+  if (!el) return;
+  const prev = _seasonWizardState.previousSeason;
+  const proposedYear = (getSeasonStartYear(prev) || new Date().getFullYear()) + 1;
+  const allSeasons = await DB.getAll('seasons');
+  const yearAlreadyTaken = allSeasons.some(s => getSeasonStartYear(s) === proposedYear);
+
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:440px">
+        ${wizardProgressHtml(1, 5, I18n.t('wiz_step_year_label'))}
+        <h3 style="margin-bottom:6px">${I18n.t('wiz_step_year_title')}</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">${_seasonWizardState.clubName ? esc(_seasonWizardState.clubName) : ''}</p>
+
+        <div class="form-group">
+          <label>${I18n.t('set_lbl_start_year')}</label>
+          <input id="wiz-startyear" type="number" min="2000" max="2100" value="${proposedYear}" oninput="wizardUpdateNamePreview()">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${I18n.t('set_season_name_preview')} <strong id="wiz-name-preview">${buildSeasonName(proposedYear)}</strong></div>
+          ${yearAlreadyTaken ? `<div style="font-size:11px;color:#b03030;margin-top:4px">${I18n.t('wiz_warn_year_taken')}</div>` : ''}
+        </div>
+
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn btn-primary" onclick="wizardConfirmYear()">${I18n.t('wiz_btn_next')}</button>
+          <button class="btn btn-secondary" onclick="renderWizardStepRenewalQuestion()">${I18n.t('wiz_btn_back')}</button>
+          <button class="btn btn-secondary" onclick="closeSeasonWizard()">${I18n.t('common_cancel')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function wizardUpdateNamePreview() {
+  const yearInput = document.getElementById('wiz-startyear');
+  const preview = document.getElementById('wiz-name-preview');
+  if (!yearInput || !preview) return;
+  preview.textContent = buildSeasonName(yearInput.value) || '—';
+}
+
+async function wizardConfirmYear() {
+  const startYear = parseInt(document.getElementById('wiz-startyear')?.value);
+  if (!startYear || startYear < 2000 || startYear > 2100) { Toast.error(I18n.t('set_err_season_year')); return; }
+  const allSeasons = await DB.getAll('seasons');
+  const duplicate = allSeasons.find(s => s.startYear === startYear);
+  if (duplicate) { Toast.error(I18n.t('set_err_duplicate_season_year', {name: duplicate.seasonName})); return; }
+
+  _seasonWizardState.draftSeason = { startYear, seasonName: buildSeasonName(startYear) };
+  renderWizardStepAgeGroup();
+}
+
+function renderWizardStepAgeGroup() {
+  const el = document.getElementById('seasonWizardOverlay');
+  if (!el) return;
+  const prev = _seasonWizardState.previousSeason;
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:440px">
+        ${wizardProgressHtml(2, 5, I18n.t('wiz_step_age_label'))}
+        <h3 style="margin-bottom:6px">${I18n.t('wiz_lbl_age_group_review')}</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">${I18n.t('wiz_age_group_hint')}</p>
+
+        <div class="form-group" style="background:#fbf3d9;border:1px solid #d9c26b;border-radius:6px;padding:12px">
+          <label style="font-weight:700">${I18n.t('set_lbl_age_group')}</label>
+          <input id="wiz-agegroup" type="text" value="${esc(prev.ageGroup||'')}" placeholder="e.g. U14">
+        </div>
+
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn btn-primary" onclick="wizardConfirmAgeGroup()">${I18n.t('wiz_btn_next')}</button>
+          <button class="btn btn-secondary" onclick="renderWizardStepYear()">${I18n.t('wiz_btn_back')}</button>
+          <button class="btn btn-secondary" onclick="closeSeasonWizard()">${I18n.t('common_cancel')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function wizardConfirmAgeGroup() {
+  _seasonWizardState.draftSeason.ageGroup = document.getElementById('wiz-agegroup')?.value.trim() || null;
+  renderWizardStepGroundDuration();
+}
+
+function renderWizardStepGroundDuration() {
+  const el = document.getElementById('seasonWizardOverlay');
+  if (!el) return;
+  const prev = _seasonWizardState.previousSeason;
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:440px">
+        ${wizardProgressHtml(3, 5, I18n.t('wiz_step_ground_label'))}
+        <h3 style="margin-bottom:16px">${I18n.t('wiz_step_ground_title')}</h3>
+
+        <div class="form-group">
+          <label>${I18n.t('set_lbl_home_ground')}</label>
+          <input id="wiz-homeground" type="text" value="${esc(prev.homeGround||'')}">
+        </div>
+
+        <div class="form-group">
+          <label>${I18n.t('set_lbl_match_duration')}</label>
+          <select id="wiz-duration-select" onchange="document.getElementById('wiz-duration-custom').style.display=this.value==='custom'?'block':'none'">
+            <option value="" ${!prev.defaultMatchDurationMins?'selected':''}>${I18n.t('duration_default_90')}</option>
+            ${[50,60,70,80,90].map(m => `<option value="${m}" ${prev.defaultMatchDurationMins===m?'selected':''}>${m} min</option>`).join('')}
+            <option value="custom" ${prev.defaultMatchDurationMins && ![50,60,70,80,90].includes(prev.defaultMatchDurationMins)?'selected':''}>${I18n.t('duration_custom')}</option>
+          </select>
+          <input id="wiz-duration-custom" type="number" min="10" max="150" value="${prev.defaultMatchDurationMins||''}" style="display:${prev.defaultMatchDurationMins && ![50,60,70,80,90].includes(prev.defaultMatchDurationMins)?'block':'none'};margin-top:6px">
+        </div>
+
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn btn-primary" onclick="wizardConfirmGroundDuration()">${I18n.t('wiz_btn_next')}</button>
+          <button class="btn btn-secondary" onclick="renderWizardStepAgeGroup()">${I18n.t('wiz_btn_back')}</button>
+          <button class="btn btn-secondary" onclick="closeSeasonWizard()">${I18n.t('common_cancel')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function wizardConfirmGroundDuration() {
+  const durationSel = document.getElementById('wiz-duration-select')?.value;
+  const durationCustom = document.getElementById('wiz-duration-custom')?.value;
+  _seasonWizardState.draftSeason.homeGround = document.getElementById('wiz-homeground')?.value.trim() || null;
+  _seasonWizardState.draftSeason.defaultMatchDurationMins = durationSel === 'custom' ? (parseInt(durationCustom) || null) : (parseInt(durationSel) || null);
+  renderWizardStepShirtColor();
+}
+
+function renderWizardStepShirtColor() {
+  const el = document.getElementById('seasonWizardOverlay');
+  if (!el) return;
+  const prev = _seasonWizardState.previousSeason;
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:440px">
+        ${wizardProgressHtml(4, 5, I18n.t('wiz_step_shirt_label'))}
+        <h3 style="margin-bottom:16px">${I18n.t('set_lbl_shirt_color')}</h3>
+
+        <div class="form-group">
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="wiz-shirtcolor" type="color" value="${esc(prev.shirtColor||'#B23333')}" style="width:44px;height:36px;padding:2px;border:1px solid var(--border);border-radius:4px">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('wiz-shirtcolor').value='#B23333'">${I18n.t('set_btn_use_default')}</button>
+          </div>
+        </div>
+
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn btn-primary" onclick="wizardConfirmShirtColor()">${I18n.t('wiz_btn_next')}</button>
+          <button class="btn btn-secondary" onclick="renderWizardStepGroundDuration()">${I18n.t('wiz_btn_back')}</button>
+          <button class="btn btn-secondary" onclick="closeSeasonWizard()">${I18n.t('common_cancel')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function wizardConfirmShirtColor() {
+  const shirtVal = document.getElementById('wiz-shirtcolor')?.value;
+  _seasonWizardState.draftSeason.shirtColor = (shirtVal && shirtVal.toUpperCase() !== '#B23333') ? shirtVal : null;
+
+  _seasonWizardState.newSeason = {
+    ..._seasonWizardState.draftSeason,
+    clubTeamId: _seasonWizardState.clubTeamId,
+    clubName: _seasonWizardState.clubName,
+    createdAt: new Date().toISOString(),
+  };
+
+  await renderWizardStepPlayerCarryOver();
+}
+
+async function renderWizardStepPlayerCarryOver() {
+  const el = document.getElementById('seasonWizardOverlay');
+  if (!el) return;
+  const prevSeasonId = _seasonWizardState.previousSeason.seasonId;
+  const activePlayers = (await DB.getAll('players', 'seasonId', prevSeasonId)).filter(p => p.isActive);
+
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:460px">
+        ${wizardProgressHtml(5, 5, I18n.t('wiz_step_carryover_label'))}
+        <h3 style="margin-bottom:6px">${I18n.t('wiz_step_players_title')}</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">${I18n.t('wiz_step_players_body', {n: activePlayers.length})}</p>
+
+        <div class="btn-group" style="flex-direction:column;gap:8px;margin-bottom:16px">
+          <button class="btn btn-primary" onclick="wizardSetCarryOverMode('all')">${I18n.t('wiz_btn_copy_all', {n: activePlayers.length})}</button>
+          <button class="btn btn-secondary" onclick="wizardSetCarryOverMode('select')">${I18n.t('wiz_btn_select_players')}</button>
+          <button class="btn btn-secondary" onclick="wizardSetCarryOverMode('empty')">${I18n.t('wiz_btn_start_empty')}</button>
+        </div>
+
+        <div id="wiz-player-select-list" style="display:none;max-height:280px;overflow-y:auto;margin-bottom:14px">
+          ${activePlayers.map(p => `
+            <label style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+              <input type="checkbox" class="wiz-player-checkbox" value="${p.playerId}" checked>
+              ${esc(p.fullName)}${p.shirtNumber?` (#${p.shirtNumber})`:''}
+            </label>`).join('')}
+        </div>
+
+        <div class="form-actions" id="wiz-players-continue" style="margin-top:8px;display:none">
+          <button class="btn btn-primary" onclick="wizardConfirmPlayerSelection()">${I18n.t('wiz_btn_continue')}</button>
+        </div>
+
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn btn-secondary" onclick="renderWizardStepYear()">${I18n.t('wiz_btn_back')}</button>
+          <button class="btn btn-secondary" onclick="closeSeasonWizard()">${I18n.t('common_cancel')}</button>
+        </div>
+      </div>
+    </div>`;
+
+  // Stash the active player list on the wizard state so the "select"
+  // mode's checkboxes can be read back without re-querying the DB.
+  _seasonWizardState.activePlayers = activePlayers;
+}
+
+function wizardSetCarryOverMode(mode) {
+  if (mode === 'select') {
+    document.getElementById('wiz-player-select-list').style.display = 'block';
+    document.getElementById('wiz-players-continue').style.display = 'flex';
+    return;
+  }
+  _seasonWizardState.carryOverMode = mode;
+  _seasonWizardState.playersToCarry = mode === 'all' ? _seasonWizardState.activePlayers : [];
+  renderWizardStepReview();
+}
+
+function wizardConfirmPlayerSelection() {
+  const checked = Array.from(document.querySelectorAll('.wiz-player-checkbox:checked')).map(cb => parseInt(cb.value));
+  _seasonWizardState.carryOverMode = 'select';
+  _seasonWizardState.playersToCarry = _seasonWizardState.activePlayers.filter(p => checked.includes(p.playerId));
+  renderWizardStepReview();
+}
+
+function renderWizardStepReview() {
+  const el = document.getElementById('seasonWizardOverlay');
+  if (!el) return;
+  const s = _seasonWizardState;
+  const ns = s.newSeason;
+  const playerCount = s.playersToCarry.length;
+
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:460px">
+        <h3 style="margin-bottom:12px">${I18n.t('wiz_step_review_title')}</h3>
+
+        <div class="card" style="background:var(--bg);margin-bottom:12px">
+          <div style="font-size:16px;font-weight:800">${esc(ns.seasonName)}</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:2px">${esc(ns.clubName||'—')}${ns.ageGroup?' · '+esc(ns.ageGroup):''}</div>
+          ${ns.homeGround?`<div style="font-size:12px;color:var(--muted);margin-top:6px">${I18n.t('set_lbl_home_ground')}: ${esc(ns.homeGround)}</div>`:''}
+          <div style="font-size:12px;color:var(--muted)">${I18n.t('set_lbl_match_duration')}: ${ns.defaultMatchDurationMins || 90} min</div>
+        </div>
+
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-title">${I18n.t('wiz_review_players_label')}</div>
+          <div style="font-size:14px;font-weight:700">${I18n.t('wiz_review_players_count', {n: playerCount})}</div>
+          ${playerCount ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${s.playersToCarry.map(p => esc(p.fullName)).join(', ')}</div>` : ''}
+        </div>
+
+        <div class="card" style="margin-bottom:12px;background:var(--bg)">
+          <div class="card-title">${I18n.t('wiz_review_clubhistory_label')}</div>
+          <p style="font-size:12px;color:var(--muted)">${I18n.t('wiz_review_clubhistory_note')}</p>
+        </div>
+
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn btn-primary" onclick="wizardCreateSeason()">${I18n.t('wiz_btn_create_season')}</button>
+          <button class="btn btn-secondary" onclick="renderWizardStepPlayerCarryOver()">${I18n.t('wiz_btn_back')}</button>
+          <button class="btn btn-secondary" onclick="closeSeasonWizard()">${I18n.t('common_cancel')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// The actual creation step. Creates the new season, then for each carried
+// player creates a genuinely NEW player row (new, fresh playerId — the
+// current data model has no other way to represent one player existing
+// in two seasons) but with the SAME careerPlayerId as their previous
+// row, so they remain recognizably "the same child" across seasons.
+// Copies identity/profile fields only — appearances, goals, cards, etc.
+// are never copied; they start at zero naturally, since nothing has
+// been recorded yet against this new playerId.
+async function wizardCreateSeason() {
+  const s = _seasonWizardState;
+  let seasonId = null;
+  const createdPlayerIds = [];
+
+  try {
+    await Backup.create('before-save');
+
+    seasonId = await DB.put('seasons', s.newSeason);
+
+    let carried = 0;
+    for (const oldPlayer of s.playersToCarry) {
+      const newPlayer = {
+        seasonId,
+        fullName: oldPlayer.fullName,
+        dateOfBirth: oldPlayer.dateOfBirth || null,
+        nationality: oldPlayer.nationality || null,
+        primaryPosition: oldPlayer.primaryPosition || null,
+        secondaryPosition: oldPlayer.secondaryPosition || null,
+        dominantFoot: oldPlayer.dominantFoot || null,
+        height: oldPlayer.height || null,
+        weight: oldPlayer.weight || null,
+        shirtNumber: oldPlayer.shirtNumber || null,
+        viewerPin: oldPlayer.viewerPin || null,
+        trackingStatus: oldPlayer.trackingStatus || null,
+        trackingLabel: oldPlayer.trackingLabel || null,
+        relationship: oldPlayer.relationship || null,
+        isActive: true,
+        // The one field that must carry over unchanged — this is what
+        // makes the new row "the same child" rather than a stranger.
+        careerPlayerId: oldPlayer.careerPlayerId || generateCareerPlayerId(),
+        // Deliberately NOT copied: appearances, goals, assists, cards,
+        // minutes, developmentNotes (season-specific coaching notes),
+        // any season-scoped stat — all start fresh because this is a
+        // genuinely new row with nothing recorded against it yet.
+      };
+      const newPlayerId = await DB.put('players', newPlayer);
+      createdPlayerIds.push(newPlayerId);
+      carried++;
+    }
+
+    await DB.put('appMeta', { metaKey:'currentSeason', value: seasonId });
+    await loadMeta();
+    closeSeasonWizard();
+    Toast.show(I18n.t('wiz_season_created', {name: s.newSeason.seasonName, n: carried}));
+    await buildTrackedNav();
+    await Nav.go('home');
+    Sync.scheduleAutoSync();
+  } catch (err) {
+    // IndexedDB's put() calls here each run as their own transaction, so
+    // this isn't a true atomic database transaction — but on any failure
+    // partway through, actively undo whatever this attempt already
+    // created (the season itself, and any player rows already written)
+    // rather than leave a half-finished season with only some of its
+    // players. A fresh Backup snapshot was already taken before any of
+    // this started, as a second line of recovery if the rollback itself
+    // has trouble.
+    console.error('[wizardCreateSeason] failed, rolling back:', err);
+    try {
+      for (const pid of createdPlayerIds) await DB.del('players', pid);
+      if (seasonId) await DB.del('seasons', seasonId);
+    } catch (rollbackErr) {
+      console.error('[wizardCreateSeason] rollback itself failed:', rollbackErr);
+      Toast.error(I18n.t('wiz_err_rollback_failed'));
+      return;
+    }
+    Toast.error(I18n.t('wiz_err_creation_failed', {msg: err.message}));
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// FIRST-TIME SETUP WIZARD
+// ══════════════════════════════════════════════════════════════════════════
+// Triggers automatically only when the authenticated Parent has no
+// Club/Team and no Season at all. Draft state (which step, and whatever
+// has been typed so far) is saved to appMeta under one key —
+// deliberately NOT a real store, since appMeta is already confirmed
+// local-only and excluded from sync (see SYNC_STORES_SET), so an
+// incomplete setup draft can never leak to the cloud or a second device
+// half-finished.
+const FIRST_TIME_WIZARD_STEPS = 7;
+let _firstTimeWizardState = null;
+
+async function saveFirstTimeWizardDraft() {
+  if (!_firstTimeWizardState) return;
+  await DB.put('appMeta', { metaKey: 'firstTimeWizardDraft', value: JSON.stringify(_firstTimeWizardState) });
+}
+
+async function loadFirstTimeWizardDraft() {
+  const rec = await DB.get('appMeta', 'firstTimeWizardDraft');
+  if (!rec || !rec.value) return null;
+  try { return JSON.parse(rec.value); } catch(e) { return null; }
+}
+
+async function clearFirstTimeWizardDraft() {
+  await DB.del('appMeta', 'firstTimeWizardDraft');
+}
+
+// The automatic-trigger check — only true when there is genuinely
+// nothing yet: no clubTeams, no seasons. Never fires again once a
+// Club/Team or Season exists, even if the wizard itself was abandoned
+// partway (Settings still offers "Resume Setup" for that case instead).
+async function shouldTriggerFirstTimeWizard() {
+  const clubTeams = await DB.getAll('clubTeams');
+  const seasons = await DB.getAll('seasons');
+  return clubTeams.length === 0 && seasons.length === 0;
+}
+
+async function openFirstTimeWizard() {
+  const draft = await loadFirstTimeWizardDraft();
+  _firstTimeWizardState = draft || { step: 1, club: {}, season: {}, squad: { mode: null, players: [] } };
+  renderFirstTimeWizardStep();
+}
+
+function closeFirstTimeWizardToApp() {
+  // "Save & Exit" — draft already persisted after every step, so this
+  // just hides the overlay and returns to the app without losing
+  // anything. Distinct from actually finishing (which clears the draft).
+  const el = document.getElementById('firstTimeWizardOverlay');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+}
+
+function firstTimeWizardProgressHtml(stepNum, label) {
+  return `
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px">${I18n.t('wiz_step_progress', {step: stepNum, total: FIRST_TIME_WIZARD_STEPS})} · ${esc(label)}</div>
+        <button type="button" style="background:none;border:none;font-size:11px;color:var(--muted);text-decoration:underline;cursor:pointer" onclick="firstTimeWizardSaveAndExit()">${I18n.t('wiz_btn_save_exit')}</button>
+      </div>
+      <div style="height:4px;background:var(--border);border-radius:2px;margin-top:6px;overflow:hidden">
+        <div style="height:100%;width:${Math.round((stepNum/FIRST_TIME_WIZARD_STEPS)*100)}%;background:var(--black);border-radius:2px"></div>
+      </div>
+    </div>`;
+}
+
+async function firstTimeWizardSaveAndExit() {
+  await saveFirstTimeWizardDraft();
+  closeFirstTimeWizardToApp();
+  Toast.show(I18n.t('wiz_draft_saved'));
+}
+
+function renderFirstTimeWizardStep() {
+  const step = _firstTimeWizardState.step;
+  if (step === 1) return renderFTWStepWelcome();
+  if (step === 2) return renderFTWStepClub();
+  if (step === 3) return renderFTWStepSeason();
+  if (step === 4) return renderFTWStepSquad();
+  if (step === 5) return renderFTWStepResources();
+  if (step === 6) return renderFTWStepReview();
+  if (step === 7) return renderFTWStepComplete();
+}
+
+// ── STEP 1 — WELCOME ─────────────────────────────────────────────────────
+function renderFTWStepWelcome() {
+  const el = document.getElementById('firstTimeWizardOverlay');
+  if (!el) return;
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:440px;text-align:center">
+        ${firstTimeWizardProgressHtml(1, I18n.t('ftw_step_welcome_label'))}
+        <div style="font-size:40px;margin:10px 0">&#9917;</div>
+        <h2 style="margin-bottom:10px">${I18n.t('ftw_welcome_title')}</h2>
+        <p style="font-size:14px;color:var(--muted);margin-bottom:20px">${I18n.t('ftw_welcome_body')}</p>
+        <button class="btn btn-primary" style="width:100%" onclick="ftwGoToStep(2)">${I18n.t('ftw_btn_start_setup')}</button>
+      </div>
+    </div>`;
+}
+
+async function ftwGoToStep(step) {
+  _firstTimeWizardState.step = step;
+  await saveFirstTimeWizardDraft();
+  renderFirstTimeWizardStep();
+}
+
+// ── STEP 2 — CLUB/TEAM ───────────────────────────────────────────────────
+function renderFTWStepClub() {
+  const el = document.getElementById('firstTimeWizardOverlay');
+  if (!el) return;
+  const c = _firstTimeWizardState.club;
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:440px">
+        ${firstTimeWizardProgressHtml(2, I18n.t('ftw_step_club_label'))}
+        <h3 style="margin-bottom:16px">${I18n.t('ftw_step_club_title')}</h3>
+
+        <div class="form-group">
+          <label>${I18n.t('set_lbl_club_name')} *</label>
+          <input id="ftw-club-name" type="text" placeholder="e.g. SL Olivais" value="${esc(c.name||'')}">
+        </div>
+        <div class="form-group">
+          <label>${I18n.t('set_lbl_age_group')}</label>
+          <input id="ftw-club-category" type="text" placeholder="e.g. U14" value="${esc(c.category||'')}">
+        </div>
+        <div class="form-group">
+          <label>${I18n.t('ftw_lbl_logo_url')}</label>
+          <input id="ftw-club-logo" type="url" placeholder="https://..." value="${esc(c.logoUrl||'')}">
+        </div>
+        <div class="form-group">
+          <label>${I18n.t('set_lbl_home_ground')}</label>
+          <input id="ftw-club-ground" type="text" placeholder="e.g. Campo SL Olivais" value="${esc(c.homeGround||'')}">
+        </div>
+        <div class="form-group">
+          <label>${I18n.t('set_lbl_shirt_color')}</label>
+          <input id="ftw-club-shirt" type="color" value="${esc(c.shirtColor||'#B23333')}" style="width:44px;height:36px;padding:2px;border:1px solid var(--border);border-radius:4px">
+        </div>
+
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn btn-primary" onclick="ftwConfirmClub()">${I18n.t('wiz_btn_next')}</button>
+          <button class="btn btn-secondary" onclick="ftwGoToStep(1)">${I18n.t('wiz_btn_back')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function ftwConfirmClub() {
+  const name = document.getElementById('ftw-club-name')?.value.trim();
+  if (!name) { Toast.error(I18n.t('wiz_err_club_name_required')); return; }
+  _firstTimeWizardState.club = {
+    name,
+    category: document.getElementById('ftw-club-category')?.value.trim() || null,
+    logoUrl: document.getElementById('ftw-club-logo')?.value.trim() || null,
+    homeGround: document.getElementById('ftw-club-ground')?.value.trim() || null,
+    shirtColor: document.getElementById('ftw-club-shirt')?.value || '#B23333',
+  };
+  await ftwGoToStep(3);
+}
+
+// ── STEP 3 — SEASON ──────────────────────────────────────────────────────
+function renderFTWStepSeason() {
+  const el = document.getElementById('firstTimeWizardOverlay');
+  if (!el) return;
+  const s = _firstTimeWizardState.season;
+  const defaultYear = new Date().getMonth() >= 8 ? new Date().getFullYear() : new Date().getFullYear() - 1;
+  const year = s.startYear || defaultYear;
+
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:440px">
+        ${firstTimeWizardProgressHtml(3, I18n.t('ftw_step_season_label'))}
+        <h3 style="margin-bottom:16px">${I18n.t('ftw_step_season_title')}</h3>
+
+        <div class="form-group">
+          <label>${I18n.t('set_lbl_start_year')}</label>
+          <input id="ftw-season-year" type="number" min="2000" max="2100" value="${year}" oninput="ftwUpdateSeasonPreview()">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${I18n.t('set_season_name_preview')} <strong id="ftw-season-preview">${buildSeasonName(year)}</strong> — ${I18n.t('ftw_season_dates_note')}</div>
+        </div>
+        <div class="form-group">
+          <label>${I18n.t('set_lbl_age_group')}</label>
+          <input id="ftw-season-age" type="text" placeholder="e.g. U14" value="${esc(s.ageGroup || _firstTimeWizardState.club.category || '')}">
+        </div>
+        <div class="form-group">
+          <label>${I18n.t('set_lbl_match_duration')}</label>
+          <select id="ftw-season-duration">
+            <option value="" ${!s.defaultMatchDurationMins?'selected':''}>${I18n.t('duration_default_90')}</option>
+            ${[50,60,70,80,90].map(m => `<option value="${m}" ${s.defaultMatchDurationMins===m?'selected':''}>${m} min</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn btn-primary" onclick="ftwConfirmSeason()">${I18n.t('wiz_btn_next')}</button>
+          <button class="btn btn-secondary" onclick="ftwGoToStep(2)">${I18n.t('wiz_btn_back')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function ftwUpdateSeasonPreview() {
+  const yearInput = document.getElementById('ftw-season-year');
+  const preview = document.getElementById('ftw-season-preview');
+  if (!yearInput || !preview) return;
+  preview.textContent = buildSeasonName(yearInput.value) || '—';
+}
+
+async function ftwConfirmSeason() {
+  const startYear = parseInt(document.getElementById('ftw-season-year')?.value);
+  if (!startYear || startYear < 2000 || startYear > 2100) { Toast.error(I18n.t('set_err_season_year')); return; }
+  _firstTimeWizardState.season = {
+    startYear,
+    seasonName: buildSeasonName(startYear),
+    ageGroup: document.getElementById('ftw-season-age')?.value.trim() || null,
+    defaultMatchDurationMins: parseInt(document.getElementById('ftw-season-duration')?.value) || null,
+  };
+  await ftwGoToStep(4);
+}
+
+// ── STEP 4 — SQUAD ───────────────────────────────────────────────────────
+function renderFTWStepSquad() {
+  const el = document.getElementById('firstTimeWizardOverlay');
+  if (!el) return;
+  const squad = _firstTimeWizardState.squad;
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:460px">
+        ${firstTimeWizardProgressHtml(4, I18n.t('ftw_step_squad_label'))}
+        <h3 style="margin-bottom:16px">${I18n.t('ftw_step_squad_title')}</h3>
+
+        ${!squad.mode ? `
+        <div class="btn-group" style="flex-direction:column;gap:8px">
+          <button class="btn btn-primary" onclick="ftwSetSquadMode('manual')">${I18n.t('ftw_btn_add_manually')}</button>
+          <button class="btn btn-secondary" onclick="ftwSetSquadMode('import')">${I18n.t('ftw_btn_import_players')}</button>
+          <button class="btn btn-secondary" onclick="ftwSetSquadMode('empty')">${I18n.t('wiz_btn_start_empty')}</button>
+        </div>
+        ` : squad.mode === 'manual' ? `
+        <div id="ftw-manual-players-list" style="max-height:220px;overflow-y:auto;margin-bottom:10px">
+          ${squad.players.map((p,i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+            <span>${esc(p.fullName)}${p.shirtNumber?` (#${p.shirtNumber})`:''}</span>
+            <button class="btn btn-danger btn-sm" onclick="ftwRemoveManualPlayer(${i})">${I18n.t('common_delete')}</button>
+          </div>`).join('')}
+        </div>
+        <div class="form-group"><label>${I18n.t('pf_lbl_name')}</label><input id="ftw-player-name" type="text"></div>
+        <div class="form-group"><label>${I18n.t('pf_lbl_shirt_num')}</label><input id="ftw-player-num" type="number" min="1" max="99"></div>
+        <div class="form-group"><label>${I18n.t('set_lbl_age_group').includes('Position')?'':I18n.t('pf_lbl_position')}</label>
+          <select id="ftw-player-pos"><option value="">—</option><option>GK</option><option>DF</option><option>MF</option><option>FW</option></select>
+        </div>
+        <div class="form-group"><label>${I18n.t('pf_lbl_dob')}</label><input id="ftw-player-dob" type="date"></div>
+        <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:14px" onclick="ftwAddManualPlayer()">+ ${I18n.t('ftw_btn_add_player')}</button>
+        ` : squad.mode === 'import' ? `
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px">${I18n.t('ftw_import_note')}</p>
+        ` : `
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px">${I18n.t('ftw_empty_squad_note')}</p>
+        `}
+
+        <div class="form-actions" style="margin-top:16px">
+          ${squad.mode ? `<button class="btn btn-primary" onclick="ftwConfirmSquad()">${I18n.t('wiz_btn_next')}</button>` : ''}
+          <button class="btn btn-secondary" onclick="ftwGoToStep(3)">${I18n.t('wiz_btn_back')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function ftwSetSquadMode(mode) {
+  _firstTimeWizardState.squad.mode = mode;
+  renderFTWStepSquad();
+}
+
+function ftwAddManualPlayer() {
+  const name = document.getElementById('ftw-player-name')?.value.trim();
+  if (!name) { Toast.error(I18n.t('pf_err_name')); return; }
+  _firstTimeWizardState.squad.players.push({
+    fullName: name,
+    shirtNumber: parseInt(document.getElementById('ftw-player-num')?.value) || null,
+    primaryPosition: document.getElementById('ftw-player-pos')?.value || null,
+    dateOfBirth: document.getElementById('ftw-player-dob')?.value || null,
+  });
+  renderFTWStepSquad();
+}
+
+function ftwRemoveManualPlayer(index) {
+  _firstTimeWizardState.squad.players.splice(index, 1);
+  renderFTWStepSquad();
+}
+
+async function ftwConfirmSquad() {
+  await ftwGoToStep(5);
+}
+
+// ── STEP 5 — OPTIONAL RESOURCES ──────────────────────────────────────────
+// Lightweight and self-contained — the full Season Resources feature
+// referenced in the spec does not exist in this codebase (confirmed by
+// direct search before building this), so this step collects a small
+// list of name+URL pairs that get saved as simple achievement-adjacent
+// notes rather than depending on infrastructure that isn't there. Fully
+// optional and skippable, per the approved spec.
+// Step 5 is deliberately a placeholder, collecting nothing, until the
+// real Season Resources feature actually exists in this codebase. The
+// previous version stored links as fake "Personal" achievement records —
+// a genuine mistake, since achievements must remain football
+// achievements only. Fixed by not collecting or storing anything at all
+// here; both buttons proceed identically.
+function renderFTWStepResources() {
+  const el = document.getElementById('firstTimeWizardOverlay');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:440px;text-align:center">
+        ${firstTimeWizardProgressHtml(5, I18n.t('ftw_step_resources_label'))}
+        <div style="font-size:32px;margin:6px 0">&#128279;</div>
+        <h3 style="margin-bottom:10px">${I18n.t('ftw_step_resources_title')}</h3>
+        <p style="font-size:14px;color:var(--muted);margin-bottom:20px">${I18n.t('ftw_resources_placeholder_body')}</p>
+
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn btn-primary" onclick="ftwGoToStep(6)">${I18n.t('wiz_btn_continue')}</button>
+          <button class="btn btn-secondary" onclick="ftwGoToStep(6)">${I18n.t('ftw_btn_skip')}</button>
+          <button class="btn btn-secondary" onclick="ftwGoToStep(4)">${I18n.t('wiz_btn_back')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── STEP 6 — REVIEW ──────────────────────────────────────────────────────
+function renderFTWStepReview() {
+  const el = document.getElementById('firstTimeWizardOverlay');
+  if (!el) return;
+  const s = _firstTimeWizardState;
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:460px">
+        ${firstTimeWizardProgressHtml(6, I18n.t('ftw_step_review_label'))}
+        <h3 style="margin-bottom:12px">${I18n.t('wiz_step_review_title')}</h3>
+
+        <div class="card" style="background:var(--bg);margin-bottom:10px">
+          <div class="card-title">${I18n.t('ftw_step_club_label')}</div>
+          <div style="font-weight:700">${esc(s.club.name)}</div>
+          ${s.club.category?`<div style="font-size:12px;color:var(--muted)">${esc(s.club.category)}</div>`:''}
+        </div>
+        <div class="card" style="background:var(--bg);margin-bottom:10px">
+          <div class="card-title">${I18n.t('ftw_step_season_label')}</div>
+          <div style="font-weight:700">${esc(s.season.seasonName)}</div>
+          ${s.season.ageGroup?`<div style="font-size:12px;color:var(--muted)">${esc(s.season.ageGroup)}</div>`:''}
+        </div>
+        <div class="card" style="background:var(--bg);margin-bottom:10px">
+          <div class="card-title">${I18n.t('ftw_step_squad_label')}</div>
+          <div style="font-weight:700">${I18n.t('wiz_review_players_count', {n: s.squad.players.length})}</div>
+        </div>
+
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn btn-primary" onclick="ftwFinalizeSetup()">${I18n.t('ftw_btn_finish_setup')}</button>
+          <button class="btn btn-secondary" onclick="ftwGoToStep(5)">${I18n.t('wiz_btn_back')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── STEP 7 — COMPLETE (creation + rollback) ──────────────────────────────
+async function ftwFinalizeSetup() {
+  const s = _firstTimeWizardState;
+  let clubTeamId = null, seasonId = null;
+  const createdPlayerIds = [];
+
+  try {
+    await Backup.create('before-save');
+
+    clubTeamId = await DB.put('clubTeams', {
+      name: s.club.name,
+      logoUrl: s.club.logoUrl || null,
+      shirtColor: s.club.shirtColor || null,
+      location: s.club.homeGround || null,
+      createdAt: new Date().toISOString(),
+    });
+
+    seasonId = await DB.put('seasons', {
+      seasonName: s.season.seasonName,
+      startYear: s.season.startYear,
+      clubTeamId,
+      clubName: s.club.name,
+      homeGround: s.club.homeGround || null,
+      ageGroup: s.season.ageGroup || null,
+      defaultMatchDurationMins: s.season.defaultMatchDurationMins || null,
+      shirtColor: (s.club.shirtColor && s.club.shirtColor.toUpperCase() !== '#B23333') ? s.club.shirtColor : null,
+      createdAt: new Date().toISOString(),
+    });
+
+    for (const p of s.squad.players) {
+      const newPlayerId = await DB.put('players', {
+        seasonId,
+        fullName: p.fullName,
+        shirtNumber: p.shirtNumber || null,
+        primaryPosition: p.primaryPosition || null,
+        dateOfBirth: p.dateOfBirth || null,
+        isActive: true,
+        careerPlayerId: generateCareerPlayerId(),
+      });
+      createdPlayerIds.push(newPlayerId);
+    }
+
+    // Step 5 (Optional Resources) is a placeholder only — it collects
+    // nothing and creates nothing. No achievement records, no other
+    // records of any kind are created for it. See renderFTWStepResources.
+
+    await DB.put('appMeta', { metaKey:'currentSeason', value: seasonId });
+    await loadMeta();
+    await clearFirstTimeWizardDraft();
+    await buildTrackedNav();
+    await markGettingStartedVisible();
+
+    renderFTWStepCompleteScreen();
+    Sync.scheduleAutoSync();
+  } catch (err) {
+    console.error('[ftwFinalizeSetup] failed, rolling back:', err);
+    try {
+      for (const pid of createdPlayerIds) await DB.del('players', pid);
+      if (seasonId) await DB.del('seasons', seasonId);
+      if (clubTeamId) await DB.del('clubTeams', clubTeamId);
+    } catch (rollbackErr) {
+      console.error('[ftwFinalizeSetup] rollback itself failed:', rollbackErr);
+      Toast.error(I18n.t('wiz_err_rollback_failed'));
+      return;
+    }
+    Toast.error(I18n.t('wiz_err_creation_failed', {msg: err.message}));
+  }
+}
+
+function renderFTWStepCompleteScreen() {
+  const el = document.getElementById('firstTimeWizardOverlay');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="rm-form-overlay open">
+      <div class="rm-form" style="max-width:420px;text-align:center">
+        <div style="font-size:44px;margin-bottom:10px">&#127881;</div>
+        <h2 style="margin-bottom:10px">${I18n.t('ftw_complete_title')}</h2>
+        <p style="font-size:14px;color:var(--muted);margin-bottom:20px">${I18n.t('ftw_complete_body')}</p>
+        <div class="btn-group" style="flex-direction:column;gap:8px">
+          <button class="btn btn-primary" onclick="ftwGoHome()">${I18n.t('ftw_btn_go_home')}</button>
+          <button class="btn btn-secondary" onclick="ftwGoAddFirstGame()">${I18n.t('ftw_btn_add_first_game')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function closeFirstTimeWizardOverlay() {
+  const el = document.getElementById('firstTimeWizardOverlay');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+  _firstTimeWizardState = null;
+}
+
+async function ftwGoHome() {
+  closeFirstTimeWizardOverlay();
+  await Nav.go('home');
+}
+
+async function ftwGoAddFirstGame() {
+  closeFirstTimeWizardOverlay();
+  await Nav.go('games');
+  setTimeout(() => document.getElementById('btnAddGame')?.click(), 150);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// GETTING STARTED CHECKLIST
+// ══════════════════════════════════════════════════════════════════════════
+// Shown on Home right after First-Time Setup completes. Every item's state
+// is derived fresh from real data each time it renders — never a separate
+// "did the user do X" flag that could drift from reality. Dismissing it
+// sets a permanent appMeta flag; once dismissed it never reappears, even
+// if some items are still unchecked. It also hides itself automatically,
+// with no dismissal needed, once the three core items (Club/Season/Squad
+// — already guaranteed true right after setup, but checked honestly
+// rather than assumed) plus at least a first game exist, since at that
+// point the app is in normal, ongoing use rather than "just getting
+// started."
+async function markGettingStartedVisible() {
+  await DB.put('appMeta', { metaKey: 'gettingStartedShown', value: true });
+}
+
+async function isGettingStartedDismissed() {
+  const rec = await DB.get('appMeta', 'gettingStartedDismissed');
+  return !!rec?.value;
+}
+
+async function dismissGettingStarted() {
+  await DB.put('appMeta', { metaKey: 'gettingStartedDismissed', value: true });
+  const el = document.getElementById('gettingStartedCard');
+  if (el) el.remove();
+}
+
+async function getGettingStartedItems() {
+  const clubTeams = await DB.getAll('clubTeams');
+  const seasons = await DB.getAll('seasons');
+  const players = State.currentSeasonId ? await DB.getAll('players', 'seasonId', State.currentSeasonId) : [];
+  const games = State.currentSeasonId ? await DB.getAll('games', 'seasonId', State.currentSeasonId) : [];
+  const tournaments = State.currentSeasonId ? await getTournamentsForSeason(State.currentSeasonId) : [];
+  let shareLink = null;
+  try { shareLink = State.currentSeasonId ? await Sync.getTeamShareLink(State.currentSeasonId) : null; } catch(e) {}
+
+  return [
+    { key: 'club', label: I18n.t('gs_item_club'), done: clubTeams.length > 0 },
+    { key: 'season', label: I18n.t('gs_item_season'), done: seasons.length > 0 },
+    { key: 'squad', label: I18n.t('gs_item_squad'), done: players.length > 0 },
+    { key: 'game', label: I18n.t('gs_item_game'), done: games.length > 0 },
+    { key: 'tournament', label: I18n.t('gs_item_tournament'), done: tournaments.length > 0 },
+    // Deliberately always false — the real Resources feature doesn't
+    // exist yet in this codebase, so this item genuinely cannot be
+    // completed. Kept visible as a forward-looking item, not marked done
+    // by a workaround.
+    { key: 'resources', label: I18n.t('gs_item_resources'), done: false },
+    { key: 'share', label: I18n.t('gs_item_share'), done: !!shareLink },
+  ];
+}
+
+// Called from Home's own render — only ever shows anything if the
+// checklist hasn't been dismissed AND at least one item is still
+// outstanding beyond the guaranteed-true Club/Season/Squad trio; once a
+// real game exists too, the checklist has served its purpose and stops
+// rendering itself even without an explicit dismissal.
+async function renderGettingStartedCard() {
+  const container = document.getElementById('gettingStartedContainer');
+  if (!container) return;
+
+  const shown = await DB.get('appMeta', 'gettingStartedShown');
+  if (!shown) { container.innerHTML = ''; return; } // never shown for an existing user who predates this feature
+
+  if (await isGettingStartedDismissed()) { container.innerHTML = ''; return; }
+
+  const items = await getGettingStartedItems();
+  const hasFirstGame = items.find(i => i.key === 'game')?.done;
+  if (hasFirstGame) { container.innerHTML = ''; return; } // core purpose served, stop showing automatically
+
+  container.innerHTML = `
+    <div class="card" id="gettingStartedCard" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="card-title" style="margin-bottom:0">${I18n.t('gs_title')}</div>
+        <button type="button" style="background:none;border:none;font-size:11px;color:var(--muted);text-decoration:underline;cursor:pointer" onclick="dismissGettingStarted()">${I18n.t('gs_btn_dismiss')}</button>
+      </div>
+      ${items.map(i => `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px">
+        <span>${i.done ? '&#9989;' : '&#11036;'}</span>
+        <span style="${i.done?'color:var(--muted);text-decoration:line-through':''}">${esc(i.label)}</span>
+      </div>`).join('')}
+    </div>`;
+}
+
+async function migrateCareerPlayerIds() {
+  const allPlayers = await DB.getAll('players');
+  let assigned = 0;
+  for (const p of allPlayers) {
+    if (p.careerPlayerId) continue;
+    p.careerPlayerId = generateCareerPlayerId();
+    await DB.put('players', p);
+    assigned++;
+  }
+  if (assigned) console.log(`[migrateCareerPlayerIds] Assigned careerPlayerId to ${assigned} existing player row(s).`);
+  return { assigned };
+}
+
 async function migrateClubTeams() {
   const normalize = s => (s||'').trim().toLowerCase().replace(/\s+/g,' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 
@@ -2707,6 +3750,55 @@ const TR = {
     set_lbl_start_year:'Start Year *',
     set_season_name_preview:'Season:',
     set_err_season_year:'Enter a valid start year.', set_err_duplicate_season_year:'A season already exists for this year: {name}. Edit or delete it instead of creating another.',
+    wiz_entry_title:'Start a New Season', wiz_entry_hint:'Renew with the same club, or set up a new one — takes about a minute.',
+    wiz_entry_btn:'Create Season',
+    wiz_step_renewal_title:'Is this a renewal?', wiz_step_renewal_body:'Your most recent season was {season} at {club}. Is the new season with the same club/team?',
+    wiz_btn_renew_current:'Renew current Club/Team', wiz_btn_use_another_existing:'Use another existing Club/Team', wiz_btn_create_new_club_option:'Create a new Club/Team',
+    wiz_review_clubhistory_label:'Club History', wiz_review_clubhistory_note:'Club History entries are managed per player and are not changed automatically by creating a season. Update them from each player\'s Club History tab if needed.',
+    wiz_err_rollback_failed:'Something went wrong and the automatic cleanup also failed. Please check Settings > Seasons and Squad carefully, and restore from a recent backup if anything looks incomplete.',
+
+    wiz_step_club_title:'Select or Create a Club', wiz_step_club_body:'Choose a club you\'ve used before, or create a new one.',
+    wiz_lbl_existing_club:'Existing Club/Team', wiz_opt_choose:'Choose one…', wiz_btn_use_selected_club:'Use This Club',
+    wiz_or:'OR', wiz_lbl_new_club_name:'New Club Name', wiz_btn_create_new_club:'Create New Club',
+    wiz_err_pick_club:'Please choose a club.', wiz_err_club_name_required:'Enter a club name.',
+    wiz_step_details_title:'Season Details', wiz_warn_year_taken:'A season for this year already exists — choose a different year.',
+    wiz_lbl_age_group_review:'Age Group — please review', wiz_age_group_hint:'Carried over from last season. Update it if the team is moving up an age group.',
+    wiz_step_players_title:'Carry Players Forward', wiz_step_players_body:'{n} active player(s) from last season.',
+    wiz_btn_copy_all:'Copy All {n} Active Players', wiz_btn_select_players:'Select Players', wiz_btn_start_empty:'Start with an Empty Squad',
+    wiz_step_review_title:'Review & Create', wiz_review_players_label:'Players Carried Forward', wiz_review_players_count:'{n} player(s)',
+    wiz_btn_create_season:'Create Season', wiz_btn_continue:'Continue', wiz_btn_back:'Back',
+    wiz_btn_next:'Next', wiz_step_progress:'Step {step} of {total}',
+    wiz_btn_save_exit:'Save & Exit', wiz_draft_saved:'Progress saved. You can resume from Settings.',
+    ftw_step_welcome_label:'Welcome', ftw_welcome_title:'Welcome to NextEleven',
+    ftw_welcome_body:'We\'ll help you set up your football environment in a few simple steps.',
+    ftw_btn_start_setup:'Start Setup',
+    ftw_step_club_label:'Club/Team', ftw_step_club_title:'Tell us about your Club/Team',
+    ftw_lbl_logo_url:'Club Logo URL (optional)',
+    ftw_step_season_label:'Season', ftw_step_season_title:'Create your first Season',
+    ftw_season_dates_note:'runs 1 September – 31 August',
+    ftw_step_squad_label:'Squad', ftw_step_squad_title:'Set up your Squad',
+    ftw_btn_add_manually:'Add Players Manually', ftw_btn_import_players:'Import Players',
+    ftw_btn_add_player:'Add Player', ftw_import_note:'Go to Settings → Import once setup is complete to bring in players from a CSV file.',
+    ftw_empty_squad_note:'You can add players any time from the Squad page.',
+    ftw_step_resources_label:'Resources', ftw_step_resources_title:'Optional Resources',
+    ftw_resources_placeholder_body:'Resources can be added later from the Season page.',
+    ftw_btn_skip:'Skip',
+    ftw_step_review_label:'Review', ftw_btn_finish_setup:'Finish Setup',
+    ftw_complete_title:'NextEleven is ready.', ftw_complete_body:'Your club, season, and squad are all set up.',
+    ftw_btn_go_home:'Go to Home', ftw_btn_add_first_game:'Add First Game',
+    ftw_resume_title:'Resume Setup', ftw_resume_hint:'You have an unfinished setup — pick up where you left off.',
+    ftw_btn_resume_setup:'Resume Setup',
+    gs_title:'Getting Started', gs_btn_dismiss:'Dismiss',
+    gs_item_club:'Club created', gs_item_season:'Season created', gs_item_squad:'Squad created',
+    gs_item_game:'Add first Game', gs_item_tournament:'Add first Tournament', gs_item_resources:'Add Resources',
+    gs_item_share:'Share Team Page',
+
+    wiz_step_year_label:'Season Year', wiz_step_year_title:'What year does this season start?',
+    wiz_step_age_label:'Age Group', wiz_step_ground_label:'Ground & Duration', wiz_step_ground_title:'Home ground and match length',
+    wiz_step_shirt_label:'Shirt Colour', wiz_step_carryover_label:'Carry Over Players',
+
+    wiz_season_created:'{name} created — {n} player(s) carried forward.', wiz_err_creation_failed:'Could not create the season: {msg}',
+
     set_btn_delete_season:'Delete This Season', set_err_season_has_data:'Cannot delete — this season has {games} game(s) and {tournaments} tournament(s) (or achievements) attached. Only an empty season can be deleted.',
     set_confirm_delete_season_title:'Delete Season?', set_confirm_delete_season_body:'This permanently deletes {name}. This can only be done because it has no games, tournaments, or achievements.',
     set_season_deleted:'Season deleted.',
@@ -3718,6 +4810,55 @@ const TR = {
     set_lbl_start_year:'Ano de Início *',
     set_season_name_preview:'Época:',
     set_err_season_year:'Indique um ano de início válido.', set_err_duplicate_season_year:'Já existe uma época para este ano: {name}. Edite-a ou elimine-a em vez de criar outra.',
+    wiz_entry_title:'Iniciar Nova Época', wiz_entry_hint:'Renove com o mesmo clube, ou configure um novo — demora cerca de um minuto.',
+    wiz_entry_btn:'Criar Época',
+    wiz_step_renewal_title:'É uma renovação?', wiz_step_renewal_body:'A sua época mais recente foi {season} em {club}. A nova época é com o mesmo clube/equipa?',
+    wiz_btn_renew_current:'Renovar Clube/Equipa Atual', wiz_btn_use_another_existing:'Usar Outro Clube/Equipa Existente', wiz_btn_create_new_club_option:'Criar Novo Clube/Equipa',
+    wiz_review_clubhistory_label:'Histórico de Clube', wiz_review_clubhistory_note:'As entradas do Histórico de Clube são geridas por jogador e não são alteradas automaticamente ao criar uma época. Atualize-as no separador Histórico de Clube de cada jogador, se necessário.',
+    wiz_err_rollback_failed:'Algo correu mal e a reversão automática também falhou. Verifique cuidadosamente Definições > Épocas e Plantel, e restaure a partir de uma cópia de segurança recente se algo parecer incompleto.',
+
+    wiz_step_club_title:'Selecionar ou Criar um Clube', wiz_step_club_body:'Escolha um clube já usado, ou crie um novo.',
+    wiz_lbl_existing_club:'Clube/Equipa Existente', wiz_opt_choose:'Escolha um…', wiz_btn_use_selected_club:'Usar Este Clube',
+    wiz_or:'OU', wiz_lbl_new_club_name:'Nome do Novo Clube', wiz_btn_create_new_club:'Criar Novo Clube',
+    wiz_err_pick_club:'Escolha um clube.', wiz_err_club_name_required:'Indique o nome do clube.',
+    wiz_step_details_title:'Detalhes da Época', wiz_warn_year_taken:'Já existe uma época para este ano — escolha um ano diferente.',
+    wiz_lbl_age_group_review:'Escalão — reveja por favor', wiz_age_group_hint:'Transportado da época anterior. Atualize se a equipa subir de escalão.',
+    wiz_step_players_title:'Transportar Jogadores', wiz_step_players_body:'{n} jogador(es) ativo(s) da época anterior.',
+    wiz_btn_copy_all:'Copiar Todos os {n} Jogadores Ativos', wiz_btn_select_players:'Selecionar Jogadores', wiz_btn_start_empty:'Começar com Plantel Vazio',
+    wiz_step_review_title:'Rever e Criar', wiz_review_players_label:'Jogadores Transportados', wiz_review_players_count:'{n} jogador(es)',
+    wiz_btn_create_season:'Criar Época', wiz_btn_continue:'Continuar', wiz_btn_back:'Voltar',
+    wiz_btn_next:'Seguinte', wiz_step_progress:'Passo {step} de {total}',
+    wiz_btn_save_exit:'Guardar e Sair', wiz_draft_saved:'Progresso guardado. Pode retomar a partir das Definições.',
+    ftw_step_welcome_label:'Boas-vindas', ftw_welcome_title:'Bem-vindo ao NextEleven',
+    ftw_welcome_body:'Vamos ajudá-lo a configurar o seu ambiente de futebol em alguns passos simples.',
+    ftw_btn_start_setup:'Iniciar Configuração',
+    ftw_step_club_label:'Clube/Equipa', ftw_step_club_title:'Fale-nos sobre o seu Clube/Equipa',
+    ftw_lbl_logo_url:'URL do Logótipo do Clube (opcional)',
+    ftw_step_season_label:'Época', ftw_step_season_title:'Crie a sua primeira Época',
+    ftw_season_dates_note:'decorre de 1 de setembro a 31 de agosto',
+    ftw_step_squad_label:'Plantel', ftw_step_squad_title:'Configure o seu Plantel',
+    ftw_btn_add_manually:'Adicionar Jogadores Manualmente', ftw_btn_import_players:'Importar Jogadores',
+    ftw_btn_add_player:'Adicionar Jogador', ftw_import_note:'Vá a Definições → Importar assim que a configuração estiver concluída para trazer jogadores de um ficheiro CSV.',
+    ftw_empty_squad_note:'Pode adicionar jogadores a qualquer momento a partir da página do Plantel.',
+    ftw_step_resources_label:'Recursos', ftw_step_resources_title:'Recursos Opcionais',
+    ftw_resources_placeholder_body:'Os recursos podem ser adicionados mais tarde a partir da página da Época.',
+    ftw_btn_skip:'Saltar',
+    ftw_step_review_label:'Rever', ftw_btn_finish_setup:'Concluir Configuração',
+    ftw_complete_title:'O NextEleven está pronto.', ftw_complete_body:'O seu clube, época e plantel estão todos configurados.',
+    ftw_btn_go_home:'Ir para o Início', ftw_btn_add_first_game:'Adicionar Primeiro Jogo',
+    ftw_resume_title:'Retomar Configuração', ftw_resume_hint:'Tem uma configuração por terminar — continue de onde ficou.',
+    ftw_btn_resume_setup:'Retomar Configuração',
+    gs_title:'Primeiros Passos', gs_btn_dismiss:'Dispensar',
+    gs_item_club:'Clube criado', gs_item_season:'Época criada', gs_item_squad:'Plantel criado',
+    gs_item_game:'Adicionar primeiro Jogo', gs_item_tournament:'Adicionar primeiro Torneio', gs_item_resources:'Adicionar Recursos',
+    gs_item_share:'Página de Partilha da Equipa',
+
+    wiz_step_year_label:'Ano da Época', wiz_step_year_title:'Em que ano começa esta época?',
+    wiz_step_age_label:'Escalão', wiz_step_ground_label:'Campo e Duração', wiz_step_ground_title:'Campo de casa e duração do jogo',
+    wiz_step_shirt_label:'Cor da Camisola', wiz_step_carryover_label:'Transportar Jogadores',
+
+    wiz_season_created:'{name} criada — {n} jogador(es) transportado(s).', wiz_err_creation_failed:'Não foi possível criar a época: {msg}',
+
     set_btn_delete_season:'Eliminar Esta Época', set_err_season_has_data:'Não é possível eliminar — esta época tem {games} jogo(s) e {tournaments} torneio(s) (ou feitos) associados. Só é possível eliminar uma época vazia.',
     set_confirm_delete_season_title:'Eliminar Época?', set_confirm_delete_season_body:'Isto elimina permanentemente {name}. Só é possível porque não tem jogos, torneios ou feitos.',
     set_season_deleted:'Época eliminada.',
@@ -10209,6 +11350,24 @@ const Render = (() => {
     const sub = document.getElementById('homeSubtitle');
     const seasonSel = document.getElementById('homeSeasonSelect');
 
+    // Automatic First-Time Setup Wizard trigger — only when the
+    // authenticated Parent genuinely has no Club/Team and no Season at
+    // all. Runs once per Home render, but the wizard itself only ever
+    // opens if both are still genuinely empty (never reopens once either
+    // exists, even if a previous attempt was abandoned partway — Settings
+    // offers "Resume Setup" for that case instead, a deliberate choice).
+    if (Auth.isLoggedIn() && await shouldTriggerFirstTimeWizard()) {
+      const existingDraft = await loadFirstTimeWizardDraft();
+      if (existingDraft) {
+        _firstTimeWizardState = existingDraft;
+      } else {
+        _firstTimeWizardState = { step: 1, club: {}, season: {}, squad: { mode: null, players: [] } };
+      }
+      renderFirstTimeWizardStep();
+    }
+
+    await renderGettingStartedCard();
+
     // Populate season selector
     const seasons = (await DB.getAll('seasons')).sort((a,b)=>b.seasonId-a.seasonId);
     if (seasonSel) {
@@ -11173,6 +12332,21 @@ const Render = (() => {
       <!-- Season Management -->
       <div class="settings-section">
         <h3>${I18n.t('set_season_mgmt')}</h3>
+        ${await (async () => {
+          const draft = await loadFirstTimeWizardDraft();
+          if (!draft) return '';
+          return `<div class="card" style="margin-bottom:12px;background:#fbf3d9;border:1px solid #d9c26b">
+            <div class="card-title">${I18n.t('ftw_resume_title')}</div>
+            <p style="font-size:12px;color:#8a6d1e;margin-bottom:10px">${I18n.t('ftw_resume_hint')}</p>
+            <button class="btn btn-primary" onclick="openFirstTimeWizard()">${I18n.t('ftw_btn_resume_setup')}</button>
+          </div>`;
+        })()}
+        ${seasons.length ? `
+        <div class="card" style="margin-bottom:12px;background:var(--bg)">
+          <div class="card-title">${I18n.t('wiz_entry_title')}</div>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px">${I18n.t('wiz_entry_hint')}</p>
+          <button class="btn btn-primary" onclick="openSeasonWizard()">${I18n.t('wiz_entry_btn')}</button>
+        </div>` : ''}
         <div class="form-panel" style="margin-bottom:12px">
           <h3>${I18n.t('set_create_season')}</h3>
           <div class="form-grid">
@@ -11208,6 +12382,9 @@ const Render = (() => {
             <button class="btn btn-primary" id="btnCreateSeason">${I18n.t('set_btn_create_season')}</button>
           </div>
         </div>
+
+        <!-- SEASON RENEWAL WIZARD overlay target -->
+        <div id="seasonWizardOverlay" style="display:none"></div>
         ${seasons.length ? `
         <div class="card">
           <div class="card-title">${I18n.t('set_card_switch_season')}</div>
@@ -11222,6 +12399,10 @@ const Render = (() => {
         <div class="card">
           <div class="card-title">${I18n.t('set_card_edit_season')}</div>
           <div class="form-grid">
+            <div class="form-group"><label>${I18n.t('set_lbl_start_year')}</label>
+              <input id="sf-edit-startyear" type="number" min="2000" max="2100" value="${State.currentSeason?.startYear||''}" oninput="updateSeasonEditNamePreview()">
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">${I18n.t('set_season_name_preview')} <strong id="sf-edit-name-preview" style="color:var(--dark)">${esc(State.currentSeason?.seasonName||'')}</strong></div>
+            </div>
             <div class="form-group"><label>${I18n.t('set_lbl_club_name')}</label><input id="sf-edit-club" type="text" placeholder="e.g. SL Olivais" value="${esc(State.currentSeason?.clubName||'')}"></div>
             <div class="form-group"><label>Home Ground</label><input id="sf-edit-homeground" type="text" placeholder="e.g. Campo SL Olivais" value="${esc(State.currentSeason?.homeGround||'')}"></div>
             <div class="form-group"><label>Age Group</label><input id="sf-edit-age" type="text" placeholder="e.g. U12" value="${esc(State.currentSeason?.ageGroup||'')}"></div>
@@ -12874,7 +14055,17 @@ async function savePlayer() {
     isActive: true,
   };
 
-  if (existingId) player.playerId = parseInt(existingId);
+  if (existingId) {
+    player.playerId = parseInt(existingId);
+    // Preserve the existing careerPlayerId — this function rebuilds the
+    // whole record from form fields rather than spreading the prior
+    // object, so without this an edit would silently wipe the player's
+    // permanent cross-season identity.
+    const existing = await DB.get('players', player.playerId);
+    player.careerPlayerId = existing?.careerPlayerId || generateCareerPlayerId();
+  } else {
+    player.careerPlayerId = generateCareerPlayerId();
+  }
   await Backup.create('before-save');
   await DB.put('players', player);
   await buildTrackedNav(); // rebuild nav in case tracking status changed
@@ -14467,10 +15658,27 @@ document.addEventListener('click', async e => {
 
   if (t.id==='btnSaveSeasonEdit') {
     if (!State.currentSeasonId) { Toast.error(I18n.t('set_err_no_active_season')); return; }
+    const yearInput = document.getElementById('sf-edit-startyear');
+    const newStartYear = parseInt(yearInput?.value);
+    if (!newStartYear || newStartYear < 2000 || newStartYear > 2100) { Toast.error(I18n.t('set_err_season_year')); return; }
+
+    // Same duplicate-year guard as Create Season, but correctly excludes
+    // this season itself — keeping its own year unchanged (the normal
+    // case, since most edits here are just fixing club/ground/colour)
+    // must never trigger a false "duplicate" error.
+    const allSeasons = await DB.getAll('seasons');
+    const duplicate = allSeasons.find(s => s.startYear === newStartYear && s.seasonId !== State.currentSeasonId);
+    if (duplicate) {
+      Toast.error(I18n.t('set_err_duplicate_season_year', {name: duplicate.seasonName}));
+      return;
+    }
+
     const editShirtInput = document.getElementById('sf-edit-shirtcolor');
     const editShirtVal = editShirtInput ? editShirtInput.value : '';
     const updated = {
       ...State.currentSeason,
+      startYear: newStartYear,
+      seasonName: buildSeasonName(newStartYear),
       clubName:   document.getElementById('sf-edit-club')?.value.trim()||null,
       homeGround: document.getElementById('sf-edit-homeground')?.value.trim()||null,
       ageGroup:   document.getElementById('sf-edit-age')?.value.trim()||null,
@@ -14630,6 +15838,7 @@ async function continueAppLoadAfterLogin() {
     // never overwrites or duplicates anything the user has already added.
     try { await seedOpponentsIfEmpty(); } catch(e) { console.error('[init] opponent seed failed:', e); }
     try { await migrateClubTeams(); } catch(e) { console.error('[init] club/team migration failed:', e); }
+    try { await migrateCareerPlayerIds(); } catch(e) { console.error('[init] careerPlayerId migration failed:', e); }
 
     // Backup at most once per 24 hours
     const lastBackupMeta = await DB.get('appMeta', 'lastAutoBackupAt');
@@ -15213,6 +16422,13 @@ function updateSeasonNamePreview() {
   const name = buildSeasonName(yearInput.value);
   preview.textContent = name || '—';
   hidden.value = name;
+}
+
+function updateSeasonEditNamePreview() {
+  const yearInput = document.getElementById('sf-edit-startyear');
+  const preview = document.getElementById('sf-edit-name-preview');
+  if (!yearInput || !preview) return;
+  preview.textContent = buildSeasonName(yearInput.value) || '—';
 }
 
 function switchSettingsTab(tab) {
