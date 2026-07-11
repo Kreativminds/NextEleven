@@ -12874,7 +12874,35 @@ async function setDebugMode(on) {
   if (on) ensureDebugPanel(); else removeDebugPanel();
 }
 
+let _debugOverlayObserver = null;
+
 function ensureDebugPanel() {
+  document.body.style.paddingBottom = '170px';
+  // Modal overlays (like the tournament form) are position:fixed with
+  // their own independent scroll, so padding document.body alone does
+  // nothing for them — the debug panel's z-index sits above every
+  // overlay regardless. A MutationObserver pads any overlay's inner form
+  // the moment it's added to the page, however it was opened — this app
+  // has many separate functions that create a '.rm-form-overlay', and
+  // watching for the DOM change itself is far more reliable than trying
+  // to find and edit every one of them individually.
+  document.querySelectorAll('.rm-form-overlay.open .rm-form').forEach(f => {
+    f.style.paddingBottom = '170px';
+  });
+  if (!_debugOverlayObserver) {
+    _debugOverlayObserver = new MutationObserver(mutations => {
+      mutations.forEach(m => {
+        m.addedNodes.forEach(node => {
+          if (node.nodeType !== 1) return;
+          if (node.classList?.contains('rm-form-overlay')) {
+            const inner = node.querySelector('.rm-form');
+            if (inner) inner.style.paddingBottom = '170px';
+          }
+        });
+      });
+    });
+    _debugOverlayObserver.observe(document.body, { childList: true });
+  }
   if (document.getElementById('globalDebugPanel')) return;
   const panel = document.createElement('div');
   panel.id = 'globalDebugPanel';
@@ -12884,6 +12912,14 @@ function ensureDebugPanel() {
 }
 
 function removeDebugPanel() {
+  document.body.style.paddingBottom = '';
+  document.querySelectorAll('.rm-form-overlay .rm-form').forEach(f => {
+    f.style.paddingBottom = '';
+  });
+  if (_debugOverlayObserver) {
+    _debugOverlayObserver.disconnect();
+    _debugOverlayObserver = null;
+  }
   document.getElementById('globalDebugPanel')?.remove();
 }
 
