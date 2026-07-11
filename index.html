@@ -2592,7 +2592,8 @@ const TR = {
 
     // ── SETTINGS — TABS ──
     set_tab_seasons:'Seasons', set_tab_import:'Import', set_tab_sync:'Cloud Sync',
-    set_tab_backup:'Backup', set_tab_danger:'Danger Zone',
+    set_tab_backup:'Backup', set_tab_danger:'Danger Zone', set_tab_sharing:'Sharing', set_tab_tournaments:'Tournaments',
+    set_tournaments_hint:'Manage your tournaments, Tournament Team, and temporary players from the Games page.', set_tournaments_btn_open:'Open Tournaments',
 
     // ── SETTINGS — SEASONS ──
     set_season_mgmt:'Season Management',
@@ -3588,7 +3589,8 @@ const TR = {
 
     // ── SETTINGS — TABS ──
     set_tab_seasons:'Épocas', set_tab_import:'Importar', set_tab_sync:'Sincronização',
-    set_tab_backup:'Cópia de Segurança', set_tab_danger:'Zona de Risco',
+    set_tab_backup:'Cópia de Segurança', set_tab_danger:'Zona de Risco', set_tab_sharing:'Partilha', set_tab_tournaments:'Torneios',
+    set_tournaments_hint:'Faça a gestão dos seus torneios, Plantel do Torneio e jogadores temporários a partir da página de Jogos.', set_tournaments_btn_open:'Abrir Torneios',
 
     // ── SETTINGS — SEASONS ──
     set_season_mgmt:'Gestão de Épocas',
@@ -10717,10 +10719,15 @@ const Render = (() => {
         <div class="card" id="accountCard"></div>
       </div>
 
-      <!-- Settings Tabs -->
+      <!-- Settings Tabs — reorganized per approved IA: Season & Team, Sharing,
+           Tournament Management, Data (Import/Sync/Backup grouped in order),
+           Danger kept separate and last. Each existing tab's own internal
+           content is unchanged; only grouping/order and two new tabs added. -->
       <div class="tab-bar-row">
         <button class="import-tab active-tab" id="stab-seasons" onclick="switchSettingsTab('seasons')">${I18n.t('set_tab_seasons')}</button>
         <button class="import-tab" id="stab-opponents" onclick="switchSettingsTab('opponents')">${I18n.t('set_tab_opponents_catalogue')}</button>
+        <button class="import-tab" id="stab-sharing" onclick="switchSettingsTab('sharing')">${I18n.t('set_tab_sharing')}</button>
+        <button class="import-tab" id="stab-tournaments" onclick="switchSettingsTab('tournaments')">${I18n.t('set_tab_tournaments')}</button>
         <button class="import-tab" id="stab-import" onclick="switchSettingsTab('import')">${I18n.t('set_tab_import')}</button>
         <button class="import-tab" id="stab-sync" onclick="switchSettingsTab('sync')">${I18n.t('set_tab_sync')}</button>
         <button class="import-tab" id="stab-backup" onclick="switchSettingsTab('backup')">${I18n.t('set_tab_backup')}</button>
@@ -10794,15 +10801,6 @@ const Render = (() => {
           <p style="font-size:11px;color:var(--muted);margin-top:6px">${I18n.t('set_editing_prefix')} <strong>${esc(State.currentSeason?.seasonName||'—')}</strong> ${I18n.t('set_editing_suffix')}</p>
           <button class="btn btn-primary" style="margin-top:10px" id="btnSaveSeasonEdit">${I18n.t('set_btn_save_changes')}</button>
         </div>` : ''}
-      </div>
-
-      <!-- Share Team -->
-      <div class="settings-section">
-        <h3>${I18n.t('set_share_title')}</h3>
-        <div class="card">
-          <p style="font-size:12px;color:var(--muted);margin-bottom:10px">${I18n.t('set_share_hint')}</p>
-          <div id="shareTeamContent"></div>
-        </div>
       </div>
 
       <!-- App Info -->
@@ -10964,6 +10962,34 @@ const Render = (() => {
         </div>
       </div>
       </div><!-- end stab-panel-backup -->
+
+      <!-- SHARING TAB — Share Team content moved here unchanged from its
+           previous standalone section; same #shareTeamContent id, same
+           renderShareTeamCard() function, nothing about its behavior
+           changed, only where it's displayed. -->
+      <div id="stab-panel-sharing" style="display:none">
+        <div class="settings-section">
+          <h3>${I18n.t('set_share_title')}</h3>
+          <div class="card">
+            <p style="font-size:12px;color:var(--muted);margin-bottom:10px">${I18n.t('set_share_hint')}</p>
+            <div id="shareTeamContent"></div>
+          </div>
+        </div>
+      </div><!-- end stab-panel-sharing -->
+
+      <!-- TOURNAMENT MANAGEMENT TAB — a lightweight pointer rather than a
+           duplicate of the full Tournament CRUD, which already lives
+           correctly in Games → Tournaments. Rebuilding that same UI here
+           would be a real duplication, not a reorganization. -->
+      <div id="stab-panel-tournaments" style="display:none">
+        <div class="settings-section">
+          <h3>${I18n.t('set_tab_tournaments')}</h3>
+          <div class="card">
+            <p style="font-size:13px;color:var(--dark);margin-bottom:12px">${I18n.t('set_tournaments_hint')}</p>
+            <button class="btn btn-primary" onclick="Nav.go('games');setTimeout(()=>{const tb=document.getElementById('gamestab-tournaments');if(tb)tb.click();},100)">${I18n.t('set_tournaments_btn_open')}</button>
+          </div>
+        </div>
+      </div><!-- end stab-panel-tournaments -->
 
       <!-- SYNC TAB -->
       <div id="stab-panel-sync" style="display:none">
@@ -14529,6 +14555,23 @@ async function confirmImport(type, validated) {
       if (correctSeason && correctSeason.seasonId !== r.data.seasonId) {
         r.data.seasonId = correctSeason.seasonId;
         seasonCorrected++;
+        // The tournamentId (if any) was matched earlier against the
+        // ORIGINAL season's tournament list — now that the season is
+        // being corrected, that link may point to a tournament that
+        // belongs to a different season entirely. Re-validate: only
+        // keep the link if a tournament with the same name still exists
+        // in the corrected season; otherwise clear it rather than leave
+        // a cross-season dangling reference.
+        if (r.data.tournamentId) {
+          const originalTournament = await getTournamentById(r.data.tournamentId);
+          const stillValid = originalTournament && originalTournament.seasonId === correctSeason.seasonId;
+          if (!stillValid) {
+            const rematch = originalTournament
+              ? (await getTournamentsForSeason(correctSeason.seasonId)).find(t => t.name.trim().toLowerCase() === originalTournament.name.trim().toLowerCase())
+              : null;
+            r.data.tournamentId = rematch ? rematch.tournamentId : null;
+          }
+        }
       }
       // If no matching season exists, r.data.seasonId is left as-is
       // (the currently-selected season) — nothing else correct to
@@ -14567,7 +14610,7 @@ function updateSeasonNamePreview() {
 function switchSettingsTab(tab) {
   State.currentSettingsTab = tab;
   try { sessionStorage.setItem('squadTracker_settingsTab', tab); } catch(e) {}
-  ['seasons','opponents','import','sync','backup','danger'].forEach(t => {
+  ['seasons','opponents','sharing','tournaments','import','sync','backup','danger'].forEach(t => {
     const panel = document.getElementById(`stab-panel-${t}`);
     const btn   = document.getElementById(`stab-${t}`);
     if (panel) panel.style.display = t === tab ? '' : 'none';
