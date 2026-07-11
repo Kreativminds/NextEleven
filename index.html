@@ -1199,45 +1199,76 @@ async function migrateClubTeams() {
   const existingClubTeams = await DB.getAll('clubTeams');
 
   // Map of normalized name -> clubTeamId, seeded from whatever already
-  // exists so a second run never creates duplicates.
+  // exists so a second run never creates duplicates or overwrites an
+  // already-valid link.
   const clubTeamByNormalizedName = {};
   existingClubTeams.forEach(ct => {
     clubTeamByNormalizedName[normalize(ct.name)] = ct.clubTeamId;
   });
 
+  // Only seasons genuinely needing backfill — already-linked seasons are
+  // never touched, satisfying "never overwrite an already valid
+  // clubTeamId" unconditionally, not just as a best-effort check.
+  const seasonsNeedingBackfill = allSeasons.filter(s => !s.clubTeamId && s.clubName && s.clubName.trim());
+
+  // Group by normalized club name so we can pick the actual most-recent
+  // season per club (by startYear) as the source of truth for logo/shirt
+  // colour/ground — not whichever season DB.getAll happened to return
+  // first, which was the real bug in the previous version of this
+  // function.
+  const groups = {};
+  seasonsNeedingBackfill.forEach(s => {
+    const norm = normalize(s.clubName);
+    if (!groups[norm]) groups[norm] = [];
+    groups[norm].push(s);
+  });
+
   let created = 0, linked = 0;
+  const errors = [];
 
-  for (const season of allSeasons) {
-    if (season.clubTeamId) continue; // already linked, nothing to do
-    if (!season.clubName || !season.clubName.trim()) continue; // nothing to backfill from
+  for (const norm of Object.keys(groups)) {
+    const seasonsForThisClub = groups[norm];
+    try {
+      let clubTeamId = clubTeamByNormalizedName[norm];
 
-    const norm = normalize(season.clubName);
-    let clubTeamId = clubTeamByNormalizedName[norm];
+      if (!clubTeamId) {
+        // Most recent by startYear is the source of truth for current
+        // logo/shirt colour/ground — falls back to the first season in
+        // the group if startYear is somehow missing on all of them,
+        // rather than crash.
+        const mostRecent = [...seasonsForThisClub].sort(
+          (a, b) => (getSeasonStartYear(b) || 0) - (getSeasonStartYear(a) || 0)
+        )[0];
+        clubTeamId = await DB.put('clubTeams', {
+          name: mostRecent.clubName.trim(),
+          logoUrl: mostRecent.logoUrl || null,
+          shirtColor: mostRecent.shirtColor || null,
+          location: mostRecent.homeGround || null,
+          createdAt: new Date().toISOString(),
+        });
+        clubTeamByNormalizedName[norm] = clubTeamId;
+        created++;
+      }
 
-    if (!clubTeamId) {
-      // Create the clubTeam, carrying over whatever club-related fields
-      // this season happens to have (logo, shirt colour) — later seasons
-      // sharing the same club won't overwrite these once set.
-      clubTeamId = await DB.put('clubTeams', {
-        name: season.clubName.trim(),
-        logoUrl: season.logoUrl || null,
-        shirtColor: season.shirtColor || null,
-        location: season.homeGround || null,
-        createdAt: new Date().toISOString(),
-      });
-      clubTeamByNormalizedName[norm] = clubTeamId;
-      created++;
+      for (const season of seasonsForThisClub) {
+        season.clubTeamId = clubTeamId;
+        await DB.put('seasons', season);
+        linked++;
+      }
+    } catch (err) {
+      // Surface the error rather than silently swallowing it and moving
+      // on — one club's migration failing shouldn't be indistinguishable
+      // from "nothing needed backfilling."
+      errors.push({ club: norm, message: err.message });
+      console.error('[migrateClubTeams] Failed for club "' + norm + '":', err);
     }
-
-    season.clubTeamId = clubTeamId;
-    await DB.put('seasons', season);
-    linked++;
   }
 
-  if (created || linked) {
-    console.log(`[migrateClubTeams] Created ${created} club/team record(s), linked ${linked} season(s).`);
+  console.log(`[migrateClubTeams] Created ${created} club/team record(s), linked ${linked} season(s), ${errors.length} error(s).`);
+  if (errors.length && typeof Toast !== 'undefined') {
+    Toast.error(`Club/Team migration had ${errors.length} error(s) — check console for details.`);
   }
-  return { created, linked };
+  return { created, linked, errors };
 }
 
 async function seedOpponentsIfEmpty() {
@@ -2675,7 +2706,11 @@ const TR = {
     set_lbl_season_name:'Season Name *',
     set_lbl_start_year:'Start Year *',
     set_season_name_preview:'Season:',
-    set_err_season_year:'Enter a valid start year.',
+    set_err_season_year:'Enter a valid start year.', set_err_duplicate_season_year:'A season already exists for this year: {name}. Edit or delete it instead of creating another.',
+    set_btn_delete_season:'Delete This Season', set_err_season_has_data:'Cannot delete — this season has {games} game(s) and {tournaments} tournament(s) (or achievements) attached. Only an empty season can be deleted.',
+    set_confirm_delete_season_title:'Delete Season?', set_confirm_delete_season_body:'This permanently deletes {name}. This can only be done because it has no games, tournaments, or achievements.',
+    set_season_deleted:'Season deleted.',
+
 
     // ── INJURY MODAL ──
     inj_modal_manage:'Manage Injury', inj_modal_mark:'Mark as Injured',
@@ -3682,7 +3717,11 @@ const TR = {
     set_lbl_season_name:'Nome da Época *',
     set_lbl_start_year:'Ano de Início *',
     set_season_name_preview:'Época:',
-    set_err_season_year:'Indique um ano de início válido.',
+    set_err_season_year:'Indique um ano de início válido.', set_err_duplicate_season_year:'Já existe uma época para este ano: {name}. Edite-a ou elimine-a em vez de criar outra.',
+    set_btn_delete_season:'Eliminar Esta Época', set_err_season_has_data:'Não é possível eliminar — esta época tem {games} jogo(s) e {tournaments} torneio(s) (ou feitos) associados. Só é possível eliminar uma época vazia.',
+    set_confirm_delete_season_title:'Eliminar Época?', set_confirm_delete_season_body:'Isto elimina permanentemente {name}. Só é possível porque não tem jogos, torneios ou feitos.',
+    set_season_deleted:'Época eliminada.',
+
 
     // ── INJURY MODAL ──
     inj_modal_manage:'Gerir Lesão', inj_modal_mark:'Marcar como Lesionado',
@@ -4610,24 +4649,33 @@ const DB = (() => {
     });
   }
 
+  // The single authoritative list of every REAL IndexedDB store this app
+  // has (confirmed against the actual createObjectStore calls in the
+  // schema-upgrade block above) — used by BOTH getAllFromAllStores and
+  // restoreAllStores so they can never drift apart from each other again.
+  // Deliberately NOT derived from SYNC_STORES_SET, since that set still
+  // contains 'globalPlayers', a store that was configured for sync at
+  // some point but never actually created in the schema — including it
+  // here would be harmless (DB.getAll tolerates a missing store) but
+  // isn't honest as "all real stores." Includes appMeta (device-local
+  // config, not synced, but still worth backing up/restoring).
+  // Excludes 'backups' itself — a backup snapshot never needs to contain
+  // other backup snapshots.
+  const ALL_REAL_STORES = [
+    'appMeta','seasons','players','games','gamePlayers','achievements',
+    'clubHistory','opponents','playerGameStats','events','goalEvents',
+    'injuries','trainingSessions','customDrills','drillFavourites',
+    'trainingPacks','tournaments','temporaryPlayers','clubTeams',
+  ];
+
   async function getAllFromAllStores() {
-    // Derived from the same authoritative SYNC_STORES_SET used by sync,
-    // plus appMeta (device-local config, not synced, but still worth
-    // backing up/restoring). Previously this was its own separate,
-    // hardcoded list that had silently fallen out of sync with reality —
-    // missing opponents, tournaments, temporaryPlayers, and all four
-    // training-related stores entirely, meaning Backup/Restore never
-    // actually covered them. Deriving from one shared source means this
-    // can't drift out of sync again the same way.
-    const stores = ['appMeta', ...SYNC_STORES_SET];
     const result = {};
-    for (const s of stores) { result[s] = await getAll(s); }
+    for (const s of ALL_REAL_STORES) { result[s] = await getAll(s); }
     return result;
   }
 
   async function restoreAllStores(data) {
-    const stores = ['appMeta', ...SYNC_STORES_SET];
-    for (const s of stores) {
+    for (const s of ALL_REAL_STORES) {
       await clear(s);
       if (data[s]) {
         for (const item of data[s]) { await put(s, item); }
@@ -6516,6 +6564,40 @@ async function moveTournamentToSeason(tournamentId, newSeasonId) {
 }
 
 // Warns when a tournament's own dates don't match the September-July
+// Deliberately restricted: only allows deleting a season that has ZERO
+// games and ZERO tournaments. This is meant to safely undo a mistakenly
+// created (e.g. duplicate, wrong-year) empty season, not to be a general
+// destructive season-wipe tool — a season with real data attached must
+// be handled more carefully than a quick delete button allows.
+async function handleDeleteCurrentSeason() {
+  if (!State.currentSeasonId) return;
+  const season = await DB.get('seasons', State.currentSeasonId);
+  if (!season) return;
+
+  const games = await DB.getAll('games', 'seasonId', State.currentSeasonId);
+  const tournaments = await getTournamentsForSeason(State.currentSeasonId);
+  const achievements = (await DB.getAll('achievements')).filter(a => a.seasonId === State.currentSeasonId);
+
+  if (games.length > 0 || tournaments.length > 0 || achievements.length > 0) {
+    Toast.error(I18n.t('set_err_season_has_data', {games: games.length, tournaments: tournaments.length}));
+    return;
+  }
+
+  Confirm.show(I18n.t('set_confirm_delete_season_title'), I18n.t('set_confirm_delete_season_body', {name: season.seasonName}), async () => {
+    await Backup.create('before-delete');
+    await DB.softDelete('seasons', State.currentSeasonId);
+    const remaining = (await DB.getAll('seasons')).sort((a,b) => (getSeasonStartYear(b)||0) - (getSeasonStartYear(a)||0));
+    if (remaining.length) {
+      await DB.put('appMeta', { metaKey:'currentSeason', value: remaining[0].seasonId });
+    } else {
+      State.currentSeasonId = null;
+    }
+    await loadMeta();
+    Toast.show(I18n.t('set_season_deleted'));
+    await Nav.go('home');
+  });
+}
+
 async function deleteTournament(tournamentId) {
   Confirm.show(I18n.t('tourn_confirm_delete_title'), I18n.t('tourn_confirm_delete_body'), async () => {
     await Backup.create('before-delete');
@@ -11152,6 +11234,7 @@ const Render = (() => {
           </div>
           <p style="font-size:11px;color:var(--muted);margin-top:6px">${I18n.t('set_editing_prefix')} <strong>${esc(State.currentSeason?.seasonName||'—')}</strong> ${I18n.t('set_editing_suffix')}</p>
           <button class="btn btn-primary" style="margin-top:10px" id="btnSaveSeasonEdit">${I18n.t('set_btn_save_changes')}</button>
+          <button class="btn btn-danger" style="margin-top:10px;margin-left:8px" onclick="handleDeleteCurrentSeason()">${I18n.t('set_btn_delete_season')}</button>
         </div>` : ''}
       </div>
 
@@ -14345,6 +14428,17 @@ document.addEventListener('click', async e => {
     const yearInput = document.getElementById('sf-startyear');
     const startYear = parseInt(yearInput?.value);
     if (!startYear || startYear < 2000 || startYear > 2100) { Toast.error(I18n.t('set_err_season_year')); return; }
+    // Block creating a second season for a year that already has one —
+    // this was previously silently allowed, and created exactly the
+    // "two seasons both called 2026/27" problem that's confusing to
+    // recover from, since normal Edit only ever touches the currently
+    // active one of the two.
+    const existingSeasons = await DB.getAll('seasons');
+    const duplicate = existingSeasons.find(s => s.startYear === startYear);
+    if (duplicate) {
+      Toast.error(I18n.t('set_err_duplicate_season_year', {name: duplicate.seasonName}));
+      return;
+    }
     const name = buildSeasonName(startYear);
     const shirtColorInput = document.getElementById('sf-shirtcolor');
     const season = {
