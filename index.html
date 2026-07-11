@@ -6297,6 +6297,7 @@ async function saveTournamentFromForm(tournamentId) {
     Toast.show(I18n.t('tourn_saved'));
     await syncTournamentAchievements(tournamentId || savedId);
     renderTournamentGamesTab();
+    Sync.scheduleAutoSync();
   };
 
   if (correctSeasonId) {
@@ -6359,6 +6360,7 @@ async function deleteTournament(tournamentId) {
     document.getElementById('tournamentFormOverlay')?.remove();
     Toast.show(I18n.t('tourn_deleted'));
     renderTournamentGamesTab();
+    Sync.scheduleAutoSync();
   });
 }
 
@@ -6720,6 +6722,7 @@ async function dismissTournamentAchievement(achievementId) {
   if (!a) return;
   a.dismissed = true;
   await DB.put('achievements', a);
+  Sync.scheduleAutoSync();
 }
 
 // When a tournament is deleted, its auto-generated achievements go with
@@ -8325,6 +8328,7 @@ async function deleteAchievementEntry(playerId, id) {
       Toast.show(I18n.t('ch_deleted'));
       await renderPlayerAchievements(playerId);
       if (typeof gdDebugLog === 'function') gdDebugLog(`[ACH DEBUG] renderPlayerAchievements re-run complete`);
+      Sync.scheduleAutoSync();
     } catch(err) {
       if (typeof gdDebugLog === 'function') gdDebugLog(`[ACH DEBUG] ERROR: ${err.message}`);
       Toast.error(err.message);
@@ -8906,6 +8910,7 @@ async function saveTrainingCompletion() {
   }
 
   await renderPlayerTraining(session.playerId, _trainingCompletionViewAs);
+  Sync.scheduleAutoSync();
 }
 
 // Compares freshly-saved results against the pre-save Personal Bests
@@ -12073,9 +12078,80 @@ const Sync = (() => {
   }
 
   // ── FULL SYNC ──────────────────────────────────────────────────────────────
+  let _periodicTimer = null;
+
+  // Covers three of the five approved triggers in one place: app-open
+  // (called once, shortly after auth/IndexedDB are ready), return-to-app
+  // (via visibilitychange, only if last successful sync was >2 min ago),
+  // and the 5-minute periodic safety sync. The existing online-reconnect
+  // listener (elsewhere in the file) is left exactly as it was.
+  function startPeriodicSync() {
+    if (_periodicTimer) return; // already started, never start twice
+    // App-open sync, shortly after this is called (not instantly, to let
+    // the rest of app startup settle first).
+    setTimeout(() => { if (Auth.isLoggedIn()) run(true); }, 3000);
+
+    // Return-to-app: only if it's actually been a meaningful while since
+    // the last successful sync, so switching tabs briefly doesn't
+    // trigger a sync every single time.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (!Auth.isLoggedIn()) return;
+      const twoMinutes = 2 * 60 * 1000;
+      if (!_lastSync || (Date.now() - new Date(_lastSync).getTime()) > twoMinutes) {
+        run(true);
+      }
+    });
+
+    // Periodic safety sync, backing off on consecutive network failures
+    // (5 -> 10 -> 20 -> capped at 30 min), resetting to 5 min on the next
+    // success. This backoff only affects THIS timer's own cadence —
+    // manual Sync Now and the debounced auto-sync after a save are never
+    // delayed by it.
+    const schedule = () => {
+      const baseMinutes = 5;
+      const backoffMinutes = Math.min(baseMinutes * Math.pow(2, _consecutiveFailures), 30);
+      _periodicTimer = setTimeout(async () => {
+        if (Auth.isLoggedIn() && isOnline()) await run(true);
+        schedule();
+      }, backoffMinutes * 60 * 1000);
+    };
+    schedule();
+  }
+
+  let _syncInFlight = false;
+  let _runAgainAfter = false;
+  let _consecutiveFailures = 0;
+  let _autoSyncTimer = null;
+
+  // Debounced trigger for meaningful data changes (create/update/delete/
+  // import/restore/training-complete/tournament-or-game-save) — NOT for
+  // every keystroke or minor UI interaction, per the approved behaviour.
+  // Each call resets the timer, so several quick saves in a row collapse
+  // into a single sync 4 seconds after the LAST one, not the first.
+  function scheduleAutoSync() {
+    if (!isConfigured() || !Auth.isLoggedIn()) return; // never sync logged out
+    if (_autoSyncTimer) clearTimeout(_autoSyncTimer);
+    _autoSyncTimer = setTimeout(() => {
+      _autoSyncTimer = null;
+      run(true); // silent — no toast for an automatic background sync
+    }, 4000);
+  }
+
   async function run(silent=false) {
     if (!isConfigured()) { if (!silent) Toast.error(I18n.t('sync_err_not_configured')); return; }
+    if (!Auth.isLoggedIn()) { if (!silent) Toast.error(I18n.t('acc_err_login_required')); return; }
     if (!isOnline()) { if (!silent) Toast.error(I18n.t('sync_err_no_internet')); return; }
+    // Never run more than one sync at a time. If one is already in
+    // flight, just flag that another pass is needed once it finishes —
+    // covers changes that happen while a sync is actively running,
+    // without ever overlapping two sync operations against the same
+    // local data at once.
+    if (_syncInFlight) {
+      _runAgainAfter = true;
+      return;
+    }
+    _syncInFlight = true;
     _status = 'syncing';
     updateSyncUI();
     if (!silent) log('Starting sync...');
@@ -12083,12 +12159,14 @@ const Sync = (() => {
       const pulled = await pull();
       const pushed = await push();
       _status = 'connected';
+      _consecutiveFailures = 0;
       if (!silent) {
         log('Sync complete — pulled: ' + pulled + ', pushed: ' + pushed);
         Toast.show(I18n.t('sync_complete', {pulled, pushed}));
       }
     } catch(e) {
       _status = 'error';
+      _consecutiveFailures++;
       log('Sync failed: ' + e.message);
       if (!silent) Toast.error(I18n.t('sync_err_failed', {msg: e.message}));
     }
@@ -12102,6 +12180,15 @@ const Sync = (() => {
     const pendingEl = document.getElementById('syncPendingCount');
     if (pendingEl) {
       getPendingCount().then(n => { pendingEl.textContent = n; });
+    }
+    _syncInFlight = false;
+    // A change was requested while this sync was actively running —
+    // run once more now to pick it up, rather than wait for the next
+    // scheduled trigger. Only ever queues ONE follow-up, not one per
+    // change that arrived, since _runAgainAfter is just a flag.
+    if (_runAgainAfter) {
+      _runAgainAfter = false;
+      run(true);
     }
   }
 
@@ -12219,7 +12306,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, getTeamShareLink, getRestoredLogHtml };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync };
 })();
 
 function attachEvents() {
@@ -12377,6 +12464,7 @@ async function savePlayer() {
   document.getElementById('addPlayerPanel').classList.add('panel-hidden');
   resetPlayerForm();
   await Render.squad();
+  Sync.scheduleAutoSync();
 }
 
 async function openPlayerCardPopup(playerId) {
@@ -12665,6 +12753,7 @@ async function archivePlayer(id, restore) {
       await DB.put('players', p);
       Toast.show(restore ? I18n.t('squad_restored_toast') : I18n.t('squad_archived_toast'));
       await Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||'');
+      Sync.scheduleAutoSync();
     });
 }
 
@@ -12892,6 +12981,7 @@ async function saveGame() {
     if (game.tournamentId) {
       await syncTournamentAchievements(game.tournamentId);
     }
+    Sync.scheduleAutoSync();
   };
 
   if (correctSeasonId) {
@@ -12947,6 +13037,7 @@ async function deleteGame(id) {
     for (const gp of gps) await DB.softDelete('gamePlayers', gp.gamePlayerId);
     Toast.show(I18n.t('game_deleted'));
     await Render.gamesList();
+    Sync.scheduleAutoSync();
   });
 }
 
@@ -13750,6 +13841,7 @@ async function refreshGameHeaderScore(gameId) {
   if (game.tournamentId) {
     await syncTournamentAchievements(game.tournamentId);
   }
+  Sync.scheduleAutoSync();
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -13875,6 +13967,7 @@ async function restoreFromBackup(backupId) {
       await loadMeta();
       Toast.show(I18n.t('bk_restored_success'));
       await Nav.go('home');
+      Sync.scheduleAutoSync();
     } catch(err) { Toast.error(err.message); }
   });
 }
@@ -14122,6 +14215,7 @@ async function continueAppLoadAfterLogin() {
     await buildTrackedNav();
     await initAdmin();
     if (await isDebugModeOn()) { ensureDebugPanel(); gdDebugLog('App loaded — debug mode active'); gdDebugLog('BUILD MARKER: 2026-07-05-2200-pin-debug'); }
+    Sync.startPeriodicSync();
     document.getElementById('loading').style.display = 'none';
     document.getElementById('authGate').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
@@ -14669,6 +14763,7 @@ async function confirmImport(type, validated) {
   const el = document.getElementById(previewId);
   if (el) el.innerHTML = '<div style="padding:10px;background:#f0faf2;border-radius:3px;font-size:13px;color:#2a7a3b;font-weight:600">&#10003; Import complete — ' + count + ' rows added.</div>';
   window['_importData_' + type] = null;
+  Sync.scheduleAutoSync();
 }
 
 // Season name is always auto-generated from the start year as "YYYY/YY" —
