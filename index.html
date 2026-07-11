@@ -947,23 +947,22 @@ function resolvePlayerName(gp, players, tempPlayers) {
 // the single place that combines date + kickoff time into one comparable
 // value; every games .sort() call in the app should use this rather than
 // re-deriving the same logic separately at each call site.
-// A season with startYear Y covers September 1 of year Y through July 31
-// of year Y+1 — the standard football-season window, not the calendar
-// year. Given a real date, returns the startYear of the season that date
-// actually belongs to, regardless of which season happens to be "active"
-// in the app at the time — this is the one source of truth both the
-// tournament-season-fix control and the create/edit validation warning
-// use, so the rule can't drift between the two.
-function seasonStartYearForDate(dateStr) {
+// A season with startYear Y covers September 1 of year Y through August 31
+// of year Y+1 — the full 12-month football-season window, not the
+// calendar year, with no gap month. Given a real date, returns the
+// startYear of the season that date actually belongs to. This is the one
+// shared function every game/tournament/import path uses — nothing
+// re-derives this logic separately, so the rule can't drift between
+// call sites.
+function getSeasonFromDate(dateStr) {
   if (!dateStr) return null;
   const d = new Date(dateStr + 'T00:00:00');
   if (isNaN(d)) return null;
   const month = d.getMonth() + 1; // 1-12
   const year = d.getFullYear();
-  // Aug (8) counted as still-current-season for practical pre-season
-  // activity, exactly like Sept onward; only Jan-Jul roll back to the
-  // previous startYear.
-  return month >= 8 ? year : year - 1;
+  // Sept (9) through Dec (12) start the new season; Jan (1) through
+  // Aug (8) belong to the season that started the previous calendar year.
+  return month >= 9 ? year : year - 1;
 }
 
 function gameSortKey(game) {
@@ -2285,12 +2284,7 @@ const TR = {
     ach_title_r16:'Round of 16', ach_title_group_stage:'Group Stage', ach_title_participant:'Participant',
     ach_btn_remove_auto:'Remove from Achievements',
     tourn_confirm_delete_title:'Delete Tournament?', tourn_confirm_delete_body:'This removes the tournament and its auto-generated achievements. Games already linked to it are not deleted.',
-    tourn_season_mismatch_warning:'This tournament\'s dates don\'t match its assigned season. Based on its dates, it likely belongs to {season}.',
-    tourn_season_mismatch_no_target:'This tournament\'s dates suggest it belongs to {season}, but that season doesn\'t exist yet — create it first if you want to move this tournament there.',
-    tourn_btn_move_to_season:'Move to {season}',
-    tourn_confirm_move_title:'Move tournament?', tourn_confirm_move_body:'This moves the tournament, its games, and their player records to the correct season.',
-    tourn_moved_toast:'Tournament moved to the correct season.',
-    tourn_confirm_season_mismatch_title:'Wrong season?', tourn_confirm_season_mismatch_body:'These dates look like they belong to {season}, not the currently active {current}. Save here anyway?',
+    tourn_confirm_season_mismatch_title:'Wrong season?', tourn_confirm_season_mismatch_body:'This belongs to {season}, not the currently active {current}, based on its dates. Move it to {season} automatically?', import_season_corrected:'rows auto-corrected to their real season',
 
     tourn_deleted:'Tournament deleted.',
     tourn_tap_hint:'Tap a tournament to see its full summary.',
@@ -3076,7 +3070,8 @@ const TR = {
           <strong>Full Game</strong> — auto-set for starters. Uncheck if player was substituted off.<br>
           <strong>Sub In/Out minute</strong> — dropdown 0–90. Used to calculate estimated minutes played.<br>
           <strong>MoM and Captain</strong> — only one player per game can hold each.<br>
-          <strong>Save</strong> — always tap Save before leaving a game.`,
+          <strong>Save</strong> — always tap Save before leaving a game.<br><br>
+          Finished games are automatically locked to avoid accidental changes. Tap Edit if you need to correct something.`,
     help_tp_title:'Tracked Player Pages',
     help_tp_content:`
           Each tracked player has their own page in the nav with 5 tabs:<br><br>
@@ -3120,6 +3115,20 @@ const TR = {
           <strong>Restore from file</strong> — Settings → Restore from File → select a previously downloaded JSON.<br>
           <strong>Paste JSON</strong> — paste the content of a backup JSON directly into the text area as a fallback.<br>
           Up to 30 backups are stored automatically. Delete individual backups to free space.`,
+    help_tournaments_title:'Tournaments',
+    help_tournaments_content:`
+          Tournaments let you group several matches played in the same competition (for example IberCup).<br><br>
+          Select the players travelling to the tournament. Those players become the Tournament Team and are automatically available for every match.<br><br>
+          Add temporary players if guest players join the team.<br><br>
+          Assign each game to the tournament and select its stage. The app automatically calculates how far the team progressed and creates the appropriate achievements.<br><br>
+          <strong>Tournament Team</strong> — select the Tournament Team once. These players are available for every match linked to that tournament. If the Tournament Team changes, update it in the tournament settings and the change will apply to all tournament matches.`,
+    help_sharing_title:'Sharing with Parents',
+    help_sharing_content:`
+          You can create a link to share with the other parents in your team's WhatsApp group — no login needed for them to view it.<br><br>
+          <strong>Creating the link</strong> — Settings → Share Team → Generate Link. Copy it and paste it into WhatsApp.<br>
+          <strong>What parents see</strong> — team name, season record, next match, last 5 results, tournament results, squad list, and each player's appearances/goals/assists.<br>
+          The link always shows live information. Any updates you make inside the app appear automatically.<br><br>
+          <strong>Managing the link</strong> — Disable it temporarily, or Regenerate it to invalidate the old link completely and get a new one.`,
     help_import_title:'Import (CSV)',
     help_import_content:`
           Import players, games, or opponents from CSV files on PC.<br><br>
@@ -3271,12 +3280,7 @@ const TR = {
     ach_title_r16:'Oitavos de Final', ach_title_group_stage:'Fase de Grupos', ach_title_participant:'Participante',
     ach_btn_remove_auto:'Remover dos Feitos',
     tourn_confirm_delete_title:'Eliminar Torneio?', tourn_confirm_delete_body:'Isto remove o torneio e os seus feitos gerados automaticamente. Os jogos já ligados não são eliminados.',
-    tourn_season_mismatch_warning:'As datas deste torneio não correspondem à época atribuída. Com base nas datas, provavelmente pertence a {season}.',
-    tourn_season_mismatch_no_target:'As datas sugerem que este torneio pertence a {season}, mas essa época ainda não existe — crie-a primeiro se quiser mover o torneio para lá.',
-    tourn_btn_move_to_season:'Mover para {season}',
-    tourn_confirm_move_title:'Mover torneio?', tourn_confirm_move_body:'Isto move o torneio, os seus jogos e os registos dos jogadores para a época correta.',
-    tourn_moved_toast:'Torneio movido para a época correta.',
-    tourn_confirm_season_mismatch_title:'Época errada?', tourn_confirm_season_mismatch_body:'Estas datas parecem pertencer a {season}, não à época atual {current}. Guardar mesmo assim?',
+    tourn_confirm_season_mismatch_title:'Época errada?', tourn_confirm_season_mismatch_body:'Isto pertence a {season}, não à época atual {current}, com base nas datas. Mover automaticamente para {season}?', import_season_corrected:'linhas corrigidas automaticamente para a época correta',
 
     tourn_deleted:'Torneio eliminado.',
     tourn_tap_hint:'Toque num torneio para ver o resumo completo.',
@@ -4062,7 +4066,8 @@ const TR = {
           <strong>Jogo Completo</strong> — definido automaticamente para titulares. Desmarque se o jogador foi substituído.<br>
           <strong>Minuto de Entrada/Saída</strong> — lista de 0–90. Usado para calcular os minutos jogados estimados.<br>
           <strong>MVP e Capitão</strong> — apenas um jogador por jogo pode ter cada um destes estatutos.<br>
-          <strong>Guardar</strong> — toque sempre em Guardar antes de saír de um jogo.`,
+          <strong>Guardar</strong> — toque sempre em Guardar antes de saír de um jogo.<br><br>
+          Os jogos terminados ficam automaticamente bloqueados para evitar alterações acidentais. Toque em Editar se precisar de corrigir algo.`,
     help_tp_title:'Páginas de Jogadores Acompanhados',
     help_tp_content:`
           Cada jogador acompanhado tem a sua própria página no menu com 5 separadores:<br><br>
@@ -4106,6 +4111,20 @@ const TR = {
           <strong>Restaurar a partir de ficheiro</strong> — Definições → Restaurar a partir de Ficheiro → selecione um JSON descarregado anteriormente.<br>
           <strong>Colar JSON</strong> — cole o conteúdo de um JSON de cópia diretamente na caixa de texto, como alternativa.<br>
           São guardadas automaticamente até 30 cópias. Elimine cópias individuais para libertar espaço.`,
+    help_tournaments_title:'Torneios',
+    help_tournaments_content:`
+          Os torneios permitem agrupar vários jogos disputados na mesma competição (por exemplo, o IberCup).<br><br>
+          Selecione os jogadores que vão ao torneio. Esses jogadores tornam-se o Plantel do Torneio e ficam automaticamente disponíveis para todos os jogos.<br><br>
+          Adicione jogadores temporários se houver jogadores convidados a juntar-se à equipa.<br><br>
+          Associe cada jogo ao torneio e selecione a fase. A aplicação calcula automaticamente até onde a equipa avançou e cria os feitos correspondentes.<br><br>
+          <strong>Plantel do Torneio</strong> — selecione o Plantel do Torneio uma vez. Estes jogadores ficam disponíveis para todos os jogos ligados a esse torneio. Se o Plantel do Torneio mudar, atualize-o nas definições do torneio e a alteração aplica-se a todos os jogos do torneio.`,
+    help_sharing_title:'Partilhar com os Pais',
+    help_sharing_content:`
+          Pode criar um link para partilhar com os outros pais da equipa no grupo de WhatsApp — sem necessidade de conta para o verem.<br><br>
+          <strong>Criar o link</strong> — Definições → Partilhar Equipa → Gerar Link. Copie e cole no WhatsApp.<br>
+          <strong>O que os pais veem</strong> — nome da equipa, registo da época, próximo jogo, últimos 5 resultados, resultados de torneios, lista do plantel, e as estatísticas de jogos/golos/assistências de cada jogador.<br>
+          O link mostra sempre informação em tempo real. Qualquer atualização que faça na aplicação aparece automaticamente.<br><br>
+          <strong>Gerir o link</strong> — Desative-o temporariamente, ou Regenere para invalidar o link antigo por completo e obter um novo.`,
     help_import_title:'Importar (CSV)',
     help_import_content:`
           Importe jogadores, jogos ou adversários a partir de ficheiros CSV no computador.<br><br>
@@ -6173,7 +6192,6 @@ async function openTournamentForm(tournamentId) {
       ${existing ? `<div data-tourn-player-section>${await renderTournamentPlayerSelection(existing)}</div>` : ''}
       ${existing ? await renderTournamentTempPlayersList(existing) : ''}
       ${existing ? `<button type="button" class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:10px" onclick="openTemporaryPlayerForm(null, ${existing.tournamentId})">+ ${I18n.t('tempp_new_title')}</button>` : ''}
-      ${existing ? await renderTournamentMoveSeasonControl(existing) : ''}
       <div class="form-actions">
         <button class="btn btn-primary" onclick="saveTournamentFromForm(${tournamentId ?? 'null'})">${I18n.t('common_save')}</button>
         <button class="btn btn-secondary" onclick="document.getElementById('tournamentFormOverlay').remove()">${I18n.t('common_cancel')}</button>
@@ -6191,28 +6209,32 @@ async function saveTournamentFromForm(tournamentId) {
 
   // Do not silently trust the currently-active season just because it's
   // selected — check the tournament's own dates against the real
-  // September-July season window and warn (not block) if they disagree.
-  // This is exactly the mistake that prompted this check: test data
-  // entered while a different season was active, silently inheriting
-  // the wrong seasonId with no warning at all.
-  //
-  // Confirm.show's callback only ever fires on confirm, never on cancel
-  // — there is no cancel callback in this app's dialog pattern. So rather
-  // than await a value that would hang forever if cancelled, the actual
-  // save logic below is wrapped in its own function and only ever
-  // called directly (no mismatch) or from inside the confirm callback
-  // (mismatch, user chose to proceed anyway).
+  // Sept-Aug season window (getSeasonFromDate, shared with games and
+  // imports) and offer to assign the correct EXISTING season instead.
+  // Never creates a new season automatically — if the correct season
+  // doesn't exist yet in this app, this falls through and saves under
+  // the currently-selected season as before, since there's nothing
+  // correct to offer instead.
   const refDate = startDateVal || endDateVal;
-  let mismatchWarning = null;
+  let correctSeasonId = null; // set only if a mismatch AND a valid target season exist
+  let mismatchInfo = null;
   if (refDate) {
-    const correctStartYear = seasonStartYearForDate(refDate);
+    const correctStartYear = getSeasonFromDate(refDate);
     const currentSeason = await DB.get('seasons', State.currentSeasonId);
     if (currentSeason && correctStartYear !== null && currentSeason.startYear !== correctStartYear) {
-      mismatchWarning = { correctStartYear, currentSeasonName: currentSeason.seasonName };
+      const allSeasons = await DB.getAll('seasons');
+      const correctSeason = allSeasons.find(s => s.startYear === correctStartYear);
+      if (correctSeason) {
+        correctSeasonId = correctSeason.seasonId;
+        mismatchInfo = { correctSeasonName: correctSeason.seasonName, currentSeasonName: currentSeason.seasonName };
+      }
+      // If no matching season exists, correctSeasonId stays null and this
+      // tournament simply saves under the currently-selected season,
+      // silently — there is genuinely nothing else correct to offer.
     }
   }
 
-  const doSave = async () => {
+  const doSave = async (useSeasonId) => {
     // Re-fetch fresh here, not reused from when the form first opened — if a
     // temp player was added while this form was open (via the "+ Add Temp
     // Player" button on top of it), that link already exists in the database
@@ -6220,8 +6242,19 @@ async function saveTournamentFromForm(tournamentId) {
     // time would silently overwrite that just-added link the moment Save is
     // clicked, which was the actual bug being reported.
     const existing = tournamentId ? await getTournamentById(tournamentId) : null;
+
+    // If the season is being corrected on an existing tournament, move its
+    // games (and their player records) FIRST, while the tournament record
+    // still shows its old season — moveTournamentToSeason compares the
+    // tournament's current seasonId against the target and skips work if
+    // they already match, so this must run before the tournament's own
+    // seasonId changes below, not after.
+    if (tournamentId && existing && useSeasonId !== existing.seasonId) {
+      await moveTournamentToSeason(tournamentId, useSeasonId);
+    }
+
     const tournament = {
-      seasonId: State.currentSeasonId,
+      seasonId: useSeasonId,
       name,
       location: document.getElementById('tf-location')?.value.trim() || '',
       category: document.getElementById('tf-category')?.value.trim() || '',
@@ -6238,14 +6271,14 @@ async function saveTournamentFromForm(tournamentId) {
     renderTournamentGamesTab();
   };
 
-  if (mismatchWarning) {
+  if (correctSeasonId) {
     Confirm.show(
       I18n.t('tourn_confirm_season_mismatch_title'),
-      I18n.t('tourn_confirm_season_mismatch_body', {season: buildSeasonName(mismatchWarning.correctStartYear), current: mismatchWarning.currentSeasonName}),
-      doSave
+      I18n.t('tourn_confirm_season_mismatch_body', {season: mismatchInfo.correctSeasonName, current: mismatchInfo.currentSeasonName}),
+      () => doSave(correctSeasonId)
     );
   } else {
-    await doSave();
+    await doSave(State.currentSeasonId);
   }
 }
 
@@ -6290,44 +6323,6 @@ async function moveTournamentToSeason(tournamentId, newSeasonId) {
 }
 
 // Warns when a tournament's own dates don't match the September-July
-// season window it's currently assigned to, and offers a one-tap fix
-// using moveTournamentToSeason. Silent (renders nothing) when the
-// tournament's dates are missing or already consistent with its season —
-// this is a correction aid for mistakes, not a control shown every time.
-async function renderTournamentMoveSeasonControl(tournament) {
-  const refDate = tournament.startDate || tournament.endDate;
-  if (!refDate) return '';
-  const correctStartYear = seasonStartYearForDate(refDate);
-  if (correctStartYear === null) return '';
-
-  const currentSeason = await DB.get('seasons', tournament.seasonId);
-  if (!currentSeason || currentSeason.startYear === correctStartYear) return '';
-
-  const allSeasons = await DB.getAll('seasons');
-  const correctSeason = allSeasons.find(s => s.startYear === correctStartYear);
-  if (!correctSeason) {
-    // The right season doesn't exist yet in this app — nothing to move
-    // to, so just flag the mismatch without offering a broken action.
-    return `<div class="card" style="margin-bottom:14px;padding:12px;background:#fbf3d9;border:1px solid #d9c26b">
-      <div style="font-size:12px;color:#8a6d1e">${I18n.t('tourn_season_mismatch_no_target', {season: buildSeasonName(correctStartYear)})}</div>
-    </div>`;
-  }
-
-  return `<div class="card" style="margin-bottom:14px;padding:12px;background:#fbf3d9;border:1px solid #d9c26b">
-    <div style="font-size:12px;color:#8a6d1e;margin-bottom:8px">${I18n.t('tourn_season_mismatch_warning', {season: correctSeason.seasonName})}</div>
-    <button type="button" class="btn btn-secondary btn-sm" onclick="handleMoveTournamentSeason(${tournament.tournamentId}, ${correctSeason.seasonId})">${I18n.t('tourn_btn_move_to_season', {season: correctSeason.seasonName})}</button>
-  </div>`;
-}
-
-async function handleMoveTournamentSeason(tournamentId, newSeasonId) {
-  Confirm.show(I18n.t('tourn_confirm_move_title'), I18n.t('tourn_confirm_move_body'), async () => {
-    await moveTournamentToSeason(tournamentId, newSeasonId);
-    Toast.show(I18n.t('tourn_moved_toast'));
-    document.getElementById('tournamentFormOverlay')?.remove();
-    renderTournamentGamesTab();
-  });
-}
-
 async function deleteTournament(tournamentId) {
   Confirm.show(I18n.t('tourn_confirm_delete_title'), I18n.t('tourn_confirm_delete_body'), async () => {
     await Backup.create('before-delete');
@@ -11031,6 +11026,8 @@ const Render = (() => {
         { icon:'&#9881;', title:I18n.t('help_settings_title'), content:I18n.t('help_settings_content') },
         { icon:'&#9729;', title:I18n.t('help_sync_title'), content:I18n.t('help_sync_content') },
         { icon:'&#128190;', title:I18n.t('help_backup_title'), content:I18n.t('help_backup_content') },
+        { icon:'&#127942;', title:I18n.t('help_tournaments_title'), content:I18n.t('help_tournaments_content') },
+        { icon:'&#128172;', title:I18n.t('help_sharing_title'), content:I18n.t('help_sharing_content') },
         { icon:'&#128196;', title:I18n.t('help_import_title'), content:I18n.t('help_import_content') },
       ].map(s => `
         <div class="card" style="margin-bottom:14px">
@@ -12695,44 +12692,82 @@ async function saveGame() {
   if (!date) { Toast.error(I18n.t('game_err_date')); return; }
   if (!State.currentSeasonId) { Toast.error(I18n.t('pf_err_no_season')); return; }
 
-  const existingId = document.getElementById('gf-id').value;
-  let game = {
-    seasonId: State.currentSeasonId,
-    date,
-    gameTime: gameTime || null,
-    arrivalTime: arrivalTime || null,
-    opponent: opp,
-    homeAway: document.getElementById('gf-venue').value,
-    neutralSide: document.getElementById('gf-venue').value === 'Neutral' ? (document.getElementById('gf-neutral-side')?.value || 'Home') : null,
-    matchDurationMins: readDurationFromForm('gf-duration-select', 'gf-duration-custom'),
-    competitionType: document.getElementById('gf-compType').value,
-    competitionName: document.getElementById('gf-compName').value.trim()||null,
-    tournamentId: document.getElementById('gf-tournament')?.value ? parseInt(document.getElementById('gf-tournament').value) : null,
-    stage: document.getElementById('gf-stage')?.value || null,
-    venue: document.getElementById('gf-ground').value.trim()||null,
-    teamNotes: document.getElementById('gf-notes').value.trim()||null,
-    createdAt: new Date().toISOString(),
-  };
-  if (existingId) {
-    game.gameId = parseInt(existingId);
-    // Preserve the opponent score already recorded via the Goals tab —
-    // this form no longer has an Opponent Score field, so never reset it.
-    const existingGame = await DB.get('games', game.gameId);
-    game.opponentScore = existingGame ? (existingGame.opponentScore||0) : 0;
-  } else {
-    game.opponentScore = 0;
+  // Same universal check used for tournaments — do not silently trust
+  // the currently-active season just because it's selected. Offers the
+  // correct EXISTING season if one exists; never creates a new one.
+  let useSeasonId = State.currentSeasonId;
+  const correctStartYear = getSeasonFromDate(date);
+  const currentSeason = await DB.get('seasons', State.currentSeasonId);
+  let correctSeasonId = null, mismatchInfo = null;
+  if (currentSeason && correctStartYear !== null && currentSeason.startYear !== correctStartYear) {
+    const allSeasons = await DB.getAll('seasons');
+    const correctSeason = allSeasons.find(s => s.startYear === correctStartYear);
+    if (correctSeason) {
+      correctSeasonId = correctSeason.seasonId;
+      mismatchInfo = { correctSeasonName: correctSeason.seasonName, currentSeasonName: currentSeason.seasonName };
+    }
   }
-  await Backup.create('before-save');
-  await DB.put('games', game);
-  Toast.show(existingId ? I18n.t('game_updated') : I18n.t('game_added'));
-  document.getElementById('addGamePanel').classList.add('panel-hidden');
-  resetGameForm();
-  await Render.gamesList();
-  // A Stage edit here can change the tournament's furthest-reached game,
-  // and therefore its outcome — this form doesn't go through
-  // refreshGameHeaderScore at all, so it needs its own sync trigger.
-  if (game.tournamentId) {
-    await syncTournamentAchievements(game.tournamentId);
+
+  const doSaveGame = async (seasonIdToUse) => {
+    const existingId = document.getElementById('gf-id').value;
+    let game = {
+      seasonId: seasonIdToUse,
+      date,
+      gameTime: gameTime || null,
+      arrivalTime: arrivalTime || null,
+      opponent: opp,
+      homeAway: document.getElementById('gf-venue').value,
+      neutralSide: document.getElementById('gf-venue').value === 'Neutral' ? (document.getElementById('gf-neutral-side')?.value || 'Home') : null,
+      matchDurationMins: readDurationFromForm('gf-duration-select', 'gf-duration-custom'),
+      competitionType: document.getElementById('gf-compType').value,
+      competitionName: document.getElementById('gf-compName').value.trim()||null,
+      tournamentId: document.getElementById('gf-tournament')?.value ? parseInt(document.getElementById('gf-tournament').value) : null,
+      stage: document.getElementById('gf-stage')?.value || null,
+      venue: document.getElementById('gf-ground').value.trim()||null,
+      teamNotes: document.getElementById('gf-notes').value.trim()||null,
+      createdAt: new Date().toISOString(),
+    };
+    if (existingId) {
+      game.gameId = parseInt(existingId);
+      // Preserve the opponent score already recorded via the Goals tab —
+      // this form no longer has an Opponent Score field, so never reset it.
+      const existingGame = await DB.get('games', game.gameId);
+      game.opponentScore = existingGame ? (existingGame.opponentScore||0) : 0;
+      // If this game's own gamePlayers rows exist and the season is being
+      // corrected, move them along too, same reasoning as the tournament
+      // fix — a game and its player records must stay in the same season.
+      if (existingGame && seasonIdToUse !== existingGame.seasonId) {
+        const gps = await DB.getAll('gamePlayers', 'gameId', game.gameId);
+        for (const gp of gps) {
+          gp.seasonId = seasonIdToUse;
+          await DB.put('gamePlayers', gp);
+        }
+      }
+    } else {
+      game.opponentScore = 0;
+    }
+    await Backup.create('before-save');
+    await DB.put('games', game);
+    Toast.show(existingId ? I18n.t('game_updated') : I18n.t('game_added'));
+    document.getElementById('addGamePanel').classList.add('panel-hidden');
+    resetGameForm();
+    await Render.gamesList();
+    // A Stage edit here can change the tournament's furthest-reached game,
+    // and therefore its outcome — this form doesn't go through
+    // refreshGameHeaderScore at all, so it needs its own sync trigger.
+    if (game.tournamentId) {
+      await syncTournamentAchievements(game.tournamentId);
+    }
+  };
+
+  if (correctSeasonId) {
+    Confirm.show(
+      I18n.t('tourn_confirm_season_mismatch_title'),
+      I18n.t('tourn_confirm_season_mismatch_body', {season: mismatchInfo.correctSeasonName, current: mismatchInfo.currentSeasonName}),
+      () => doSaveGame(correctSeasonId)
+    );
+  } else {
+    await doSaveGame(useSeasonId);
   }
 }
 
@@ -14409,20 +14444,40 @@ async function confirmImport(type, validated) {
   await Backup.create('before-import');
   let count = 0;
   let skippedDupes = 0;
+  let seasonCorrected = 0;
   const existingOpponentNames = type === 'opponents'
     ? (await DB.getAll('opponents')).map(o => (o.opponentName||'').toLowerCase())
     : [];
+  // Same universal season check as manual game/tournament entry — a
+  // bulk import is exactly the kind of place a wrong currently-active
+  // season could silently mis-tag many rows at once. Since this is a
+  // batch operation, correcting is done silently per-row (using an
+  // existing matching season if one exists) rather than a confirm
+  // dialog per row, which would be disruptive; never creates a new
+  // season, same rule as everywhere else.
+  const allSeasons = type === 'games' ? await DB.getAll('seasons') : [];
   for (const r of toImport) {
     const store = type==='players' ? 'players' : type==='games' ? 'games' : 'opponents';
     if (store === 'opponents' && existingOpponentNames.includes((r.data.opponentName||'').toLowerCase())) {
       skippedDupes++;
       continue; // already in the catalogue — never create a duplicate entry
     }
+    if (store === 'games' && r.data.date) {
+      const correctStartYear = getSeasonFromDate(r.data.date);
+      const correctSeason = allSeasons.find(s => s.startYear === correctStartYear);
+      if (correctSeason && correctSeason.seasonId !== r.data.seasonId) {
+        r.data.seasonId = correctSeason.seasonId;
+        seasonCorrected++;
+      }
+      // If no matching season exists, r.data.seasonId is left as-is
+      // (the currently-selected season) — nothing else correct to
+      // assign, and a new season is never created automatically here.
+    }
     await DB.put(store, r.data);
     count++;
   }
-  dbgLog('Import done: ' + count + ' rows written to ' + type + (skippedDupes ? `, ${skippedDupes} duplicate opponents skipped` : ''));
-  Toast.show(count + ' ' + type + ' imported successfully.' + (skippedDupes ? ` (${skippedDupes} ${I18n.t('opp_import_dupes_skipped')})` : ''));
+  dbgLog('Import done: ' + count + ' rows written to ' + type + (skippedDupes ? `, ${skippedDupes} duplicate opponents skipped` : '') + (seasonCorrected ? `, ${seasonCorrected} rows auto-corrected to their real season` : ''));
+  Toast.show(count + ' ' + type + ' imported successfully.' + (skippedDupes ? ` (${skippedDupes} ${I18n.t('opp_import_dupes_skipped')})` : '') + (seasonCorrected ? ` (${seasonCorrected} ${I18n.t('import_season_corrected')})` : ''));
   const previewId = 'import' + type.charAt(0).toUpperCase() + type.slice(1) + 'Preview';
   const el = document.getElementById(previewId);
   if (el) el.innerHTML = '<div style="padding:10px;background:#f0faf2;border-radius:3px;font-size:13px;color:#2a7a3b;font-weight:600">&#10003; Import complete — ' + count + ' rows added.</div>';
