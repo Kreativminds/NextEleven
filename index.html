@@ -2288,7 +2288,7 @@ const TR = {
     dash_form:'Form:',
 
     // ── COMMON ──
-    common_save:'Save', common_cancel:'Cancel', common_no:'No', common_yes:'Yes',
+    common_save:'Save', common_cancel:'Cancel', common_no:'No', common_yes:'Yes', common_close:'Close',
     gd_tournament_guests:'Tournament Guests', gd_guest_badge:'Guest',
     games_lbl_tournament:'Tournament (optional)',
     games_lbl_stage:'Stage (optional)',
@@ -2301,10 +2301,13 @@ const TR = {
     ach_title_stage_runnerup:'{stage} Runner-up', ach_title_semifinalist:'Semi-finalist', ach_title_quarterfinalist:'Quarter-finalist',
     ach_title_r16:'Round of 16', ach_title_group_stage:'Group Stage', ach_title_participant:'Participant',
     ach_btn_remove_auto:'Remove from Achievements',
+    ach_btn_switch_season_to_edit:'Switch to this Season to Edit',
+    ach_confirm_switch_season_title:'Switch season?', ach_confirm_switch_season_body:'This will make {season} the active season so you can edit or remove this achievement there.',
+
     ach_unknown_season:'Unknown season', ach_current_season_badge:'Current',
     ach_detail_season_club_label:'Season & Club', ach_detail_description_label:'Description',
     club_detail_subtitle:'Career history at this club', club_detail_seasons_label:'Seasons Played',
-    club_detail_no_seasons:'No seasons found for this club.', club_detail_achievements_label:'Achievements',
+    club_detail_no_seasons:'No season in this app has its Club Name set to match this exactly. If Lorenzo played here before this app was used, there may be no season record for it.', club_detail_achievements_label:'Achievements',
     club_detail_no_achievements:'No achievements recorded during these seasons.',
 
     tourn_confirm_delete_title:'Delete Tournament?', tourn_confirm_delete_body:'This removes the tournament and its auto-generated achievements. Games already linked to it are not deleted.',
@@ -3291,7 +3294,7 @@ const TR = {
     dash_form:'Forma:',
 
     // ── COMMON ──
-    common_save:'Guardar', common_cancel:'Cancelar', common_no:'Não', common_yes:'Sim',
+    common_save:'Guardar', common_cancel:'Cancelar', common_no:'Não', common_yes:'Sim', common_close:'Fechar',
     gd_tournament_guests:'Convidados do Torneio', gd_guest_badge:'Convidado',
     games_lbl_tournament:'Torneio (opcional)',
     games_lbl_stage:'Fase (opcional)',
@@ -3304,10 +3307,13 @@ const TR = {
     ach_title_stage_runnerup:'Vice-campeão {stage}', ach_title_semifinalist:'Meia-finalista', ach_title_quarterfinalist:'Quartos-finalista',
     ach_title_r16:'Oitavos de Final', ach_title_group_stage:'Fase de Grupos', ach_title_participant:'Participante',
     ach_btn_remove_auto:'Remover dos Feitos',
+    ach_btn_switch_season_to_edit:'Mudar para esta Época para Editar',
+    ach_confirm_switch_season_title:'Mudar de época?', ach_confirm_switch_season_body:'Isto torna {season} a época ativa para poder editar ou remover este feito aí.',
+
     ach_unknown_season:'Época desconhecida', ach_current_season_badge:'Atual',
     ach_detail_season_club_label:'Época e Clube', ach_detail_description_label:'Descrição',
     club_detail_subtitle:'Histórico de carreira neste clube', club_detail_seasons_label:'Épocas Jogadas',
-    club_detail_no_seasons:'Não foram encontradas épocas para este clube.', club_detail_achievements_label:'Feitos',
+    club_detail_no_seasons:'Nenhuma época nesta aplicação tem o Nome do Clube definido para corresponder exatamente. Se o Lorenzo jogou aqui antes de usar a aplicação, pode não existir um registo de época para isso.', club_detail_achievements_label:'Feitos',
     club_detail_no_achievements:'Sem feitos registados durante estas épocas.',
 
     tourn_confirm_delete_title:'Eliminar Torneio?', tourn_confirm_delete_body:'Isto remove o torneio e os seus feitos gerados automaticamente. Os jogos já ligados não são eliminados.',
@@ -8188,9 +8194,15 @@ async function renderPlayerClubHistory(playerId) {
 // improvement only, per the approved scope — no new fields added.
 async function openClubDetail(playerId, clubName) {
   if (!clubName) return;
-  const nameLower = clubName.trim().toLowerCase();
+  // Normalize aggressively — lowercase, trim, collapse whitespace, and
+  // strip accents/diacritics (e.g. "Vitória" vs "Vitoria") — since this
+  // match is comparing two independently-typed free-text fields with no
+  // structural link, small differences in accents or spacing would
+  // otherwise cause a real club to silently show "no seasons found."
+  const normalize = s => (s||'').trim().toLowerCase().replace(/\s+/g,' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const nameNorm = normalize(clubName);
   const allSeasons = await DB.getAll('seasons');
-  const matchingSeasons = allSeasons.filter(s => (s.clubName||'').trim().toLowerCase() === nameLower);
+  const matchingSeasons = allSeasons.filter(s => normalize(s.clubName) === nameNorm);
   const matchingSeasonIds = new Set(matchingSeasons.map(s => s.seasonId));
 
   const allAchievements = (await DB.getAll('achievements'))
@@ -8375,9 +8387,11 @@ async function renderPlayerAchievements(playerId) {
                   ${a.description?`<div class="ti-desc">${esc(a.description)}</div>`:''}
                 </div>
                 <div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">
-                  ${a.autoGenerated ? `
-                    <button class="btn btn-secondary btn-sm" onclick="dismissTournamentAchievement(${a.achievementId});renderPlayerAchievements(${playerId})">${I18n.t('ach_btn_remove_auto')}</button>
-                  ` : `
+                  ${a.autoGenerated ? (
+                    isCurrentSeason
+                    ? `<button class="btn btn-secondary btn-sm" onclick="dismissTournamentAchievement(${a.achievementId});renderPlayerAchievements(${playerId})">${I18n.t('ach_btn_remove_auto')}</button>`
+                    : `<button class="btn btn-secondary btn-sm" onclick="offerSwitchSeasonForAchievement(${sid})">${I18n.t('ach_btn_switch_season_to_edit')}</button>`
+                  ) : `
                     <button class="btn btn-secondary btn-sm" onclick="editAchievementEntry(${playerId},${a.achievementId})">${I18n.t('common_edit')}</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteAchievementEntry(${playerId},${a.achievementId})">${I18n.t('common_delete')}</button>
                   `}
@@ -8393,6 +8407,27 @@ async function renderPlayerAchievements(playerId) {
 // pattern already used elsewhere (Confirm-style modal), clearly showing
 // the season and club it belongs to. Club is derived fresh here too,
 // never read from a stored field on the achievement.
+// For a past-season auto-generated achievement, "Remove from Achievements"
+// doesn't make sense the way it does for the current season — that
+// season is closed, and editing/removing it properly should happen from
+// within that season's own context. This offers to switch the active
+// season there instead, reusing the exact same season-switch mechanism
+// as the Settings "Switch Season" button.
+async function offerSwitchSeasonForAchievement(seasonId) {
+  const season = await DB.get('seasons', seasonId);
+  if (!season) return;
+  Confirm.show(
+    I18n.t('ach_confirm_switch_season_title'),
+    I18n.t('ach_confirm_switch_season_body', {season: season.seasonName}),
+    async () => {
+      await DB.put('appMeta', { metaKey:'currentSeason', value: seasonId });
+      await loadMeta();
+      Toast.show(I18n.t('set_season_switched'));
+      await Nav.go('home');
+    }
+  );
+}
+
 async function openAchievementDetail(playerId, achievementId) {
   const a = await DB.get('achievements', achievementId);
   if (!a) return;
