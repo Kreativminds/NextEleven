@@ -1710,6 +1710,12 @@ async function clearFirstTimeWizardDraft() {
   await DB.del('appMeta', 'firstTimeWizardDraft');
 }
 
+async function handleDismissWizardDraft() {
+  await clearFirstTimeWizardDraft();
+  Toast.show(I18n.t('ftw_draft_dismissed'));
+  await Render.settings();
+}
+
 // The automatic-trigger check — only true when there is genuinely
 // nothing yet: no clubTeams, no seasons. Never fires again once a
 // Club/Team or Season exists, even if the wizard itself was abandoned
@@ -4496,6 +4502,7 @@ const TR = {
     ftw_complete_title:'NextEleven is ready.', ftw_complete_body:'Your club, season, and squad are all set up.',
     ftw_btn_go_home:'Go to Home', ftw_btn_add_first_game:'Add First Game',
     ftw_resume_title:'Resume Setup', ftw_resume_hint:'You have an unfinished setup — pick up where you left off.',
+    ftw_btn_dismiss_draft:'Dismiss', ftw_draft_dismissed:'Setup draft dismissed.',
     ftw_btn_resume_setup:'Resume Setup',
     gs_title:'Getting Started', gs_btn_dismiss:'Dismiss',
     gs_item_club:'Club created', gs_item_season:'Season created', gs_item_squad:'Squad created',
@@ -5596,6 +5603,7 @@ const TR = {
     ftw_complete_title:'O NextEleven está pronto.', ftw_complete_body:'O seu clube, época e plantel estão todos configurados.',
     ftw_btn_go_home:'Ir para o Início', ftw_btn_add_first_game:'Adicionar Primeiro Jogo',
     ftw_resume_title:'Retomar Configuração', ftw_resume_hint:'Tem uma configuração por terminar — continue de onde ficou.',
+    ftw_btn_dismiss_draft:'Dispensar', ftw_draft_dismissed:'Rascunho de configuração dispensado.',
     ftw_btn_resume_setup:'Retomar Configuração',
     gs_title:'Primeiros Passos', gs_btn_dismiss:'Dispensar',
     gs_item_club:'Clube criado', gs_item_season:'Época criada', gs_item_squad:'Plantel criado',
@@ -13358,11 +13366,20 @@ const Render = (() => {
         <h3>${I18n.t('set_season_mgmt')}</h3>
         ${await (async () => {
           const draft = await loadFirstTimeWizardDraft();
-          if (!draft) return '';
+          // Never show once real seasons already exist — resuming a
+          // first-time setup wizard is meaningless at that point, even
+          // if a stale draft happens to still be sitting in local
+          // appMeta (e.g. real data was populated a different way, like
+          // a direct historical import, rather than by finishing the
+          // wizard itself).
+          if (!draft || seasons.length > 0) return '';
           return `<div class="card" style="margin-bottom:12px;background:#fbf3d9;border:1px solid #d9c26b">
             <div class="card-title">${I18n.t('ftw_resume_title')}</div>
             <p style="font-size:12px;color:#8a6d1e;margin-bottom:10px">${I18n.t('ftw_resume_hint')}</p>
-            <button class="btn btn-primary" onclick="openFirstTimeWizard()">${I18n.t('ftw_btn_resume_setup')}</button>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-primary" onclick="openFirstTimeWizard()">${I18n.t('ftw_btn_resume_setup')}</button>
+              <button class="btn btn-secondary" onclick="handleDismissWizardDraft()">${I18n.t('ftw_btn_dismiss_draft')}</button>
+            </div>
           </div>`;
         })()}
         ${seasons.length ? `
