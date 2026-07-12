@@ -306,15 +306,33 @@ function render(el, data) {
     </div>` : ''}
 
     ${tournaments.length ? `
+    ${tournaments.map(t => {
+      const outcome = getTournamentOutcomePublic(t, games, gamePlayers, 'EN');
+      const matchesPlayed = games.filter(g => g.tournamentId === t.tournamentId).length;
+      return `<div class="card">
+        <div class="card-title">Tournament</div>
+        <div style="font-weight:700;font-size:15px">${esc(t.name)}</div>
+        <div style="font-size:13px;margin-top:4px">${outcome.emoji ? outcome.emoji + ' ' : ''}${esc(outcome.label)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${matchesPlayed} match${matchesPlayed===1?'':'es'} played</div>
+      </div>`;
+    }).join('')}
+    ` : ''}
+
+    ${(data.availability && (data.availability.available + data.availability.unavailable) > 0) ? `
     <div class="card">
-      <div class="card-title">Tournaments</div>
-      ${tournaments.map(t => {
-        const outcome = getTournamentOutcomePublic(t, games, gamePlayers, 'EN');
-        return `<div class="row">
-          <span class="row-name">${esc(t.name)}</span>
-          <span class="row-meta">${outcome.emoji ? outcome.emoji + ' ' : ''}${esc(outcome.label)}</span>
-        </div>`;
-      }).join('')}
+      <div class="card-title">Player Availability</div>
+      <div class="stat-grid">
+        <div><div class="stat-label">Available</div><div class="stat-value" style="color:var(--green)">${data.availability.available}</div></div>
+        <div><div class="stat-label">Unavailable</div><div class="stat-value" style="color:var(--red)">${data.availability.unavailable}</div></div>
+      </div>
+      ${data.availability.unavailablePlayers && data.availability.unavailablePlayers.length ? `
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        ${data.availability.unavailablePlayers.map(p => `<div class="row">
+          <span class="squad-num">${p.shirtNumber||'—'}</span>
+          <span class="row-name">${esc(shortName(p.fullName))}${p.primaryPosition?' · '+esc(p.primaryPosition):''}</span>
+          <span class="row-meta" style="color:var(--red)">Unavailable</span>
+        </div>`).join('')}
+      </div>` : ''}
     </div>` : ''}
 
     ${players.length ? `
