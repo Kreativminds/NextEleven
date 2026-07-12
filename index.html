@@ -2786,39 +2786,59 @@ async function renderShareTeamCard() {
     el.innerHTML = `<p style="font-size:12px;color:var(--muted)">${I18n.t('set_share_needs_login')}</p>`;
     return;
   }
-  if (!State.currentSeasonId) {
+
+  const allSeasons = (await DB.getAll('seasons')).sort((a,b) => (getSeasonStartYear(b)||0) - (getSeasonStartYear(a)||0));
+  if (!allSeasons.length) {
     el.innerHTML = `<p style="font-size:12px;color:var(--muted)">${I18n.t('set_share_needs_season')}</p>`;
     return;
   }
 
   el.innerHTML = `<div style="font-size:11px;color:var(--muted)">${I18n.t('set_share_loading')}</div>`;
 
-  let existing = null;
-  try {
-    existing = await Sync.getTeamShareLink(State.currentSeasonId);
-  } catch(err) {
-    el.innerHTML = `<p style="font-size:12px;color:var(--red,#b03030)">${esc(err.message)}</p>`;
-    return;
-  }
+  // One card per real Season, each fully self-contained — every action
+  // inside a card is scoped to THAT season's own seasonId explicitly,
+  // never State.currentSeasonId. This is the actual fix for the bug
+  // where a link generated while one season was active silently kept
+  // showing that season's data forever, even after switching seasons —
+  // links are now genuinely independent per Season, matching the
+  // approved "each Season owns its own share link" architecture.
+  const cardsHtml = await Promise.all(allSeasons.map(async season => {
+    let existing = null;
+    try {
+      existing = await Sync.getTeamShareLink(season.seasonId);
+    } catch(err) {
+      return `<div class="card" style="margin-bottom:10px"><div style="font-weight:700;font-size:13px">${esc(season.seasonName)}</div><p style="font-size:12px;color:#b03030">${esc(err.message)}</p></div>`;
+    }
 
-  if (!existing) {
-    el.innerHTML = `<button class="btn btn-primary btn-sm" onclick="handleGenerateShareLink()">${I18n.t('set_share_btn_generate')}</button>`;
-    return;
-  }
+    const isCurrent = season.seasonId === State.currentSeasonId;
+    if (!existing) {
+      return `<div class="card" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-weight:700;font-size:13px">${esc(season.seasonName)}${isCurrent?` <span class="pos-pill">${I18n.t('set_share_current_badge')}</span>`:''}</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="handleGenerateShareLink(${season.seasonId})">${I18n.t('set_share_btn_generate')}</button>
+      </div>`;
+    }
 
-  const url = buildTeamShareUrl(existing.share_token);
-  el.innerHTML = `
-    <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${existing.enabled ? I18n.t('set_share_status_active') : I18n.t('set_share_status_disabled')}</div>
-    <div style="font-size:12px;word-break:break-all;background:var(--bg,#f2f4f7);padding:8px 10px;border-radius:4px;margin-bottom:10px">${esc(url)}</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px">
-      <button class="btn btn-secondary btn-sm" onclick="handleCopyShareLink('${esc(url)}')">${I18n.t('set_share_btn_copy')}</button>
-      ${existing.enabled
-        ? `<button class="btn btn-secondary btn-sm" onclick="handleToggleShareLink(false)">${I18n.t('set_share_btn_disable')}</button>`
-        : `<button class="btn btn-secondary btn-sm" onclick="handleToggleShareLink(true)">${I18n.t('set_share_btn_enable')}</button>`
-      }
-      <button class="btn btn-danger btn-sm" onclick="handleRegenerateShareLink()">${I18n.t('set_share_btn_regenerate')}</button>
-    </div>
-  `;
+    const url = buildTeamShareUrl(existing.share_token);
+    return `<div class="card" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-weight:700;font-size:13px">${esc(season.seasonName)}${isCurrent?` <span class="pos-pill">${I18n.t('set_share_current_badge')}</span>`:''}</div>
+        <div style="font-size:11px;color:var(--muted)">${existing.enabled ? I18n.t('set_share_status_active') : I18n.t('set_share_status_disabled')}</div>
+      </div>
+      <div style="font-size:12px;word-break:break-all;background:var(--bg,#f2f4f7);padding:8px 10px;border-radius:4px;margin-bottom:10px">${esc(url)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <button class="btn btn-secondary btn-sm" onclick="handleCopyShareLink('${esc(url)}')">${I18n.t('set_share_btn_copy')}</button>
+        ${existing.enabled
+          ? `<button class="btn btn-secondary btn-sm" onclick="handleToggleShareLink(${season.seasonId}, false)">${I18n.t('set_share_btn_disable')}</button>`
+          : `<button class="btn btn-secondary btn-sm" onclick="handleToggleShareLink(${season.seasonId}, true)">${I18n.t('set_share_btn_enable')}</button>`
+        }
+        <button class="btn btn-danger btn-sm" onclick="handleRegenerateShareLink(${season.seasonId})">${I18n.t('set_share_btn_regenerate')}</button>
+      </div>
+    </div>`;
+  }));
+
+  el.innerHTML = cardsHtml.join('');
 }
 
 // team.html is deployed alongside index.html on the same GitHub Pages
@@ -2830,9 +2850,9 @@ function buildTeamShareUrl(token) {
   return `${base}team.html?token=${encodeURIComponent(token)}`;
 }
 
-async function handleGenerateShareLink() {
+async function handleGenerateShareLink(seasonId) {
   try {
-    await Sync.generateTeamShareLink(State.currentSeasonId);
+    await Sync.generateTeamShareLink(seasonId);
     Toast.show(I18n.t('set_share_generated'));
     await renderShareTeamCard();
   } catch(err) {
@@ -2840,10 +2860,10 @@ async function handleGenerateShareLink() {
   }
 }
 
-async function handleRegenerateShareLink() {
+async function handleRegenerateShareLink(seasonId) {
   Confirm.show(I18n.t('set_share_confirm_regen_title'), I18n.t('set_share_confirm_regen_body'), async () => {
     try {
-      await Sync.generateTeamShareLink(State.currentSeasonId);
+      await Sync.generateTeamShareLink(seasonId);
       Toast.show(I18n.t('set_share_generated'));
       await renderShareTeamCard();
     } catch(err) {
@@ -2852,9 +2872,9 @@ async function handleRegenerateShareLink() {
   });
 }
 
-async function handleToggleShareLink(enabled) {
+async function handleToggleShareLink(seasonId, enabled) {
   try {
-    await Sync.setTeamShareEnabled(State.currentSeasonId, enabled);
+    await Sync.setTeamShareEnabled(seasonId, enabled);
     Toast.show(enabled ? I18n.t('set_share_enabled_toast') : I18n.t('set_share_disabled_toast'));
     await renderShareTeamCard();
   } catch(err) {
@@ -3219,6 +3239,15 @@ function toggleOpponentsImportSection() {
   if (chevron) chevron.innerHTML = isOpen ? '&#9660;' : '&#9650;';
 }
 
+function toggleAddOpponentSection() {
+  const section = document.getElementById('oppAddSection');
+  const chevron = document.getElementById('oppAddChevron');
+  if (!section) return;
+  const isOpen = section.style.display !== 'none';
+  section.style.display = isOpen ? 'none' : 'block';
+  if (chevron) chevron.innerHTML = isOpen ? '&#9660;' : '&#9650;';
+}
+
 function handleOppPageImportFile(input) {
   const file = input.files && input.files[0];
   if (!file) return;
@@ -3291,19 +3320,24 @@ async function renderOpponentsTab() {
         </div>
       </div>
 
-      <div class="form-panel" style="margin-bottom:16px">
-        <h3>${I18n.t('opp_form_add_title')}</h3>
-        <div class="form-grid">
-          <div class="form-group"><label>${I18n.t('opp_lbl_name')}</label><input id="opp-name" type="text" placeholder="e.g. Sporting CP"></div>
-          <div class="form-group"><label>${I18n.t('opp_lbl_agegroup')}</label><input id="opp-age" type="text" placeholder="e.g. Sub-14"></div>
-          <div class="form-group"><label>${I18n.t('opp_lbl_level')}</label><input id="opp-level" type="text" placeholder="e.g. AFL II Divisão"></div>
-          <div class="form-group"><label>${I18n.t('opp_lbl_logo')}</label><input id="opp-logo" type="url" placeholder="https://..."></div>
-          <div class="form-group full"><label>${I18n.t('opp_lbl_notes')}</label><textarea id="opp-notes" placeholder=""></textarea></div>
+      <div class="card" style="margin-bottom:16px;background:var(--bg)">
+        <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleAddOpponentSection()">
+          <div class="card-title" style="margin-bottom:0">${I18n.t('opp_form_add_title')}</div>
+          <span id="oppAddChevron">&#9660;</span>
         </div>
-        <div class="form-actions">
-          <button class="btn btn-primary" id="btnSaveOpponent">${I18n.t('common_save')}</button>
+        <div id="oppAddSection" style="display:none;margin-top:12px">
+          <div class="form-grid">
+            <div class="form-group"><label>${I18n.t('opp_lbl_name')}</label><input id="opp-name" type="text" placeholder="e.g. Sporting CP"></div>
+            <div class="form-group"><label>${I18n.t('opp_lbl_agegroup')}</label><input id="opp-age" type="text" placeholder="e.g. Sub-14"></div>
+            <div class="form-group"><label>${I18n.t('opp_lbl_level')}</label><input id="opp-level" type="text" placeholder="e.g. AFL II Divisão"></div>
+            <div class="form-group"><label>${I18n.t('opp_lbl_logo')}</label><input id="opp-logo" type="url" placeholder="https://..."></div>
+            <div class="form-group full"><label>${I18n.t('opp_lbl_notes')}</label><textarea id="opp-notes" placeholder=""></textarea></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" id="btnSaveOpponent">${I18n.t('common_save')}</button>
+          </div>
+          <input type="hidden" id="opp-id">
         </div>
-        <input type="hidden" id="opp-id">
       </div>
 
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('opp_count', {n: all.length})}</div>
@@ -3341,6 +3375,12 @@ function resetOpponentForm() {
 async function editOpponent(id) {
   const o = await DB.get('opponents', id);
   if (!o) return;
+  const section = document.getElementById('oppAddSection');
+  const chevron = document.getElementById('oppAddChevron');
+  if (section && section.style.display === 'none') {
+    section.style.display = 'block';
+    if (chevron) chevron.innerHTML = '&#9650;';
+  }
   document.getElementById('opp-name').value = o.opponentName||'';
   document.getElementById('opp-age').value = o.ageGroup||'';
   document.getElementById('opp-level').value = o.level||'';
@@ -4420,7 +4460,7 @@ const TR = {
     set_editing_prefix:'Editing:',
     set_editing_suffix:'(the active season above). Home Ground auto-fills the Venue field on Home games.',
     set_btn_save_changes:'Save Changes',
-    set_share_title:'Share Team', set_share_hint:'Create a link the other team parents can open without an account — read-only, live season stats.',
+    set_share_current_badge:'Current', set_share_title:'Share Team', set_share_hint:'Create a link the other team parents can open without an account — read-only, live season stats.',
     set_share_needs_login:'Sign in to cloud sync to create a share link.', set_share_needs_season:'Create a season first.',
     set_share_loading:'Loading…', set_share_btn_generate:'Generate Link',
     set_share_status_active:'Active — visible to anyone with the link', set_share_status_disabled:'Disabled — link no longer works',
@@ -5492,7 +5532,7 @@ const TR = {
     set_editing_prefix:'A editar:',
     set_editing_suffix:'(a época ativa acima). O Recinto preenche automaticamente o campo Local nos jogos em casa.',
     set_btn_save_changes:'Guardar Alterações',
-    set_share_title:'Partilhar Equipa', set_share_hint:'Crie um link que os outros pais da equipa podem abrir sem conta — só de leitura, estatísticas da época em tempo real.',
+    set_share_current_badge:'Atual', set_share_title:'Partilhar Equipa', set_share_hint:'Crie um link que os outros pais da equipa podem abrir sem conta — só de leitura, estatísticas da época em tempo real.',
     set_share_needs_login:'Inicie sessão na sincronização na nuvem para criar um link.', set_share_needs_season:'Crie primeiro uma época.',
     set_share_loading:'A carregar…', set_share_btn_generate:'Gerar Link',
     set_share_status_active:'Ativo — visível a quem tiver o link', set_share_status_disabled:'Desativado — o link já não funciona',
@@ -12736,25 +12776,30 @@ const Render = (() => {
           <button class="btn btn-primary" style="margin-top:10px" id="btnSwitchSeason">${I18n.t('set_btn_switch_season')}</button>
         </div>
         <div class="card">
-          <div class="card-title">${I18n.t('set_card_edit_season')}</div>
-          <div class="form-grid">
-            <div class="form-group"><label>${I18n.t('set_lbl_start_year')}</label>
-              <input id="sf-edit-startyear" type="number" min="2000" max="2100" value="${State.currentSeason?.startYear||''}" oninput="updateSeasonEditNamePreview()">
-              <div style="font-size:11px;color:var(--muted);margin-top:4px">${I18n.t('set_season_name_preview')} <strong id="sf-edit-name-preview" style="color:var(--dark)">${esc(State.currentSeason?.seasonName||'')}</strong></div>
-            </div>
-            <div class="form-group"><label>${I18n.t('set_lbl_club_name')}</label><input id="sf-edit-club" type="text" placeholder="e.g. SL Olivais" value="${esc(State.currentSeason?.clubName||'')}"></div>
-            <div class="form-group"><label>Home Ground</label><input id="sf-edit-homeground" type="text" placeholder="e.g. Campo SL Olivais" value="${esc(State.currentSeason?.homeGround||'')}"></div>
-            <div class="form-group"><label>Age Group</label>${renderAgeGroupField('sf-edit-age', 'sf-edit-age-other', State.currentSeason?.ageGroup||'')}</div>
-            <div class="form-group"><label>${I18n.t('set_lbl_shirt_color')} <span style="font-size:10px;font-weight:400;color:#999">${I18n.t('set_shirt_color_hint')}</span></label>
-              <div style="display:flex;gap:6px;align-items:center">
-                <input id="sf-edit-shirtcolor" type="color" value="${esc(State.currentSeason?.shirtColor||'#B23333')}" style="width:44px;height:36px;padding:2px;border:1px solid var(--border);border-radius:4px">
-                <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('sf-edit-shirtcolor').value='#B23333'">${I18n.t('set_btn_use_default')}</button>
+          <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleEditSeasonSection()">
+            <div class="card-title" style="margin-bottom:0">${I18n.t('set_card_edit_season')}</div>
+            <span id="editSeasonChevron">&#9660;</span>
+          </div>
+          <div id="editSeasonSection" style="display:none;margin-top:12px">
+            <div class="form-grid">
+              <div class="form-group"><label>${I18n.t('set_lbl_start_year')}</label>
+                <input id="sf-edit-startyear" type="number" min="2000" max="2100" value="${State.currentSeason?.startYear||''}" oninput="updateSeasonEditNamePreview()">
+                <div style="font-size:11px;color:var(--muted);margin-top:4px">${I18n.t('set_season_name_preview')} <strong id="sf-edit-name-preview" style="color:var(--dark)">${esc(State.currentSeason?.seasonName||'')}</strong></div>
+              </div>
+              <div class="form-group"><label>${I18n.t('set_lbl_club_name')}</label><input id="sf-edit-club" type="text" placeholder="e.g. SL Olivais" value="${esc(State.currentSeason?.clubName||'')}"></div>
+              <div class="form-group"><label>Home Ground</label><input id="sf-edit-homeground" type="text" placeholder="e.g. Campo SL Olivais" value="${esc(State.currentSeason?.homeGround||'')}"></div>
+              <div class="form-group"><label>Age Group</label>${renderAgeGroupField('sf-edit-age', 'sf-edit-age-other', State.currentSeason?.ageGroup||'')}</div>
+              <div class="form-group"><label>${I18n.t('set_lbl_shirt_color')} <span style="font-size:10px;font-weight:400;color:#999">${I18n.t('set_shirt_color_hint')}</span></label>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <input id="sf-edit-shirtcolor" type="color" value="${esc(State.currentSeason?.shirtColor||'#B23333')}" style="width:44px;height:36px;padding:2px;border:1px solid var(--border);border-radius:4px">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('sf-edit-shirtcolor').value='#B23333'">${I18n.t('set_btn_use_default')}</button>
+                </div>
               </div>
             </div>
+            <p style="font-size:11px;color:var(--muted);margin-top:6px">${I18n.t('set_editing_prefix')} <strong>${esc(State.currentSeason?.seasonName||'—')}</strong> ${I18n.t('set_editing_suffix')}</p>
+            <button class="btn btn-primary" style="margin-top:10px" id="btnSaveSeasonEdit">${I18n.t('set_btn_save_changes')}</button>
+            <button class="btn btn-danger" style="margin-top:10px;margin-left:8px" onclick="handleDeleteCurrentSeason()">${I18n.t('set_btn_delete_season')}</button>
           </div>
-          <p style="font-size:11px;color:var(--muted);margin-top:6px">${I18n.t('set_editing_prefix')} <strong>${esc(State.currentSeason?.seasonName||'—')}</strong> ${I18n.t('set_editing_suffix')}</p>
-          <button class="btn btn-primary" style="margin-top:10px" id="btnSaveSeasonEdit">${I18n.t('set_btn_save_changes')}</button>
-          <button class="btn btn-danger" style="margin-top:10px;margin-left:8px" onclick="handleDeleteCurrentSeason()">${I18n.t('set_btn_delete_season')}</button>
         </div>` : ''}
       </div>
 
@@ -16761,6 +16806,15 @@ function updateSeasonNamePreview() {
   const name = buildSeasonName(yearInput.value);
   preview.textContent = name || '—';
   hidden.value = name;
+}
+
+function toggleEditSeasonSection() {
+  const section = document.getElementById('editSeasonSection');
+  const chevron = document.getElementById('editSeasonChevron');
+  if (!section) return;
+  const isOpen = section.style.display !== 'none';
+  section.style.display = isOpen ? 'none' : 'block';
+  if (chevron) chevron.innerHTML = isOpen ? '&#9660;' : '&#9650;';
 }
 
 function updateSeasonEditNamePreview() {
