@@ -4543,6 +4543,7 @@ const TR = {
     squad_btn_add_injury:'+ Injury',
     squad_archived_badge:'Archived',
     squad_btn_show_archived:'Show Archived ({n})', squad_btn_hide_archived:'Hide Archived',
+    squad_total_count:'{n} player(s) total', squad_archived_hidden_count:'{n} archived (hidden)',
     squad_col_num:'#', squad_col_name:'Name', squad_col_position:'Position', squad_col_pos2:'2nd Pos',
     squad_col_foot:'Foot', squad_col_dob:'DOB', squad_tracked_label_default:'Tracked',
 
@@ -5654,6 +5655,7 @@ const TR = {
     squad_btn_add_injury:'+ Lesão',
     squad_archived_badge:'Arquivado',
     squad_btn_show_archived:'Mostrar Arquivados ({n})', squad_btn_hide_archived:'Ocultar Arquivados',
+    squad_total_count:'{n} jogador(es) no total', squad_archived_hidden_count:'{n} arquivado(s) (ocultos)',
     squad_col_num:'#', squad_col_name:'Nome', squad_col_position:'Posição', squad_col_pos2:'2ª Pos',
     squad_col_foot:'Pé', squad_col_dob:'D. Nasc.', squad_tracked_label_default:'Acompanhado',
 
@@ -13176,6 +13178,7 @@ const Render = (() => {
     }).join('');
 
     el.innerHTML = archivedToggle + `
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:700">${I18n.t('squad_total_count', {n: players.length})}${(!showArchived && archivedCount) ? ' · ' + I18n.t('squad_archived_hidden_count', {n: archivedCount}) : ''}</div>
       <div class="game-detail-table-wrap">
         <table class="game-detail-table">
           <thead><tr>
