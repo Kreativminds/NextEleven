@@ -201,6 +201,12 @@ function renderSeasonLeaders(players, finishedGames, gamePlayers) {
   </div>`;
 }
 
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function fmtBirthday(b) {
+  if (!b.birthdayMonth || !b.birthdayDay) return '';
+  return b.birthdayDay + ' ' + MONTH_NAMES[b.birthdayMonth - 1];
+}
+
 function renderBirthdaySection(birthdays) {
   if (!birthdays.length) return '';
 
@@ -217,7 +223,7 @@ function renderBirthdaySection(birthdays) {
         <div style="padding:6px 0">
           <div style="font-size:28px">🎂</div>
           <div style="font-weight:800;font-size:16px;margin-top:4px">Happy Birthday, ${esc(shortName(b.fullName))}!</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">Turning ${b.turningAge} today${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${fmtBirthday(b)} · Turning ${b.turningAge} today${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</div>
         </div>
       `).join('<hr style="border:none;border-top:1px solid #f0d98a;margin:10px 0">')}
     </div>`;
@@ -231,7 +237,7 @@ function renderBirthdaySection(birthdays) {
       <div class="card-title" style="color:#8a6d1e">🎂 Birthday${thisWeekBirthdays.length>1?'s':''} This Week</div>
       ${thisWeekBirthdays.map(b => `<div class="row">
         <span class="row-name">${esc(shortName(b.fullName))}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</span>
-        <span class="row-meta">Turning ${b.turningAge} · ${b.daysUntil === 1 ? 'tomorrow' : 'in ' + b.daysUntil + ' days'}</span>
+        <span class="row-meta">${fmtBirthday(b)} · Turning ${b.turningAge} · ${b.daysUntil === 1 ? 'tomorrow' : 'in ' + b.daysUntil + ' days'}</span>
       </div>`).join('')}
     </div>`;
   }
@@ -243,7 +249,7 @@ function renderBirthdaySection(birthdays) {
     <div class="card-title">Upcoming Birthdays</div>
     ${upcoming.map(b => `<div class="row">
       <span class="row-name">${esc(shortName(b.fullName))}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</span>
-      <span class="row-meta">Turning ${b.turningAge} · in ${b.daysUntil} days</span>
+      <span class="row-meta">${fmtBirthday(b)} · Turning ${b.turningAge} · in ${b.daysUntil} days</span>
     </div>`).join('')}
   </div>`;
 }
@@ -382,11 +388,15 @@ function render(el, data) {
     ${players.length ? `
     <div class="card">
       <div class="card-title">Squad</div>
-      ${players.map(p => `<div class="row">
-        <span class="squad-num">${p.shirtNumber||'—'}</span>
-        <span class="row-name">${esc(p.fullName)}</span>
-        <span class="row-meta">${p.primaryPosition?esc(p.primaryPosition):''}</span>
-      </div>`).join('')}
+      ${players.map(p => {
+        const s = playerPublicStats(p.playerId, finishedGames, gamePlayers);
+        const mostPlayed = s.mostPlayedPosition || p.primaryPosition;
+        return `<div class="row">
+          <span class="squad-num">${p.shirtNumber||'—'}</span>
+          <span class="row-name">${esc(p.fullName)}</span>
+          <span class="row-meta">${p.primaryPosition?esc(p.primaryPosition):''}${(mostPlayed && mostPlayed !== p.primaryPosition) ? ' · ' + esc(mostPlayed) + ' (most played)' : ''}</span>
+        </div>`;
+      }).join('')}
     </div>` : ''}
 
     ${players.length ? `

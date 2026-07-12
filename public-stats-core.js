@@ -103,14 +103,33 @@ function teamSeasonStats(games, allGP) {
 // public RPC and are out of scope for the public page per approved spec).
 function playerPublicStats(playerId, games, allGP) {
   let calledUp=0, goals=0, assists=0;
+  const positionCounts = {};
+  const positionMostRecentKey = {};
   games.forEach(g => {
     const gp = allGP.find(r => r.gameId===g.gameId && r.playerId===playerId);
     if (!gp || !gp.calledUp) return;
     calledUp++;
     goals += parseInt(gp.goals)||0;
     assists += parseInt(gp.assists)||0;
+    if (gp.positionPlayed) {
+      positionCounts[gp.positionPlayed] = (positionCounts[gp.positionPlayed]||0) + 1;
+      const key = gameSortKey(g);
+      if (!positionMostRecentKey[gp.positionPlayed] || key > positionMostRecentKey[gp.positionPlayed]) {
+        positionMostRecentKey[gp.positionPlayed] = key;
+      }
+    }
   });
-  return { calledUp, goals, assists };
+
+  let mostPlayedPosition = null, bestCount = -1, bestRecency = -1;
+  Object.keys(positionCounts).forEach(pos => {
+    const count = positionCounts[pos];
+    const recency = positionMostRecentKey[pos];
+    if (count > bestCount || (count === bestCount && recency > bestRecency)) {
+      mostPlayedPosition = pos; bestCount = count; bestRecency = recency;
+    }
+  });
+
+  return { calledUp, goals, assists, mostPlayedPosition };
 }
 
 // Adapted from the main app's async getTournamentOutcome(tournament),

@@ -4544,7 +4544,7 @@ const TR = {
     squad_archived_badge:'Archived',
     squad_btn_show_archived:'Show Archived ({n})', squad_btn_hide_archived:'Hide Archived',
     squad_total_count:'{n} player(s) total', squad_archived_hidden_count:'{n} archived (hidden)',
-    squad_col_num:'#', squad_col_name:'Name', squad_col_position:'Position', squad_col_pos2:'2nd Pos',
+    squad_col_num:'#', squad_col_name:'Name', squad_col_position:'Preferred', squad_col_most_played:'Most Played', squad_col_pos2:'2nd Pos',
     squad_col_foot:'Foot', squad_col_dob:'DOB', squad_tracked_label_default:'Tracked',
 
     // ── GAMES PAGE ──
@@ -4590,6 +4590,7 @@ const TR = {
     gd_autosave_note:'Changes save automatically — no Save button needed.',
     gd_btn_back:'Back to Games',
     gd_squad_hint:"Tap a player to add them to the squad for this game. Use this as soon as you know who's available — before match day.",
+    gd_position_picker_title:'Position Played',
     gd_squad_in_squad:'In squad:',
     gd_btn_copy_squad:'Copy Squad from {opponent} ({date})',
     gd_copy_confirm_title:'Copy Squad',
@@ -5656,7 +5657,7 @@ const TR = {
     squad_archived_badge:'Arquivado',
     squad_btn_show_archived:'Mostrar Arquivados ({n})', squad_btn_hide_archived:'Ocultar Arquivados',
     squad_total_count:'{n} jogador(es) no total', squad_archived_hidden_count:'{n} arquivado(s) (ocultos)',
-    squad_col_num:'#', squad_col_name:'Nome', squad_col_position:'Posição', squad_col_pos2:'2ª Pos',
+    squad_col_num:'#', squad_col_name:'Nome', squad_col_position:'Preferida', squad_col_most_played:'Mais Jogada', squad_col_pos2:'2ª Pos',
     squad_col_foot:'Pé', squad_col_dob:'D. Nasc.', squad_tracked_label_default:'Acompanhado',
 
     // ── GAMES PAGE ──
@@ -5702,6 +5703,7 @@ const TR = {
     gd_autosave_note:'As alterações são guardadas automaticamente — não é necessário gravar.',
     gd_btn_back:'Voltar aos Jogos',
     gd_squad_hint:'Toque num jogador para o adicionar à convocatória deste jogo. Use isto assim que souber quem está disponível — antes do dia do jogo.',
+    gd_position_picker_title:'Posição Jogada',
     gd_squad_in_squad:'Convocados:',
     gd_btn_copy_squad:'Copiar Convocatória de {opponent} ({date})',
     gd_copy_confirm_title:'Copiar Convocatória',
@@ -13092,6 +13094,46 @@ const Render = (() => {
   }
 
   // ── SQUAD ──────────────────────────────────────────────────────────────────
+  // Computes each player's most-played position this season, per the
+  // approved rule: count only games where the player was called up and
+  // has a recorded positionPlayed; ties broken by whichever position
+  // was used in the most recent game; falls back to the player's own
+  // primaryPosition when no game-specific position has ever been
+  // recorded at all.
+  async function computeMostPlayedPosition(playerId, primaryPosition) {
+    const gps = (await DB.getAll('gamePlayers', 'playerId', playerId))
+      .filter(gp => gp.calledUp && gp.positionPlayed);
+
+    if (!gps.length) return primaryPosition || null;
+
+    const games = await DB.getAll('games');
+    const gameById = {};
+    games.forEach(g => { gameById[g.gameId] = g; });
+
+    const counts = {};
+    const mostRecentDateForPosition = {};
+    gps.forEach(gp => {
+      const pos = gp.positionPlayed;
+      counts[pos] = (counts[pos] || 0) + 1;
+      const game = gameById[gp.gameId];
+      const key = game ? gameSortKey(game) : 0;
+      if (!mostRecentDateForPosition[pos] || key > mostRecentDateForPosition[pos]) {
+        mostRecentDateForPosition[pos] = key;
+      }
+    });
+
+    let best = null, bestCount = -1, bestRecency = -1;
+    Object.keys(counts).forEach(pos => {
+      const count = counts[pos];
+      const recency = mostRecentDateForPosition[pos];
+      if (count > bestCount || (count === bestCount && recency > bestRecency)) {
+        best = pos; bestCount = count; bestRecency = recency;
+      }
+    });
+
+    return best || primaryPosition || null;
+  }
+
   async function squad(search='', posFilter='') {
     const el = document.getElementById('squadContent');
     const sub = document.getElementById('squadSubtitle');
@@ -13154,6 +13196,11 @@ const Render = (() => {
       return `<th class="${extraClass}" style="cursor:pointer;user-select:none" onclick="squadSort('${key}')">${label}${arrow}</th>`;
     }
 
+    const mostPlayedByPlayerId = {};
+    for (const p of players) {
+      mostPlayedByPlayerId[p.playerId] = await computeMostPlayedPosition(p.playerId, p.primaryPosition);
+    }
+
     const rows = players.map(p => {
       const injury = activeInjuryByPlayer[p.playerId];
       const rowBg = injury ? '#fbeaea' : '';
@@ -13164,6 +13211,7 @@ const Render = (() => {
         <td class="col-sticky-num" ${stickyBg}>${p.shirtNumber||'—'}</td>
         <td class="col-sticky-name" title="${esc(p.fullName)}" style="${injury?`background:${rowBg};`:''}${p.trackingStatus==='tracked'?'cursor:pointer;text-decoration:underline;text-decoration-color:#ccc':''}" ${p.trackingStatus==='tracked'?`onclick="openPlayerCardPopup(${p.playerId})"`:''}>${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor" title="${esc(p.trackingLabel||I18n.t('squad_tracked_label_default'))}">${esc(p.trackingLabel||'★')}</span>`:''} ${!p.isActive?`<span class="badge-nc badge" style="font-size:9px">${I18n.t('squad_archived_badge')}</span>`:''}</td>
         <td><span class="pos-pill">${p.primaryPosition||'—'}</span></td>
+        <td><span class="pos-pill" style="background:#e8f0fe;color:#1a56c4">${esc(mostPlayedByPlayerId[p.playerId]||'—')}</span></td>
         <td>${p.secondaryPosition||'—'}</td>
         <td>${p.dominantFoot||'—'}</td>
         <td>${p.dateOfBirth?fmtDate(p.dateOfBirth):'—'}</td>
@@ -13185,6 +13233,7 @@ const Render = (() => {
             ${thSort('shirtNumber',I18n.t('squad_col_num'),'col-sticky-num')}
             ${thSort('fullName',I18n.t('squad_col_name'),'col-sticky-name')}
             ${thSort('primaryPosition',I18n.t('squad_col_position'))}
+            <th>${I18n.t('squad_col_most_played')}</th>
             ${thSort('secondaryPosition',I18n.t('squad_col_pos2'))}
             ${thSort('dominantFoot',I18n.t('squad_col_foot'))}
             ${thSort('dateOfBirth',I18n.t('squad_col_dob'))}
@@ -16474,7 +16523,7 @@ async function renderSquadListTab(gameId) {
             <div class="wp-info">
               <span class="wp-num">${p.shirtNumber||'—'}</span>
               <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor">${esc(p.trackingLabel||'★')}</span>`:''}</span>
-              ${calledUp&&p.primaryPosition?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px">${esc(p.primaryPosition)}</span>`:''}
+              ${calledUp ? `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},${p.playerId},null)">${esc(gp.positionPlayed || p.primaryPosition || '—')}</span>` : ''}
               ${calledUp?'<span style="margin-left:6px;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
             </div>
           </div>`;
@@ -16490,7 +16539,7 @@ async function renderSquadListTab(gameId) {
             <div class="wp-info">
               <span class="wp-num">${tp.shirtNumber||'—'}</span>
               <span class="wp-name" title="${esc(tp.name)}">${esc(tp.name)} <span class="pos-pill">${I18n.t('gd_guest_badge')}</span></span>
-              ${calledUp&&tp.preferredPosition?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px">${esc(tp.preferredPosition)}</span>`:''}
+              ${calledUp ? `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},null,${tp.tempPlayerId})">${esc(gp.positionPlayed || tp.preferredPosition || '—')}</span>` : ''}
               ${calledUp?'<span style="margin-left:6px;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
             </div>
           </div>`;
@@ -16549,6 +16598,14 @@ async function simpleToggleSquad(gameId, playerId) {
     const gp = await getOrCreateGP(gameId, playerId);
     gp.calledUp = !gp.calledUp;
     if (!gp.calledUp) { gp.role = 'Sub'; gp.playedFullGame = false; }
+    else if (!gp.positionPlayed) {
+      // Default positionPlayed to the player's own primaryPosition the
+      // moment they're first called up — per the approved spec. Never
+      // overwrites an already-set value, so toggling a player off and
+      // back on again doesn't silently wipe a manually-chosen position.
+      const player = await DB.get('players', playerId);
+      gp.positionPlayed = player?.primaryPosition || null;
+    }
     const key = await DB.put('gamePlayers', gp);
     gdDebugLog(`DB.put OK key=${key} calledUp now=${gp.calledUp}`);
   } catch(err) {
@@ -16570,6 +16627,10 @@ async function simpleToggleSquadTemp(gameId, tempPlayerId) {
     const gp = await getOrCreateGPForTemp(gameId, tempPlayerId);
     gp.calledUp = !gp.calledUp;
     if (!gp.calledUp) { gp.role = 'Sub'; gp.playedFullGame = false; }
+    else if (!gp.positionPlayed) {
+      const tempPlayer = await DB.get('temporaryPlayers', tempPlayerId);
+      gp.positionPlayed = tempPlayer?.preferredPosition || null;
+    }
     await DB.put('gamePlayers', gp);
   } catch(err) {
     Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
@@ -16577,6 +16638,45 @@ async function simpleToggleSquadTemp(gameId, tempPlayerId) {
     await renderSquadListTab(gameId);
     await refreshGameHeaderScore(gameId);
   }
+}
+
+// Position picker for a single called-up player (or temp player) in one
+// specific game — tapped directly from the position pill in the squad-
+// selection list. Reuses CONFIG.POSITIONS exactly, the app's existing
+// canonical list, rather than inventing a separate one. Exactly one of
+// playerId/tempPlayerId is ever real; the other is null.
+async function openPositionPickerForGame(gameId, playerId, tempPlayerId) {
+  if (!checkGameEditableOrWarn()) return;
+  const gp = playerId
+    ? await getOrCreateGP(gameId, playerId)
+    : await getOrCreateGPForTemp(gameId, tempPlayerId);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'rm-form-overlay open';
+  overlay.innerHTML = `
+    <div class="rm-form" style="max-width:360px">
+      <h3 style="margin-bottom:14px">${I18n.t('gd_position_picker_title')}</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${CONFIG.POSITIONS.map(pos => `
+          <button class="btn ${gp.positionPlayed===pos?'btn-primary':'btn-secondary'} btn-sm" onclick="handleSetPositionPlayed(${gameId},${playerId||'null'},${tempPlayerId||'null'},'${esc(pos)}')">${esc(pos)}</button>
+        `).join('')}
+      </div>
+      <div class="form-actions" style="margin-top:16px">
+        <button class="btn btn-secondary" onclick="this.closest('.rm-form-overlay').remove()">${I18n.t('common_cancel')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function handleSetPositionPlayed(gameId, playerId, tempPlayerId, position) {
+  const gp = playerId
+    ? await getOrCreateGP(gameId, playerId)
+    : await getOrCreateGPForTemp(gameId, tempPlayerId);
+  gp.positionPlayed = position;
+  await DB.put('gamePlayers', gp);
+  document.querySelector('.rm-form-overlay')?.remove();
+  await renderSquadListTab(gameId);
+  Sync.scheduleAutoSync();
 }
 
 // ── TAB 2 — STARTING XI ──────────────────────────────────────────────────────
