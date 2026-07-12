@@ -12230,10 +12230,9 @@ async function handleHomeSeasonSwitch(seasonId) {
 async function handleSyncSave() {
   const url = document.getElementById('sync-url')?.value||'';
   const key = document.getElementById('sync-key')?.value||'';
-  const family = document.getElementById('sync-family')?.value||'';
   const device = document.getElementById('sync-device')?.value||'';
-  if (!url.trim()||!key.trim()||!family.trim()) { Toast.error(I18n.t('sync_err_fields_required')); return; }
-  await Sync.saveConfig(url, key, family, device);
+  if (!url.trim()||!key.trim()) { Toast.error(I18n.t('sync_err_fields_required')); return; }
+  await Sync.saveConfig(url, key, device);
   Toast.show(I18n.t('sync_config_saved'));
   Sync.updateSyncUI();
 }
@@ -13325,7 +13324,6 @@ const Render = (() => {
     const syncCfg = {
       url: (await DB.get('appMeta','supabaseUrl'))?.value||'',
       anonKey: (await DB.get('appMeta','supabaseAnonKey'))?.value||'',
-      familyId: (await DB.get('appMeta','familyId'))?.value||'',
       deviceId: (await DB.get('appMeta','deviceId'))?.value||'',
       deviceName: (await DB.get('appMeta','deviceName'))?.value||'',
     };
@@ -14246,7 +14244,7 @@ const Auth = (() => {
 
 const Sync = (() => {
   // Config loaded from IndexedDB appMeta
-  let _cfg = { url:'', anonKey:'', familyId:'', deviceId:'', deviceName:'' };
+  let _cfg = { url:'', anonKey:'', deviceId:'', deviceName:'' };
   let _status = 'disconnected'; // disconnected | connected | syncing | error
   let _lastSync = null;
   let _pendingCount = 0;
@@ -14321,7 +14319,7 @@ const Sync = (() => {
       }
     }
 
-    const keys = ['supabaseUrl','supabaseAnonKey','familyId','deviceId','deviceName'];
+    const keys = ['supabaseUrl','supabaseAnonKey','deviceId','deviceName'];
     for (const k of keys) {
       const m = await DB.get('appMeta', k);
       if (m) _cfg[k === 'supabaseUrl' ? 'url' : k === 'supabaseAnonKey' ? 'anonKey' : k] = m.value || '';
@@ -14336,14 +14334,12 @@ const Sync = (() => {
     _lastSync = lsm ? lsm.value : null;
   }
 
-  async function saveConfig(url, anonKey, familyId, deviceName) {
+  async function saveConfig(url, anonKey, deviceName) {
     _cfg.url = url.trim();
     _cfg.anonKey = anonKey.trim();
-    _cfg.familyId = familyId.trim();
     _cfg.deviceName = deviceName.trim();
     await DB.put('appMeta', { metaKey:'supabaseUrl', value: _cfg.url });
     await DB.put('appMeta', { metaKey:'supabaseAnonKey', value: _cfg.anonKey });
-    await DB.put('appMeta', { metaKey:'familyId', value: _cfg.familyId });
     await DB.put('appMeta', { metaKey:'deviceName', value: _cfg.deviceName });
   }
 
@@ -14583,9 +14579,13 @@ const Sync = (() => {
         delete payloadClean.cloudId;
         delete payloadClean.syncStatus;
 
+        // family_id is retired — user_id is the sole ownership boundary
+        // (confirmed via direct schema/RLS investigation: zero policies,
+        // functions, or views reference family_id anywhere). The column
+        // itself is kept nullable for backward compatibility with old
+        // rows, but the app no longer writes it.
         const cloudRow = {
           user_id:    Auth.getUserId(),
-          family_id:  _cfg.familyId || null,
           device_id:  _cfg.deviceId,
           local_id:   localId,
           payload:    payloadClean,
