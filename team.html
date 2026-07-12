@@ -9,14 +9,14 @@
   :root{
     --black:#B23333;
     --dark:#333333;
-    --muted:#999999;
+    --muted:#6f6f6f;
     --border:#dddddd;
     --bg:#F2F4F7;
     --surface:#ffffff;
     --radius:3px;
     --green:#2a7a4e;
     --green-bg:#e6f4ea;
-    --amber:#8a6d1e;
+    --amber:#7a5f18;
     --amber-bg:#fbf3d9;
     --red:#b03030;
     --red-bg:#fbe9e9;
@@ -65,23 +65,34 @@
   .sticky-header .name{font-weight:800;font-size:14px}
   .sticky-header .season{font-size:11px;color:var(--muted)}
   @media (prefers-reduced-motion: reduce){.sticky-header{transition:none}}
-  .live-banner{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--black);color:#fff;padding:10px 20px;border-radius:24px;font-size:12px;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:100;display:flex;align-items:center;gap:8px;cursor:pointer}
+  .live-banner{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--black);color:#fff;padding:10px 20px;border-radius:24px;font-size:12px;font-weight:700;font-family:inherit;border:none;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:100;display:flex;align-items:center;gap:8px;cursor:pointer}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .skip-link{position:absolute;top:-40px;left:8px;background:var(--dark);color:#fff;padding:8px 14px;border-radius:4px;z-index:1000;text-decoration:none;font-size:13px;font-weight:700}
+  .skip-link:focus{top:8px}
+  a:focus-visible, button:focus-visible, [tabindex]:focus-visible, [role="button"]:focus-visible {
+    outline:3px solid #1a56c4; outline-offset:2px;
+  }
+  /* No focus outline is ever removed without this visible replacement —
+     every interactive element in this file relies on the browser's
+     default focus behavior plus this enhanced visible ring, never
+     outline:none on its own. */
   .live-banner .dot{width:8px;height:8px;background:#fff;border-radius:50%;animation:live-pulse 1.5s ease-in-out infinite}
   @keyframes live-pulse{0%,100%{opacity:1}50%{opacity:.3}}
   @media (prefers-reduced-motion: reduce){.live-banner .dot{animation:none}}
 </style>
 </head>
 <body>
-<div id="stickyHeader" class="sticky-header">
+<a href="#content" class="skip-link">Skip to main content</a>
+<div id="stickyHeader" class="sticky-header" aria-hidden="true">
   <span class="name" id="stickyName"></span>
   <span class="season" id="stickySeason"></span>
 </div>
 <div class="wrap">
   <div class="brand">
-    <div class="brand-mark">11</div>
+    <div class="brand-mark" aria-hidden="true">11</div>
     <div class="brand-name">Next<b>Eleven</b></div>
   </div>
-  <div id="content">
+  <main id="content">
     <div class="team-header">
       <div class="skeleton skeleton-title"></div>
       <div class="skeleton skeleton-line" style="width:30%"></div>
@@ -99,7 +110,7 @@
         <div class="skeleton skeleton-line"></div>
       </div>
     </div>
-  </div>
+  </main>
 </div>
 
 <script src="public-stats-core.js"></script>
@@ -281,7 +292,7 @@ function renderSeasonLeaders(players, finishedGames, gamePlayers) {
 
   return `
   <div class="card">
-    <div class="card-title">Season Leaders</div>
+    <h2 class="card-title" style="margin-top:0;font-size:11px">Season Leaders</h2>
     ${rows.join('')}
   </div>`;
 }
@@ -306,7 +317,7 @@ function renderBirthdaySection(birthdays) {
     <div class="card" style="background:#fef6e0;border-color:#f0d98a;text-align:center">
       ${todayBirthdays.map(b => `
         <div style="padding:6px 0">
-          <div style="font-size:28px">🎂</div>
+          <div style="font-size:28px" aria-hidden="true">🎂</div>
           <div style="font-weight:800;font-size:16px;margin-top:4px">Happy Birthday, ${esc(shortName(b.fullName))}!</div>
           <div style="font-size:12px;color:var(--muted);margin-top:2px">${fmtBirthday(b)} · Turning ${b.turningAge} today${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</div>
         </div>
@@ -319,7 +330,7 @@ function renderBirthdaySection(birthdays) {
   if (thisWeekBirthdays.length) {
     return `
     <div class="card" style="background:#fef6e0;border-color:#f0d98a">
-      <div class="card-title" style="color:#8a6d1e">🎂 Birthday${thisWeekBirthdays.length>1?'s':''} This Week</div>
+      <h2 class="card-title" style="color:#7a5f18;margin-top:0;font-size:11px"><span aria-hidden="true">🎂</span> Birthday${thisWeekBirthdays.length>1?'s':''} This Week</h2>
       ${thisWeekBirthdays.map(b => `<div class="row">
         <span class="row-name">${esc(shortName(b.fullName))}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</span>
         <span class="row-meta">${fmtBirthday(b)} · Turning ${b.turningAge} · ${b.daysUntil === 1 ? 'tomorrow' : 'in ' + b.daysUntil + ' days'}</span>
@@ -331,7 +342,7 @@ function renderBirthdaySection(birthdays) {
   // section is genuinely useful even when nothing is imminent.
   return `
   <div class="card">
-    <div class="card-title">Upcoming Birthdays</div>
+    <h2 class="card-title" style="margin-top:0;font-size:11px">Upcoming Birthdays</h2>
     ${upcoming.map(b => `<div class="row">
       <span class="row-name">${esc(shortName(b.fullName))}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</span>
       <span class="row-meta">${fmtBirthday(b)} · Turning ${b.turningAge} · in ${b.daysUntil} days</span>
@@ -379,7 +390,7 @@ function renderRecap(el, data) {
     </div>` : ''}
 
     <div class="card">
-      <div class="card-title">Final Record</div>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Final Record</h2>
       <div class="stat-grid">
         <div><div class="stat-label">Record</div><div class="stat-value">${stats.wins}-${stats.draws}-${stats.losses}</div></div>
         <div><div class="stat-label">Goal Diff</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
@@ -390,7 +401,7 @@ function renderRecap(el, data) {
 
     ${(topScorer || topAssists || mostApps) ? `
     <div class="card">
-      <div class="card-title">Season Leaders</div>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Season Leaders</h2>
       ${topScorer ? `<div class="row"><span class="row-name">Top Scorer</span><span class="row-meta">${esc(topScorer.names.join(', '))} (${topScorer.value})</span></div>` : ''}
       ${topAssists ? `<div class="row"><span class="row-name">Most Assists</span><span class="row-meta">${esc(topAssists.names.join(', '))} (${topAssists.value})</span></div>` : ''}
       ${mostApps ? `<div class="row"><span class="row-name">Most Appearances</span><span class="row-meta">${esc(mostApps.names.join(', '))} (${mostApps.value})</span></div>` : ''}
@@ -398,7 +409,7 @@ function renderRecap(el, data) {
 
     ${tournaments.length ? `
     <div class="card">
-      <div class="card-title">Tournaments</div>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Tournaments</h2>
       ${tournaments.map(t => {
         const outcome = getTournamentOutcomePublic(t, games, gamePlayers, 'EN');
         return `<div class="row"><span class="row-name">${esc(t.name)}</span><span class="row-meta">${outcome.emoji?outcome.emoji+' ':''}${esc(outcome.label)}</span></div>`;
@@ -407,8 +418,8 @@ function renderRecap(el, data) {
 
     ${(data.seasonHighlights && data.seasonHighlights.length) ? `
     <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
-      <div class="card-title">Season Highlights</div>
-      ${data.seasonHighlights.map(a => `<div class="row"><span class="row-name">🏆 ${esc(a.title)}</span><span class="row-meta">${a.date?fmtDate(a.date):''}</span></div>`).join('')}
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Season Highlights</h2>
+      ${data.seasonHighlights.map(a => `<div class="row"><span class="row-name"><span aria-hidden="true">🏆</span> ${esc(a.title)}</span><span class="row-meta">${a.date?fmtDate(a.date):''}</span></div>`).join('')}
     </div>` : ''}
 
     <div class="card" style="text-align:center">
@@ -465,8 +476,8 @@ function render(el, data) {
     </div>
 
     ${season.status === 'completed' ? `
-    <div class="card" style="background:#1a1a2e;color:#fff;cursor:pointer" onclick="window.location.href=window.location.pathname+window.location.search+'&view=recap'">
-      <div class="card-title" style="color:#aab">${esc(season.seasonName)} Season Recap</div>
+    <a class="card" href="${esc(window.location.pathname+window.location.search+'&view=recap')}" style="background:#1a1a2e;color:#fff;text-decoration:none;display:block" aria-label="View full ${esc(season.seasonName)} Season Recap">
+      <h2 class="card-title" style="color:#aab;margin-top:0;font-size:11px">${esc(season.seasonName)} Season Recap</h2>
       <div class="stat-grid" style="margin-top:8px">
         <div><div class="stat-value" style="color:#fff">${stats.played}</div><div class="stat-label" style="color:#889">Games</div></div>
         <div><div class="stat-value" style="color:#fff">${stats.wins}</div><div class="stat-label" style="color:#889">Wins</div></div>
@@ -474,11 +485,11 @@ function render(el, data) {
         <div><div class="stat-value" style="color:#fff">${stats.losses}</div><div class="stat-label" style="color:#889">Losses</div></div>
       </div>
       <div style="margin-top:10px;font-size:12px;font-weight:700;text-decoration:underline">View Recap →</div>
-    </div>` : ''}
+    </a>` : ''}
 
     ${next ? `
     <div class="card">
-      <div class="card-title">Next Match</div>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Next Match</h2>
       <div style="font-weight:700;font-size:15px">${esc(next.opponent)}</div>
       <div style="font-size:12px;color:var(--muted);margin-top:3px">${fmtDate(next.date)}${next.gameTime ? ' · ' + next.gameTime : ''}${next.competitionName ? ' · ' + esc(next.competitionName) : ''}</div>
       ${(() => {
@@ -494,7 +505,7 @@ function render(el, data) {
     ${renderBirthdaySection(data.birthdays || [])}
 
     <div class="card">
-      <div class="card-title">Season Summary</div>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Season Summary</h2>
       <div class="stat-grid">
         <div><div class="stat-label">Record</div><div class="stat-value">${stats.wins}-${stats.draws}-${stats.losses}</div></div>
         <div><div class="stat-label">Goal Diff</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
@@ -520,7 +531,7 @@ function render(el, data) {
 
     ${recent.length ? `
     <div class="card">
-      <div class="card-title">Recent Results</div>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Recent Results</h2>
       ${recent.map(g => {
         const gps = gamePlayers.filter(r => r.gameId === g.gameId);
         const our = teamGoals(gps, g);
@@ -543,7 +554,7 @@ function render(el, data) {
       const outcome = getTournamentOutcomePublic(t, games, gamePlayers, 'EN');
       const matchesPlayed = games.filter(g => g.tournamentId === t.tournamentId).length;
       return `<div class="card">
-        <div class="card-title">Tournament</div>
+        <h2 class="card-title" style="margin-top:0;font-size:11px">Tournament</h2>
         <div style="font-weight:700;font-size:15px">${esc(t.name)}</div>
         <div style="font-size:13px;margin-top:4px">${outcome.emoji ? outcome.emoji + ' ' : ''}${esc(outcome.label)}</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">${matchesPlayed} match${matchesPlayed===1?'':'es'} played</div>
@@ -553,7 +564,7 @@ function render(el, data) {
 
     ${(data.availability && (data.availability.available + data.availability.unavailable) > 0) ? `
     <div class="card">
-      <div class="card-title">Player Availability</div>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Player Availability</h2>
       <div class="stat-grid">
         <div><div class="stat-label">Available</div><div class="stat-value" style="color:var(--green)">${data.availability.available}</div></div>
         <div><div class="stat-label">Unavailable</div><div class="stat-value" style="color:var(--red)">${data.availability.unavailable}</div></div>
@@ -570,7 +581,7 @@ function render(el, data) {
 
     ${players.length ? `
     <div class="card">
-      <div class="card-title">Squad</div>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Squad</h2>
       ${players.map(p => {
         const s = playerPublicStats(p.playerId, finishedGames, gamePlayers);
         const mostPlayed = s.mostPlayedPosition || p.primaryPosition;
@@ -584,7 +595,7 @@ function render(el, data) {
 
     ${players.length ? `
     <div class="card">
-      <div class="card-title">Player Statistics</div>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Player Statistics</h2>
       ${players.map(p => {
         const s = playerPublicStats(p.playerId, finishedGames, gamePlayers);
         if (s.calledUp === 0) return '';
@@ -599,34 +610,34 @@ function render(el, data) {
 
     ${(data.seasonHighlights && data.seasonHighlights.length) ? `
     <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
-      <div class="card-title">Season Highlights</div>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Season Highlights</h2>
       ${data.seasonHighlights.map(a => `<div class="row">
-        <span class="row-name">🏆 ${esc(a.title)}</span>
+        <span class="row-name"><span aria-hidden="true">🏆</span> ${esc(a.title)}</span>
         <span class="row-meta">${a.date ? fmtDate(a.date) : ''}</span>
       </div>`).join('')}
     </div>` : ''}
 
     ${(data.previousAchievements && data.previousAchievements.length) ? `
     <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
-      <div class="card-title">Previous Achievements</div>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Previous Achievements</h2>
       ${data.previousAchievements.map(a => `<div class="row">
-        <span class="row-name">🏆 ${esc(a.title)}</span>
+        <span class="row-name"><span aria-hidden="true">🏆</span> ${esc(a.title)}</span>
         <span class="row-meta">${a.date ? fmtDate(a.date) : ''}</span>
       </div>`).join('')}
     </div>` : ''}
 
     ${(data.previousSeasons && data.previousSeasons.length) ? `
     <div class="card">
-      <div class="card-title">Previous Seasons</div>
-      ${data.previousSeasons.map(s => `<div class="row" style="cursor:pointer" onclick="window.location.href='team.html?token=${encodeURIComponent(s.shareToken)}'">
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Previous Seasons</h2>
+      ${data.previousSeasons.map(s => `<a class="row" href="team.html?token=${encodeURIComponent(s.shareToken)}" style="text-decoration:none;color:inherit" aria-label="View ${esc(s.seasonName)} season for ${esc(s.clubName||'')}">
         <span class="row-name">${esc(s.seasonName)}</span>
         <span class="row-meta">${esc(s.clubName||'')} ›</span>
-      </div>`).join('')}
+      </a>`).join('')}
     </div>` : ''}
 
     <div class="footer-note">
       Shared read-only via NextEleven · Live team data<br>
-      <span id="footerRefreshStatus"></span>
+      <span id="footerRefreshStatus" role="status" aria-live="polite"></span>
       <button type="button" style="background:none;border:none;color:var(--muted);text-decoration:underline;cursor:pointer;font-size:11px;margin-left:6px" onclick="handleManualRefresh()">Refresh</button>
     </div>
   `;
@@ -640,10 +651,13 @@ function render(el, data) {
   const existingBanner = document.getElementById('liveBanner');
   if (existingBanner) existingBanner.remove();
   if (liveMatchToday) {
-    const banner = document.createElement('div');
+    const banner = document.createElement('button');
     banner.id = 'liveBanner';
+    banner.type = 'button';
     banner.className = 'live-banner';
-    banner.innerHTML = `<span class="dot"></span> LIVE MATCH · vs ${esc(liveMatchToday.opponent)}`;
+    banner.setAttribute('role', 'status');
+    banner.setAttribute('aria-live', 'polite');
+    banner.innerHTML = `<span class="dot" aria-hidden="true"></span> LIVE MATCH · vs ${esc(liveMatchToday.opponent)}`;
     banner.onclick = () => document.querySelector('.card')?.scrollIntoView({behavior:'smooth'});
     document.body.appendChild(banner);
   }
