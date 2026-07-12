@@ -131,6 +131,53 @@ async function loadTeamPage() {
   render(contentEl, data);
 }
 
+function renderBirthdaySection(birthdays) {
+  if (!birthdays.length) return '';
+
+  const todayBirthdays = birthdays.filter(b => b.isToday);
+  const thisWeekBirthdays = birthdays.filter(b => b.isThisWeek);
+  const upcoming = birthdays.slice(0, 3);
+
+  // Today takes priority — a genuine, prominent celebration card, one
+  // per player if multiple share a birthday (rare, but handled).
+  if (todayBirthdays.length) {
+    return `
+    <div class="card" style="background:#fef6e0;border-color:#f0d98a;text-align:center">
+      ${todayBirthdays.map(b => `
+        <div style="padding:6px 0">
+          <div style="font-size:28px">🎂</div>
+          <div style="font-weight:800;font-size:16px;margin-top:4px">Happy Birthday, ${esc(shortName(b.fullName))}!</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Turning ${b.turningAge} today${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</div>
+        </div>
+      `).join('<hr style="border:none;border-top:1px solid #f0d98a;margin:10px 0">')}
+    </div>`;
+  }
+
+  // Within the coming week — a lighter mention, not a full celebration
+  // card, since the day itself hasn't arrived yet.
+  if (thisWeekBirthdays.length) {
+    return `
+    <div class="card" style="background:#fef6e0;border-color:#f0d98a">
+      <div class="card-title" style="color:#8a6d1e">🎂 Birthday${thisWeekBirthdays.length>1?'s':''} This Week</div>
+      ${thisWeekBirthdays.map(b => `<div class="row">
+        <span class="row-name">${esc(shortName(b.fullName))}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</span>
+        <span class="row-meta">Turning ${b.turningAge} · ${b.daysUntil === 1 ? 'tomorrow' : 'in ' + b.daysUntil + ' days'}</span>
+      </div>`).join('')}
+    </div>`;
+  }
+
+  // Otherwise — a compact, low-key "next 3 upcoming" list, so the
+  // section is genuinely useful even when nothing is imminent.
+  return `
+  <div class="card">
+    <div class="card-title">Upcoming Birthdays</div>
+    ${upcoming.map(b => `<div class="row">
+      <span class="row-name">${esc(shortName(b.fullName))}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</span>
+      <span class="row-meta">Turning ${b.turningAge} · in ${b.daysUntil} days</span>
+    </div>`).join('')}
+  </div>`;
+}
+
 function render(el, data) {
   const games = data.games || [];
   const gamePlayers = data.gamePlayers || [];
@@ -168,6 +215,8 @@ function render(el, data) {
       <div style="font-weight:700;font-size:15px">${esc(next.opponent)}</div>
       <div style="font-size:12px;color:var(--muted);margin-top:3px">${fmtDate(next.date)}${next.gameTime ? ' · ' + next.gameTime : ''}${next.competitionName ? ' · ' + esc(next.competitionName) : ''}</div>
     </div>` : ''}
+
+    ${renderBirthdaySection(data.birthdays || [])}
 
     <div class="card">
       <div class="card-title">Season Summary</div>

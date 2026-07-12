@@ -175,3 +175,40 @@ function getTournamentOutcomePublic(tournament, allGames, allGP, lang) {
   };
   return { emoji: '', label: stageLabels[stage] || t('Participant', 'Participante'), status: 'eliminated' };
 }
+
+// Computes each player's NEXT birthday from today, correctly wrapping
+// the calendar year (a birthday last month is genuinely ~11 months
+// away, not negative). Returns one entry per player with a DOB, sorted
+// by closeness, so callers can slice the top 3, or filter for "today"
+// / "within 7 days" without recomputing anything.
+function upcomingBirthdays(players, referenceDate) {
+  const today = referenceDate || new Date();
+  today.setHours(0,0,0,0);
+
+  return players
+    .filter(p => p.dateOfBirth)
+    .map(p => {
+      const dob = new Date(p.dateOfBirth + 'T00:00:00');
+      if (isNaN(dob)) return null;
+
+      let nextBirthday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+      if (nextBirthday < today) {
+        nextBirthday = new Date(today.getFullYear() + 1, dob.getMonth(), dob.getDate());
+      }
+      const daysUntil = Math.round((nextBirthday - today) / (1000*60*60*24));
+      const turningAge = nextBirthday.getFullYear() - dob.getFullYear();
+
+      return {
+        playerId: p.playerId,
+        fullName: p.fullName,
+        shirtNumber: p.shirtNumber,
+        daysUntil,
+        turningAge,
+        isToday: daysUntil === 0,
+        isThisWeek: daysUntil > 0 && daysUntil <= 7,
+      };
+    })
+    .filter(b => b !== null)
+    .sort((a,b) => a.daysUntil - b.daysUntil);
+}
+
