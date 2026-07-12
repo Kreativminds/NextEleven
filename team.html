@@ -131,17 +131,41 @@ function shortName(fullName) {
   return parts[0] + ' ' + parts[parts.length - 1];
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// PHASE 3 — LIVE REFRESH ENGINE
+// ══════════════════════════════════════════════════════════════════════════
+let _teamPageToken = null;
+let _lastGoodData = null;
+let _refreshInFlight = false;
+let _pollTimer = null;
+let _lastSuccessfulRefresh = null;
+
 async function loadTeamPage() {
   const contentEl = document.getElementById('content');
   const params = new URLSearchParams(window.location.search);
-  const token = params.get('token');
+  _teamPageToken = params.get('token');
 
-  if (!token) {
+  if (!_teamPageToken) {
     contentEl.innerHTML = `<div class="empty"><div class="icon">🔗</div><strong>No link provided</strong><p>This page needs a share link from a parent or guardian.</p></div>`;
     return;
   }
 
-  let data;
+  await refreshTeamData(true); // true = this is the initial load, allowed to replace the skeleton with an error state if it fails
+  startPolling();
+  bindVisibilityAndReconnectRefresh();
+}
+
+// The actual fetch + render step, reused by initial load, the 60s poll,
+// visibility-change, reconnect, and the manual Refresh button — all of
+// them funnel through this one function, which guarantees at most one
+// request in flight at a time (per the approved spec) and never wipes a
+// previously-successful render just because a later background refresh
+// failed.
+async function refreshTeamData(isInitialLoad) {
+  if (_refreshInFlight) return; // never overlap two refreshes
+  _refreshInFlight = true;
+  const contentEl = document.getElementById('content');
+
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_public_team_data`, {
       method: 'POST',
@@ -150,22 +174,83 @@ async function loadTeamPage() {
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({ p_token: token }),
+      body: JSON.stringify({ p_token: _teamPageToken }),
     });
     if (!res.ok) throw new Error('Request failed');
-    data = await res.json();
+    const data = await res.json();
+
+    if (!data) {
+      // A genuinely revoked/disabled token — this is a real, permanent
+      // state, not a transient failure, so it's correct to replace the
+      // page even on a background refresh (per spec: disabled/revoked
+      // tokens must show nothing).
+      contentEl.innerHTML = `<div class="empty"><div class="icon">🔒</div><strong>This link isn't available</strong><p>It may have been disabled or replaced with a new one. Ask the team parent for the current link.</p></div>`;
+      stopPolling();
+      return;
+    }
+
+    _lastGoodData = data;
+    _lastSuccessfulRefresh = new Date();
+    render(contentEl, data);
+    updateFooterRefreshStatus(null);
   } catch (err) {
-    contentEl.innerHTML = `<div class="empty"><div class="icon">⚠️</div><strong>Couldn't load this page</strong><p>Please check your connection and try again.</p></div>`;
-    return;
+    if (isInitialLoad && !_lastGoodData) {
+      // Only the very first load, with nothing successful yet to fall
+      // back on, shows the scary full-page error — every later failure
+      // (a background poll, a flaky reconnect) keeps whatever was last
+      // successfully shown, per "keep last successful data visible if
+      // refresh fails."
+      contentEl.innerHTML = `<div class="empty"><div class="icon">⚠️</div><strong>Couldn't load this page</strong><p>Please check your connection and try again.</p></div>`;
+    } else {
+      updateFooterRefreshStatus('Refresh failed — showing last update.');
+    }
+  } finally {
+    _refreshInFlight = false;
   }
-
-  if (!data) {
-    contentEl.innerHTML = `<div class="empty"><div class="icon">🔒</div><strong>This link isn't available</strong><p>It may have been disabled or replaced with a new one. Ask the team parent for the current link.</p></div>`;
-    return;
-  }
-
-  render(contentEl, data);
 }
+
+function startPolling() {
+  if (_pollTimer) return; // never start twice
+  _pollTimer = setInterval(() => {
+    if (document.visibilityState === 'visible' && navigator.onLine) {
+      refreshTeamData(false);
+    }
+  }, 60000); // 60 seconds, per the approved spec — not 2 minutes
+}
+
+function stopPolling() {
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+}
+
+function bindVisibilityAndReconnectRefresh() {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshTeamData(false);
+  });
+  window.addEventListener('online', () => refreshTeamData(false));
+}
+
+// Manual Refresh button handler — always allowed regardless of the
+// in-flight guard's timing, since a real user tap should never feel
+// ignored; refreshTeamData's own guard still prevents a true overlap if
+// one happens to already be running.
+function handleManualRefresh() {
+  refreshTeamData(false);
+}
+
+function updateFooterRefreshStatus(errorMessage) {
+  const el = document.getElementById('footerRefreshStatus');
+  if (!el) return;
+  if (errorMessage) {
+    el.textContent = errorMessage;
+    return;
+  }
+  if (_lastSuccessfulRefresh) {
+    const hh = String(_lastSuccessfulRefresh.getHours()).padStart(2,'0');
+    const mm = String(_lastSuccessfulRefresh.getMinutes()).padStart(2,'0');
+    el.textContent = `Last updated: ${hh}:${mm}`;
+  }
+}
+
 
 function renderSeasonLeaders(players, finishedGames, gamePlayers) {
   if (!players.length || !finishedGames.length) return '';
@@ -254,7 +339,93 @@ function renderBirthdaySection(birthdays) {
   </div>`;
 }
 
+function renderRecap(el, data) {
+  const games = data.games || [];
+  const gamePlayers = data.gamePlayers || [];
+  const players = data.players || [];
+  const tournaments = data.tournaments || [];
+  const season = data.season || {};
+  const now = new Date();
+  const finishedGames = games.filter(g => {
+    if (!g.date) return false;
+    const kickoff = new Date(`${g.date}T${g.gameTime || '23:59'}`);
+    return kickoff <= now;
+  });
+
+  const stats = teamSeasonStats(finishedGames, gamePlayers);
+  const withStats = players.map(p => ({ ...p, stats: playerPublicStats(p.playerId, finishedGames, gamePlayers) }));
+
+  function leader(statKey) {
+    const maxVal = Math.max(...withStats.map(p => p.stats[statKey] || 0));
+    if (maxVal === 0) return null;
+    const names = withStats.filter(p => (p.stats[statKey]||0) === maxVal).map(p => shortName(p.fullName));
+    return { names, value: maxVal };
+  }
+  const topScorer = leader('goals');
+  const topAssists = leader('assists');
+  const mostApps = leader('calledUp');
+
+  const backUrl = window.location.pathname + window.location.search.replace(/&?view=recap/, '');
+
+  el.innerHTML = `
+    <div class="team-header">
+      <h1>${esc(season.clubName || 'Team')} ${season.ageGroup ? '· ' + esc(season.ageGroup) : ''}</h1>
+      <div class="sub">${esc(season.seasonName || '')} Season Recap</div>
+    </div>
+
+    ${data.seasonStory ? `
+    <div class="card" style="background:#1a1a2e;color:#fff">
+      <p style="font-size:14px;line-height:1.6;margin:0">${esc(data.seasonStory)}</p>
+    </div>` : ''}
+
+    <div class="card">
+      <div class="card-title">Final Record</div>
+      <div class="stat-grid">
+        <div><div class="stat-label">Record</div><div class="stat-value">${stats.wins}-${stats.draws}-${stats.losses}</div></div>
+        <div><div class="stat-label">Goal Diff</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
+        <div><div class="stat-label">Goals For</div><div class="stat-value">${stats.goalsFor}</div></div>
+        <div><div class="stat-label">Goals Against</div><div class="stat-value">${stats.goalsAgainst}</div></div>
+      </div>
+    </div>
+
+    ${(topScorer || topAssists || mostApps) ? `
+    <div class="card">
+      <div class="card-title">Season Leaders</div>
+      ${topScorer ? `<div class="row"><span class="row-name">Top Scorer</span><span class="row-meta">${esc(topScorer.names.join(', '))} (${topScorer.value})</span></div>` : ''}
+      ${topAssists ? `<div class="row"><span class="row-name">Most Assists</span><span class="row-meta">${esc(topAssists.names.join(', '))} (${topAssists.value})</span></div>` : ''}
+      ${mostApps ? `<div class="row"><span class="row-name">Most Appearances</span><span class="row-meta">${esc(mostApps.names.join(', '))} (${mostApps.value})</span></div>` : ''}
+    </div>` : ''}
+
+    ${tournaments.length ? `
+    <div class="card">
+      <div class="card-title">Tournaments</div>
+      ${tournaments.map(t => {
+        const outcome = getTournamentOutcomePublic(t, games, gamePlayers, 'EN');
+        return `<div class="row"><span class="row-name">${esc(t.name)}</span><span class="row-meta">${outcome.emoji?outcome.emoji+' ':''}${esc(outcome.label)}</span></div>`;
+      }).join('')}
+    </div>` : ''}
+
+    ${(data.seasonHighlights && data.seasonHighlights.length) ? `
+    <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
+      <div class="card-title">Season Highlights</div>
+      ${data.seasonHighlights.map(a => `<div class="row"><span class="row-name">🏆 ${esc(a.title)}</span><span class="row-meta">${a.date?fmtDate(a.date):''}</span></div>`).join('')}
+    </div>` : ''}
+
+    <div class="card" style="text-align:center">
+      <a href="${esc(backUrl)}" style="font-size:13px;font-weight:700;color:var(--red);text-decoration:none">← Back to Team Page</a>
+    </div>
+
+    <div class="footer-note">Shared read-only via NextEleven · Season Recap</div>
+  `;
+}
+
 function render(el, data) {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('view') === 'recap') {
+    renderRecap(el, data);
+    return;
+  }
+
   const games = data.games || [];
   const gamePlayers = data.gamePlayers || [];
   const players = data.players || [];
@@ -290,8 +461,20 @@ function render(el, data) {
   const html = `
     <div class="team-header">
       <h1>${esc(season.clubName || 'Team')} ${season.ageGroup ? '· ' + esc(season.ageGroup) : ''}</h1>
-      <div class="sub">${esc(season.seasonName || '')}</div>
+      <div class="sub">${esc(season.seasonName || '')} ${season.status === 'completed' ? '<span class="badge" style="background:#e8f0fe;color:#1a56c4;margin-left:6px">Completed</span>' : ''}</div>
     </div>
+
+    ${season.status === 'completed' ? `
+    <div class="card" style="background:#1a1a2e;color:#fff;cursor:pointer" onclick="window.location.href=window.location.pathname+window.location.search+'&view=recap'">
+      <div class="card-title" style="color:#aab">${esc(season.seasonName)} Season Recap</div>
+      <div class="stat-grid" style="margin-top:8px">
+        <div><div class="stat-value" style="color:#fff">${stats.played}</div><div class="stat-label" style="color:#889">Games</div></div>
+        <div><div class="stat-value" style="color:#fff">${stats.wins}</div><div class="stat-label" style="color:#889">Wins</div></div>
+        <div><div class="stat-value" style="color:#fff">${stats.draws}</div><div class="stat-label" style="color:#889">Draws</div></div>
+        <div><div class="stat-value" style="color:#fff">${stats.losses}</div><div class="stat-label" style="color:#889">Losses</div></div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;font-weight:700;text-decoration:underline">View Recap →</div>
+    </div>` : ''}
 
     ${next ? `
     <div class="card">
@@ -441,7 +624,11 @@ function render(el, data) {
       </div>`).join('')}
     </div>` : ''}
 
-    <div class="footer-note">Shared read-only via NextEleven · Live team data</div>
+    <div class="footer-note">
+      Shared read-only via NextEleven · Live team data<br>
+      <span id="footerRefreshStatus"></span>
+      <button type="button" style="background:none;border:none;color:var(--muted);text-decoration:underline;cursor:pointer;font-size:11px;margin-left:6px" onclick="handleManualRefresh()">Refresh</button>
+    </div>
   `;
 
   el.innerHTML = html;

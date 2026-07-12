@@ -4843,6 +4843,13 @@ const TR = {
     set_btn_delete_season:'Delete This Season', set_err_season_has_data:'Cannot delete — this season has {games} game(s) and {tournaments} tournament(s) (or achievements) attached. Only an empty season can be deleted.',
     set_confirm_delete_season_title:'Delete Season?', set_confirm_delete_season_body:'This permanently deletes {name}. This can only be done because it has no games, tournaments, or achievements.',
     set_season_deleted:'Season deleted.',
+    recap_status_label:'Season Status', recap_status_active:'Active', recap_status_completed:'Completed',
+    recap_btn_preview:'Preview Recap', recap_btn_complete:'Complete Season', recap_btn_reopen:'Reopen Season',
+    recap_confirm_complete_title:'Complete this season?', recap_confirm_complete_body:'This marks the season as complete and shows a Season Recap card on the public Team Page. No data is changed or removed — you can reopen it at any time.',
+    recap_confirm_reopen_title:'Reopen this season?', recap_confirm_reopen_body:'This removes the Completed status so you can add new games or corrections. All data is preserved.',
+    recap_season_completed_toast:'Season marked as completed.', recap_season_reopened_toast:'Season reopened.',
+    recap_err_no_share_link:'Generate a Team Share link for this season first (Settings → Sharing).',
+
 
 
     // ── INJURY MODAL ──
@@ -5956,6 +5963,13 @@ const TR = {
     set_btn_delete_season:'Eliminar Esta Época', set_err_season_has_data:'Não é possível eliminar — esta época tem {games} jogo(s) e {tournaments} torneio(s) (ou feitos) associados. Só é possível eliminar uma época vazia.',
     set_confirm_delete_season_title:'Eliminar Época?', set_confirm_delete_season_body:'Isto elimina permanentemente {name}. Só é possível porque não tem jogos, torneios ou feitos.',
     set_season_deleted:'Época eliminada.',
+    recap_status_label:'Estado da Época', recap_status_active:'Ativa', recap_status_completed:'Concluída',
+    recap_btn_preview:'Pré-visualizar Resumo', recap_btn_complete:'Concluir Época', recap_btn_reopen:'Reabrir Época',
+    recap_confirm_complete_title:'Concluir esta época?', recap_confirm_complete_body:'Isto marca a época como concluída e mostra um cartão de Resumo da Época na Página de Equipa pública. Nenhum dado é alterado ou removido — pode reabri-la a qualquer momento.',
+    recap_confirm_reopen_title:'Reabrir esta época?', recap_confirm_reopen_body:'Isto remove o estado de Concluída para poder adicionar novos jogos ou correções. Todos os dados são preservados.',
+    recap_season_completed_toast:'Época marcada como concluída.', recap_season_reopened_toast:'Época reaberta.',
+    recap_err_no_share_link:'Gere primeiro um link de Partilha de Equipa para esta época (Definições → Partilha).',
+
 
 
     // ── INJURY MODAL ──
@@ -9236,6 +9250,51 @@ async function handleDeleteCurrentSeason() {
     Toast.show(I18n.t('set_season_deleted'));
     await Nav.go('home');
   });
+}
+
+// ── PHASE 4 — END-OF-SEASON RECAP ────────────────────────────────────────
+// Explicit status field on the season itself, per the approved spec's
+// "do not assume the last scheduled game means the Season is complete."
+// Completion/reopening never deletes or modifies any other data — it is
+// purely a status flag, and the recap itself is always recalculated
+// live from the same real games/players/achievements data.
+async function handleCompleteSeason() {
+  Confirm.show(I18n.t('recap_confirm_complete_title'), I18n.t('recap_confirm_complete_body'), async () => {
+    const season = { ...State.currentSeason, status: 'completed' };
+    await DB.put('seasons', season);
+    await loadMeta();
+    Toast.show(I18n.t('recap_season_completed_toast'));
+    await Render.settings();
+    Sync.scheduleAutoSync();
+  });
+}
+
+async function handleReopenSeason() {
+  Confirm.show(I18n.t('recap_confirm_reopen_title'), I18n.t('recap_confirm_reopen_body'), async () => {
+    const season = { ...State.currentSeason, status: 'active' };
+    await DB.put('seasons', season);
+    await loadMeta();
+    Toast.show(I18n.t('recap_season_reopened_toast'));
+    await Render.settings();
+    Sync.scheduleAutoSync();
+  });
+}
+
+// Preview Recap — reuses the EXACT same public share token and security
+// model as the normal Team Page, per the approved spec ("do not create a
+// separate token, a separate public security model"). Only ever opens
+// if a share link already exists for this season; offers to generate
+// one first if not, rather than silently failing.
+async function handlePreviewRecap() {
+  if (!State.currentSeasonId) return;
+  let link = null;
+  try { link = await Sync.getTeamShareLink(State.currentSeasonId); } catch(e) {}
+  if (!link) {
+    Toast.error(I18n.t('recap_err_no_share_link'));
+    return;
+  }
+  const url = buildTeamShareUrl(link.share_token) + '&view=recap';
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 async function deleteTournament(tournamentId) {
@@ -13976,6 +14035,23 @@ const Render = (() => {
             <p style="font-size:11px;color:var(--muted);margin-top:6px">${I18n.t('set_editing_prefix')} <strong>${esc(State.currentSeason?.seasonName||'—')}</strong> ${I18n.t('set_editing_suffix')}</p>
             <button class="btn btn-primary" style="margin-top:10px" id="btnSaveSeasonEdit">${I18n.t('set_btn_save_changes')}</button>
             <button class="btn btn-danger" style="margin-top:10px;margin-left:8px" onclick="handleDeleteCurrentSeason()">${I18n.t('set_btn_delete_season')}</button>
+
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700;margin-bottom:8px">${I18n.t('recap_status_label')}</div>
+              ${State.currentSeason?.status === 'completed' ? `
+                <span class="badge" style="background:#e8f0fe;color:#1a56c4;margin-bottom:8px;display:inline-block">${I18n.t('recap_status_completed')}</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                  <button class="btn btn-secondary btn-sm" onclick="handlePreviewRecap()">${I18n.t('recap_btn_preview')}</button>
+                  <button class="btn btn-secondary btn-sm" onclick="handleReopenSeason()">${I18n.t('recap_btn_reopen')}</button>
+                </div>
+              ` : `
+                <span class="badge" style="background:#f0f4f8;color:var(--muted);margin-bottom:8px;display:inline-block">${I18n.t('recap_status_active')}</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                  <button class="btn btn-secondary btn-sm" onclick="handlePreviewRecap()">${I18n.t('recap_btn_preview')}</button>
+                  <button class="btn btn-primary btn-sm" onclick="handleCompleteSeason()">${I18n.t('recap_btn_complete')}</button>
+                </div>
+              `}
+            </div>
           </div>
         </div>` : ''}
       </div>
