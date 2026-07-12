@@ -730,11 +730,13 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
       <button class="import-tab" id="atab-kanban" onclick="switchAdminTab('kanban')">&#9646;&#9646; <span data-i18n="adm_tab_kanban">Kanban</span></button>
       <button class="import-tab" id="atab-fields" onclick="switchAdminTab('fields')">&#128065; <span data-i18n="adm_tab_fields">Field Visibility</span></button>
       <button class="import-tab" id="atab-debug" onclick="switchAdminTab('debug')">&#128027; <span data-i18n="adm_tab_debug">Debug</span></button>
+      <button class="import-tab" id="atab-diagnostics" onclick="switchAdminTab('diagnostics')">&#128269; <span data-i18n="adm_tab_diagnostics">Diagnostics</span></button>
     </div>
     <div id="admin-panel-roadmap"></div>
     <div id="admin-panel-kanban" style="display:none"></div>
     <div id="admin-panel-fields" style="display:none"></div>
     <div id="admin-panel-debug" style="display:none"></div>
+    <div id="admin-panel-diagnostics" style="display:none"></div>
   </div>
 
   <!-- HELP PAGE -->
@@ -2457,6 +2459,242 @@ function readAgeGroupField(selectId, customId) {
   const sel = document.getElementById(selectId)?.value || '';
   if (sel === 'Other') return document.getElementById(customId)?.value.trim() || null;
   return sel || null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SEASON ASSIGNMENT AUDIT — Admin diagnostic tool
+// ══════════════════════════════════════════════════════════════════════════
+// Scans every game and tournament, comparing its actual date against the
+// shared, unchanged getSeasonFromDate() rule (Sept 1 - Aug 31) — the same
+// function already used for the at-entry validation. Flags only genuine
+// mismatches; makes no changes itself. Super Admin only, reached via
+// Admin -> Diagnostics -> Season Assignment Audit.
+async function scanSeasonAssignmentIssues() {
+  const allSeasons = await DB.getAll('seasons');
+  const seasonByStartYear = {};
+  allSeasons.forEach(s => { seasonByStartYear[getSeasonStartYear(s)] = s; });
+
+  const allGames = await DB.getAll('games');
+  const allTournaments = await DB.getAll('tournaments');
+  const issues = [];
+
+  // ── Tournaments first, so we know which games belong to a tournament
+  // issue before separately flagging the same games as standalone issues.
+  const gamesByTournament = {};
+  allGames.forEach(g => {
+    if (g.tournamentId) {
+      if (!gamesByTournament[g.tournamentId]) gamesByTournament[g.tournamentId] = [];
+      gamesByTournament[g.tournamentId].push(g);
+    }
+  });
+
+  for (const t of allTournaments) {
+    const refDate = t.startDate || t.endDate;
+    if (!refDate) continue;
+    const expectedStartYear = getSeasonFromDate(refDate);
+    const currentSeason = allSeasons.find(s => s.seasonId === t.seasonId);
+    const currentStartYear = currentSeason ? getSeasonStartYear(currentSeason) : null;
+
+    const linkedGames = gamesByTournament[t.tournamentId] || [];
+    // Check whether the tournament's own linked games agree with each
+    // other on season, not just with the tournament record itself —
+    // flagged separately and explicitly per the approved spec, since a
+    // tournament genuinely spanning two football seasons needs a human
+    // decision, not an automatic pick.
+    const linkedGameExpectedYears = new Set(linkedGames.map(g => g.date ? getSeasonFromDate(g.date) : null).filter(y => y !== null));
+
+    if (linkedGameExpectedYears.size > 1) {
+      issues.push({
+        type: 'tournament_spans_seasons',
+        recordType: 'Tournament',
+        name: t.name,
+        date: refDate,
+        tournamentId: t.tournamentId,
+        currentSeasonName: currentSeason?.seasonName || I18n.t('audit_unknown_season'),
+        expectedSeasonName: I18n.t('audit_spans_multiple'),
+        linkedGamesCount: linkedGames.length,
+        proposedAction: I18n.t('audit_action_needs_review'),
+        resolvable: false,
+      });
+      continue; // don't also flag this tournament's individual games below — the spanning issue is the one that needs resolving first
+    }
+
+    if (expectedStartYear !== currentStartYear) {
+      const expectedSeason = seasonByStartYear[expectedStartYear];
+      issues.push({
+        type: 'tournament',
+        recordType: 'Tournament',
+        name: t.name,
+        date: refDate,
+        tournamentId: t.tournamentId,
+        currentSeasonName: currentSeason?.seasonName || I18n.t('audit_unknown_season'),
+        expectedSeasonName: expectedSeason ? expectedSeason.seasonName : I18n.t('audit_no_target_season', {year: expectedStartYear}),
+        expectedSeasonId: expectedSeason ? expectedSeason.seasonId : null,
+        linkedGamesCount: linkedGames.length,
+        proposedAction: expectedSeason ? I18n.t('audit_action_move_to', {season: expectedSeason.seasonName}) : I18n.t('audit_action_no_target'),
+        resolvable: !!expectedSeason,
+      });
+    }
+  }
+
+  // ── Standalone games (not part of a tournament already flagged above) ──
+  const flaggedTournamentIds = new Set(issues.filter(i => i.tournamentId).map(i => i.tournamentId));
+  for (const g of allGames) {
+    if (g.tournamentId && flaggedTournamentIds.has(g.tournamentId)) continue; // already covered by the tournament-level issue
+    if (!g.date) continue;
+    const expectedStartYear = getSeasonFromDate(g.date);
+    const currentSeason = allSeasons.find(s => s.seasonId === g.seasonId);
+    const currentStartYear = currentSeason ? getSeasonStartYear(currentSeason) : null;
+    if (expectedStartYear === currentStartYear) continue;
+
+    const expectedSeason = seasonByStartYear[expectedStartYear];
+    const gps = await DB.getAll('gamePlayers', 'gameId', g.gameId);
+    issues.push({
+      type: 'game',
+      recordType: 'Game',
+      name: g.opponent || I18n.t('audit_unnamed_opponent'),
+      date: g.date,
+      gameId: g.gameId,
+      tournamentId: g.tournamentId || null,
+      currentSeasonName: currentSeason?.seasonName || I18n.t('audit_unknown_season'),
+      expectedSeasonName: expectedSeason ? expectedSeason.seasonName : I18n.t('audit_no_target_season', {year: expectedStartYear}),
+      expectedSeasonId: expectedSeason ? expectedSeason.seasonId : null,
+      linkedStatsCount: gps.length,
+      proposedAction: expectedSeason ? I18n.t('audit_action_move_to', {season: expectedSeason.seasonName}) : I18n.t('audit_action_no_target'),
+      resolvable: !!expectedSeason,
+    });
+  }
+
+  return issues;
+}
+
+// Resolves, for one game being moved to a new season, which destination-
+// season player each of its real (non-temporary) gamePlayers rows should
+// now reference. Uses careerPlayerId exclusively — never fullName — per
+// the explicit requirement not to match players by name. A player who
+// has no destination-season row yet is reported as unresolved, and the
+// caller must stop that specific game rather than silently guess or
+// duplicate a player record.
+async function resolvePlayerMappingForSeasonMove(gameId, destinationSeasonId) {
+  const gps = await DB.getAll('gamePlayers', 'gameId', gameId);
+  const realGps = gps.filter(gp => gp.playerId); // exclude tempPlayerId-only rows, handled separately
+  const destinationPlayers = await DB.getAll('players', 'seasonId', destinationSeasonId);
+  const destinationByCareerId = {};
+  destinationPlayers.forEach(p => { if (p.careerPlayerId) destinationByCareerId[p.careerPlayerId] = p; });
+
+  const resolved = [];
+  const unresolved = [];
+
+  for (const gp of realGps) {
+    const sourcePlayer = await DB.get('players', gp.playerId);
+    if (!sourcePlayer) { unresolved.push({ gamePlayerId: gp.gamePlayerId, reason: 'source player record missing' }); continue; }
+    if (!sourcePlayer.careerPlayerId) { unresolved.push({ gamePlayerId: gp.gamePlayerId, playerName: sourcePlayer.fullName, reason: 'no careerPlayerId on source player' }); continue; }
+
+    const destinationPlayer = destinationByCareerId[sourcePlayer.careerPlayerId];
+    if (!destinationPlayer) {
+      unresolved.push({ gamePlayerId: gp.gamePlayerId, playerName: sourcePlayer.fullName, reason: 'no matching player exists yet in the destination season' });
+      continue;
+    }
+    resolved.push({ gamePlayerId: gp.gamePlayerId, oldPlayerId: gp.playerId, newPlayerId: destinationPlayer.playerId });
+  }
+
+  return { resolved, unresolved };
+}
+
+// Moves a single standalone game (not part of a tournament) to a
+// different season, safely re-pointing its gamePlayers to the correct
+// destination-season player rows via careerPlayerId. If ANY real player
+// on this game cannot be safely resolved, the whole game is skipped and
+// reported — never partially moved, never silently left with gamePlayers
+// pointing at a player in the wrong season.
+async function moveGameToSeasonSafely(gameId, destinationSeasonId) {
+  const game = await DB.get('games', gameId);
+  if (!game) return { moved: false, reason: 'game not found' };
+
+  const { resolved, unresolved } = await resolvePlayerMappingForSeasonMove(gameId, destinationSeasonId);
+  if (unresolved.length) {
+    return { moved: false, reason: 'unresolved players', unresolved };
+  }
+
+  game.seasonId = destinationSeasonId;
+  await DB.put('games', game);
+
+  for (const r of resolved) {
+    const gp = await DB.get('gamePlayers', r.gamePlayerId);
+    if (!gp) continue;
+    gp.playerId = r.newPlayerId;
+    gp.seasonId = destinationSeasonId;
+    await DB.put('gamePlayers', gp);
+  }
+
+  // Temporary-player rows (guests) stay attached to the game/tournament
+  // as-is — per the approved spec, they may remain attached where
+  // supported, but must never become permanent destination-season squad
+  // members, so nothing further needs to happen to them here.
+  const tempGps = (await DB.getAll('gamePlayers', 'gameId', gameId)).filter(gp => gp.tempPlayerId);
+  for (const gp of tempGps) {
+    gp.seasonId = destinationSeasonId;
+    await DB.put('gamePlayers', gp);
+  }
+
+  return { moved: true, playersRelinked: resolved.length };
+}
+
+// Moves an entire tournament (and every one of its linked games) to a
+// different season in one safe operation. If ANY linked game's players
+// cannot be safely resolved, the ENTIRE tournament move is aborted before
+// any record is touched — per "never leave a tournament split across two
+// Seasons," a partial move would be exactly that.
+async function moveTournamentToSeasonSafely(tournamentId, destinationSeasonId) {
+  const tournament = await DB.get('tournaments', tournamentId);
+  if (!tournament) return { moved: false, reason: 'tournament not found' };
+
+  const allGames = await DB.getAll('games');
+  const linkedGames = allGames.filter(g => g.tournamentId === tournamentId);
+
+  // Pre-flight: resolve every linked game's player mapping BEFORE writing
+  // anything, so a failure partway through never leaves some games moved
+  // and others not.
+  const perGameResolution = [];
+  for (const g of linkedGames) {
+    const resolution = await resolvePlayerMappingForSeasonMove(g.gameId, destinationSeasonId);
+    perGameResolution.push({ gameId: g.gameId, ...resolution });
+    if (resolution.unresolved.length) {
+      return { moved: false, reason: 'unresolved players in linked game', gameId: g.gameId, unresolved: resolution.unresolved };
+    }
+  }
+
+  await Backup.create('before-season-audit-move');
+
+  tournament.seasonId = destinationSeasonId;
+  await DB.put('tournaments', tournament);
+
+  for (const { gameId, resolved } of perGameResolution) {
+    const game = await DB.get('games', gameId);
+    game.seasonId = destinationSeasonId;
+    await DB.put('games', game);
+
+    for (const r of resolved) {
+      const gp = await DB.get('gamePlayers', r.gamePlayerId);
+      if (!gp) continue;
+      gp.playerId = r.newPlayerId;
+      gp.seasonId = destinationSeasonId;
+      await DB.put('gamePlayers', gp);
+    }
+    const tempGps = (await DB.getAll('gamePlayers', 'gameId', gameId)).filter(gp => gp.tempPlayerId);
+    for (const gp of tempGps) {
+      gp.seasonId = destinationSeasonId;
+      await DB.put('gamePlayers', gp);
+    }
+  }
+
+  // Tournament achievements: re-sync rather than blindly regenerate, so
+  // existing dismissals and fingerprints are respected — this reuses the
+  // exact same function already trusted for this all night, avoiding
+  // duplicate achievement logic.
+  await syncTournamentAchievements(tournamentId);
+
+  return { moved: true, gamesMovedCount: linkedGames.length };
 }
 
 async function migrateCareerPlayerIds() {
@@ -4557,6 +4795,20 @@ const TR = {
     adm_subtitle:'Super Admin — NextEleven',
     adm_btn_add_item:'Add Item',
     adm_tab_roadmap:'Roadmap', adm_tab_kanban:'Kanban', adm_tab_fields:'Field Visibility', adm_tab_debug:'Debug',
+    adm_tab_diagnostics:'Diagnostics',
+    audit_title:'Season Assignment Audit', audit_scanning:'Scanning games and tournaments…',
+    audit_none_found:'No season assignment issues found.', audit_found_count:'{n} issue(s) found.',
+    audit_btn_select_all:'Select All', audit_btn_select_none:'Select None', audit_btn_move_selected:'Move Selected',
+    audit_lbl_current:'Current', audit_lbl_expected:'Expected', audit_linked_games:'{n} linked game(s)',
+    audit_linked_stats:'{n} linked stat record(s)', audit_not_resolvable:'Cannot be moved automatically — needs manual review',
+    audit_unknown_season:'Unknown season', audit_spans_multiple:'Spans multiple seasons — needs review',
+    audit_no_target_season:'{year}/{year} season does not exist yet', audit_unnamed_opponent:'Unnamed opponent',
+    audit_action_move_to:'Move to {season}', audit_action_no_target:'Create the target season first',
+    audit_action_needs_review:'Needs manual review — linked games disagree on season',
+    audit_err_none_selected:'Select at least one item to move.',
+    audit_confirm_title:'Move selected records?', audit_confirm_body:'This will move {n} record(s) to their correct season. A backup will be created first.',
+    audit_move_summary:'{moved} moved, {failed} could not be moved automatically.',
+
 
     // ── ADMIN — ROADMAP ──
     rm_loading:'Loading roadmap...',
@@ -5629,6 +5881,20 @@ const TR = {
     adm_subtitle:'Super Admin — NextEleven',
     adm_btn_add_item:'Adicionar Item',
     adm_tab_roadmap:'Roteiro', adm_tab_kanban:'Kanban', adm_tab_fields:'Visibilidade de Campos', adm_tab_debug:'Depuração',
+    adm_tab_diagnostics:'Diagnóstico',
+    audit_title:'Auditoria de Atribuição de Época', audit_scanning:'A analisar jogos e torneios…',
+    audit_none_found:'Não foram encontrados problemas de atribuição de época.', audit_found_count:'{n} problema(s) encontrado(s).',
+    audit_btn_select_all:'Selecionar Tudo', audit_btn_select_none:'Não Selecionar Nada', audit_btn_move_selected:'Mover Selecionados',
+    audit_lbl_current:'Atual', audit_lbl_expected:'Esperado', audit_linked_games:'{n} jogo(s) associado(s)',
+    audit_linked_stats:'{n} registo(s) de estatísticas associado(s)', audit_not_resolvable:'Não pode ser movido automaticamente — necessita revisão manual',
+    audit_unknown_season:'Época desconhecida', audit_spans_multiple:'Abrange várias épocas — necessita revisão',
+    audit_no_target_season:'A época {year}/{year} ainda não existe', audit_unnamed_opponent:'Adversário sem nome',
+    audit_action_move_to:'Mover para {season}', audit_action_no_target:'Crie primeiro a época de destino',
+    audit_action_needs_review:'Necessita revisão manual — os jogos associados não concordam na época',
+    audit_err_none_selected:'Selecione pelo menos um item para mover.',
+    audit_confirm_title:'Mover os registos selecionados?', audit_confirm_body:'Isto move {n} registo(s) para a época correta. Será criada uma cópia de segurança primeiro.',
+    audit_move_summary:'{moved} movido(s), {failed} não puderam ser movidos automaticamente.',
+
 
     // ── ADMIN — ROADMAP ──
     rm_loading:'A carregar roteiro...',
@@ -6642,7 +6908,7 @@ async function initAdmin() {
 
 // ── Admin tab switching ────────────────────────────────────────────────────────
 function switchAdminTab(tab) {
-  ['roadmap','kanban','fields','debug'].forEach(t => {
+  ['roadmap','kanban','fields','debug','diagnostics'].forEach(t => {
     document.getElementById(`admin-panel-${t}`).style.display = t === tab ? '' : 'none';
     document.getElementById(`atab-${t}`)?.classList.toggle('active-tab', t === tab);
   });
@@ -6650,6 +6916,7 @@ function switchAdminTab(tab) {
   if (tab === 'kanban')  renderKanban();
   if (tab === 'fields')  renderFieldVisibilityTab();
   if (tab === 'debug')   renderDebugTab();
+  if (tab === 'diagnostics') renderDiagnosticsTab();
 }
 
 async function renderDebugTab() {
@@ -6676,6 +6943,100 @@ async function toggleDebugMode(on) {
   await setDebugMode(on);
   Toast.show(on ? I18n.t('dbg_toast_on') : I18n.t('dbg_toast_off'));
   await renderDebugTab();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DIAGNOSTICS TAB — Season Assignment Audit
+// ══════════════════════════════════════════════════════════════════════════
+let _seasonAuditIssues = [];
+
+async function renderDiagnosticsTab() {
+  const el = document.getElementById('admin-panel-diagnostics');
+  if (!el) return;
+  el.innerHTML = `<div class="card"><div class="card-title">${I18n.t('audit_title')}</div><p style="font-size:12px;color:var(--muted)">${I18n.t('audit_scanning')}</p></div>`;
+
+  _seasonAuditIssues = await scanSeasonAssignmentIssues();
+  renderSeasonAuditResults();
+}
+
+function renderSeasonAuditResults() {
+  const el = document.getElementById('admin-panel-diagnostics');
+  if (!el) return;
+  const issues = _seasonAuditIssues;
+
+  if (!issues.length) {
+    el.innerHTML = `<div class="card"><div class="card-title">${I18n.t('audit_title')}</div><div class="empty"><strong>${I18n.t('audit_none_found')}</strong></div></div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-title">${I18n.t('audit_title')}</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px">${I18n.t('audit_found_count', {n: issues.length})}</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" onclick="seasonAuditSelectAll(true)">${I18n.t('audit_btn_select_all')}</button>
+        <button class="btn btn-secondary btn-sm" onclick="seasonAuditSelectAll(false)">${I18n.t('audit_btn_select_none')}</button>
+        <button class="btn btn-primary btn-sm" onclick="seasonAuditMoveSelected()">${I18n.t('audit_btn_move_selected')}</button>
+      </div>
+    </div>
+    ${issues.map((issue, i) => `
+      <div class="card" style="margin-bottom:8px;${issue.resolvable===false?'opacity:0.7':''}">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          ${issue.resolvable !== false ? `<input type="checkbox" class="season-audit-checkbox" data-index="${i}" style="margin-top:4px">` : `<span style="width:16px;flex-shrink:0;text-align:center;color:#b03030" title="${I18n.t('audit_not_resolvable')}">&#9888;</span>`}
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">${esc(issue.recordType)}</div>
+            <div style="font-weight:700;font-size:14px">${esc(issue.name)}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">${issue.date?fmtDate(issue.date):'—'}</div>
+            <div style="font-size:12px;margin-top:6px">
+              <span style="color:var(--muted)">${I18n.t('audit_lbl_current')}:</span> <strong>${esc(issue.currentSeasonName)}</strong>
+              &nbsp;→&nbsp;
+              <span style="color:var(--muted)">${I18n.t('audit_lbl_expected')}:</span> <strong>${esc(issue.expectedSeasonName)}</strong>
+            </div>
+            ${issue.linkedGamesCount!==undefined?`<div style="font-size:11px;color:var(--muted);margin-top:4px">${I18n.t('audit_linked_games', {n: issue.linkedGamesCount})}</div>`:''}
+            ${issue.linkedStatsCount!==undefined?`<div style="font-size:11px;color:var(--muted);margin-top:4px">${I18n.t('audit_linked_stats', {n: issue.linkedStatsCount})}</div>`:''}
+            <div style="font-size:12px;font-weight:700;margin-top:6px;color:${issue.resolvable===false?'#b03030':'#2a7a4e'}">${esc(issue.proposedAction)}</div>
+          </div>
+        </div>
+      </div>`).join('')}
+  `;
+}
+
+function seasonAuditSelectAll(select) {
+  document.querySelectorAll('.season-audit-checkbox').forEach(cb => { cb.checked = select; });
+}
+
+async function seasonAuditMoveSelected() {
+  const checked = Array.from(document.querySelectorAll('.season-audit-checkbox:checked')).map(cb => parseInt(cb.dataset.index));
+  if (!checked.length) { Toast.error(I18n.t('audit_err_none_selected')); return; }
+
+  Confirm.show(I18n.t('audit_confirm_title'), I18n.t('audit_confirm_body', {n: checked.length}), async () => {
+    await Backup.create('before-season-audit-move');
+    let moved = 0, failed = [];
+
+    for (const idx of checked) {
+      const issue = _seasonAuditIssues[idx];
+      if (!issue || !issue.expectedSeasonId) { failed.push({issue, reason: 'no target season'}); continue; }
+
+      let result;
+      if (issue.type === 'tournament') {
+        result = await moveTournamentToSeasonSafely(issue.tournamentId, issue.expectedSeasonId);
+      } else if (issue.type === 'game') {
+        result = await moveGameToSeasonSafely(issue.gameId, issue.expectedSeasonId);
+      } else {
+        continue;
+      }
+
+      if (result.moved) moved++;
+      else failed.push({ issue, reason: result.reason, unresolved: result.unresolved });
+    }
+
+    Toast.show(I18n.t('audit_move_summary', {moved, failed: failed.length}));
+    if (failed.length) {
+      console.warn('[Season Audit] Records that could not be moved:', failed);
+    }
+    Sync.scheduleAutoSync();
+    await renderDiagnosticsTab();
+  });
 }
 
 // ── Render roadmap table ───────────────────────────────────────────────────────
