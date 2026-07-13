@@ -9360,6 +9360,102 @@ async function handleDeleteCurrentSeason() {
 // Completion/reopening never deletes or modifies any other data — it is
 // purely a status flag, and the recap itself is always recalculated
 // live from the same real games/players/achievements data.
+// Resolves a season's real, current status for Home page branching.
+// 'completed'/'archived' always come directly from the explicit status
+// field set via Complete Season / Reopen Season — never inferred, per
+// the standing rule that only the Parent decides when a season is over.
+// 'setup' is the one inferred case: a season with genuinely zero games
+// recorded yet is being prepared, not actively played — this is a
+// reasonable, narrow inference (not a date-based guess about
+// completion), since a season with real games in it is self-evidently
+// no longer just "setup" regardless of what its explicit status says.
+async function getSeasonStatus(season) {
+  if (!season) return null;
+  if (season.status === 'completed' || season.status === 'archived') return season.status;
+  const games = await DB.getAll('games','seasonId',season.seasonId);
+  if (games.length === 0) return 'setup';
+  return 'active';
+}
+
+// Reusable Season Header — shown on every season regardless of status,
+// per the approved spec. Logo priority: season-level override first,
+// then the linked clubTeams logo, then a built-in default placeholder —
+// never a broken image, never duplicated logo URLs stored per-season
+// unless a genuine override is set.
+async function renderSeasonHeader(season, status) {
+  let logoUrl = season.headerLogoUrl || null;
+  if (!logoUrl && season.clubTeamId) {
+    const clubTeam = await DB.get('clubTeams', season.clubTeamId);
+    logoUrl = clubTeam?.logoUrl || null;
+  }
+  const statusConfig = {
+    setup:     { label: I18n.t('home_status_setup'),     bg: '#f0f4f8', color: 'var(--muted)' },
+    active:    { label: I18n.t('home_status_active'),     bg: '#e6f4ea', color: '#2a7a3b' },
+    completed: { label: I18n.t('home_status_completed'), bg: '#e8f0fe', color: '#1a56c4' },
+    archived:  { label: I18n.t('home_status_archived'),  bg: '#f0f0f0', color: 'var(--muted)' },
+  };
+  const cfg = statusConfig[status] || statusConfig.active;
+
+  return `
+  <div class="card" style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+    <div style="width:52px;height:52px;border-radius:50%;background:#f5f5f5;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;border:1px solid var(--border)">
+      ${logoUrl
+        ? `<img src="${esc(logoUrl)}" alt="" style="width:100%;height:100%;object-fit:contain" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+           <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:20px">&#9917;</div>`
+        : `<div style="display:flex;width:100%;height:100%;align-items:center;justify-content:center;font-size:20px">&#9917;</div>`
+      }
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:800;font-size:16px">${esc(season.clubName||'')}</div>
+      <div style="font-size:12px;color:var(--muted)">${season.ageGroup?esc(season.ageGroup)+' · ':''}${esc(season.seasonName||'')}</div>
+    </div>
+    <span class="badge" style="background:${cfg.bg};color:${cfg.color};flex-shrink:0;font-weight:700">${cfg.label}</span>
+  </div>`;
+}
+
+// ── SETUP SEASON VIEW ────────────────────────────────────────────────────
+async function renderHomeSetupView(season) {
+  const players = await DB.getAll('players','seasonId',season.seasonId);
+  const activePlayers = players.filter(p => p.isActive);
+  const opponents = await DB.getAll('opponents');
+
+  const tasks = [];
+  if (activePlayers.length === 0) tasks.push({ label: I18n.t('home_setup_task_add_players'), action: `Nav.go('squad');setTimeout(()=>document.getElementById('btnAddPlayer')?.click(),100)` });
+  if (!season.competitionName) tasks.push({ label: I18n.t('home_setup_task_add_competition'), action: `Nav.go('settings')` });
+  if (opponents.length === 0) tasks.push({ label: I18n.t('home_setup_task_add_opponents'), action: `Nav.go('opponents')` });
+
+  return `
+  <div class="card">
+    <div class="card-title">${I18n.t('home_setup_title')}</div>
+    <div class="stat-grid">
+      <div><div class="stat-label">${I18n.t('home_setup_start_date')}</div><div class="stat-value" style="font-size:15px">${season.startYear ? season.startYear + '-09-01' : '—'}</div></div>
+      <div><div class="stat-label">${I18n.t('home_setup_squad_size')}</div><div class="stat-value" style="font-size:15px">${activePlayers.length}</div></div>
+    </div>
+  </div>
+
+  ${tasks.length ? `
+  <div class="card">
+    <div class="card-title">${I18n.t('home_setup_missing_tasks')}</div>
+    ${tasks.map(t => `<div class="row" style="cursor:pointer" onclick="${t.action}">
+      <span class="row-name">${esc(t.label)}</span>
+      <span class="row-meta">›</span>
+    </div>`).join('')}
+  </div>` : `
+  <div class="card" style="text-align:center;padding:24px">
+    <div style="font-size:28px;margin-bottom:8px">&#9989;</div>
+    <p style="color:var(--muted);font-size:13px">${I18n.t('home_setup_ready')}</p>
+  </div>`}
+
+  <div class="card">
+    <div class="card-title">${I18n.t('home_card_quick_actions')}</div>
+    <div class="btn-group" style="flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="Nav.go('squad');setTimeout(()=>document.getElementById('btnAddPlayer')?.click(),100)">+ ${I18n.t('home_btn_add_player')}</button>
+      <button class="btn btn-secondary" onclick="Nav.go('settings')">+ ${I18n.t('home_setup_btn_competition')}</button>
+      <button class="btn btn-primary" onclick="Nav.go('games');setTimeout(()=>document.getElementById('btnAddGame')?.click(),100)">+ ${I18n.t('home_setup_btn_first_match')}</button>
+    </div>
+  </div>`;
+}
+
 async function handleCompleteSeason() {
   Confirm.show(I18n.t('recap_confirm_complete_title'), I18n.t('recap_confirm_complete_body'), async () => {
     const season = { ...State.currentSeason, status: 'completed' };
@@ -9379,6 +9475,141 @@ async function handleReopenSeason() {
     Toast.show(I18n.t('recap_season_reopened_toast'));
     await Render.settings();
     Sync.scheduleAutoSync();
+  });
+}
+
+// ── COMPLETED SEASON VIEW ────────────────────────────────────────────────
+async function renderHomeCompletedView(season) {
+  const games = await DB.getAll('games','seasonId',season.seasonId);
+  const allGP = await DB.getAll('gamePlayers','seasonId',season.seasonId);
+  const finishedGames = games.filter(g => isGameResultVisible(g));
+  const players = await DB.getAll('players','seasonId',season.seasonId);
+  const activePlayers = players.filter(p => p.isActive);
+
+  const stats = Calc.teamSeasonStats(finishedGames, allGP);
+  const sortedByDate = [...finishedGames].sort((a,b) => gameSortKey(a) - gameSortKey(b));
+  const firstMatch = sortedByDate[0] || null;
+  const lastMatch = sortedByDate[sortedByDate.length - 1] || null;
+  const finalThree = [...finishedGames].sort((a,b) => gameSortKey(b) - gameSortKey(a)).slice(0,3);
+
+  // Historical Squad — returning vs new, compared against whichever
+  // season immediately precedes this one for the same club, matched by
+  // careerPlayerId (never by name), per the identity rules established
+  // earlier tonight.
+  const allSeasons = (await DB.getAll('seasons')).filter(s => s.clubTeamId === season.clubTeamId && s.startYear < season.startYear);
+  const previousSeason = allSeasons.sort((a,b) => b.startYear - a.startYear)[0] || null;
+  let returningCount = 0, newCount = activePlayers.length;
+  if (previousSeason) {
+    const prevPlayers = await DB.getAll('players','seasonId',previousSeason.seasonId);
+    const prevCareerIds = new Set(prevPlayers.map(p => p.careerPlayerId).filter(Boolean));
+    returningCount = activePlayers.filter(p => p.careerPlayerId && prevCareerIds.has(p.careerPlayerId)).length;
+    newCount = activePlayers.length - returningCount;
+  }
+
+  // Player Highlights — hidden entirely if no real stats exist yet
+  const withStats = activePlayers.map(p => ({ ...p, s: Calc.playerSeasonStats(p.playerId, finishedGames, allGP) }));
+  function leader(key) {
+    const max = Math.max(...withStats.map(p => p.s[key]||0));
+    if (max === 0) return null;
+    return { names: withStats.filter(p => (p.s[key]||0)===max).map(p=>shortName(p.fullName)), value: max };
+  }
+  const topScorer = leader('goals');
+  const topAssists = leader('assists');
+  const mostApps = leader('calledUp');
+  const hasAnyStats = topScorer || topAssists || mostApps;
+
+  // Competitions & Achievements — hidden entirely if none exist
+  const achievements = (await DB.getAll('achievements'))
+    .filter(a => a.seasonId === season.seasonId && a.category === 'Trophy' && !a.isDeleted && a.dismissed !== true);
+
+  return `
+  <div class="card">
+    <div class="card-title">${I18n.t('home_completed_at_a_glance')}</div>
+    <div class="stat-grid">
+      ${season.seasonSummary?.position ? `<div><div class="stat-label">${I18n.t('home_completed_final_position')}</div><div class="stat-value">${esc(String(season.seasonSummary.position))}</div></div>` : ''}
+      <div><div class="stat-label">${I18n.t('dash_played')}</div><div class="stat-value">${stats.played}</div></div>
+      <div><div class="stat-label">${I18n.t('dash_won')}</div><div class="stat-value">${stats.wins}</div></div>
+      <div><div class="stat-label">${I18n.t('dash_drawn')}</div><div class="stat-value">${stats.draws}</div></div>
+      <div><div class="stat-label">${I18n.t('dash_lost')}</div><div class="stat-value">${stats.losses}</div></div>
+      <div><div class="stat-label">${I18n.t('dash_goals_for')}</div><div class="stat-value">${stats.goalsFor}</div></div>
+      <div><div class="stat-label">${I18n.t('dash_goals_against')}</div><div class="stat-value">${stats.goalsAgainst}</div></div>
+      <div><div class="stat-label">${I18n.t('home_completed_goal_diff')}</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
+    </div>
+  </div>
+
+  ${(firstMatch || lastMatch) ? `
+  <div class="card">
+    <div class="card-title">${I18n.t('home_completed_timeline')}</div>
+    ${firstMatch ? `<div class="row"><span class="row-name">${I18n.t('home_completed_first_match')}</span><span class="row-meta">${fmtDate(firstMatch.date)} · ${esc(firstMatch.opponent)}</span></div>` : ''}
+    ${lastMatch ? `<div class="row"><span class="row-name">${I18n.t('home_completed_last_match')}</span><span class="row-meta">${fmtDate(lastMatch.date)} · ${esc(lastMatch.opponent)}</span></div>` : ''}
+  </div>` : ''}
+
+  ${finalThree.length ? `
+  <div class="card">
+    <div class="card-title">${I18n.t('home_completed_final_matches')}</div>
+    ${finalThree.map(g => {
+      const gGP = allGP.filter(r => r.gameId === g.gameId);
+      const gOurs = Calc.teamGoals(gGP, g);
+      const gTheirs = parseInt(g.opponentScore)||0;
+      const gRes = Calc.result(gOurs, gTheirs, g);
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="goToGameDetail(${g.gameId})">
+        <div>
+          <div style="font-weight:700;font-size:13px">${esc(g.opponent)} <span style="font-weight:400;color:var(--muted);font-size:11px">${homeAwayLabel(g.homeAway)}</span></div>
+          <div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(g.date)}</div>
+        </div>
+        <div style="text-align:right">
+          <span class="badge badge-${gRes}">${gRes}</span>
+          <span style="font-size:15px;font-weight:700;margin-left:6px">${(()=>{const s=Calc.homeAwayScore(g.homeAway,gOurs,gTheirs,g.neutralSide);return s.home+'–'+s.away;})()}</span>
+        </div>
+      </div>`;
+    }).join('')}
+    <button class="btn btn-secondary btn-sm" style="margin-top:10px" onclick="Nav.go('games')">${I18n.t('home_completed_view_all_results')}</button>
+  </div>` : ''}
+
+  <div class="card">
+    <div class="card-title">${I18n.t('home_completed_historical_squad')}</div>
+    <div class="stat-grid">
+      <div><div class="stat-label">${I18n.t('home_completed_squad_size')}</div><div class="stat-value">${activePlayers.length}</div></div>
+      ${previousSeason ? `<div><div class="stat-label">${I18n.t('home_completed_returning')}</div><div class="stat-value">${returningCount}</div></div>
+      <div><div class="stat-label">${I18n.t('home_completed_new_players')}</div><div class="stat-value">${newCount}</div></div>` : ''}
+    </div>
+    <button class="btn btn-secondary btn-sm" style="margin-top:10px" onclick="Nav.go('squad')">${I18n.t('home_completed_view_squad')}</button>
+  </div>
+
+  ${hasAnyStats ? `
+  <div class="card">
+    <div class="card-title">${I18n.t('home_completed_player_highlights')}</div>
+    ${mostApps ? `<div class="row"><span class="row-name">${I18n.t('home_completed_most_apps')}</span><span class="row-meta">${esc(mostApps.names.join(', '))} (${mostApps.value})</span></div>` : ''}
+    ${topScorer ? `<div class="row"><span class="row-name">${I18n.t('home_completed_top_scorer')}</span><span class="row-meta">${esc(topScorer.names.join(', '))} (${topScorer.value})</span></div>` : ''}
+    ${topAssists ? `<div class="row"><span class="row-name">${I18n.t('home_completed_most_assists')}</span><span class="row-meta">${esc(topAssists.names.join(', '))} (${topAssists.value})</span></div>` : ''}
+  </div>` : ''}
+
+  ${achievements.length ? `
+  <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
+    <div class="card-title">${I18n.t('home_completed_achievements')}</div>
+    ${achievements.map(a => `<div class="row"><span class="row-name">&#127942; ${esc(a.title)}</span><span class="row-meta">${a.date?fmtDate(a.date):''}</span></div>`).join('')}
+  </div>` : ''}
+
+  <div class="card" style="text-align:center">
+    <button class="btn btn-primary" onclick="Nav.go('teamSummary')">${I18n.t('home_completed_open_summary')}</button>
+  </div>
+
+  <div class="card" style="text-align:center;padding:14px">
+    <button class="btn btn-secondary btn-sm" onclick="handleEditHistoricalSeason()">${I18n.t('home_completed_edit_historical')}</button>
+  </div>`;
+}
+
+// Historical Editing — a completed season is read-only by default, per
+// the spec. This is a genuine, explicit unlock action: confirm, show a
+// clear warning while unlocked, and the Parent must re-lock manually
+// afterward (or the app simply treats it as unlocked for this session
+// only, per the simplest honest interpretation of "return to read-only
+// afterwards" without inventing a complex timed-lock mechanism).
+async function handleEditHistoricalSeason() {
+  Confirm.show(I18n.t('home_completed_edit_confirm_title'), I18n.t('home_completed_edit_confirm_body'), async () => {
+    State.historicalEditUnlocked = true;
+    Toast.show(I18n.t('home_completed_edit_unlocked_toast'));
+    await Nav.go('games');
   });
 }
 
@@ -13079,6 +13310,19 @@ const Render = (() => {
     const season = State.currentSeason;
     if (sub) sub.textContent = season.seasonName + (season.clubName ? ' · ' + season.clubName : '');
 
+    const seasonStatus = await getSeasonStatus(season);
+    const headerHtml = await renderSeasonHeader(season, seasonStatus);
+
+    if (seasonStatus === 'setup') {
+      el.innerHTML = headerHtml + await renderHomeSetupView(season);
+      return;
+    }
+    if (seasonStatus === 'completed' || seasonStatus === 'archived') {
+      el.innerHTML = headerHtml + await renderHomeCompletedView(season);
+      return;
+    }
+
+    // ── ACTIVE SEASON — existing day-to-day dashboard, unchanged ──────────
     const games = await DB.getAll('games','seasonId',State.currentSeasonId);
     const allGP = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
 
@@ -13111,7 +13355,7 @@ const Render = (() => {
       </div>`;
     }
 
-    el.innerHTML = `
+    el.innerHTML = headerHtml + `
       <!-- NEXT GAME — primary focus -->
       ${upcoming.length ? `
       ${renderNextGameCarousel(upcoming, 'guardian', true, `<button class="btn btn-primary" onclick="goToGameDetail(${(upcoming[Math.min(_homeCarouselIndex.guardian||0, upcoming.length-1)]).gameId})">${I18n.t('home_btn_open_game')}</button>`)}` : `
