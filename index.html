@@ -918,7 +918,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 // CONFIG
 // ══════════════════════════════════════════════════════════════════════════════
 const CONFIG = {
-  APP_VERSION: '1.2.1',
+  APP_VERSION: '1.2.1', // human-readable label only — staleness detection no longer depends on this matching anything
   SCHEMA_VERSION: 14,
   DB_NAME: 'footballSquadTrackerDB',
   MAX_BACKUPS: 30,
@@ -2942,8 +2942,24 @@ async function checkForStaleVersion() {
     const res = await fetch('version.json?_=' + Date.now(), { cache: 'no-store' });
     if (!res.ok) return;
     const remote = await res.json();
-    if (remote.version && remote.version !== CONFIG.APP_VERSION) {
+    if (!remote.version) return;
+
+    const lastSeenRec = await DB.get('appMeta', 'lastSeenBuildHash');
+    const lastSeen = lastSeenRec?.value;
+
+    if (lastSeen && lastSeen !== remote.version) {
+      // version.json's hash differs from what this device saw last time
+      // — a genuinely new file was deployed since then. Show the banner,
+      // but don't update the stored hash yet: only do that once the
+      // Parent actually reloads (below), so the banner doesn't
+      // disappear on its own before they've actually gotten the update.
       showStaleVersionBanner(remote.version);
+    } else if (!lastSeen) {
+      // First time this device has ever checked — nothing to compare
+      // against yet, so just remember the current hash as the baseline.
+      // This deliberately never shows the banner on a brand-new device
+      // or the very first load after this feature itself ships.
+      await DB.put('appMeta', { metaKey: 'lastSeenBuildHash', value: remote.version });
     }
   } catch (e) {
     // Silent failure — if this check itself can't run (offline, etc.),
@@ -2964,7 +2980,12 @@ function showStaleVersionBanner(newVersion) {
   document.body.prepend(banner);
 }
 
-function forceReloadForUpdate() {
+async function forceReloadForUpdate() {
+  try {
+    const res = await fetch('version.json?_=' + Date.now(), { cache: 'no-store' });
+    const remote = await res.json();
+    if (remote.version) await DB.put('appMeta', { metaKey: 'lastSeenBuildHash', value: remote.version });
+  } catch (e) {}
   // location.reload(true) is deprecated and unreliable on modern mobile
   // browsers; appending a real cache-busting query param to the URL and
   // navigating there directly is what actually forces a genuine
