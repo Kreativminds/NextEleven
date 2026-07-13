@@ -2659,6 +2659,18 @@ async function scanDuplicateClubTeams() {
   });
 }
 
+// Found missing tonight while tracing a real, reported duplication —
+// club_history was never included in the integrity scan at all. A
+// player genuinely cannot have the same club history entry twice for
+// the same season, so playerId + clubName + season is a safe, real key.
+async function scanDuplicateClubHistory() {
+  const all = (await DB.getAll('clubHistory')).filter(c => !c.isDeleted);
+  return groupDuplicates(all, c => {
+    if (!c.playerId || !c.clubName || !c.season) return null;
+    return [c.playerId, c.clubName.trim().toLowerCase(), c.season].join('|');
+  });
+}
+
 // Phase 5 — broken reference scan. Checks every real parent/child
 // relationship in the app for a child record pointing at a parent that
 // no longer exists (or was soft-deleted) — an orphan, not a duplicate.
@@ -2832,6 +2844,20 @@ async function repairDuplicateClubTeams(groups, log) {
   }
 }
 
+// Nothing references a club_history entry as a child, so no re-pointing
+// step is needed — simply keep the oldest (or the one with children,
+// though there never are any) and remove the rest.
+async function repairDuplicateClubHistory(groups, log) {
+  for (const group of groups) {
+    const master = await pickMasterRecord(group, async () => 0);
+    const extras = group.filter(c => c.clubHistoryId !== master.clubHistoryId);
+    for (const extra of extras) {
+      await DB.softDelete('clubHistory', extra.clubHistoryId);
+      log.push({ type: 'duplicate_clubhistory_repaired', kept: master.clubHistoryId, removed: extra.clubHistoryId, childrenMoved: 0 });
+    }
+  }
+}
+
 // Broken references — repaired where a safe, unambiguous fix exists;
 // otherwise reported only, per the approved "report only if impossible."
 async function repairBrokenReferences(issues, log) {
@@ -2866,6 +2892,7 @@ async function runIntegrityRepair() {
   if (before.dupOpponents.length) await repairDuplicateOpponents(before.dupOpponents, log);
   if (before.dupSeasons.length) await repairDuplicateSeasons(before.dupSeasons, log);
   if (before.dupClubTeams.length) await repairDuplicateClubTeams(before.dupClubTeams, log);
+  if (before.dupClubHistory.length) await repairDuplicateClubHistory(before.dupClubHistory, log);
 
   // Re-scan broken references AFTER duplicate repair, since fixing
   // duplicates (e.g. a season that existed twice) can itself resolve
@@ -2895,11 +2922,11 @@ async function runSilentIntegrityCheck() {
 }
 
 async function scanDatabaseIntegrity() {
-  const [dupGames, dupPlayers, dupOpponents, dupSeasons, dupClubTeams, brokenRefs] = await Promise.all([
+  const [dupGames, dupPlayers, dupOpponents, dupSeasons, dupClubTeams, dupClubHistory, brokenRefs] = await Promise.all([
     scanDuplicateGames(), scanDuplicatePlayers(), scanDuplicateOpponents(),
-    scanDuplicateSeasons(), scanDuplicateClubTeams(), scanBrokenReferences(),
+    scanDuplicateSeasons(), scanDuplicateClubTeams(), scanDuplicateClubHistory(), scanBrokenReferences(),
   ]);
-  return { dupGames, dupPlayers, dupOpponents, dupSeasons, dupClubTeams, brokenRefs };
+  return { dupGames, dupPlayers, dupOpponents, dupSeasons, dupClubTeams, dupClubHistory, brokenRefs };
 }
 
 async function scanSeasonAssignmentIssues() {
@@ -7488,6 +7515,7 @@ function integrityIssueRows(scan) {
   scan.dupOpponents.forEach(g => rows.push({ problem: I18n.t('integ_problem_dup_opponent'), record: g[0].opponentName, fix: I18n.t('integ_fix_merge', {n: g.length}), category: 'dupOpponents' }));
   scan.dupSeasons.forEach(g => rows.push({ problem: I18n.t('integ_problem_dup_season'), record: g[0].seasonName + ' · ' + g[0].clubName, fix: I18n.t('integ_fix_merge', {n: g.length}), category: 'dupSeasons' }));
   scan.dupClubTeams.forEach(g => rows.push({ problem: I18n.t('integ_problem_dup_clubteam'), record: g[0].name, fix: I18n.t('integ_fix_merge', {n: g.length}), category: 'dupClubTeams' }));
+  scan.dupClubHistory.forEach(g => rows.push({ problem: I18n.t('integ_problem_dup_clubhistory'), record: g[0].clubName + ' · ' + g[0].season, fix: I18n.t('integ_fix_merge', {n: g.length}), category: 'dupClubHistory' }));
   scan.brokenRefs.forEach(r => rows.push({ problem: I18n.t('integ_problem_broken_ref'), record: r.type, fix: r.reason, category: 'brokenRefs' }));
   return rows;
 }
@@ -15301,6 +15329,7 @@ const Sync = (() => {
       clubTeams: ['name'],
       seasons: ['clubName','seasonName'],
       tournaments: ['seasonId','name'],
+      clubHistory: ['playerId','clubName','season'],
     };
     return keys[store] || null;
   }
