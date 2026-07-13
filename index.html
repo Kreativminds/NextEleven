@@ -463,7 +463,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
     <button class="nav-link" data-portal-section="dashboard" onclick="Nav.goPortal('dashboard');document.getElementById('portalMobileMenu').classList.remove('open')">&#128202; <span data-i18n="pp_nav_dashboard">Overview</span></button>
     <button class="nav-link" data-portal-section="stats" onclick="Nav.goPortal('stats');document.getElementById('portalMobileMenu').classList.remove('open')">&#9889; <span data-i18n="pp_nav_stats">Stats</span></button>
     <button class="nav-link" data-portal-section="training" onclick="Nav.goPortal('training');document.getElementById('portalMobileMenu').classList.remove('open')">&#9917; <span data-i18n="pp_nav_training">Training</span></button>
-    <button class="nav-link" data-portal-section="games" onclick="Nav.goPortal('games');document.getElementById('portalMobileMenu').classList.remove('open')">&#127944; <span data-i18n="pp_nav_games">Games</span></button>
+    <button class="nav-link" data-portal-section="games" onclick="Nav.goPortal('games');document.getElementById('portalMobileMenu').classList.remove('open')">&#9917; <span data-i18n="pp_nav_games">Games</span></button>
     <button class="nav-link" data-portal-section="clubs" onclick="Nav.goPortal('clubs');document.getElementById('portalMobileMenu').classList.remove('open')">&#127942; <span data-i18n="pp_nav_clubs">Club History</span></button>
     <button class="nav-link" data-portal-section="achievements" onclick="Nav.goPortal('achievements');document.getElementById('portalMobileMenu').classList.remove('open')">&#127941; <span data-i18n="pp_nav_achievements">Achievements</span></button>
     <button class="nav-link" data-portal-section="events" onclick="Nav.goPortal('events');document.getElementById('portalMobileMenu').classList.remove('open')">&#128197; <span data-i18n="pp_nav_events">Events</span></button>
@@ -4121,7 +4121,7 @@ async function renderOpponentsTab() {
               <div style="display:flex;align-items:center;gap:10px">
                 ${o.logoUrl
                   ? `<img src="${esc(o.logoUrl)}" style="width:28px;height:28px;object-fit:contain;border-radius:4px;flex-shrink:0;background:#f0f0f0" onerror="this.outerHTML='<div style=&quot;width:28px;height:28px;background:#fde8e8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;color:#b03030&quot;>&#9888;</div>'">`
-                  : `<span class="wp-num">&#127944;</span>`}
+                  : `<span class="wp-num">&#9917;</span>`}
                 <span style="flex:1;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(o.opponentName)}</span>
               </div>
               <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap">
@@ -4535,7 +4535,7 @@ const TR = {
     // ── DASHBOARD PAGE ──
     dash_card_season_record:'Season Record',
     dash_played:'Played', dash_won:'Won', dash_drawn:'Drawn', dash_lost:'Lost',
-    dash_goals_for:'Goals For', dash_goals_against:'Against',
+    dash_goals_for:'Goals For', dash_goals_against:'Against', dash_current_form:'Current Form',
     dash_card_tracked_players:'Tracked Players',
     dash_apps:'Apps', dash_goals:'Goals', dash_assists:'Assists',
     dash_no_tracked:'No tracked players yet.',
@@ -5655,7 +5655,7 @@ const TR = {
     // ── DASHBOARD PAGE ──
     dash_card_season_record:'Registo da Época',
     dash_played:'Jogos', dash_won:'Vitórias', dash_drawn:'Empates', dash_lost:'Derrotas',
-    dash_goals_for:'Golos Marcados', dash_goals_against:'Golos Sofridos',
+    dash_goals_for:'Golos Marcados', dash_goals_against:'Golos Sofridos', dash_current_form:'Forma Atual',
     dash_card_tracked_players:'Jogadores Acompanhados',
     dash_apps:'Jogos', dash_goals:'Golos', dash_assists:'Assistências',
     dash_no_tracked:'Ainda sem jogadores acompanhados.',
@@ -11205,7 +11205,7 @@ async function renderPlayerClubHistory(playerId) {
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
             <div style="display:flex;gap:12px;align-items:flex-start">
               ${c.logoUrl?`<img src="${esc(c.logoUrl)}" style="width:40px;height:40px;object-fit:contain;border-radius:4px;flex-shrink:0;background:#f0f0f0" onerror="this.outerHTML='<div style=&quot;width:40px;height:40px;background:#fde8e8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;color:#b03030&quot; title=&quot;Image failed to load&quot;>&#9888;</div>'">`:
-              `<div style="width:40px;height:40px;background:#f0f0f0;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">&#127944;</div>`}
+              `<div style="width:40px;height:40px;background:#f0f0f0;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">&#9917;</div>`}
               <div>
                 <div class="ti-title">${esc(c.clubName)} ${c.ageGroup?`<span class="pos-pill">${esc(c.ageGroup)}</span>`:''} ${c.level?`<span class="pos-pill">${esc(c.level)}</span>`:''}</div>
                 <div class="ti-meta">${c.season||''} ${c.startDate?'· '+fmtDate(c.startDate):''} ${c.endDate?'→ '+fmtDate(c.endDate):I18n.t('ch_present')}</div>
@@ -12542,7 +12542,7 @@ async function renderPlayerPortalClubs() {
         <div class="timeline-item">
           <div style="display:flex;gap:12px;align-items:flex-start">
             ${c.logoUrl?`<img src="${esc(c.logoUrl)}" style="width:40px;height:40px;object-fit:contain;border-radius:4px;flex-shrink:0" onerror="this.style.display='none'">`:
-            `<div style="width:40px;height:40px;background:#f0f0f0;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">&#127944;</div>`}
+            `<div style="width:40px;height:40px;background:#f0f0f0;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">&#9917;</div>`}
             <div>
               <div class="ti-title">${esc(c.clubName)} ${c.ageGroup?`<span class="pos-pill">${esc(c.ageGroup)}</span>`:''}</div>
               <div class="ti-meta">${c.season||''} ${c.startDate?'· '+fmtDate(c.startDate):''} ${c.endDate?'→ '+fmtDate(c.endDate):I18n.t('ch_present')}</div>
@@ -13215,7 +13215,7 @@ const Render = (() => {
     el.innerHTML = `
       <!-- SEASON RECORD -->
       <div class="card">
-        <div class="card-title">&#127944; ${esc(season.seasonName)}${season.clubName?' · '+esc(season.clubName):''}${season.ageGroup?' · '+esc(season.ageGroup):''}</div>
+        <div class="card-title">&#9917; ${esc(season.seasonName)}${season.clubName?' · '+esc(season.clubName):''}${season.ageGroup?' · '+esc(season.ageGroup):''}</div>
         <div class="stat-grid" style="margin-bottom:0">
           <div class="stat-card"><div class="val">${ts.played}</div><div class="lbl">${I18n.t('dash_played')}</div></div>
           <div class="stat-card"><div class="val">${ts.wins}</div><div class="lbl">${I18n.t('dash_won')}</div></div>
@@ -13224,6 +13224,19 @@ const Render = (() => {
           <div class="stat-card"><div class="val">${ts.goalsFor}</div><div class="lbl">${I18n.t('dash_goals_for')}</div></div>
           <div class="stat-card"><div class="val">${ts.goalsAgainst}</div><div class="lbl">${I18n.t('dash_goals_against')}</div></div>
         </div>
+        ${finishedGames.length ? `
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">${I18n.t('dash_current_form')}</div>
+          <div style="display:flex;gap:6px">
+            ${[...finishedGames].sort((a,b)=>gameSortKey(b)-gameSortKey(a)).slice(0,5).reverse().map(g => {
+              const gps = allGP.filter(r=>r.gameId===g.gameId);
+              const res = Calc.result(Calc.teamGoals(gps, g), g.opponentScore||0, g);
+              const col = res==='W'?'#e6f4ea':res==='D'?'#fff8e1':'#fde8e8';
+              const tc = res==='W'?'#2a7a3b':res==='D'?'#b07a00':'#b03030';
+              return `<span title="vs ${esc(g.opponent||'')} · ${fmtDate(g.date)}" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;font-size:11px;font-weight:700;background:${col};color:${tc}">${res}</span>`;
+            }).join('')}
+          </div>
+        </div>` : ''}
       </div>
 
       <!-- TRACKED PLAYERS -->
@@ -13267,7 +13280,7 @@ const Render = (() => {
         <div class="card-title">${I18n.t('dash_card_reports')}</div>
         <div class="btn-group" style="flex-wrap:wrap">
           <button class="btn btn-secondary" onclick="Nav.go('teamSummary')">&#128202; ${I18n.t('dash_btn_team_summary')}</button>
-          <button class="btn btn-secondary" onclick="Nav.go('games')">&#127944; ${I18n.t('dash_btn_all_games')}</button>
+          <button class="btn btn-secondary" onclick="Nav.go('games')">&#9917; ${I18n.t('dash_btn_all_games')}</button>
           <button class="btn btn-secondary" onclick="Nav.go('squad')">&#128101; ${I18n.t('dash_btn_squad')}</button>
         </div>
       </div>
@@ -14479,7 +14492,7 @@ const Render = (() => {
         { icon:'&#9733;', title:I18n.t('help_quickstart_title'), content:I18n.t('help_quickstart_content') },
         { icon:'&#9917;', title:I18n.t('help_dashboard_title'), content:I18n.t('help_dashboard_content') },
         { icon:'&#128101;', title:I18n.t('help_squad_title'), content:I18n.t('help_squad_content') },
-        { icon:'&#127944;', title:I18n.t('help_games_title'), content:I18n.t('help_games_content') },
+        { icon:'&#9917;', title:I18n.t('help_games_title'), content:I18n.t('help_games_content') },
         { icon:'&#128200;', title:I18n.t('help_tp_title'), content:I18n.t('help_tp_content') },
         { icon:'&#128202;', title:I18n.t('help_teamsummary_title'), content:I18n.t('help_teamsummary_content') },
         { icon:'&#9881;', title:I18n.t('help_settings_title'), content:I18n.t('help_settings_content') },
