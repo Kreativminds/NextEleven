@@ -3608,6 +3608,7 @@ async function renderShareTeamCard() {
       <div style="font-size:12px;word-break:break-all;background:var(--bg,#f2f4f7);padding:8px 10px;border-radius:4px;margin-bottom:10px">${esc(url)}</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
         <button class="btn btn-secondary btn-sm" onclick="handleCopyShareLink('${esc(url)}')">${I18n.t('set_share_btn_copy')}</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.open('${esc(url)}','_blank','noopener,noreferrer')">${I18n.t('set_share_btn_open')}</button>
         ${existing.enabled
           ? `<button class="btn btn-secondary btn-sm" onclick="handleToggleShareLink(${season.seasonId}, false)">${I18n.t('set_share_btn_disable')}</button>`
           : `<button class="btn btn-secondary btn-sm" onclick="handleToggleShareLink(${season.seasonId}, true)">${I18n.t('set_share_btn_enable')}</button>`
@@ -5296,7 +5297,7 @@ const TR = {
     set_share_needs_login:'Sign in to cloud sync to create a share link.', set_share_needs_season:'Create a season first.',
     set_share_loading:'Loading…', set_share_btn_generate:'Generate Link',
     set_share_status_active:'Active — visible to anyone with the link', set_share_status_disabled:'Disabled — link no longer works',
-    set_share_btn_copy:'Copy Link', set_share_btn_disable:'Disable', set_share_btn_enable:'Enable', set_share_btn_regenerate:'Regenerate',
+    set_share_btn_copy:'Copy Link', set_share_btn_open:'Open Team Page', set_share_btn_disable:'Disable', set_share_btn_enable:'Enable', set_share_btn_regenerate:'Regenerate',
     set_share_generated:'Share link ready.', set_share_enabled_toast:'Link enabled.', set_share_disabled_toast:'Link disabled.',
     set_share_copied:'Link copied.', set_share_copy_failed:'Could not copy — long-press the link above to copy it manually.',
     set_share_confirm_regen_title:'Replace share link?', set_share_confirm_regen_body:'The current link will stop working immediately. Anyone who had it will need the new one.',
@@ -6456,7 +6457,7 @@ const TR = {
     set_share_needs_login:'Inicie sessão na sincronização na nuvem para criar um link.', set_share_needs_season:'Crie primeiro uma época.',
     set_share_loading:'A carregar…', set_share_btn_generate:'Gerar Link',
     set_share_status_active:'Ativo — visível a quem tiver o link', set_share_status_disabled:'Desativado — o link já não funciona',
-    set_share_btn_copy:'Copiar Link', set_share_btn_disable:'Desativar', set_share_btn_enable:'Ativar', set_share_btn_regenerate:'Regenerar',
+    set_share_btn_copy:'Copiar Link', set_share_btn_open:'Abrir Página de Equipa', set_share_btn_disable:'Desativar', set_share_btn_enable:'Ativar', set_share_btn_regenerate:'Regenerar',
     set_share_generated:'Link pronto.', set_share_enabled_toast:'Link ativado.', set_share_disabled_toast:'Link desativado.',
     set_share_copied:'Link copiado.', set_share_copy_failed:'Não foi possível copiar — mantenha premido o link acima para copiar manualmente.',
     set_share_confirm_regen_title:'Substituir link de partilha?', set_share_confirm_regen_body:'O link atual deixa de funcionar imediatamente. Quem o tinha vai precisar do novo.',
@@ -9638,15 +9639,15 @@ async function renderBrandingAssetFields() {
     return `
     <div class="card" style="margin-bottom:12px">
       <div class="card-title" style="margin-top:0">${I18n.t(def.labelKey)}</div>
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-        <div style="width:56px;height:56px;border-radius:6px;background:#f5f5f5;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0${currentUrl ? ';cursor:pointer' : ''}"${currentUrl ? ` onclick="showImagePreview('${esc(currentUrl)}')" role="button" tabindex="0" aria-label="View larger image"` : ''}>
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;flex-wrap:wrap">
+        <div style="width:110px;height:110px;border-radius:8px;background:#f5f5f5;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0${currentUrl ? ';cursor:pointer' : ''}"${currentUrl ? ` onclick="showImagePreview('${esc(currentUrl)}')" role="button" tabindex="0" aria-label="View larger image"` : ''}>
           ${currentUrl
-            ? `<img src="${esc(currentUrl)}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-               <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:10px;color:var(--muted);text-align:center;padding:4px">${I18n.t('set_branding_default')}</div>`
-            : `<div style="display:flex;width:100%;height:100%;align-items:center;justify-content:center;font-size:10px;color:var(--muted);text-align:center;padding:4px">${I18n.t('set_branding_default')}</div>`
+            ? `<img src="${esc(currentUrl)}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+               <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:12px;color:var(--muted);text-align:center;padding:6px">${I18n.t('set_branding_default')}</div>`
+            : `<div style="display:flex;width:100%;height:100%;align-items:center;justify-content:center;font-size:12px;color:var(--muted);text-align:center;padding:6px">${I18n.t('set_branding_default')}</div>`
           }
         </div>
-        <input id="brand-input-${def.key}" type="text" value="${esc(currentUrl)}" placeholder="https://..." style="flex:1;min-width:0">
+        <input id="brand-input-${def.key}" type="text" value="${esc(currentUrl)}" placeholder="https://..." style="flex:1;min-width:180px">
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-primary btn-sm" onclick="handleSaveBrandingField('${def.key}')">${I18n.t('common_save')}</button>
