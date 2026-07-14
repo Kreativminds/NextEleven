@@ -428,7 +428,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
      least once. After a successful login, the session persists locally so
      the app opens directly into itself on every later visit, with or
      without internet — only the very first login/signup needs connectivity. -->
-<div id="authGate" style="display:none;min-height:100vh;min-height:100dvh;align-items:center;justify-content:center;padding:24px;background:var(--bg)">
+<div id="authGate" style="display:none;min-height:100vh;min-height:100dvh;align-items:center;justify-content:center;padding:24px;background:var(--bg);background-size:cover;background-position:center">
   <div style="max-width:380px;width:100%">
     <div style="text-align:center;margin-bottom:28px">
       <div class="nav-logo-mark" style="width:48px;height:48px;margin:0 auto 12px"><span style="font-size:20px">11</span></div>
@@ -919,7 +919,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 // ══════════════════════════════════════════════════════════════════════════════
 const CONFIG = {
   APP_VERSION: '1.2.1', // human-readable label only — staleness detection no longer depends on this matching anything
-  SCHEMA_VERSION: 14,
+  SCHEMA_VERSION: 15,
   DB_NAME: 'footballSquadTrackerDB',
   MAX_BACKUPS: 30,
   FULL_GAME_MINS: 80,
@@ -3346,6 +3346,13 @@ async function seedOpponentsIfEmpty() {
 // brand new device/browser sees first: nothing else is visible until this
 // succeeds at least once. After that, the saved session skips this gate on
 // every later visit, online or offline.
+async function applyAuthGateBackground() {
+  const el = document.getElementById('authGate');
+  if (!el) return;
+  const url = await getBrandingAsset('loginWelcomeImage');
+  el.style.backgroundImage = url ? `url('${url}')` : '';
+}
+
 function renderAuthGate() {
   const el = document.getElementById('authGateCard');
   if (!el) return;
@@ -3940,6 +3947,7 @@ async function handleLogout() {
   // no data should remain visible on screen.
   document.getElementById('app').style.display = 'none';
   renderAuthGate();
+  applyAuthGateBackground();
   document.getElementById('authGate').style.display = 'flex';
 }
 
@@ -3949,6 +3957,7 @@ async function handlePlayerPortalExit() {
   State.portalPlayerId = null;
   await DB.del('appMeta', 'portalPlayerId').catch(()=>{});
   renderAuthGate();
+  applyAuthGateBackground();
   document.getElementById('authGate').style.display = 'flex';
 }
 
@@ -4536,7 +4545,7 @@ const TR = {
     dash_card_season_record:'Season Record',
     dash_played:'Played', dash_won:'Won', dash_drawn:'Drawn', dash_lost:'Lost',
     dash_goals_for:'Goals For', dash_goals_against:'Against', dash_current_form:'Current Form',
-    set_tab_brandassets:'Brand Assets',
+    set_tab_brandassets:'Branding',
     set_brandassets_title:'Brand Assets', set_brandassets_intro:'Manage the images used across every Team page, such as the header background and default logos. Change a URL here and every page updates automatically — no code changes needed.',
     set_brandassets_local_only_warning:'Note: these settings are currently stored on this device only, and will not sync to your other devices yet.',
     set_brandassets_header_bg:'Team Header Background', set_brandassets_default_logo:'Default Team Logo',
@@ -5255,6 +5264,12 @@ const TR = {
     set_lbl_home_ground:'Home Ground',
     set_lbl_age_group:'Age Group',
     set_lbl_club_name:'Club Name', set_lbl_club_logo:'Club Logo URL',
+    set_branding_title:'Branding', set_branding_intro:'Manage NextEleven application branding — logo, icons, and default backgrounds. These are completely separate from Club logos, which are managed per season. Changes sync across every device.',
+    set_branding_main_logo:'NextEleven Main Logo', set_branding_app_icon:'App Icon', set_branding_favicon:'Favicon',
+    set_branding_team_header_bg:'Default Team Page Header Background', set_branding_splash:'Splash Screen',
+    set_branding_login_welcome:'Login &amp; Welcome Screen Image', set_branding_pdf_cover:'PDF Cover Page',
+    set_branding_player_cv_bg:'Player CV Background', set_branding_default:'Default', set_branding_restore_default:'Restore Default',
+    set_branding_saved:'Saved.', set_branding_restored:'Restored to default.', set_branding_err_https:'Please use a valid https:// URL.',
     set_lbl_shirt_color:'Team Shirt Colour',
     set_shirt_color_hint:'(optional — defaults to brand maroon)',
     set_btn_use_default:'Use Default',
@@ -5680,7 +5695,7 @@ const TR = {
     dash_card_season_record:'Registo da Época',
     dash_played:'Jogos', dash_won:'Vitórias', dash_drawn:'Empates', dash_lost:'Derrotas',
     dash_goals_for:'Golos Marcados', dash_goals_against:'Golos Sofridos', dash_current_form:'Forma Atual',
-    set_tab_brandassets:'Recursos de Marca',
+    set_tab_brandassets:'Marca',
     set_brandassets_title:'Recursos de Marca', set_brandassets_intro:'Gira as imagens usadas em todas as páginas de Equipa, como o fundo do cabeçalho e os logótipos por defeito. Altere um URL aqui e todas as páginas atualizam automaticamente — sem necessidade de alterar código.',
     set_brandassets_local_only_warning:'Nota: estas definições estão atualmente guardadas apenas neste dispositivo, e ainda não sincronizam com os seus outros dispositivos.',
     set_brandassets_header_bg:'Fundo do Cabeçalho da Equipa', set_brandassets_default_logo:'Logótipo da Equipa por Defeito',
@@ -6399,6 +6414,12 @@ const TR = {
     set_lbl_home_ground:'Recinto',
     set_lbl_age_group:'Escalão',
     set_lbl_club_name:'Nome do Clube', set_lbl_club_logo:'URL do Logótipo do Clube',
+    set_branding_title:'Marca', set_branding_intro:'Gira a marca da aplicação NextEleven — logótipo, ícones e fundos por defeito. Estas definições são completamente separadas dos logótipos de Clube, que são geridos por época. As alterações sincronizam em todos os dispositivos.',
+    set_branding_main_logo:'Logótipo Principal do NextEleven', set_branding_app_icon:'Ícone da Aplicação', set_branding_favicon:'Favicon',
+    set_branding_team_header_bg:'Fundo por Defeito do Cabeçalho da Equipa', set_branding_splash:'Ecrã de Abertura',
+    set_branding_login_welcome:'Imagem de Login e Boas-vindas', set_branding_pdf_cover:'Página de Capa do PDF',
+    set_branding_player_cv_bg:'Fundo do CV do Jogador', set_branding_default:'Padrão', set_branding_restore_default:'Restaurar Padrão',
+    set_branding_saved:'Guardado.', set_branding_restored:'Restaurado para o padrão.', set_branding_err_https:'Por favor use um URL https:// válido.',
     set_lbl_shirt_color:'Cor da Camisola da Equipa',
     set_shirt_color_hint:'(opcional — por defeito usa o maroon da marca)',
     set_btn_use_default:'Usar Padrão',
@@ -6979,6 +7000,12 @@ const DB = (() => {
         // to clubTeamId; see migrateClubTeams() for the one-time backfill.
         if (!db.objectStoreNames.contains('clubTeams')) {
           db.createObjectStore('clubTeams', { keyPath: 'clubTeamId', autoIncrement: true });
+        }
+        // App Branding — user-scoped, synced, completely independent from
+        // clubTeams/opponents. One record per user (the app always reads/
+        // writes a single, well-known local key).
+        if (!db.objectStoreNames.contains('appBranding')) {
+          db.createObjectStore('appBranding', { keyPath: 'brandingId', autoIncrement: true });
         }
       };
       req.onsuccess = e => { _db = e.target.result; resolve(_db); };
@@ -9417,6 +9444,159 @@ async function handleDeleteCurrentSeason() {
 // reasonable, narrow inference (not a date-based guess about
 // completion), since a season with real games in it is self-evidently
 // no longer just "setup" regardless of what its explicit status says.
+// ══════════════════════════════════════════════════════════════════════════
+// APP BRANDING — single shared resolver (Part 1)
+// ══════════════════════════════════════════════════════════════════════════
+// Completely independent from club/opponent logos, per the explicit
+// architectural requirement. One record per user; every asset resolves
+// as: user-configured URL -> built-in NextEleven default. Cached in
+// memory for the session after first load, refreshed after any save so
+// a change is reflected immediately without a full reload.
+let _brandingCache = null;
+
+const BRANDING_DEFAULTS = {
+  mainLogo: null,           // falls back to the existing inline "11" mark — no external asset needed
+  appIcon: null,
+  favicon: null,
+  teamHeaderBg: null,       // falls back to the existing CSS gradient already built for the header
+  splashScreen: null,
+  loginWelcomeImage: null,
+  pdfCover: null,
+  playerCvBackground: null,
+};
+
+async function loadBranding(forceRefresh) {
+  if (_brandingCache && !forceRefresh) return _brandingCache;
+  const all = await DB.getAll('appBranding');
+  const record = all.find(b => !b.isDeleted) || null;
+  _brandingCache = record || {};
+  return _brandingCache;
+}
+
+// The one shared getter every page must use — never read appBranding
+// fields directly elsewhere, per the explicit "create ONE shared
+// resolver" instruction.
+async function getBrandingAsset(key) {
+  const branding = await loadBranding();
+  return branding[key] || BRANDING_DEFAULTS[key] || null;
+}
+
+async function saveBrandingAsset(key, url) {
+  const branding = await loadBranding();
+  const updated = { ...branding, [key]: url || null, updatedAt: new Date().toISOString() };
+  await DB.put('appBranding', updated);
+  _brandingCache = null; // force a fresh read next time, so the change is reflected immediately
+  Sync.scheduleAutoSync();
+  await applyDynamicBrandingToDocument();
+}
+
+async function restoreBrandingDefault(key) {
+  await saveBrandingAsset(key, null);
+}
+
+// Favicon and app-icon updates are the only two assets that need to
+// touch the actual document <head> dynamically, per the spec's explicit
+// "update the favicon dynamically after branding loads" requirement.
+async function applyDynamicBrandingToDocument() {
+  const favicon = await getBrandingAsset('favicon');
+  if (favicon) {
+    let link = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = favicon;
+  }
+  const appIcon = await getBrandingAsset('appIcon');
+  if (appIcon) {
+    let appleLink = document.querySelector("link[rel='apple-touch-icon']");
+    if (!appleLink) {
+      appleLink = document.createElement('link');
+      appleLink.rel = 'apple-touch-icon';
+      document.head.appendChild(appleLink);
+    }
+    appleLink.href = appIcon;
+  }
+
+  const mainLogo = await getBrandingAsset('mainLogo');
+  if (mainLogo) {
+    document.querySelectorAll('.nav-logo-mark').forEach(el => {
+      el.style.backgroundImage = `url('${mainLogo}')`;
+      el.style.backgroundSize = 'cover';
+      el.style.backgroundPosition = 'center';
+      const span = el.querySelector('span');
+      if (span) span.style.visibility = 'hidden'; // keep layout size, hide the "11" text mark
+    });
+  }
+}
+
+// The 8 supported assets, data-driven so the UI and save logic never
+// need to be duplicated per asset — exactly one rendering path, one
+// save path, reused 8 times.
+const BRANDING_ASSET_DEFS = [
+  { key: 'mainLogo', labelKey: 'set_branding_main_logo' },
+  { key: 'appIcon', labelKey: 'set_branding_app_icon' },
+  { key: 'favicon', labelKey: 'set_branding_favicon' },
+  { key: 'teamHeaderBg', labelKey: 'set_branding_team_header_bg' },
+  { key: 'splashScreen', labelKey: 'set_branding_splash' },
+  { key: 'loginWelcomeImage', labelKey: 'set_branding_login_welcome' },
+  { key: 'pdfCover', labelKey: 'set_branding_pdf_cover' },
+  { key: 'playerCvBackground', labelKey: 'set_branding_player_cv_bg' },
+];
+
+async function renderBrandingAssetFields() {
+  const branding = await loadBranding(true); // force a fresh read whenever Settings is opened
+  return BRANDING_ASSET_DEFS.map(def => {
+    const currentUrl = branding[def.key] || '';
+    return `
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-title" style="margin-top:0">${I18n.t(def.labelKey)}</div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <div style="width:56px;height:56px;border-radius:6px;background:#f5f5f5;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+          ${currentUrl
+            ? `<img src="${esc(currentUrl)}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+               <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:10px;color:var(--muted);text-align:center;padding:4px">${I18n.t('set_branding_default')}</div>`
+            : `<div style="display:flex;width:100%;height:100%;align-items:center;justify-content:center;font-size:10px;color:var(--muted);text-align:center;padding:4px">${I18n.t('set_branding_default')}</div>`
+          }
+        </div>
+        <input id="brand-input-${def.key}" type="text" value="${esc(currentUrl)}" placeholder="https://..." style="flex:1;min-width:0">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="handleSaveBrandingField('${def.key}')">${I18n.t('common_save')}</button>
+        <button class="btn btn-secondary btn-sm" onclick="handleRestoreBrandingDefault('${def.key}')">${I18n.t('set_branding_restore_default')}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function handleSaveBrandingField(key) {
+  const input = document.getElementById(`brand-input-${key}`);
+  const url = input?.value.trim() || '';
+  if (url && !/^https:\/\//i.test(url)) {
+    Toast.error(I18n.t('set_branding_err_https'));
+    return;
+  }
+  await saveBrandingAsset(key, url);
+  Toast.show(I18n.t('set_branding_saved'));
+  await refreshBrandingPanel();
+}
+
+async function handleRestoreBrandingDefault(key) {
+  await restoreBrandingDefault(key);
+  Toast.show(I18n.t('set_branding_restored'));
+  await refreshBrandingPanel();
+}
+
+async function refreshBrandingPanel() {
+  const panel = document.getElementById('stab-panel-brandassets');
+  if (!panel) return;
+  const fieldsContainer = panel.querySelector('.settings-section');
+  if (fieldsContainer) {
+    fieldsContainer.innerHTML = `<h3>${I18n.t('set_branding_title')}</h3><p style="font-size:12px;color:var(--muted);margin-bottom:14px">${I18n.t('set_branding_intro')}</p>${await renderBrandingAssetFields()}`;
+  }
+}
+
 async function getSeasonStatus(season) {
   if (!season) return null;
   if (season.status === 'completed' || season.status === 'archived') return season.status;
@@ -9453,14 +9633,13 @@ async function renderSeasonHeader(season, status) {
     if (!logoUrl) logoUrl = clubTeam?.logoUrl || null;
   }
 
-  // Background priority: season-level override, then the Settings-
-  // configured global URL, then a CSS-only fallback that never shows a
-  // broken image regardless of network/Supabase state.
-  let bgUrl = season.headerBackgroundUrl || null;
-  if (!bgUrl) {
-    const globalBg = await DB.get('appMeta', 'brandTeamHeaderBg');
-    bgUrl = globalBg?.value || null;
-  }
+  // Background priority, per the approved spec: season-level override,
+  // then club/team-level override, then the Settings-configured global
+  // default (via the shared Branding resolver, synced), then a CSS-only
+  // fallback that never shows a broken image regardless of network/
+  // Supabase state.
+  let bgUrl = season.headerBackgroundUrl || clubTeam?.headerBackgroundUrl || null;
+  if (!bgUrl) bgUrl = await getBrandingAsset('teamHeaderBg');
   const fallbackGradient = 'linear-gradient(135deg, #1a1a2e 0%, #1a1a2e 55%, #7a2020 75%, #B23333 100%)';
 
   const statusConfig = {
@@ -9490,7 +9669,7 @@ async function renderSeasonHeader(season, status) {
         }
       </div>
       <div style="flex:1;min-width:0;color:#fff">
-        <div style="font-weight:800;font-size:17px;letter-spacing:.3px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc((clubTeam?.name || season.clubName || '').toUpperCase())}</div>
+        <div style="font-weight:800;font-size:17px;letter-spacing:.3px;line-height:1.25">${esc((clubTeam?.name || season.clubName || '').toUpperCase())}</div>
         <div style="font-size:13px;opacity:.85;margin-top:3px">${season.ageGroup?esc(season.ageGroup)+' · ':''}${esc(season.seasonName||'')}</div>
         ${metaLine.length ? `<div style="font-size:11px;opacity:.75;margin-top:8px;display:flex;gap:14px;flex-wrap:wrap">${metaLine.join('')}</div>` : ''}
       </div>
@@ -13298,7 +13477,7 @@ async function handleSyncDownload() {
 // DB PUT WRAPPER — marks records as modified for sync
 // ══════════════════════════════════════════════════════════════════════════════
 const _origPut = DB.put.bind(DB);
-const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','tournaments','temporaryPlayers','clubTeams']);
+const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','tournaments','temporaryPlayers','clubTeams','appBranding']);
 
 DB.put = async function(store, obj) {
   if (SYNC_STORES_SET.has(store) && obj) {
@@ -14769,35 +14948,9 @@ const Render = (() => {
       <!-- BRAND ASSETS TAB -->
       <div id="stab-panel-brandassets" style="display:none">
       <div class="settings-section">
-        <h3>${I18n.t('set_brandassets_title')}</h3>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">${I18n.t('set_brandassets_intro')}</p>
-        <p style="font-size:11px;color:#8a6d1e;background:#fbf3d9;padding:8px 10px;border-radius:4px;margin-bottom:14px">${I18n.t('set_brandassets_local_only_warning')}</p>
-        ${await (async () => {
-          const g = async k => (await DB.get('appMeta', k))?.value || '';
-          const headerBg = await g('brandTeamHeaderBg');
-          const defaultLogo = await g('brandDefaultTeamLogo');
-          const defaultPlayerPh = await g('brandDefaultPlayerPlaceholder');
-          const defaultClubPh = await g('brandDefaultClubPlaceholder');
-          return `
-          <div class="form-group">
-            <label>${I18n.t('set_brandassets_header_bg')}</label>
-            <input id="ba-header-bg" type="text" value="${esc(headerBg)}" placeholder="https://...">
-          </div>
-          <div class="form-group">
-            <label>${I18n.t('set_brandassets_default_logo')}</label>
-            <input id="ba-default-logo" type="text" value="${esc(defaultLogo)}" placeholder="https://...">
-          </div>
-          <div class="form-group">
-            <label>${I18n.t('set_brandassets_player_placeholder')}</label>
-            <input id="ba-player-placeholder" type="text" value="${esc(defaultPlayerPh)}" placeholder="https://...">
-          </div>
-          <div class="form-group">
-            <label>${I18n.t('set_brandassets_club_placeholder')}</label>
-            <input id="ba-club-placeholder" type="text" value="${esc(defaultClubPh)}" placeholder="https://...">
-          </div>
-          <button class="btn btn-primary" onclick="handleSaveBrandAssets()">${I18n.t('common_save')}</button>
-          `;
-        })()}
+        <h3>${I18n.t('set_branding_title')}</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">${I18n.t('set_branding_intro')}</p>
+        ${await renderBrandingAssetFields()}
       </div>
       </div><!-- end stab-panel-brandassets -->
 
@@ -15479,6 +15632,7 @@ const Sync = (() => {
       tournaments: 'tournaments',
       temporaryPlayers: 'temporary_players',
       clubTeams: 'club_teams',
+      appBranding: 'app_branding',
     };
     return map[store] || store;
   }
@@ -15814,6 +15968,15 @@ const Sync = (() => {
   }
 
   function findByNaturalKey(store, allLocal, payload) {
+    // appBranding is a genuine singleton — exactly one record per user,
+    // by design. A field-based natural key doesn't work here since every
+    // field can legitimately be empty on a freshly unconfigured record.
+    // Any existing local record IS the one to update, since there's
+    // never meant to be more than one.
+    if (store === 'appBranding') {
+      return allLocal.length > 0 ? allLocal[0] : null;
+    }
+
     const fields = naturalKeyFields(store);
     if (!fields) return null;
 
@@ -18111,6 +18274,7 @@ async function init() {
     if (!Auth.isLoggedIn()) {
       document.getElementById('loading').style.display = 'none';
       renderAuthGate();
+      applyAuthGateBackground();
       document.getElementById('authGate').style.display = 'flex';
       return; // stop here — do not load or show any app data
     }
@@ -18167,6 +18331,7 @@ async function continueAppLoadAfterLogin() {
     Sync.startPeriodicSync();
     await runSilentIntegrityCheck();
     checkForStaleVersion();
+    await applyDynamicBrandingToDocument();
     document.getElementById('loading').style.display = 'none';
     document.getElementById('authGate').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
