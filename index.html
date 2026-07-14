@@ -919,7 +919,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 // ══════════════════════════════════════════════════════════════════════════════
 const CONFIG = {
   APP_VERSION: '1.2.1', // human-readable label only — staleness detection no longer depends on this matching anything
-  SCHEMA_VERSION: 15,
+  SCHEMA_VERSION: 16,
   DB_NAME: 'footballSquadTrackerDB',
   MAX_BACKUPS: 30,
   FULL_GAME_MINS: 80,
@@ -4674,6 +4674,16 @@ const TR = {
     squad_status_injured:'Injured',
     squad_status_fit:'Fit',
     squad_btn_manage_injury:'Manage Injury',
+    res_title:'Season Resources', res_btn_add:'Add Resource', res_empty:'No resources added yet.',
+    res_move_up:'Move up', res_move_down:'Move down', res_hide_archived:'Hide Archived', res_show_archived:'Show Archived',
+    res_edit_title:'Edit Resource', res_add_title:'Add Resource',
+    res_lbl_title:'Title', res_lbl_url:'URL', res_lbl_category:'Category', res_lbl_notes:'Notes',
+    res_err_required:'Title and URL are required.', res_saved:'Resource saved.',
+    res_confirm_delete_title:'Delete this resource?', res_confirm_delete_body:'This cannot be undone.',
+    res_deleted:'Resource deleted.', res_restored:'Resource restored.', res_archived:'Resource archived.',
+    squad_btn_delete_hint:'Permanently delete — only available because this player has no game history yet.',
+    squad_confirm_delete_title:'Delete this player?', squad_confirm_delete_body:'This permanently removes the player. This cannot be undone. Only available because they have no game history.',
+    squad_deleted_toast:'Player deleted.', squad_err_delete_has_history:'This player has game history and cannot be deleted — use Archive instead.',
     squad_btn_add_injury:'+ Injury',
     squad_archived_badge:'Archived',
     squad_btn_show_archived:'Show Archived ({n})', squad_btn_hide_archived:'Hide Archived',
@@ -5824,6 +5834,16 @@ const TR = {
     squad_status_injured:'Lesionado',
     squad_status_fit:'Apto',
     squad_btn_manage_injury:'Gerir Lesão',
+    res_title:'Recursos da Época', res_btn_add:'Adicionar Recurso', res_empty:'Ainda não há recursos adicionados.',
+    res_move_up:'Mover para cima', res_move_down:'Mover para baixo', res_hide_archived:'Ocultar Arquivados', res_show_archived:'Mostrar Arquivados',
+    res_edit_title:'Editar Recurso', res_add_title:'Adicionar Recurso',
+    res_lbl_title:'Título', res_lbl_url:'URL', res_lbl_category:'Categoria', res_lbl_notes:'Notas',
+    res_err_required:'Título e URL são obrigatórios.', res_saved:'Recurso guardado.',
+    res_confirm_delete_title:'Eliminar este recurso?', res_confirm_delete_body:'Não pode ser desfeito.',
+    res_deleted:'Recurso eliminado.', res_restored:'Recurso restaurado.', res_archived:'Recurso arquivado.',
+    squad_btn_delete_hint:'Eliminar permanentemente — só disponível porque este jogador ainda não tem histórico de jogos.',
+    squad_confirm_delete_title:'Eliminar este jogador?', squad_confirm_delete_body:'Isto remove permanentemente o jogador. Não pode ser desfeito. Só disponível porque não tem histórico de jogos.',
+    squad_deleted_toast:'Jogador eliminado.', squad_err_delete_has_history:'Este jogador tem histórico de jogos e não pode ser eliminado — use Arquivar.',
     squad_btn_add_injury:'+ Lesão',
     squad_archived_badge:'Arquivado',
     squad_btn_show_archived:'Mostrar Arquivados ({n})', squad_btn_hide_archived:'Ocultar Arquivados',
@@ -7007,6 +7027,11 @@ const DB = (() => {
         if (!db.objectStoreNames.contains('appBranding')) {
           db.createObjectStore('appBranding', { keyPath: 'brandingId', autoIncrement: true });
         }
+        // SEASON-003 — Season Resources. One shared store, scoped by
+        // seasonId, optionally linked to a Competition or Tournament.
+        if (!db.objectStoreNames.contains('externalResources')) {
+          db.createObjectStore('externalResources', { keyPath: 'resourceId', autoIncrement: true });
+        }
       };
       req.onsuccess = e => { _db = e.target.result; resolve(_db); };
       req.onerror = e => reject(e.target.error);
@@ -7128,6 +7153,7 @@ const DB = (() => {
     'clubHistory','opponents','playerGameStats','events','goalEvents',
     'injuries','trainingSessions','customDrills','drillFavourites',
     'trainingPacks','tournaments','temporaryPlayers','clubTeams',
+    'appBranding','externalResources',
   ];
 
   async function getAllFromAllStores() {
@@ -13537,7 +13563,7 @@ async function handleSyncDownload() {
 // DB PUT WRAPPER — marks records as modified for sync
 // ══════════════════════════════════════════════════════════════════════════════
 const _origPut = DB.put.bind(DB);
-const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','tournaments','temporaryPlayers','clubTeams','appBranding']);
+const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','tournaments','temporaryPlayers','clubTeams','appBranding','externalResources']);
 
 DB.put = async function(store, obj) {
   if (SYNC_STORES_SET.has(store) && obj) {
@@ -13969,11 +13995,18 @@ const Render = (() => {
       mostPlayedByPlayerId[p.playerId] = await computeMostPlayedPosition(p.playerId, p.primaryPosition);
     }
 
+    // PLAYER-001 — precompute once (a single DB.getAll, not one per
+    // player) which players genuinely have zero game history, so the
+    // Delete button can be conditionally shown/enabled per row.
+    const allGPForSquad = await DB.getAll('gamePlayers');
+    const playerIdsWithHistory = new Set(allGPForSquad.map(gp => gp.playerId).filter(Boolean));
+
     const rows = players.map(p => {
       const injury = activeInjuryByPlayer[p.playerId];
       const rowBg = injury ? '#fbeaea' : '';
       const rowStyle = injury ? `style="background:${rowBg}"` : '';
       const stickyBg = injury ? `style="background:${rowBg}"` : '';
+      const hasHistory = playerIdsWithHistory.has(p.playerId);
       return `
       <tr ${rowStyle} class="${injury?'row-injured':''}">
         <td class="col-sticky-num" ${stickyBg}>${p.shirtNumber||'—'}</td>
@@ -13987,6 +14020,7 @@ const Render = (() => {
         <td>
           <button class="btn btn-secondary btn-sm" onclick="editPlayer(${p.playerId})">${I18n.t('common_edit')}</button>
           <button class="btn btn-secondary btn-sm" onclick="archivePlayer(${p.playerId},${!p.isActive})" style="margin-left:4px">${p.isActive?I18n.t('common_archive'):I18n.t('common_restore')}</button>
+          ${!hasHistory ? `<button class="btn btn-danger btn-sm" onclick="deletePlayer(${p.playerId})" style="margin-left:4px" title="${I18n.t('squad_btn_delete_hint')}">${I18n.t('common_delete')}</button>` : ''}
           <button class="btn ${injury?'btn-danger':'btn-secondary'} btn-sm" onclick="openInjuryModal(${p.playerId})" style="margin-left:4px">${injury?I18n.t('squad_btn_manage_injury'):I18n.t('squad_btn_add_injury')}</button>
           <button class="btn btn-secondary btn-sm" onclick="openInjuryHistoryModal(${p.playerId})" style="margin-left:4px">${I18n.t('inj_btn_history')}</button>
         </td>
@@ -14469,7 +14503,10 @@ const Render = (() => {
         ${leaderCard(I18n.t('ts_most_used'), mostApps, 'calledUp', I18n.t('ts_stat_apps'))}
         ${mostMoM.length ? leaderCard(I18n.t('ts_player_of_match'), mostMoM, 'mom', I18n.t('ts_stat_mom')) : '<div></div>'}
       </div>
+
+      <div id="seasonResourcesContainer"></div>
     `;
+    await renderSeasonResources(State.currentSeasonId);
   }
 
   // ── LEADER CARD — featured top player + short ranked list, single stat ──────
@@ -15707,6 +15744,7 @@ const Sync = (() => {
       temporaryPlayers: 'temporary_players',
       clubTeams: 'club_teams',
       appBranding: 'app_branding',
+      externalResources: 'external_resources',
     };
     return map[store] || store;
   }
@@ -16037,6 +16075,7 @@ const Sync = (() => {
       seasons: ['clubName','seasonName'],
       tournaments: ['seasonId','name'],
       clubHistory: ['playerId','clubName','season'],
+      externalResources: ['seasonId','title','url'],
     };
     return keys[store] || null;
   }
@@ -16822,6 +16861,170 @@ async function archivePlayer(id, restore) {
       await Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||'');
       Sync.scheduleAutoSync();
     });
+}
+
+// PLAYER-001 — permanent delete, allowed ONLY when a player has zero
+// gamePlayers records anywhere (never called up to any game, in any
+// season). Anyone with real game history stays Archive-only, protecting
+// data integrity per the approved spec. Mirrors archivePlayer's own
+// Confirm/Backup/re-render/sync pattern exactly.
+// ══════════════════════════════════════════════════════════════════════════
+// SEASON-003 — Season Resources. ONE shared store, one render function.
+// Competition/Tournament pages call getFilteredResources() to show a
+// filtered view of this SAME data — never a separate collection.
+// ══════════════════════════════════════════════════════════════════════════
+async function getFilteredResources(seasonId, opts) {
+  const all = await DB.getAll('externalResources','seasonId',seasonId);
+  let filtered = all.filter(r => !r.isDeleted);
+  if (opts?.competitionId) filtered = filtered.filter(r => r.competitionId === opts.competitionId);
+  if (opts?.tournamentId) filtered = filtered.filter(r => r.tournamentId === opts.tournamentId);
+  if (!opts?.includeArchived) filtered = filtered.filter(r => r.isActive !== false);
+  return filtered.sort((a,b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+}
+
+const RESOURCE_CATEGORIES = ['Competition','Federation','Tournament','Map','Hotel','WhatsApp','PDF','Registration','Video','Document','Other'];
+
+async function renderSeasonResources(seasonId, filterOpts) {
+  const container = document.getElementById('seasonResourcesContainer');
+  if (!container) return;
+  const showArchived = State.resourcesShowArchived || false;
+  const resources = await getFilteredResources(seasonId, { ...filterOpts, includeArchived: showArchived });
+
+  container.innerHTML = `
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="card-title" style="margin:0">${I18n.t('res_title')}</div>
+        <button class="btn btn-primary btn-sm" onclick="openResourceForm(${seasonId})">+ ${I18n.t('res_btn_add')}</button>
+      </div>
+      ${resources.length ? resources.map((r, i) => `
+        <div class="info-row" style="${r.isActive===false?'opacity:.55':''}">
+          <div style="flex:1;min-width:0">
+            <a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" style="font-weight:700;font-size:13px;text-decoration:none;color:var(--black)">${esc(r.title)}</a>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(r.category||'')}${r.notes?' · '+esc(r.notes):''}</div>
+          </div>
+          <div style="display:flex;gap:4px;flex-shrink:0">
+            ${i>0?`<button class="btn btn-secondary btn-sm" onclick="moveResource(${r.resourceId},'up')" title="${I18n.t('res_move_up')}">&#8593;</button>`:''}
+            ${i<resources.length-1?`<button class="btn btn-secondary btn-sm" onclick="moveResource(${r.resourceId},'down')" title="${I18n.t('res_move_down')}">&#8595;</button>`:''}
+            <button class="btn btn-secondary btn-sm" onclick="openResourceForm(${seasonId},${r.resourceId})">${I18n.t('common_edit')}</button>
+            <button class="btn btn-secondary btn-sm" onclick="toggleResourceArchive(${r.resourceId},${r.isActive===false})">${r.isActive===false?I18n.t('common_restore'):I18n.t('common_archive')}</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteResource(${r.resourceId})">${I18n.t('common_delete')}</button>
+          </div>
+        </div>
+      `).join('') : `<p style="font-size:12px;color:var(--muted)">${I18n.t('res_empty')}</p>`}
+      <button class="btn btn-secondary btn-sm" style="margin-top:10px" onclick="toggleResourcesShowArchived(${seasonId})">${showArchived?I18n.t('res_hide_archived'):I18n.t('res_show_archived')}</button>
+    </div>`;
+}
+
+function toggleResourcesShowArchived(seasonId) {
+  State.resourcesShowArchived = !State.resourcesShowArchived;
+  renderSeasonResources(seasonId);
+}
+
+function openResourceForm(seasonId, resourceId) {
+  DB.get('externalResources', resourceId).then(existing => {
+    const overlay = document.createElement('div');
+    overlay.className = 'rm-form-overlay open';
+    overlay.id = 'resourceFormOverlay';
+    overlay.innerHTML = `
+      <div class="rm-form" style="max-width:440px">
+        <h3 style="margin-bottom:14px">${resourceId?I18n.t('res_edit_title'):I18n.t('res_add_title')}</h3>
+        <div class="form-group"><label>${I18n.t('res_lbl_title')} *</label><input id="rf-title" type="text" value="${esc(existing?.title||'')}"></div>
+        <div class="form-group"><label>${I18n.t('res_lbl_url')} *</label><input id="rf-url" type="text" placeholder="https://..." value="${esc(existing?.url||'')}"></div>
+        <div class="form-group"><label>${I18n.t('res_lbl_category')}</label>
+          <select id="rf-category">${RESOURCE_CATEGORIES.map(c => `<option value="${c}" ${existing?.category===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
+        </div>
+        <div class="form-group"><label>${I18n.t('res_lbl_notes')}</label><textarea id="rf-notes" rows="2">${esc(existing?.notes||'')}</textarea></div>
+        <div class="form-actions" style="margin-top:14px;display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="saveResource(${seasonId},${resourceId||'null'})">${I18n.t('common_save')}</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('resourceFormOverlay').remove()">${I18n.t('common_cancel')}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+  });
+}
+
+async function saveResource(seasonId, resourceId) {
+  const title = document.getElementById('rf-title')?.value.trim();
+  const url = document.getElementById('rf-url')?.value.trim();
+  if (!title || !url) { Toast.error(I18n.t('res_err_required')); return; }
+  const existing = resourceId ? await DB.get('externalResources', resourceId) : null;
+  const allForSeason = await DB.getAll('externalResources','seasonId',seasonId);
+  const data = {
+    seasonId,
+    title, url,
+    category: document.getElementById('rf-category')?.value || 'Other',
+    notes: document.getElementById('rf-notes')?.value.trim() || null,
+    isActive: existing?.isActive ?? true,
+    sortOrder: existing?.sortOrder ?? allForSeason.length,
+  };
+  if (resourceId) data.resourceId = resourceId;
+  await DB.put('externalResources', data);
+  document.getElementById('resourceFormOverlay')?.remove();
+  Toast.show(I18n.t('res_saved'));
+  await renderSeasonResources(seasonId);
+  Sync.scheduleAutoSync();
+}
+
+async function deleteResource(resourceId) {
+  Confirm.show(I18n.t('res_confirm_delete_title'), I18n.t('res_confirm_delete_body'), async () => {
+    const r = await DB.get('externalResources', resourceId);
+    if (!r) return;
+    await DB.softDelete('externalResources', resourceId);
+    Toast.show(I18n.t('res_deleted'));
+    await renderSeasonResources(r.seasonId);
+    Sync.scheduleAutoSync();
+  });
+}
+
+async function toggleResourceArchive(resourceId, restore) {
+  const r = await DB.get('externalResources', resourceId);
+  if (!r) return;
+  r.isActive = restore;
+  await DB.put('externalResources', r);
+  Toast.show(restore ? I18n.t('res_restored') : I18n.t('res_archived'));
+  await renderSeasonResources(r.seasonId);
+  Sync.scheduleAutoSync();
+}
+
+async function moveResource(resourceId, direction) {
+  const r = await DB.get('externalResources', resourceId);
+  if (!r) return;
+  const siblings = (await getFilteredResources(r.seasonId, { includeArchived: State.resourcesShowArchived }));
+  const idx = siblings.findIndex(s => s.resourceId === resourceId);
+  const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= siblings.length) return;
+  const a = siblings[idx], b = siblings[swapIdx];
+  const aOrder = a.sortOrder, bOrder = b.sortOrder;
+  a.sortOrder = bOrder; b.sortOrder = aOrder;
+  await DB.put('externalResources', a);
+  await DB.put('externalResources', b);
+  await renderSeasonResources(r.seasonId);
+  Sync.scheduleAutoSync();
+}
+
+async function hasAnyGameHistory(playerId) {
+  const allGP = await DB.getAll('gamePlayers');
+  return allGP.some(gp => gp.playerId === playerId);
+}
+
+async function deletePlayer(id) {
+  const hasHistory = await hasAnyGameHistory(id);
+  if (hasHistory) {
+    // Should never actually be reachable — the Delete button itself is
+    // only rendered when hasAnyGameHistory is false — but guarded here
+    // too in case this is ever called directly from somewhere else.
+    Toast.error(I18n.t('squad_err_delete_has_history'));
+    return;
+  }
+  Confirm.show(I18n.t('squad_confirm_delete_title'), I18n.t('squad_confirm_delete_body'), async () => {
+    const p = await DB.get('players', id);
+    if (!p) return;
+    await Backup.create('before-delete');
+    await DB.softDelete('players', id);
+    Toast.show(I18n.t('squad_deleted_toast'));
+    await Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||'');
+    Sync.scheduleAutoSync();
+  });
 }
 
 function toggleSquadShowArchived() {
