@@ -14336,7 +14336,7 @@ const Render = (() => {
       return `
       <tr ${rowStyle} class="${injury?'row-injured':''}">
         <td class="col-sticky-num" ${stickyBg}>${p.shirtNumber||'—'}</td>
-        <td class="col-sticky-name" title="${esc(p.fullName)}" style="${injury?`background:${rowBg};`:''}${p.trackingStatus==='tracked'?'cursor:pointer;text-decoration:underline;text-decoration-color:#ccc':''}" ${p.trackingStatus==='tracked'?`onclick="openPlayerCardPopup(${p.playerId})"`:''}>${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor" title="${esc(p.trackingLabel||I18n.t('squad_tracked_label_default'))}">${esc(p.trackingLabel||'★')}</span>`:''} ${!p.isActive?`<span class="badge-nc badge" style="font-size:9px">${I18n.t('squad_archived_badge')}</span>`:''}</td>
+        <td class="col-sticky-name" title="${esc(p.fullName)}" style="${injury?`background:${rowBg};`:''}cursor:pointer;text-decoration:underline;text-decoration-color:#ccc" onclick="openPlayerCardPopup(${p.playerId})">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor" title="${esc(p.trackingLabel||I18n.t('squad_tracked_label_default'))}">${esc(p.trackingLabel||'★')}</span>`:''} ${!p.isActive?`<span class="badge-nc badge" style="font-size:9px">${I18n.t('squad_archived_badge')}</span>`:''}</td>
         <td><span class="pos-pill">${p.primaryPosition||'—'}</span></td>
         <td><span class="pos-pill" style="background:#e8f0fe;color:#1a56c4">${esc(mostPlayedByPlayerId[p.playerId]||'—')}</span></td>
         <td>${p.secondaryPosition||'—'}</td>
@@ -16922,9 +16922,19 @@ async function openPlayerCardPopup(playerId) {
   const age = calcAge(p.dateOfBirth);
   const initials = (p.fullName||'').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
   const flags = getFlagsForNationality(p.nationality);
+  const cvBg = await getBrandingAsset('playerCvBackground');
+
+  // Apply the real Player CV Background to the WHOLE card, not just the
+  // header strip — a genuine CV identity, not a small accent. Falls back
+  // cleanly to the original plain white card when no asset is configured.
+  el.style.backgroundImage = cvBg ? `url('${esc(cvBg)}')` : '';
+  el.style.backgroundSize = 'cover';
+  el.style.backgroundPosition = 'center';
+  el.style.backgroundColor = cvBg ? '#0F1E2E' : '';
 
   el.innerHTML = `
-    <div class="pc-header">
+    <div class="pc-header" style="${cvBg ? 'background:rgba(15,30,46,.45);position:relative' : ''}">
+      <div style="display:flex;align-items:center;gap:14px;width:100%">
       ${p.photoUrl
         ? `<img class="pc-photo" src="${esc(p.photoUrl)}" onerror="this.outerHTML='<div class=&quot;pc-photo-fallback&quot;>${initials}</div>'">`
         : `<div class="pc-photo-fallback">${initials}</div>`}
@@ -16933,8 +16943,9 @@ async function openPlayerCardPopup(playerId) {
         <div class="pc-shirt">#${p.shirtNumber||'—'} · ${esc(p.primaryPosition||'—')}</div>
       </div>
       <button class="pc-close" onclick="closePlayerCardPopup()">&times;</button>
+      </div>
     </div>
-    <div class="pc-body">
+    <div class="pc-body" style="${cvBg ? 'background:rgba(255,255,255,.93);margin:0' : ''}">
       <div class="pc-section-title">${I18n.t('pc_section_title')}</div>
       <div class="pc-row">
         <div class="pc-label">${I18n.t('pc_lbl_name')}</div>
@@ -16961,7 +16972,7 @@ async function openPlayerCardPopup(playerId) {
         <div class="pc-value">${p.isActive?I18n.t('pc_status_active'):I18n.t('pc_status_archived')}</div>
       </div>
     </div>
-    <div class="pc-footer">
+    <div class="pc-footer" style="${cvBg ? 'background:rgba(255,255,255,.93)' : ''}">
       <button class="btn btn-secondary btn-sm" onclick="closePlayerCardPopup();editPlayer(${p.playerId})">&#9999; ${I18n.t('pc_btn_edit')}</button>
     </div>
   `;
