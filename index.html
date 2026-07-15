@@ -370,6 +370,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
   table{min-width:500px}
   .season-header-row{flex-direction:column;align-items:flex-start!important;gap:12px!important}
   .season-header-badge{align-self:flex-start}
+  .club-card-jersey{display:none}
   /* Do NOT shrink .game-detail-table here — it needs its full natural width
      (set per-table via inline min-width, or the 760px base) so columns have
      room to render properly and the sticky columns + horizontal scroll work
@@ -4555,6 +4556,8 @@ const TR = {
     set_brandassets_player_placeholder:'Default Player Placeholder', set_brandassets_club_placeholder:'Default Club Placeholder',
     set_brandassets_saved:'Brand assets saved.',
     home_header_founded:'Founded {year}',
+    cc_league_division:'League', cc_squad_players:'Squad', cc_season_matches:'Matches',
+    cc_btn_view_team:'View Team', cc_btn_view_fixtures:'View Fixtures & Results',
     home_status_setup:'Setup', home_status_active:'Active Season', home_status_completed:'Season Completed', home_status_archived:'Archived',
     home_setup_title:'Season Setup', home_setup_start_date:'Start Date', home_setup_squad_size:'Squad Size',
     home_setup_missing_tasks:'Missing Tasks', home_setup_task_add_players:'Add players to your squad',
@@ -4584,7 +4587,7 @@ const TR = {
     dash_form:'Form:',
 
     // ── COMMON ──
-    common_save:'Save', common_cancel:'Cancel', common_no:'No', common_yes:'Yes', common_close:'Close',
+    common_save:'Save', common_saving:'Saving…', common_cancel:'Cancel', common_no:'No', common_yes:'Yes', common_close:'Close',
     discovery_team_summary:'Team Summary is now available.', discovery_tournament_summary:'Tournament Summary is now available.',
     gd_tournament_guests:'Tournament Guests', gd_guest_badge:'Guest',
     games_lbl_tournament:'Tournament (optional)',
@@ -5279,7 +5282,7 @@ const TR = {
     set_lbl_club_name:'Club Name', set_lbl_club_logo:'Club Logo URL',
     set_branding_title:'Branding', set_branding_intro:'Manage NextEleven application branding — logo, icons, and default backgrounds. These are completely separate from Club logos, which are managed per season. Changes sync across every device.',
     set_branding_main_logo:'NextEleven Main Logo', set_branding_app_icon:'App Icon', set_branding_favicon:'Favicon',
-    set_branding_team_header_bg:'Default Team Page Header Background', set_branding_splash:'Splash Screen',
+    set_branding_team_header_bg:'Default Team Page Header Background', set_branding_club_card_bg:'Club Card Background', set_branding_jersey_placeholder:'Jersey Image', set_branding_splash:'Splash Screen',
     set_branding_login_welcome:'Login &amp; Welcome Screen Image', set_branding_pdf_cover:'PDF Cover Page',
     set_branding_player_cv_bg:'Player CV Background', set_branding_default:'Default', set_branding_restore_default:'Restore Default',
     set_branding_saved:'Saved.', set_branding_restored:'Restored to default.', set_branding_err_https:'Please use a valid https:// URL.',
@@ -5715,6 +5718,8 @@ const TR = {
     set_brandassets_player_placeholder:'Imagem de Jogador por Defeito', set_brandassets_club_placeholder:'Imagem de Clube por Defeito',
     set_brandassets_saved:'Recursos de marca guardados.',
     home_header_founded:'Fundado em {year}',
+    cc_league_division:'Liga', cc_squad_players:'Plantel', cc_season_matches:'Jogos',
+    cc_btn_view_team:'Ver Equipa', cc_btn_view_fixtures:'Ver Jogos e Resultados',
     home_status_setup:'Preparação', home_status_active:'Época Ativa', home_status_completed:'Época Concluída', home_status_archived:'Arquivada',
     home_setup_title:'Preparação da Época', home_setup_start_date:'Data de Início', home_setup_squad_size:'Tamanho do Plantel',
     home_setup_missing_tasks:'Tarefas em Falta', home_setup_task_add_players:'Adicionar jogadores ao plantel',
@@ -5744,7 +5749,7 @@ const TR = {
     dash_form:'Forma:',
 
     // ── COMMON ──
-    common_save:'Guardar', common_cancel:'Cancelar', common_no:'Não', common_yes:'Sim', common_close:'Fechar',
+    common_save:'Guardar', common_saving:'A guardar…', common_cancel:'Cancelar', common_no:'Não', common_yes:'Sim', common_close:'Fechar',
     discovery_team_summary:'O Resumo da Equipa já está disponível.', discovery_tournament_summary:'O Resumo do Torneio já está disponível.',
     gd_tournament_guests:'Convidados do Torneio', gd_guest_badge:'Convidado',
     games_lbl_tournament:'Torneio (opcional)',
@@ -6439,7 +6444,7 @@ const TR = {
     set_lbl_club_name:'Nome do Clube', set_lbl_club_logo:'URL do Logótipo do Clube',
     set_branding_title:'Marca', set_branding_intro:'Gira a marca da aplicação NextEleven — logótipo, ícones e fundos por defeito. Estas definições são completamente separadas dos logótipos de Clube, que são geridos por época. As alterações sincronizam em todos os dispositivos.',
     set_branding_main_logo:'Logótipo Principal do NextEleven', set_branding_app_icon:'Ícone da Aplicação', set_branding_favicon:'Favicon',
-    set_branding_team_header_bg:'Fundo por Defeito do Cabeçalho da Equipa', set_branding_splash:'Ecrã de Abertura',
+    set_branding_team_header_bg:'Fundo por Defeito do Cabeçalho da Equipa', set_branding_club_card_bg:'Fundo do Cartão do Clube', set_branding_jersey_placeholder:'Imagem da Camisola', set_branding_splash:'Ecrã de Abertura',
     set_branding_login_welcome:'Imagem de Login e Boas-vindas', set_branding_pdf_cover:'Página de Capa do PDF',
     set_branding_player_cv_bg:'Fundo do CV do Jogador', set_branding_default:'Padrão', set_branding_restore_default:'Restaurar Padrão',
     set_branding_saved:'Guardado.', set_branding_restored:'Restaurado para o padrão.', set_branding_err_https:'Por favor use um URL https:// válido.',
@@ -7156,7 +7161,7 @@ const DB = (() => {
     'clubHistory','opponents','playerGameStats','events','goalEvents',
     'injuries','trainingSessions','customDrills','drillFavourites',
     'trainingPacks','tournaments','temporaryPlayers','clubTeams',
-    'appBranding','externalResources',
+    'externalResources',
   ];
 
   async function getAllFromAllStores() {
@@ -9492,13 +9497,37 @@ const BRANDING_DEFAULTS = {
   loginWelcomeImage: null,
   pdfCover: null,
   playerCvBackground: null,
+  clubCardBg: null,         // falls back to the existing CSS gradient — same fallback as teamHeaderBg
+  jerseyPlaceholder: null,  // falls back to no jersey rendered at all, rather than a broken image
 };
+
+// ══════════════════════════════════════════════════════════════════════════
+// APP BRANDING — cloud-authoritative (Phase 1, approved). NOT part of the
+// offline-first sync model at all: no IndexedDB read/write, no push/pull.
+// Configuration data like this is always edited with a real connection,
+// so there is no genuine offline use case being sacrificed here — and
+// removing the local copy entirely is what permanently eliminates the
+// exact class of bug that caused 7 real duplicate rows tonight (6 from
+// same-device rapid-save races, 1 from a second device never seeing the
+// first device's row at all).
+// ══════════════════════════════════════════════════════════════════════════
+let _brandingSaveChain = Promise.resolve(); // serializes saves — see saveBrandingAsset
 
 async function loadBranding(forceRefresh) {
   if (_brandingCache && !forceRefresh) return _brandingCache;
-  const all = await DB.getAll('appBranding');
-  const record = all.find(b => !b.isDeleted) || null;
-  _brandingCache = record || {};
+  if (!Sync.isConfigured() || !Auth.isLoggedIn()) {
+    // No connection / not logged in — branding literally cannot be
+    // loaded fresh; fall back to whatever was last held in memory this
+    // session (possibly nothing), never a stale local database copy.
+    return _brandingCache || {};
+  }
+  try {
+    const rows = await Sync.supabaseRequest('GET', 'app_branding', null, { user_id: 'eq.' + Auth.getUserId(), limit: '1' });
+    _brandingCache = rows[0]?.payload || {};
+  } catch (e) {
+    console.error('[Branding] load failed:', e);
+    _brandingCache = _brandingCache || {}; // keep whatever we had rather than wipe it on a transient network error
+  }
   return _brandingCache;
 }
 
@@ -9510,12 +9539,31 @@ async function getBrandingAsset(key) {
   return branding[key] || BRANDING_DEFAULTS[key] || null;
 }
 
+// Saves are chained through one promise, so two rapid saves can never
+// overlap and race — the actual, confirmed root cause of tonight's 6
+// duplicate PC rows. Each save now waits for the previous one to
+// genuinely finish (including the round-trip to Supabase) before it
+// reads the current state and writes the next one.
 async function saveBrandingAsset(key, url) {
-  const branding = await loadBranding();
+  _brandingSaveChain = _brandingSaveChain.then(() => doSaveBrandingAsset(key, url));
+  return _brandingSaveChain;
+}
+
+async function doSaveBrandingAsset(key, url) {
+  const branding = await loadBranding(true); // always read fresh immediately before writing, never trust a stale in-memory value across a chained save
   const updated = { ...branding, [key]: url || null, updatedAt: new Date().toISOString() };
-  await DB.put('appBranding', updated);
-  _brandingCache = null; // force a fresh read next time, so the change is reflected immediately
-  Sync.scheduleAutoSync();
+  // Real upsert, one row per user_id — the same real constraint now
+  // enforced at the database level (idx_app_branding_one_per_user).
+  // on_conflict targets user_id directly since that's the actual unique
+  // boundary now, not a local/device-specific id.
+  await Sync.supabaseRequest('POST', 'app_branding', {
+    user_id: Auth.getUserId(),
+    device_id: 'cloud',
+    local_id: 'canonical',
+    payload: updated,
+    sync_status: 'synced',
+  }, { on_conflict: 'user_id' });
+  _brandingCache = updated;
   await applyDynamicBrandingToDocument();
 }
 
@@ -9568,6 +9616,8 @@ const BRANDING_ASSET_DEFS = [
   { key: 'appIcon', labelKey: 'set_branding_app_icon' },
   { key: 'favicon', labelKey: 'set_branding_favicon' },
   { key: 'teamHeaderBg', labelKey: 'set_branding_team_header_bg' },
+  { key: 'clubCardBg', labelKey: 'set_branding_club_card_bg' },
+  { key: 'jerseyPlaceholder', labelKey: 'set_branding_jersey_placeholder' },
   { key: 'splashScreen', labelKey: 'set_branding_splash' },
   { key: 'loginWelcomeImage', labelKey: 'set_branding_login_welcome' },
   { key: 'pdfCover', labelKey: 'set_branding_pdf_cover' },
@@ -9652,23 +9702,28 @@ async function renderBrandingAssetFields() {
         <input id="brand-input-${def.key}" type="text" value="${esc(currentUrl)}" placeholder="https://..." style="flex:1;min-width:180px">
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-primary btn-sm" onclick="handleSaveBrandingField('${def.key}')">${I18n.t('common_save')}</button>
+        <button class="btn btn-primary btn-sm" onclick="handleSaveBrandingField('${def.key}',this)">${I18n.t('common_save')}</button>
         <button class="btn btn-secondary btn-sm" onclick="handleRestoreBrandingDefault('${def.key}')">${I18n.t('set_branding_restore_default')}</button>
       </div>
     </div>`;
   }).join('');
 }
 
-async function handleSaveBrandingField(key) {
+async function handleSaveBrandingField(key, btn) {
   const input = document.getElementById(`brand-input-${key}`);
   const url = input?.value.trim() || '';
   if (url && !/^https:\/\//i.test(url)) {
     Toast.error(I18n.t('set_branding_err_https'));
     return;
   }
-  await saveBrandingAsset(key, url);
-  Toast.show(I18n.t('set_branding_saved'));
-  await refreshBrandingPanel();
+  if (btn) { btn.disabled = true; btn.textContent = I18n.t('common_saving'); }
+  try {
+    await saveBrandingAsset(key, url);
+    Toast.show(I18n.t('set_branding_saved'));
+    await refreshBrandingPanel();
+  } finally {
+    if (btn && document.body.contains(btn)) { btn.disabled = false; btn.textContent = I18n.t('common_save'); }
+  }
 }
 
 async function handleRestoreBrandingDefault(key) {
@@ -9714,21 +9769,34 @@ async function getSeasonStatus(season) {
 // then the linked clubTeams logo, then a built-in default placeholder —
 // never a broken image, never duplicated logo URLs stored per-season
 // unless a genuine override is set.
-async function renderSeasonHeader(season, status) {
-  let logoUrl = season.headerLogoUrl || null;
-  let clubTeam = null;
-  if (season.clubTeamId) {
-    clubTeam = await DB.get('clubTeams', season.clubTeamId);
-    if (!logoUrl) logoUrl = clubTeam?.logoUrl || null;
-  }
-
-  // Background priority, per the approved spec: season-level override,
-  // then club/team-level override, then the Settings-configured global
-  // default (via the shared Branding resolver, synced), then a CSS-only
-  // fallback that never shows a broken image regardless of network/
-  // Supabase state.
-  let bgUrl = season.headerBackgroundUrl || clubTeam?.headerBackgroundUrl || null;
-  if (!bgUrl) bgUrl = await getBrandingAsset('teamHeaderBg');
+// ══════════════════════════════════════════════════════════════════════════
+// ClubCard — the ONE reusable, entirely data-driven club/season card
+// component, per the approved premium redesign spec. Never reaches into
+// global State or the database itself — every value it needs is passed
+// in via the `data` object, so the exact same function can be called
+// from Home, a future Team Page integration, or anywhere else, with the
+// caller responsible for resolving real values first. Image handling
+// (logo, background, jersey) always goes through the existing shared
+// getBrandingAsset() resolver — never page-specific image logic.
+//
+// data shape:
+//   clubName, ageGroup, seasonName, city, country, foundedYear,
+//   logoUrl, backgroundUrl, jerseyUrl (all already-resolved, real URLs
+//   or null — this function applies the FINAL fallback to the shared
+//   branding defaults, but does not re-derive season/club-level
+//   overrides itself; that's the caller's job, exactly as
+//   renderSeasonHeader already did),
+//   status ('setup'|'active'|'completed'|'archived'),
+//   leagueDivision, squadCount, matchesCount (all optional — the info
+//   strip only shows a stat if real data was actually provided, never
+//   a fabricated placeholder number),
+//   onViewTeam, onViewFixtures (optional onclick JS strings for the
+//   two action buttons — omitted entirely if not provided, rather than
+//   rendering a dead button)
+async function renderClubCard(data) {
+  const logoUrl = data.logoUrl || null;
+  const bgUrl = data.backgroundUrl || await getBrandingAsset('clubCardBg') || null;
+  const jerseyUrl = data.jerseyUrl || await getBrandingAsset('jerseyPlaceholder') || null;
   const fallbackGradient = 'linear-gradient(135deg, #1a1a2e 0%, #1a1a2e 55%, #7a2020 75%, #B23333 100%)';
 
   const statusConfig = {
@@ -9737,14 +9805,18 @@ async function renderSeasonHeader(season, status) {
     completed: { label: I18n.t('home_status_completed'), bg: 'rgba(26,86,196,0.85)',   color: '#fff' },
     archived:  { label: I18n.t('home_status_archived'),  bg: 'rgba(255,255,255,0.15)', color: '#fff' },
   };
-  const cfg = statusConfig[status] || statusConfig.active;
+  const cfg = statusConfig[data.status] || statusConfig.active;
 
   const metaLine = [];
-  if (clubTeam?.city || clubTeam?.country) metaLine.push(`<span>&#128205; ${esc([clubTeam.city, clubTeam.country].filter(Boolean).join(', '))}</span>`);
-  if (clubTeam?.foundedYear || clubTeam?.foundationDate) {
-    const year = clubTeam.foundedYear || (clubTeam.foundationDate||'').slice(0,4);
-    if (year) metaLine.push(`<span>&#128197; ${I18n.t('home_header_founded', {year: esc(year)})}</span>`);
-  }
+  if (data.city || data.country) metaLine.push(`<span>&#128205; ${esc([data.city, data.country].filter(Boolean).join(', '))}</span>`);
+  if (data.foundedYear) metaLine.push(`<span>&#128197; ${I18n.t('home_header_founded', {year: esc(String(data.foundedYear))})}</span>`);
+
+  // Info strip — only real, provided stats are shown; nothing here is
+  // ever a fabricated placeholder number.
+  const infoItems = [];
+  if (data.leagueDivision) infoItems.push({ icon: '&#128200;', value: esc(data.leagueDivision), label: I18n.t('cc_league_division') });
+  if (data.squadCount != null) infoItems.push({ icon: '&#128101;', value: esc(String(data.squadCount)), label: I18n.t('cc_squad_players') });
+  if (data.matchesCount != null) infoItems.push({ icon: '&#128197;', value: esc(String(data.matchesCount)), label: I18n.t('cc_season_matches') });
 
   return `
   <div style="position:relative;border-radius:8px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.18);margin-bottom:14px;background-image:${bgUrl ? `url('${esc(bgUrl)}')` : fallbackGradient};background-size:cover;background-position:center;background-repeat:no-repeat">
@@ -9752,19 +9824,65 @@ async function renderSeasonHeader(season, status) {
     <div class="season-header-row" style="position:relative;display:flex;align-items:center;gap:16px;padding:20px">
       <div style="width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25)">
         ${logoUrl
-          ? `<img src="${esc(logoUrl)}" alt="" style="width:100%;height:100%;object-fit:contain" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          ? `<img src="${esc(logoUrl)}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:contain" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
              <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:26px">&#9917;</div>`
           : `<div style="display:flex;width:100%;height:100%;align-items:center;justify-content:center;font-size:26px">&#9917;</div>`
         }
       </div>
       <div style="flex:1;min-width:0;color:#fff">
-        <div style="font-weight:800;font-size:17px;letter-spacing:.3px;line-height:1.25">${esc((clubTeam?.name || season.clubName || '').toUpperCase())}</div>
-        <div style="font-size:13px;opacity:.85;margin-top:3px">${season.ageGroup?esc(season.ageGroup)+' · ':''}${esc(season.seasonName||'')}</div>
+        <div style="font-weight:800;font-size:17px;letter-spacing:.3px;line-height:1.25">${esc((data.clubName || '').toUpperCase())}</div>
+        <div style="font-size:13px;opacity:.85;margin-top:3px">${data.ageGroup?esc(data.ageGroup)+' · ':''}${esc(data.seasonName||'')}</div>
         ${metaLine.length ? `<div style="font-size:11px;opacity:.75;margin-top:8px;display:flex;gap:14px;flex-wrap:wrap">${metaLine.join('')}</div>` : ''}
+        ${cfg ? `<span class="badge season-header-badge" style="background:${cfg.bg};color:${cfg.color};font-weight:700;backdrop-filter:blur(2px);display:inline-flex;margin-top:10px">${cfg.label}</span>` : ''}
       </div>
-      <span class="badge season-header-badge" style="background:${cfg.bg};color:${cfg.color};flex-shrink:0;font-weight:700;backdrop-filter:blur(2px)">${cfg.label}</span>
+      ${jerseyUrl ? `<img src="${esc(jerseyUrl)}" alt="" loading="lazy" class="club-card-jersey" style="width:110px;height:auto;object-fit:contain;flex-shrink:0" onerror="this.style.display='none'">` : ''}
     </div>
+    ${infoItems.length || data.onViewTeam || data.onViewFixtures ? `
+    <div style="position:relative;background:rgba(0,0,0,.28);padding:14px 20px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between">
+      ${infoItems.length ? `<div style="display:flex;gap:20px;flex-wrap:wrap">
+        ${infoItems.map(it => `<div style="color:#fff"><div style="font-size:10px;opacity:.7;text-transform:uppercase">${it.icon} ${esc(it.label)}</div><div style="font-weight:800;font-size:17px">${it.value}</div></div>`).join('')}
+      </div>` : ''}
+      ${(data.onViewTeam || data.onViewFixtures) ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${data.onViewTeam ? `<button class="btn btn-secondary btn-sm" onclick="${esc(data.onViewTeam)}" style="background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.25)">${I18n.t('cc_btn_view_team')}</button>` : ''}
+        ${data.onViewFixtures ? `<button class="btn btn-primary btn-sm" onclick="${esc(data.onViewFixtures)}">${I18n.t('cc_btn_view_fixtures')}</button>` : ''}
+      </div>` : ''}
+    </div>` : ''}
   </div>`;
+}
+
+// Thin adapter — resolves the real season/club/game data this app
+// already has, then delegates to the entirely data-driven renderClubCard
+// above. Kept so home()'s one existing call site needs no changes.
+async function renderSeasonHeader(season, status) {
+  let logoUrl = season.headerLogoUrl || null;
+  let clubTeam = null;
+  if (season.clubTeamId) {
+    clubTeam = await DB.get('clubTeams', season.clubTeamId);
+    if (!logoUrl) logoUrl = clubTeam?.logoUrl || null;
+  }
+  let bgUrl = season.headerBackgroundUrl || clubTeam?.headerBackgroundUrl || null;
+
+  const [players, games] = await Promise.all([
+    DB.getAll('players','seasonId',season.seasonId),
+    DB.getAll('games','seasonId',season.seasonId),
+  ]);
+
+  return renderClubCard({
+    clubName: clubTeam?.name || season.clubName || '',
+    ageGroup: season.ageGroup,
+    seasonName: season.seasonName,
+    city: clubTeam?.city,
+    country: clubTeam?.country,
+    foundedYear: clubTeam?.foundedYear || (clubTeam?.foundationDate||'').slice(0,4) || null,
+    logoUrl,
+    backgroundUrl: bgUrl,
+    status,
+    leagueDivision: season.competitionName || null,
+    squadCount: players.filter(p => p.isActive).length,
+    matchesCount: games.length,
+    onViewTeam: `Nav.go('squad')`,
+    onViewFixtures: `Nav.go('games')`,
+  });
 }
 
 // ── SETUP SEASON VIEW ────────────────────────────────────────────────────
@@ -13566,7 +13684,7 @@ async function handleSyncDownload() {
 // DB PUT WRAPPER — marks records as modified for sync
 // ══════════════════════════════════════════════════════════════════════════════
 const _origPut = DB.put.bind(DB);
-const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','tournaments','temporaryPlayers','clubTeams','appBranding','externalResources']);
+const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','tournaments','temporaryPlayers','clubTeams','externalResources']);
 
 DB.put = async function(store, obj) {
   if (SYNC_STORES_SET.has(store) && obj) {
@@ -15746,7 +15864,6 @@ const Sync = (() => {
       tournaments: 'tournaments',
       temporaryPlayers: 'temporary_players',
       clubTeams: 'club_teams',
-      appBranding: 'app_branding',
       externalResources: 'external_resources',
     };
     return map[store] || store;
@@ -15766,6 +15883,13 @@ const Sync = (() => {
       ? 'return=representation'
       : 'return=representation';
 
+    // Real upsert support — when the caller passes params.on_conflict,
+    // add the merge-duplicates directive so PostgREST performs a genuine
+    // upsert (insert-or-update) instead of a plain insert that would
+    // otherwise 409 against a real unique constraint. No existing caller
+    // passes on_conflict today, so this is purely additive.
+    const finalPrefer = params?.on_conflict ? prefer + ',resolution=merge-duplicates' : prefer;
+
     // Use the logged-in user's real access token, never the anon key, for
     // any request that touches user data — this is what makes auth.uid()
     // resolve correctly in the RLS policies on the database side. The anon
@@ -15776,7 +15900,7 @@ const Sync = (() => {
         'apikey':        _cfg.anonKey,
         'Authorization': 'Bearer ' + Auth.getAccessToken(),
         'Content-Type':  'application/json',
-        'Prefer':        prefer,
+        'Prefer':        finalPrefer,
       },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -16084,15 +16208,6 @@ const Sync = (() => {
   }
 
   function findByNaturalKey(store, allLocal, payload) {
-    // appBranding is a genuine singleton — exactly one record per user,
-    // by design. A field-based natural key doesn't work here since every
-    // field can legitimately be empty on a freshly unconfigured record.
-    // Any existing local record IS the one to update, since there's
-    // never meant to be more than one.
-    if (store === 'appBranding') {
-      return allLocal.length > 0 ? allLocal[0] : null;
-    }
-
     const fields = naturalKeyFields(store);
     if (!fields) return null;
 
@@ -16405,7 +16520,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest };
 })();
 
 function attachEvents() {
