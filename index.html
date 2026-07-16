@@ -338,26 +338,26 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .pc-photo{width:56px;height:56px;border-radius:6px;object-fit:cover;background:#fff;flex-shrink:0;border:2px solid rgba(255,255,255,.4)}
 .pc-photo-fallback{width:56px;height:56px;border-radius:6px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0;border:2px solid rgba(255,255,255,.4)}
 .pc-header-v2{background-size:cover;background-position:center;padding:20px;color:#fff;position:relative}
-.pc-header-v2-top{display:flex;align-items:center;gap:14px}
+.pc-header-v2-top{display:flex;align-items:center;gap:14px;margin-left:130px}
 .pc-shirt-badge{width:52px;height:52px;border:2px solid #B23333;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;flex-shrink:0;background:rgba(15,30,46,.5)}
 .pc-header-v2-divider{height:1px;background:rgba(255,255,255,.25);margin:16px 0}
-.pc-header-v2-facts{display:flex;gap:20px;flex-wrap:wrap}
-.pc-fact{display:flex;align-items:center;gap:8px}
-.pc-fact-main{font-size:13px;font-weight:700}
-.pc-fact-sub{font-size:10px;opacity:.75}
+.pc-header-v2-facts{display:flex;gap:10px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.pc-fact{display:flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap}
+.pc-fact-main{font-size:11px;font-weight:700;white-space:nowrap}
+.pc-fact-sub{font-size:8.5px;opacity:.75;white-space:nowrap}
 .pc-name{font-size:17px;font-weight:700;line-height:1.2}
 .pc-shirt{font-size:12px;opacity:.85;margin-top:2px}
 .pc-close{position:absolute;top:14px;right:16px;background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;opacity:.8}
-.pc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:8px}
-.pc-card{display:flex;align-items:center;gap:12px;background:var(--surface,#fff);border:1px solid var(--border);border-radius:8px;padding:12px}
-.pc-card-icon{width:38px;height:38px;border-radius:50%;background:#f0f0f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;font-weight:800;color:#555}
-.pc-card-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#999}
-.pc-card-value{font-size:14px;font-weight:700;color:#222;margin-top:2px}
-.pc-stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.pc-stat{text-align:center;background:var(--surface,#fff);border:1px solid var(--border);border-radius:8px;padding:12px 6px}
-.pc-stat-icon{font-size:18px;margin-bottom:6px}
-.pc-stat-value{font-size:18px;font-weight:800}
-.pc-stat-label{font-size:9px;font-weight:700;text-transform:uppercase;color:#999;margin-top:2px}
+.pc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:6px}
+.pc-card{display:flex;align-items:center;gap:8px;background:var(--surface,#fff);border:1px solid var(--border);border-radius:6px;padding:8px}
+.pc-card-icon{width:28px;height:28px;border-radius:50%;background:#f0f0f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;font-weight:800;color:#555}
+.pc-card-label{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#999}
+.pc-card-value{font-size:12px;font-weight:700;color:#222;margin-top:1px}
+.pc-stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.pc-stat{text-align:center;background:var(--surface,#fff);border:1px solid var(--border);border-radius:6px;padding:8px 4px}
+.pc-stat-icon{font-size:13px;margin-bottom:3px}
+.pc-stat-value{font-size:15px;font-weight:800}
+.pc-stat-label{font-size:7.5px;font-weight:700;text-transform:uppercase;color:#999;margin-top:1px}
 @media(max-width:480px){ .pc-stats-grid{grid-template-columns:repeat(3,1fr)} }
 .pc-body{padding:18px 20px}
 .pc-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#a23b3b;border-bottom:2px solid #a23b3b;padding-bottom:6px;margin-bottom:12px;display:inline-block}
@@ -4862,7 +4862,7 @@ const TR = {
     pc_lbl_nationality:'Nationality',
     pc_lbl_position:'Position',
     pc_lbl_foot:'Preferred Foot',
-    pc_lbl_status:'Status', pc_lbl_squad_number:'Squad Number',
+    pc_lbl_status:'Status', pc_lbl_squad_number:'Squad Number', pc_lbl_secondary_position:'Secondary Position', pc_lbl_height_weight:'Height / Weight',
     pc_quick_stats_title:'Quick Stats', pc_stat_appearances:'Appearances', pc_stat_goals:'Goals', pc_stat_assists:'Assists', pc_stat_minutes:'Minutes', pc_stat_mom:'MOTM',
     pc_status_active:'Active', pc_status_archived:'Archived',
     pc_btn_edit:'Edit Player',
@@ -6034,7 +6034,7 @@ const TR = {
     pc_lbl_nationality:'Nacionalidade',
     pc_lbl_position:'Posição',
     pc_lbl_foot:'Pé Preferencial',
-    pc_lbl_status:'Situação', pc_lbl_squad_number:'Número',
+    pc_lbl_status:'Situação', pc_lbl_squad_number:'Número', pc_lbl_secondary_position:'Posição Secundária', pc_lbl_height_weight:'Altura / Peso',
     pc_quick_stats_title:'Estatísticas Rápidas', pc_stat_appearances:'Presenças', pc_stat_goals:'Golos', pc_stat_assists:'Assistências', pc_stat_minutes:'Minutos', pc_stat_mom:'MOTM',
     pc_status_active:'No ativo', pc_status_archived:'Arquivado',
     pc_btn_edit:'Editar Jogador',
@@ -16985,28 +16985,20 @@ async function openPlayerCardPopup(playerId) {
       <div class="pc-section-title">${I18n.t('pc_section_title')}</div>
       <div class="pc-grid">
         <div class="pc-card">
-          <div class="pc-card-icon">${navIcon('calendar',20)}</div>
-          <div><div class="pc-card-label">${I18n.t('pc_lbl_dob')}</div><div class="pc-card-value">${p.dateOfBirth?fmtDate(p.dateOfBirth):'—'}${age!==null?` (${age} ${I18n.t('pc_years_suffix')})`:''}</div></div>
-        </div>
-        <div class="pc-card">
-          <div class="pc-card-icon">${flags||'&#127988;'}</div>
-          <div><div class="pc-card-label">${I18n.t('pc_lbl_nationality')}</div><div class="pc-card-value">${esc(p.nationality||'—')}</div></div>
-        </div>
-        <div class="pc-card">
-          <div class="pc-card-icon">${navIcon('tracked-player',20)}</div>
-          <div><div class="pc-card-label">${I18n.t('pc_lbl_position')}</div><div class="pc-card-value">${esc(p.primaryPosition||'—')}${p.secondaryPosition?` / ${esc(p.secondaryPosition)}`:''}</div></div>
-        </div>
-        <div class="pc-card">
-          <div class="pc-card-icon">${navIcon('boot',20)}</div>
-          <div><div class="pc-card-label">${I18n.t('pc_lbl_foot')}</div><div class="pc-card-value">${esc(p.dominantFoot||'—')}</div></div>
-        </div>
-        <div class="pc-card">
-          <div class="pc-card-icon">${navIcon('dashboard',20)}</div>
-          <div><div class="pc-card-label">${I18n.t('pc_lbl_status')}</div><div class="pc-card-value"><span class="badge" style="background:${p.isActive?'#e6f4ea':'#f0f0f0'};color:${p.isActive?'#2a7a3b':'var(--muted)'}">${p.isActive?I18n.t('pc_status_active'):I18n.t('pc_status_archived')}</span></div></div>
+          <div class="pc-card-icon">${navIcon('tracked-player',15)}</div>
+          <div><div class="pc-card-label">${I18n.t('pc_lbl_secondary_position')}</div><div class="pc-card-value">${esc(p.secondaryPosition||'—')}</div></div>
         </div>
         <div class="pc-card">
           <div class="pc-card-icon" style="background:#0F1E2E;color:#fff">${p.shirtNumber||'—'}</div>
           <div><div class="pc-card-label">${I18n.t('pc_lbl_squad_number')}</div><div class="pc-card-value">#${p.shirtNumber||'—'}</div></div>
+        </div>
+        ${(p.height || p.weight) ? `<div class="pc-card">
+          <div class="pc-card-icon">&#128207;</div>
+          <div><div class="pc-card-label">${I18n.t('pc_lbl_height_weight')}</div><div class="pc-card-value">${p.height?`${p.height}cm`:'—'}${p.weight?` / ${p.weight}kg`:''}</div></div>
+        </div>` : ''}
+        <div class="pc-card">
+          <div class="pc-card-icon">${navIcon('dashboard',15)}</div>
+          <div><div class="pc-card-label">${I18n.t('pc_lbl_status')}</div><div class="pc-card-value"><span class="badge" style="background:${p.isActive?'#e6f4ea':'#f0f0f0'};color:${p.isActive?'#2a7a3b':'var(--muted)'}">${p.isActive?I18n.t('pc_status_active'):I18n.t('pc_status_archived')}</span></div></div>
         </div>
       </div>
 
@@ -17035,9 +17027,9 @@ async function openPlayerCardPopup(playerId) {
       statsEl.innerHTML = `
         <div class="pc-section-title" style="margin-top:18px">${I18n.t('pc_quick_stats_title')}</div>
         <div class="pc-stats-grid">
-          <div class="pc-stat"><div class="pc-stat-icon">${navIcon('team-summary',18)}</div><div class="pc-stat-value">${stats.calledUp}</div><div class="pc-stat-label">${I18n.t('pc_stat_appearances')}</div></div>
+          <div class="pc-stat"><div class="pc-stat-icon">${navIcon('team-summary',14)}</div><div class="pc-stat-value">${stats.calledUp}</div><div class="pc-stat-label">${I18n.t('pc_stat_appearances')}</div></div>
           <div class="pc-stat"><div class="pc-stat-icon">&#9917;</div><div class="pc-stat-value">${stats.goals}</div><div class="pc-stat-label">${I18n.t('pc_stat_goals')}</div></div>
-          <div class="pc-stat"><div class="pc-stat-icon">${navIcon('boot',18)}</div><div class="pc-stat-value">${stats.assists}</div><div class="pc-stat-label">${I18n.t('pc_stat_assists')}</div></div>
+          <div class="pc-stat"><div class="pc-stat-icon">${navIcon('boot',14)}</div><div class="pc-stat-value">${stats.assists}</div><div class="pc-stat-label">${I18n.t('pc_stat_assists')}</div></div>
           <div class="pc-stat"><div class="pc-stat-icon">&#128337;</div><div class="pc-stat-value">${stats.minutes}</div><div class="pc-stat-label">${I18n.t('pc_stat_minutes')}</div></div>
           <div class="pc-stat"><div class="pc-stat-icon">&#11088;</div><div class="pc-stat-value">${stats.mom}</div><div class="pc-stat-label">${I18n.t('pc_stat_mom')}</div></div>
         </div>`;
