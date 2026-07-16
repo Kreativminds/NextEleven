@@ -338,14 +338,15 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .pc-photo{width:56px;height:56px;border-radius:6px;object-fit:cover;background:#fff;flex-shrink:0;border:2px solid rgba(255,255,255,.4)}
 .pc-photo-fallback{width:56px;height:56px;border-radius:6px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0;border:2px solid rgba(255,255,255,.4)}
 .pc-header-v2{background-size:cover;background-position:center;padding:20px;color:#fff;position:relative}
-.pc-header-v2-top{display:flex;align-items:center;gap:14px;margin-left:108px}
+.pc-header-v2-top{display:flex;align-items:center;gap:14px;margin-left:108px;justify-content:flex-end;text-align:right}
 .pc-shirt-badge{width:52px;height:52px;border:2px solid #B23333;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;flex-shrink:0;background:rgba(15,30,46,.5)}
 .pc-header-v2-divider{height:1px;background:rgba(255,255,255,.25);margin:16px 0}
-.pc-header-v2-facts{display:flex;gap:10px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.pc-fact{display:flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap}
+.pc-achievement{margin-top:10px;font-size:11px;color:#fff;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right;margin-left:108px}
+.pc-header-v2-facts{display:flex;gap:10px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;justify-content:flex-end;margin-left:108px}
+.pc-fact{display:flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;text-align:right;flex-direction:row-reverse}
 .pc-fact-main{font-size:11px;font-weight:700;white-space:nowrap}
 .pc-fact-sub{font-size:8.5px;opacity:.75;white-space:nowrap}
-.pc-name{font-size:16px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.pc-name{font-weight:700;line-height:1.2;white-space:nowrap;display:inline-block}
 .pc-shirt{font-size:12px;opacity:.85;margin-top:2px}
 .pc-close{position:absolute;top:14px;right:16px;background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;opacity:.8}
 .pc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:6px}
@@ -16947,6 +16948,25 @@ async function openPlayerCardPopup(playerId) {
   const flags = getFlagsForNationality(p.nationality);
   const cvBg = await getBrandingAsset('playerCvBackground');
 
+  // Latest real achievement — most recent Trophy-category entry for
+  // this player, reusing the exact same category/dismissed filter
+  // already established for the Team Summary achievements list. Genuinely
+  // null (nothing shown) if the player has no trophy achievements at all.
+  const allAch = await DB.getAll('achievements');
+  const playerTrophies = allAch
+    .filter(a => a.playerId === playerId && a.category === 'Trophy' && !a.isDeleted && a.dismissed !== true)
+    .sort((a,b) => new Date(b.date||0) - new Date(a.date||0));
+  let latestAchievement = null;
+  if (playerTrophies.length) {
+    const top = playerTrophies[0];
+    let tournamentName = (top.description||'').split('·')[0].trim();
+    if (top.tournamentId) {
+      const t = await DB.get('tournaments', top.tournamentId);
+      if (t?.name) tournamentName = t.name;
+    }
+    latestAchievement = { title: top.title, tournamentName };
+  }
+
   // The real Player CV Background covers the header exactly as designed
   // in the approved reference — the image itself already carries the
   // navy/red identity, so no extra dark overlay is layered on top of it
@@ -16960,8 +16980,8 @@ async function openPlayerCardPopup(playerId) {
       <button class="pc-close" onclick="closePlayerCardPopup()">&times;</button>
       <div class="pc-header-v2-top">
         <div class="pc-shirt-badge">${p.shirtNumber||'—'}</div>
-        <div style="min-width:0;flex:1">
-          <div class="pc-name">${esc(p.displayName || shortName(p.fullName))}</div>
+        <div style="min-width:0;flex:1;text-align:right" id="pcNameWrap-${p.playerId}">
+          <div class="pc-name" id="pcName-${p.playerId}" style="font-size:16px">${esc(p.displayName || shortName(p.fullName))}</div>
           <div class="pc-shirt">${esc(p.primaryPosition||'—')}</div>
         </div>
       </div>
@@ -16980,6 +17000,7 @@ async function openPlayerCardPopup(playerId) {
           <div><div class="pc-fact-main">${esc(p.dominantFoot||'—')}</div><div class="pc-fact-sub">${I18n.t('pc_lbl_foot')}</div></div>
         </div>
       </div>
+      ${latestAchievement ? `<div class="pc-achievement">&#127942; <strong>${esc(latestAchievement.title)}</strong> · ${esc(latestAchievement.tournamentName)}</div>` : ''}
     </div>
     <div class="pc-body">
       <div class="pc-section-title">${I18n.t('pc_section_title')}</div>
@@ -17009,6 +17030,7 @@ async function openPlayerCardPopup(playerId) {
     </div>
   `;
   document.getElementById('playerCardOverlay').classList.add('open');
+  requestAnimationFrame(() => shrinkPlayerCardNameToFit(playerId));
 
   // Quick Stats — real, computed data for the current season, reusing
   // the exact same Calc.playerSeasonStats function used everywhere else
@@ -17034,6 +17056,26 @@ async function openPlayerCardPopup(playerId) {
           <div class="pc-stat"><div class="pc-stat-icon">&#11088;</div><div class="pc-stat-value">${stats.mom}</div><div class="pc-stat-label">${I18n.t('pc_stat_mom')}</div></div>
         </div>`;
     }
+  }
+}
+
+// Real, genuine dynamic name-fitting — per the explicit instruction that
+// a player's name must NEVER be cropped/truncated, ever. Measures the
+// name's actual rendered width against its real available container
+// width and shrinks font-size in a loop until it genuinely fits, down
+// to a sensible minimum size, rather than ever cutting off characters.
+function shrinkPlayerCardNameToFit(playerId) {
+  const nameEl = document.getElementById(`pcName-${playerId}`);
+  const wrapEl = document.getElementById(`pcNameWrap-${playerId}`);
+  if (!nameEl || !wrapEl) return;
+  let size = 16;
+  nameEl.style.fontSize = size + 'px';
+  const availableWidth = wrapEl.getBoundingClientRect().width;
+  let guard = 0;
+  while (nameEl.scrollWidth > availableWidth && size > 10 && guard < 20) {
+    size -= 0.5;
+    nameEl.style.fontSize = size + 'px';
+    guard++;
   }
 }
 
