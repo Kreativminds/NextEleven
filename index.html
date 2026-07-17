@@ -3400,6 +3400,9 @@ function renderAuthGate() {
       </div>
       <div id="acc-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
       <button class="btn btn-primary" id="acc-submit-btn" style="width:100%" onclick="handleAccountSubmit()">${I18n.t('acc_btn_login')}</button>
+      <div style="text-align:center;margin-top:10px" id="acc-forgot-password-link">
+        <a href="#" onclick="event.preventDefault();handleForgotPassword()" style="font-size:12px;color:var(--muted);text-decoration:underline">${I18n.t('acc_forgot_password')}</a>
+      </div>
       <p style="font-size:11px;color:var(--muted);margin-top:14px;text-align:center">${I18n.t('acc_gate_offline_note')}</p>
       <div style="text-align:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
         <a href="#" onclick="event.preventDefault();handleEmergencyBypass()" style="font-size:12px;color:var(--muted);text-decoration:underline">${I18n.t('acc_emergency_bypass')}</a>
@@ -3872,6 +3875,54 @@ async function handleClaimAccountCode() {
 }
 
 let _accountFormMode = 'login';
+async function handleForgotPassword() {
+  const email = document.getElementById('acc-email')?.value.trim() || window.prompt(I18n.t('acc_forgot_password_prompt'));
+  if (!email) return;
+  try {
+    await Auth.requestPasswordReset(email);
+    Toast.show(I18n.t('acc_forgot_password_sent', {email}));
+  } catch(err) {
+    Toast.error(err.message);
+  }
+}
+
+// Real "set a new password" screen, shown only when a genuine recovery
+// token was found in the URL at startup (Auth.setRecoverySession()).
+function renderPasswordResetScreen() {
+  const el = document.getElementById('authGateCard');
+  if (!el) return;
+  el.innerHTML = `
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;text-align:center">${I18n.t('acc_reset_intro')}</p>
+    <div class="form-grid" style="margin-bottom:12px">
+      <div class="form-group full"><label>${I18n.t('acc_reset_new_password')}</label><input id="reset-new-password" type="password" placeholder="••••••••" autocomplete="new-password"></div>
+    </div>
+    <div id="reset-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="handleCompletePasswordReset()">${I18n.t('acc_reset_submit')}</button>
+  `;
+}
+
+async function handleCompletePasswordReset() {
+  const newPassword = document.getElementById('reset-new-password')?.value || '';
+  const errEl = document.getElementById('reset-error');
+  if (newPassword.length < 6) {
+    if (errEl) { errEl.textContent = I18n.t('acc_err_password_too_short'); errEl.style.display = ''; }
+    return;
+  }
+  try {
+    await Auth.completePasswordReset(newPassword);
+    Toast.show(I18n.t('acc_reset_success'));
+    // The recovery token was only ever meant to set a new password, not
+    // start a genuine full session — send them back to a normal login
+    // with their new password, rather than silently continuing signed in
+    // from a token that arrived via an email link.
+    await Auth.logout();
+    renderAuthGate();
+    applyAuthGateBackground();
+  } catch(err) {
+    if (errEl) { errEl.textContent = err.message; errEl.style.display = ''; }
+  }
+}
+
 function switchAccountFormTab(mode) {
   _accountFormMode = mode;
   document.getElementById('acc-tab-login')?.classList.toggle('active-tab', mode==='login');
@@ -3882,6 +3933,8 @@ function switchAccountFormTab(mode) {
   if (pwInput) pwInput.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
   const err = document.getElementById('acc-error');
   if (err) err.style.display = 'none';
+  const forgotLink = document.getElementById('acc-forgot-password-link');
+  if (forgotLink) forgotLink.style.display = mode === 'login' ? '' : 'none';
 }
 
 // ── SCROLL-TRIGGERED PAGE NAME IN NAV ────────────────────────────────────────
@@ -5145,6 +5198,11 @@ const TR = {
     acc_tab_login:'Log In', acc_tab_signup:'Sign Up',
     acc_lbl_email:'Email', acc_lbl_password:'Password',
     acc_btn_login:'Log In', acc_btn_signup:'Create Account',
+    acc_forgot_password:'Forgot password?', acc_forgot_password_prompt:'Enter your email address:',
+    acc_forgot_password_sent:'If an account exists for {email}, a reset link has been sent.',
+    acc_reset_intro:'Enter a new password for your account.', acc_reset_new_password:'New Password',
+    acc_reset_submit:'Set New Password', acc_reset_success:'Password updated. Please log in with your new password.',
+    acc_err_password_too_short:'Password must be at least 6 characters.',
     acc_btn_logout:'Log Out',
     acc_err_required:'Email and password are required.',
     acc_err_password_short:'Password must be at least 6 characters.',
@@ -6321,6 +6379,11 @@ const TR = {
     acc_tab_login:'Iniciar Sessão', acc_tab_signup:'Criar Conta',
     acc_lbl_email:'Email', acc_lbl_password:'Palavra-passe',
     acc_btn_login:'Iniciar Sessão', acc_btn_signup:'Criar Conta',
+    acc_forgot_password:'Esqueceu-se da password?', acc_forgot_password_prompt:'Indique o seu endereço de email:',
+    acc_forgot_password_sent:'Se existir uma conta para {email}, foi enviado um link de recuperação.',
+    acc_reset_intro:'Indique uma nova password para a sua conta.', acc_reset_new_password:'Nova Password',
+    acc_reset_submit:'Definir Nova Password', acc_reset_success:'Password atualizada. Por favor inicie sessão com a nova password.',
+    acc_err_password_too_short:'A password deve ter pelo menos 6 caracteres.',
     acc_btn_logout:'Terminar Sessão',
     acc_err_required:'O email e a palavra-passe são obrigatórios.',
     acc_err_password_short:'A palavra-passe deve ter pelo menos 6 caracteres.',
@@ -16041,6 +16104,37 @@ const Auth = (() => {
     return data;
   }
 
+  // Real Password Reset — calls Supabase's actual /auth/v1/recover
+  // endpoint, which sends a genuine email with a reset link. redirect_to
+  // points back at this same page, since the app is a single-file SPA
+  // with no separate route — the returned link will include a real
+  // access token in the URL fragment, handled by handlePasswordResetCallback
+  // at real app startup (see below).
+  async function requestPasswordReset(email) {
+    const redirectTo = window.location.origin + window.location.pathname;
+    await _authRequest('recover', { email, options: { redirect_to: redirectTo } });
+  }
+
+  // Called once the user has clicked the real reset link from their email
+  // and is back in the app with a valid recovery access token already
+  // present in the URL fragment (Supabase puts it there directly).
+  async function completePasswordReset(newPassword) {
+    if (!_session?.accessToken) throw new Error('No active recovery session — the reset link may have expired.');
+    const anonKey = Sync.getRawConfig().anonKey;
+    const res = await fetch(_supabaseAuthBase() + 'user', {
+      method: 'PUT',
+      headers: {
+        'apikey': anonKey,
+        'Authorization': 'Bearer ' + _session.accessToken,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ password: newPassword }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.msg || data?.message || 'Could not update password.');
+    return data;
+  }
+
   async function refresh() {
     if (!_session?.refreshToken) throw new Error('No refresh token available.');
     const data = await _authRequest('token?grant_type=refresh_token', { refresh_token: _session.refreshToken });
@@ -16053,7 +16147,30 @@ const Auth = (() => {
     await DB.del('appMeta', 'authSession').catch(()=>{});
   }
 
-  return { isLoggedIn, getUserId, getAccessToken, getEmail, loadSession, signUp, login, refresh, logout };
+  // Parses the real recovery access token Supabase places in the URL
+  // fragment after the user clicks their password-reset email link
+  // (#access_token=...&type=recovery). Sets up just enough of a session
+  // to call completePasswordReset — this is NOT treated as a genuine
+  // full login, since a leaked/expired recovery link should only ever
+  // be able to set a new password, nothing else.
+  function setRecoverySession() {
+    const hash = window.location.hash.replace(/^#/, '');
+    const params = new URLSearchParams(hash);
+    if (params.get('type') !== 'recovery' || !params.get('access_token')) return false;
+    _session = {
+      accessToken: params.get('access_token'),
+      refreshToken: params.get('refresh_token') || null,
+      userId: null, // deliberately not trusted from the URL — completePasswordReset only needs the token itself
+      email: null,
+      expiresAt: Date.now() + 3600 * 1000,
+    };
+    // Clear the sensitive token out of the visible URL immediately, so
+    // it isn't left sitting in browser history or accidentally shared.
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    return true;
+  }
+
+  return { isLoggedIn, getUserId, getAccessToken, getEmail, loadSession, signUp, login, refresh, logout, requestPasswordReset, completePasswordReset, setRecoverySession };
 })();
 
 const Sync = (() => {
@@ -19094,6 +19211,17 @@ async function init() {
     await loadMeta();
     await Sync.loadConfig();
     await Auth.loadSession();
+
+    // Real password-reset recovery link check — takes priority over
+    // everything else at startup, since a Parent clicking their reset
+    // email should always land on the set-new-password screen, never
+    // silently fall through to whatever session state existed before.
+    if (Auth.setRecoverySession()) {
+      renderPasswordResetScreen();
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('authGate').style.display = 'flex';
+      return;
+    }
 
     // ── PLAYER PORTAL SESSION CHECK ──────────────────────────────────────────
     // A player who logged in with their PIN stays logged in across a refresh
