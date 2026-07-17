@@ -457,7 +457,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
   <div style="max-width:380px;width:100%">
     <div style="text-align:center;margin-bottom:28px">
       <div class="nav-logo-mark" style="width:48px;height:48px;margin:0 auto 12px"><span style="font-size:20px">11</span></div>
-      <div style="font-size:20px;font-weight:800;color:var(--navy)">Next<span style="color:var(--black)">Eleven</span></div>
+      <div style="font-size:20px;font-weight:800;color:var(--navy)" translate="no">Next<span style="color:var(--black)">Eleven</span></div>
     </div>
     <div class="card" id="authGateCard" style="padding:24px"></div>
   </div>
@@ -475,7 +475,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
   <nav>
     <div class="nav-brand" onclick="Nav.goPortal('home')" style="cursor:pointer">
       <div class="nav-logo-mark"><span>11</span></div>
-      <div class="nav-wordmark">Next<b>Eleven</b></div>
+      <div class="nav-wordmark" translate="no">Next<b>Eleven</b></div>
       <span class="nav-page-name" id="portalNavPageName" style="display:none"></span>
       <span class="nav-season" id="playerPortalName"></span>
     </div>
@@ -520,7 +520,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 <nav>
   <div class="nav-brand" onclick="Nav.go('home')" style="cursor:pointer">
     <div class="nav-logo-mark"><span>11</span></div>
-    <div class="nav-wordmark">Next<b>Eleven</b></div>
+    <div class="nav-wordmark" translate="no">Next<b>Eleven</b></div>
     <span class="nav-page-name" id="navPageName" style="display:none"></span>
     <span class="nav-season" id="navSeason">No season</span>
   </div>
@@ -3492,6 +3492,12 @@ async function handlePlayerPinSubmit() {
     // this device's own synced player data, fully offline.
     const allPlayers = await DB.getAll('players');
     match = allPlayers.find(p => p.viewerPin && p.viewerPin === enteredPin);
+    // Self-healing: a player record bootstrapped before careerPlayerId was
+    // included (a real, confirmed bug) would match here but be missing
+    // data Club History/Achievements/Events all require. Treat that as
+    // "no local match" so the code below falls through to a fresh
+    // network bootstrap instead of silently continuing with stale data.
+    if (match && !match.careerPlayerId) match = null;
   }
 
   if (!match) {
@@ -5355,6 +5361,9 @@ const TR = {
 
     // ── PLAYER PORTAL — EXPANDED NAV ──
     pp_nav_dashboard:'Overview', pp_nav_stats:'Stats', pp_nav_games:'Games', pp_nav_clubs:'Club History',
+    pp_off_season_title:'Season\'s Over — Enjoy the Rest!', pp_off_season_desc:'There are no more games right now. Take some time to rest and recharge — the next season will be here before you know it.',
+    pp_off_season_games_empty:'No games recorded for this season yet.',
+    pp_view_my_card:'View My Player Card', pp_view_my_card_hint:'See your profile, stats, and achievements',
     pp_nav_achievements:'Achievements', pp_nav_events:'Events', pp_nav_teamsummary:'Team Summary',
     pp_training_tab_new:'New Session', pp_training_tab_history:'History',
     pp_assist_by:'Assist by',
@@ -6527,6 +6536,9 @@ const TR = {
 
     // ── PLAYER PORTAL — EXPANDED NAV ──
     pp_nav_dashboard:'Resumo', pp_nav_stats:'Estatísticas', pp_nav_games:'Jogos', pp_nav_clubs:'Histórico de Clubes',
+    pp_off_season_title:'A Época Terminou — Aproveita o Descanso!', pp_off_season_desc:'Não há mais jogos por agora. Aproveita para descansar e recarregar energias — a próxima época chega num instante.',
+    pp_off_season_games_empty:'Ainda não há jogos registados nesta época.',
+    pp_view_my_card:'Ver o Meu Cartão de Jogador', pp_view_my_card_hint:'Vê o teu perfil, estatísticas e conquistas',
     pp_nav_achievements:'Conquistas', pp_nav_events:'Eventos', pp_nav_teamsummary:'Resumo da Equipa',
     pp_training_tab_new:'Nova Sessão', pp_training_tab_history:'Histórico',
     pp_assist_by:'Assistência de',
@@ -13192,6 +13204,11 @@ async function renderPlayerPortalHome() {
   el.innerHTML = `
     <div class="page-header"><div><h1>${I18n.t('pp_home_title')}</h1><div class="page-header-sub">${esc(shortName(player.fullName))}</div></div></div>
 
+    <div class="card" style="text-align:center;cursor:pointer" onclick="openPlayerCardPopup(${playerId})">
+      <div style="font-size:13px;font-weight:700">&#127917; ${I18n.t('pp_view_my_card')}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${I18n.t('pp_view_my_card_hint')}</div>
+    </div>
+
     <!-- NEXT GAME -->
     ${renderNextGameCarousel(upcoming, 'player', false)}
 
@@ -13356,9 +13373,16 @@ async function renderPlayerPortalGames() {
   const allGP = await DB.getAll('gamePlayers','seasonId', State.currentSeasonId);
   games.sort((a,b) => gameSortKey(b) - gameSortKey(a));
 
+  // Warm, specific off-season message — reuses the same real season-
+  // status resolver already built for the guardian Home page, rather
+  // than a generic "no games" message regardless of why the list is empty.
+  const seasonStatus = State.currentSeason ? await getSeasonStatus(State.currentSeason) : null;
+  const isOffSeason = seasonStatus === 'completed' || seasonStatus === 'archived';
+
   el.innerHTML = `
     <div class="page-header"><div><h1>${I18n.t('pp_nav_games')}</h1></div></div>
-    ${!games.length ? `<div class="empty"><strong>${I18n.t('games_no_games_title')}</strong></div>` : `
+    ${isOffSeason ? `<div class="card" style="background:#e8f0fe;border-color:#b8d4f8;text-align:center;margin-bottom:14px"><div style="font-size:24px">&#9917;</div><div style="font-weight:700;margin-top:4px">${I18n.t('pp_off_season_title')}</div><p style="font-size:12px;color:var(--muted);margin-top:2px">${I18n.t('pp_off_season_desc')}</p></div>` : ''}
+    ${!games.length ? `<div class="empty"><strong>${isOffSeason ? I18n.t('pp_off_season_games_empty') : I18n.t('games_no_games_title')}</strong></div>` : `
     <div class="who-played-list">
       ${games.map(g => {
         const gGP = allGP.filter(r => r.gameId === g.gameId);
@@ -15493,7 +15517,7 @@ const Render = (() => {
         </div>`).join('')}
 
       <div class="card" style="background:#f8f8f8;margin-bottom:14px;text-align:center">
-        <div style="font-weight:800;font-size:15px;color:var(--navy)">Next<span style="color:var(--black)">Eleven</span></div>
+        <div style="font-weight:800;font-size:15px;color:var(--navy)" translate="no">Next<span style="color:var(--black)">Eleven</span></div>
         <div style="font-size:10px;font-weight:600;letter-spacing:1px;color:var(--mid);text-transform:uppercase;margin:4px 0 10px">Track. Develop. Improve.</div>
         <div style="font-size:12px;color:var(--muted)">
           Version ${CONFIG.APP_VERSION} &nbsp;·&nbsp; Schema v${CONFIG.SCHEMA_VERSION} &nbsp;·&nbsp;
@@ -16286,10 +16310,17 @@ const Sync = (() => {
   // device use the fast local-match path instead of hitting the network
   // again every time.
   async function bootstrapPlayerFromRemote(rpcResult) {
-    const { parent_user_id, player_local_id, player_name } = rpcResult;
+    const { parent_user_id, player_local_id, player_name, career_player_id, shirt_number, primary_position, date_of_birth, nationality, dominant_foot, photo_url } = rpcResult;
     const minimalPlayer = {
       playerId: parseInt(player_local_id),
       fullName: player_name,
+      careerPlayerId: career_player_id || null,
+      shirtNumber: shirt_number || null,
+      primaryPosition: primary_position || null,
+      dateOfBirth: date_of_birth || null,
+      nationality: nationality || null,
+      dominantFoot: dominant_foot || null,
+      photoUrl: photo_url || null,
       isActive: true,
       remoteOwnerUserId: parent_user_id, // kept for reference; not used for any local security decision
     };
@@ -17026,7 +17057,7 @@ async function openPlayerCardPopup(playerId) {
       <div id="pcQuickStats-${p.playerId}"></div>
     </div>
     <div class="pc-footer">
-      <button class="btn btn-secondary btn-sm" onclick="closePlayerCardPopup();editPlayer(${p.playerId})">&#9999; ${I18n.t('pc_btn_edit')}</button>
+      ${!State.portalPlayerId ? `<button class="btn btn-secondary btn-sm" onclick="closePlayerCardPopup();editPlayer(${p.playerId})">&#9999; ${I18n.t('pc_btn_edit')}</button>` : ''}
     </div>
   `;
   document.getElementById('playerCardOverlay').classList.add('open');
