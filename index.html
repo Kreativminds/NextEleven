@@ -447,7 +447,36 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 </head>
 <body>
 
-<div id="loading"><div class="spinner"></div><p>Loading...</p></div>
+<div id="loading">
+  <img id="splashLogo" src="" style="display:none;max-width:180px;max-height:180px;border-radius:12px;margin-bottom:16px" alt="">
+  <div class="spinner" id="splashSpinner"></div>
+  <p>Loading...</p>
+</div>
+<script>
+  // Genuinely synchronous, runs the instant the browser parses this far —
+  // before any async IndexedDB/network work, before the main script block
+  // even executes. This is the real, honest answer to "show the branded
+  // splash before anything else loads": localStorage is the one storage
+  // mechanism that's actually available synchronously at parse time.
+  // Wrapped in try/catch since localStorage can throw in private/
+  // incognito browsing modes — a failure here must never block the app
+  // from loading, it just falls back to the plain spinner already shown.
+  try {
+    var cachedSplash = localStorage.getItem('nexteleven_splash_url');
+    if (cachedSplash) {
+      var img = document.getElementById('splashLogo');
+      img.src = cachedSplash;
+      img.style.display = 'block';
+      // Hide the spinner while a real, cached image is shown — matches
+      // the same visual treatment a real splash screen would have, per
+      // requirement #2. If the image itself fails to load (a stale or
+      // now-broken URL), fall back to the spinner rather than show a
+      // broken image icon.
+      img.onload = function() { document.getElementById('splashSpinner').style.display = 'none'; };
+      img.onerror = function() { img.style.display = 'none'; };
+    }
+  } catch(e) {}
+</script>
 
 <!-- AUTH GATE — shown instead of the app until the person has logged in at
      least once. After a successful login, the session persists locally so
@@ -1751,7 +1780,30 @@ async function handleDismissWizardDraft() {
 // nothing yet: no clubTeams, no seasons. Never fires again once a
 // Club/Team or Season exists, even if the wizard itself was abandoned
 // partway (Settings still offers "Resume Setup" for that case instead).
+//
+// Real fix, confirmed necessary: right after a genuine account switch,
+// resetAppStateForNewUser() correctly clears local IndexedDB, but the
+// real, automatic sync-down that repopulates it only starts ~3 seconds
+// later (per startPeriodicSync's own real delay). Checking only the
+// local cache in that narrow window incorrectly showed the Wizard for
+// an account that genuinely has real cloud data, before that data had
+// a chance to arrive. When online and logged in, this now checks the
+// cloud directly first — the real, authoritative source of truth —
+// and only falls back to the local-only check when genuinely offline,
+// where the local cache actually is the only truth available.
 async function shouldTriggerFirstTimeWizard() {
+  if (Auth.isLoggedIn() && navigator.onLine && Sync.isConfigured()) {
+    try {
+      const [cloudSeasons, cloudClubTeams] = await Promise.all([
+        Sync.supabaseRequest('GET', 'seasons', null, { user_id: 'eq.'+Auth.getUserId(), limit: '1' }),
+        Sync.supabaseRequest('GET', 'club_teams', null, { user_id: 'eq.'+Auth.getUserId(), limit: '1' }),
+      ]);
+      return cloudSeasons.length === 0 && cloudClubTeams.length === 0;
+    } catch(e) {
+      // A real network hiccup during this specific check — fall back to
+      // the local-only check below rather than block Home from loading.
+    }
+  }
   const clubTeams = await DB.getAll('clubTeams');
   const seasons = await DB.getAll('seasons');
   return clubTeams.length === 0 && seasons.length === 0;
@@ -4176,6 +4228,14 @@ async function resetAppStateForNewUser(newUserId) {
   // 4. Reset module-level caches confirmed during the audit.
   _brandingCache = null;
   Sync.resetBookkeeping();
+  // localStorage is genuinely separate from IndexedDB and untouched by
+  // DB.clearAllRealStores() above — without this, account A's splash
+  // image would persist and briefly show on the very next reload even
+  // after switching to a different account B. The reload at the end of
+  // this function will trigger the inline splash-check script fresh, so
+  // clearing this now ensures it correctly shows nothing (falls back to
+  // the plain spinner) rather than a stale, wrong account's image.
+  try { localStorage.removeItem('nexteleven_splash_url'); } catch(e) {}
 
   // 5. Persist the new canonical owner of the local cache.
   await DB.put('appMeta', { metaKey: 'lastAuthenticatedUserId', value: newUserId });
@@ -9923,6 +9983,13 @@ async function loadBranding(forceRefresh) {
   try {
     const rows = await Sync.supabaseRequest('GET', 'app_branding', null, { user_id: 'eq.' + effectiveUserId, limit: '1' });
     _brandingCache = rows[0]?.payload || {};
+    // Populate the real, synchronous splash cache on genuine first fetch
+    // too — a fresh device that's never saved branding locally before
+    // still gets this ready for the NEXT app boot, not just after a
+    // Settings save on this same device.
+    try {
+      if (_brandingCache.splashScreen) localStorage.setItem('nexteleven_splash_url', _brandingCache.splashScreen);
+    } catch(e) {}
   } catch (e) {
     console.error('[Branding] load failed:', e);
     _brandingCache = _brandingCache || {}; // keep whatever we had rather than wipe it on a transient network error
@@ -9963,6 +10030,17 @@ async function doSaveBrandingAsset(key, url) {
     sync_status: 'synced',
   }, { on_conflict: 'user_id' });
   _brandingCache = updated;
+  // Real, synchronous cache specifically for the splash screen — read
+  // at genuine app boot, before any async IndexedDB/network work is
+  // even possible. Wrapped in try/catch since localStorage can throw in
+  // private/incognito browsing modes; a failure here must never block
+  // the actual branding save from completing.
+  try {
+    if (key === 'splashScreen') {
+      if (url) localStorage.setItem('nexteleven_splash_url', url);
+      else localStorage.removeItem('nexteleven_splash_url');
+    }
+  } catch(e) {}
   await applyDynamicBrandingToDocument();
 }
 
