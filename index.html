@@ -3382,12 +3382,9 @@ function renderAuthGate() {
   const el = document.getElementById('authGateCard');
   if (!el) return;
   el.innerHTML = `
-    <div class="tab-bar-row" style="margin-bottom:16px">
-      <button class="import-tab active-tab" id="role-tab-guardian" onclick="switchAuthRoleTab('guardian')">${I18n.t('acc_role_guardian')}</button>
-      <button class="import-tab" id="role-tab-player" onclick="switchAuthRoleTab('player')">${I18n.t('acc_role_player')}</button>
-    </div>
-
-    <!-- GUARDIAN ROLE — existing email/password login, future Google/Facebook -->
+    <!-- PARENT — shown directly by default, per the approved Option A design.
+         No extra "who are you" screen; Player Access is a clearly visible,
+         secondary link below, not an equal-weight tab. -->
     <div id="authRolePanel-guardian">
       <p style="font-size:13px;color:var(--muted);margin-bottom:16px;text-align:center">${I18n.t('acc_gate_intro')}</p>
       <div class="tab-bar-row" style="margin-bottom:14px">
@@ -3413,9 +3410,14 @@ function renderAuthGate() {
         <a href="#" onclick="event.preventDefault();handleForgotPassword()" style="font-size:12px;color:var(--muted);text-decoration:underline">${I18n.t('acc_forgot_password')}</a>
       </div>
       <p style="font-size:11px;color:var(--muted);margin-top:14px;text-align:center">${I18n.t('acc_gate_offline_note')}</p>
+
+      <div style="text-align:center;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+        <a href="#" onclick="event.preventDefault();switchAuthRoleTab('player')" style="font-size:13px;color:var(--navy);font-weight:600;text-decoration:none">${I18n.t('acc_player_access_link')} &rsaquo;</a>
+      </div>
     </div>
 
-    <!-- PLAYER ROLE — Account Code + PIN, future Google/Facebook -->
+    <!-- PLAYER ACCESS — Account Code + PIN. Never shown by default; only
+         reached via the secondary link above, per the approved design. -->
     <div id="authRolePanel-player" style="display:none">
       <p style="font-size:13px;color:var(--muted);margin-bottom:16px;text-align:center">${I18n.t('acc_player_gate_intro')}</p>
       <div class="form-grid" style="margin-bottom:12px">
@@ -3434,13 +3436,14 @@ function renderAuthGate() {
       <div id="player-pin-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
       <button class="btn btn-primary" style="width:100%" onclick="handlePlayerPinSubmit()">${I18n.t('acc_btn_player_login')}</button>
       <p style="font-size:11px;color:var(--muted);margin-top:14px;text-align:center">${I18n.t('acc_player_pin_note')}</p>
+      <div style="text-align:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <a href="#" onclick="event.preventDefault();switchAuthRoleTab('guardian')" style="font-size:13px;color:var(--muted);text-decoration:underline">&lsaquo; ${I18n.t('acc_back_to_parent_login')}</a>
+      </div>
     </div>
   `;
 }
 
 function switchAuthRoleTab(role) {
-  document.getElementById('role-tab-guardian')?.classList.toggle('active-tab', role==='guardian');
-  document.getElementById('role-tab-player')?.classList.toggle('active-tab', role==='player');
   document.getElementById('authRolePanel-guardian').style.display = role==='guardian' ? '' : 'none';
   document.getElementById('authRolePanel-player').style.display = role==='player' ? '' : 'none';
 }
@@ -5426,6 +5429,7 @@ const TR = {
 
     // ── AUTH GATE — ROLE TABS & PLAYER PIN ──
     acc_role_guardian:'Guardian', acc_role_player:'Player',
+    acc_player_access_link:'Player Access', acc_back_to_parent_login:'Back to Parent login',
     acc_player_gate_intro:'Enter the PIN your guardian gave you to see your stats and training.',
     acc_lbl_pin:'PIN',
     acc_lbl_account_code:'Account Code', acc_err_pin_network:'Could not check that Account Code — {msg}',
@@ -6608,6 +6612,7 @@ const TR = {
 
     // ── AUTH GATE — ROLE TABS & PLAYER PIN ──
     acc_role_guardian:'Encarregado', acc_role_player:'Jogador',
+    acc_player_access_link:'Acesso do Jogador', acc_back_to_parent_login:'Voltar ao login de Encarregado',
     acc_player_gate_intro:'Introduza o PIN que o seu encarregado lhe deu para ver as suas estatísticas e treino.',
     acc_lbl_pin:'PIN',
     acc_lbl_account_code:'Código da Conta', acc_err_pin_network:'Não foi possível verificar esse Código da Conta — {msg}',
