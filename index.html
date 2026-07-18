@@ -3382,43 +3382,73 @@ function renderAuthGate() {
   const el = document.getElementById('authGateCard');
   if (!el) return;
   el.innerHTML = `
-    <!-- PARENT — shown directly by default, per the approved Option A design.
-         No extra "who are you" screen; Player Access is a clearly visible,
-         secondary link below, not an equal-weight tab. -->
-    <div id="authRolePanel-guardian">
-      <p style="font-size:13px;color:var(--muted);margin-bottom:16px;text-align:center">${I18n.t('acc_gate_intro')}</p>
-      <div class="tab-bar-row" style="margin-bottom:14px">
-        <button class="import-tab active-tab" id="acc-tab-login" onclick="switchAccountFormTab('login')">${I18n.t('acc_tab_login')}</button>
-        <button class="import-tab" id="acc-tab-signup" onclick="switchAccountFormTab('signup')">${I18n.t('acc_tab_signup')}</button>
+    <!-- SCREEN 1 — WELCOME. Per the approved design: nothing but the two
+         provider buttons, Player Access, and the legal footer. No forms,
+         no fields, no OR divider, no tabs. -->
+    <div id="authScreen-welcome">
+      <div style="text-align:center;margin-bottom:22px">
+        <div style="font-size:19px;font-weight:800;color:var(--navy)">${I18n.t('acc_welcome_title')}</div>
+        <p style="font-size:13px;color:var(--muted);margin-top:6px">${I18n.t('acc_welcome_subtitle')}</p>
+      </div>
+
+      <button type="button" class="btn btn-secondary" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px" onclick="Auth.signInWithGoogle()">
+        <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        ${I18n.t('acc_btn_continue_google')}
+      </button>
+      <button type="button" class="btn btn-secondary" style="width:100%" onclick="showAuthScreen('login')">${I18n.t('acc_btn_continue_email')}</button>
+
+      <div style="text-align:center;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+        <a href="#" onclick="event.preventDefault();showAuthScreen('player')" style="font-size:13px;color:var(--navy);font-weight:600;text-decoration:none">${I18n.t('acc_player_access_link')} &rsaquo;</a>
+      </div>
+
+      <p style="font-size:10.5px;color:var(--muted);margin-top:18px;text-align:center;line-height:1.5">${I18n.t('acc_legal_footer')}</p>
+      <p style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">${I18n.t('acc_gate_offline_note')}</p>
+    </div>
+
+    <!-- SCREEN 2 — EMAIL LOGIN. Only reached via "Continue with Email". -->
+    <div id="authScreen-login" style="display:none">
+      <a href="#" onclick="event.preventDefault();showAuthScreen('welcome')" style="font-size:13px;color:var(--muted);text-decoration:none;display:inline-block;margin-bottom:14px">&lsaquo; ${I18n.t('acc_back')}</a>
+      <div style="text-align:center;margin-bottom:18px">
+        <div style="font-size:17px;font-weight:800">${I18n.t('acc_welcome_back_title')}</div>
       </div>
       <div class="form-grid" style="margin-bottom:12px">
         <div class="form-group full"><label>${I18n.t('acc_lbl_email')}</label><input id="acc-email" type="email" placeholder="you@example.com" autocomplete="email"></div>
         <div class="form-group full"><label>${I18n.t('acc_lbl_password')}</label><input id="acc-password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
       </div>
       <div id="acc-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
-      <button class="btn btn-primary" id="acc-submit-btn" style="width:100%" onclick="handleAccountSubmit()">${I18n.t('acc_btn_login')}</button>
-      <div style="display:flex;align-items:center;gap:10px;margin:14px 0">
-        <div style="flex:1;height:1px;background:var(--border)"></div>
-        <span style="font-size:11px;color:var(--muted)">${I18n.t('acc_or_divider')}</span>
-        <div style="flex:1;height:1px;background:var(--border)"></div>
-      </div>
-      <button type="button" class="btn btn-secondary" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px" onclick="Auth.signInWithGoogle()">
-        <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-        ${I18n.t('acc_btn_continue_google')}
-      </button>
-      <div style="text-align:center;margin-top:10px" id="acc-forgot-password-link">
+      <div style="text-align:center;margin-bottom:14px">
         <a href="#" onclick="event.preventDefault();handleForgotPassword()" style="font-size:12px;color:var(--muted);text-decoration:underline">${I18n.t('acc_forgot_password')}</a>
       </div>
-      <p style="font-size:11px;color:var(--muted);margin-top:14px;text-align:center">${I18n.t('acc_gate_offline_note')}</p>
-
-      <div style="text-align:center;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
-        <a href="#" onclick="event.preventDefault();switchAuthRoleTab('player')" style="font-size:13px;color:var(--navy);font-weight:600;text-decoration:none">${I18n.t('acc_player_access_link')} &rsaquo;</a>
+      <button class="btn btn-primary" id="acc-submit-btn" style="width:100%" onclick="handleAccountSubmit()">${I18n.t('acc_btn_login')}</button>
+      <div style="text-align:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)">
+        ${I18n.t('acc_no_account_yet')} <a href="#" onclick="event.preventDefault();showAuthScreen('signup')" style="color:var(--navy);font-weight:600;text-decoration:none">${I18n.t('acc_btn_signup')}</a>
       </div>
     </div>
 
-    <!-- PLAYER ACCESS — Account Code + PIN. Never shown by default; only
-         reached via the secondary link above, per the approved design. -->
-    <div id="authRolePanel-player" style="display:none">
+    <!-- SCREEN 3 — CREATE ACCOUNT. Real, live-checked password strength,
+         per the approved design. Note: Supabase's own server-side minimum
+         password length may also need separate configuration to fully
+         match this 12-character client-side rule — flagged, not silently
+         assumed already enforced end-to-end. -->
+    <div id="authScreen-signup" style="display:none">
+      <a href="#" onclick="event.preventDefault();showAuthScreen('welcome')" style="font-size:13px;color:var(--muted);text-decoration:none;display:inline-block;margin-bottom:14px">&lsaquo; ${I18n.t('acc_back')}</a>
+      <div style="text-align:center;margin-bottom:18px">
+        <div style="font-size:17px;font-weight:800">${I18n.t('acc_create_account_title')}</div>
+      </div>
+      <div class="form-grid" style="margin-bottom:10px">
+        <div class="form-group full"><label>${I18n.t('acc_lbl_email')}</label><input id="signup-email" type="email" placeholder="you@example.com" autocomplete="email"></div>
+        <div class="form-group full"><label>${I18n.t('acc_lbl_confirm_email')}</label><input id="signup-confirm-email" type="email" placeholder="you@example.com" autocomplete="email"></div>
+        <div class="form-group full"><label>${I18n.t('acc_lbl_password')}</label><input id="signup-password" type="password" placeholder="••••••••" autocomplete="new-password" oninput="updatePasswordStrengthUI()"></div>
+        <div class="form-group full"><label>${I18n.t('acc_lbl_confirm_password')}</label><input id="signup-confirm-password" type="password" placeholder="••••••••" autocomplete="new-password"></div>
+      </div>
+      <div id="password-strength-checklist" style="font-size:11.5px;color:var(--muted);margin-bottom:14px;line-height:1.9"></div>
+      <div id="signup-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
+      <button class="btn btn-primary" id="signup-submit-btn" style="width:100%" onclick="handleSignupSubmit()">${I18n.t('acc_btn_create_account')}</button>
+    </div>
+
+    <!-- PLAYER ACCESS — Account Code + PIN. -->
+    <div id="authScreen-player" style="display:none">
+      <a href="#" onclick="event.preventDefault();showAuthScreen('welcome')" style="font-size:13px;color:var(--muted);text-decoration:none;display:inline-block;margin-bottom:14px">&lsaquo; ${I18n.t('acc_back')}</a>
       <p style="font-size:13px;color:var(--muted);margin-bottom:16px;text-align:center">${I18n.t('acc_player_gate_intro')}</p>
       <div class="form-grid" style="margin-bottom:12px">
         <div class="form-group full">
@@ -3436,16 +3466,80 @@ function renderAuthGate() {
       <div id="player-pin-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
       <button class="btn btn-primary" style="width:100%" onclick="handlePlayerPinSubmit()">${I18n.t('acc_btn_player_login')}</button>
       <p style="font-size:11px;color:var(--muted);margin-top:14px;text-align:center">${I18n.t('acc_player_pin_note')}</p>
-      <div style="text-align:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
-        <a href="#" onclick="event.preventDefault();switchAuthRoleTab('guardian')" style="font-size:13px;color:var(--muted);text-decoration:underline">&lsaquo; ${I18n.t('acc_back_to_parent_login')}</a>
-      </div>
     </div>
   `;
 }
 
-function switchAuthRoleTab(role) {
-  document.getElementById('authRolePanel-guardian').style.display = role==='guardian' ? '' : 'none';
-  document.getElementById('authRolePanel-player').style.display = role==='player' ? '' : 'none';
+function showAuthScreen(screen) {
+  ['welcome','login','signup','player'].forEach(s => {
+    const panel = document.getElementById('authScreen-' + s);
+    if (panel) panel.style.display = s === screen ? '' : 'none';
+  });
+  const err = document.getElementById('acc-error');
+  if (err) err.style.display = 'none';
+  const signupErr = document.getElementById('signup-error');
+  if (signupErr) signupErr.style.display = 'none';
+  if (screen === 'signup') updatePasswordStrengthUI();
+}
+
+// Real, live-checked password strength - genuinely evaluates the actual
+// typed password against each of the 5 criteria, not decorative static
+// checkmarks. Note: this is a real, honest client-side check only —
+// Supabase's own server-side minimum password length is a separate
+// setting that may need its own configuration to fully match this rule
+// end-to-end; not assumed to already be enforced there.
+function checkPasswordStrength(password) {
+  return {
+    length: password.length >= 12,
+    upper: /[A-Z]/.test(password),
+    lower: /[a-z]/.test(password),
+    number: /[0-9]/.test(password),
+    special: /[^A-Za-z0-9]/.test(password),
+  };
+}
+
+function updatePasswordStrengthUI() {
+  const password = document.getElementById('signup-password')?.value || '';
+  const checks = checkPasswordStrength(password);
+  const el = document.getElementById('password-strength-checklist');
+  if (!el) return;
+  const rows = [
+    [checks.length, I18n.t('acc_pw_check_length')],
+    [checks.upper, I18n.t('acc_pw_check_upper')],
+    [checks.lower, I18n.t('acc_pw_check_lower')],
+    [checks.number, I18n.t('acc_pw_check_number')],
+    [checks.special, I18n.t('acc_pw_check_special')],
+  ];
+  el.innerHTML = rows.map(([ok, label]) =>
+    `<div style="color:${ok?'#2a7a3b':'var(--muted)'}">${ok?'&#10003;':'&#9675;'} ${label}</div>`
+  ).join('');
+}
+
+async function handleSignupSubmit() {
+  const email = document.getElementById('signup-email')?.value.trim();
+  const confirmEmail = document.getElementById('signup-confirm-email')?.value.trim();
+  const password = document.getElementById('signup-password')?.value || '';
+  const confirmPassword = document.getElementById('signup-confirm-password')?.value || '';
+  const errEl = document.getElementById('signup-error');
+  const showErr = (msg) => { if (errEl) { errEl.textContent = msg; errEl.style.display = ''; } };
+
+  if (!email || !confirmEmail || !password || !confirmPassword) { showErr(I18n.t('acc_err_all_fields_required')); return; }
+  if (email.toLowerCase() !== confirmEmail.toLowerCase()) { showErr(I18n.t('acc_err_emails_dont_match')); return; }
+  if (password !== confirmPassword) { showErr(I18n.t('acc_err_passwords_dont_match')); return; }
+  const checks = checkPasswordStrength(password);
+  if (!Object.values(checks).every(Boolean)) { showErr(I18n.t('acc_err_password_too_weak')); return; }
+
+  const btn = document.getElementById('signup-submit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = I18n.t('common_saving'); }
+  try {
+    await Auth.signUp(email, password);
+    if (Auth.isLoggedIn()) await claimLocalDataForAccount();
+    Toast.show(I18n.t('acc_signup_check_email'));
+  } catch(err) {
+    showErr(err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = I18n.t('acc_btn_create_account'); }
+  }
 }
 
 function togglePinVisibility() {
@@ -4037,26 +4131,10 @@ async function handleAccountSubmit() {
     if (errEl) { errEl.textContent = I18n.t('acc_err_required'); errEl.style.display = ''; }
     return;
   }
-  if (password.length < 6) {
-    if (errEl) { errEl.textContent = I18n.t('acc_err_password_short'); errEl.style.display = ''; }
-    return;
-  }
   const gateVisible = document.getElementById('authGate')?.style.display !== 'none' && document.getElementById('authGate');
   try {
-    if (_accountFormMode === 'login') {
-      await Auth.login(email, password);
-      Toast.show(I18n.t('acc_login_success'));
-    } else {
-      const result = await Auth.signUp(email, password);
-      if (!result.access_token) {
-        // Supabase may require email confirmation before issuing a session —
-        // there is no session yet, so the gate stays up until they actually
-        // log in successfully after confirming.
-        if (errEl) { errEl.textContent = I18n.t('acc_signup_check_email'); errEl.style.display = ''; errEl.style.color = '#2a7a3b'; }
-        return;
-      }
-      Toast.show(I18n.t('acc_signup_success'));
-    }
+    await Auth.login(email, password);
+    Toast.show(I18n.t('acc_login_success'));
 
     if (Auth.isLoggedIn()) {
       await clearLocalDataIfDifferentAccount(Auth.getUserId());
@@ -5257,6 +5335,18 @@ const TR = {
     acc_err_login_required:'Log in first to sync with the cloud.',
     acc_data_claimed:'{n} existing record(s) on this device are now linked to your account. Tap Sync Now to upload them.',
     acc_gate_intro:'Log in or create a free account to use NextEleven. After your first login, you can keep working fully offline.',
+    acc_welcome_title:'Welcome to NextEleven', acc_welcome_subtitle:'Your family\'s football journey starts here.',
+    acc_btn_continue_email:'Continue with Email', acc_welcome_back_title:'Welcome Back',
+    acc_no_account_yet:'Don\'t have an account?', acc_create_account_title:'Create your account',
+    acc_lbl_confirm_email:'Confirm Email', acc_lbl_confirm_password:'Confirm Password',
+    acc_pw_check_length:'12 characters', acc_pw_check_upper:'Uppercase letter', acc_pw_check_lower:'Lowercase letter',
+    acc_pw_check_number:'Number', acc_pw_check_special:'Special character',
+    acc_btn_create_account:'Create Account', acc_err_all_fields_required:'Please fill in every field.',
+    acc_err_emails_dont_match:'Email addresses don\'t match.', acc_err_passwords_dont_match:'Passwords don\'t match.',
+    acc_err_password_too_weak:'Please meet all 5 password requirements below.',
+    acc_signup_check_email:'Account created — please check your email to confirm.',
+    acc_legal_footer:'By continuing you agree to the Terms of Service and Privacy Policy.',
+    acc_back:'Back',
     acc_gate_offline_note:'Internet is only needed once, for this first login. After that, the app opens normally even with no connection.',
     acc_emergency_bypass:'Having trouble logging in? Continue without an account for now',
     acc_bypass_confirm_title:'Continue Without an Account',
@@ -6440,6 +6530,18 @@ const TR = {
     acc_err_login_required:'Inicie sessão primeiro para sincronizar com a nuvem.',
     acc_data_claimed:'{n} registo(s) existentes neste dispositivo estão agora associados à sua conta. Toque em Sincronizar Agora para os enviar.',
     acc_gate_intro:'Inicie sessão ou crie uma conta gratuita para usar o NextEleven. Após o primeiro login, pode continuar a trabalhar totalmente offline.',
+    acc_welcome_title:'Bem-vindo ao NextEleven', acc_welcome_subtitle:'A jornada de futebol da sua família começa aqui.',
+    acc_btn_continue_email:'Continuar com Email', acc_welcome_back_title:'Bem-vindo de Volta',
+    acc_no_account_yet:'Ainda não tem conta?', acc_create_account_title:'Crie a sua conta',
+    acc_lbl_confirm_email:'Confirmar Email', acc_lbl_confirm_password:'Confirmar Password',
+    acc_pw_check_length:'12 caracteres', acc_pw_check_upper:'Letra maiúscula', acc_pw_check_lower:'Letra minúscula',
+    acc_pw_check_number:'Número', acc_pw_check_special:'Carácter especial',
+    acc_btn_create_account:'Criar Conta', acc_err_all_fields_required:'Por favor preencha todos os campos.',
+    acc_err_emails_dont_match:'Os emails não coincidem.', acc_err_passwords_dont_match:'As passwords não coincidem.',
+    acc_err_password_too_weak:'Por favor cumpra os 5 requisitos de password abaixo.',
+    acc_signup_check_email:'Conta criada — por favor verifique o seu email para confirmar.',
+    acc_legal_footer:'Ao continuar, concorda com os Termos de Serviço e a Política de Privacidade.',
+    acc_back:'Voltar',
     acc_gate_offline_note:'A internet só é necessária uma vez, para este primeiro login. Depois disso, a aplicação abre normalmente mesmo sem ligação.',
     acc_emergency_bypass:'Problemas a iniciar sessão? Continuar sem conta por agora',
     acc_bypass_confirm_title:'Continuar Sem Conta',
