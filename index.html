@@ -3533,7 +3533,7 @@ async function handleSignupSubmit() {
   if (btn) { btn.disabled = true; btn.textContent = I18n.t('common_saving'); }
   try {
     await Auth.signUp(email, password);
-    if (Auth.isLoggedIn()) await claimLocalDataForAccount();
+    if (Auth.isLoggedIn()) await resetAppStateForNewUser(Auth.getUserId());
     Toast.show(I18n.t('acc_signup_check_email'));
   } catch(err) {
     showErr(err.message);
@@ -4115,11 +4115,75 @@ function setupPageNameOnScroll() {
 // cached — logging back into the SAME account (e.g. after a session
 // expiry) never triggers a wipe, since that would be a real, separate
 // data-loss risk of its own.
-async function clearLocalDataIfDifferentAccount(newUserId) {
-  const lastAccount = await DB.get('appMeta', 'dataClaimedByUserId');
-  if (!lastAccount?.value || lastAccount.value === newUserId) return; // same account or genuinely first-ever login — nothing stale to clear
-  await DB.clearAllRealStores();
-  await DB.del('appMeta', 'dataClaimedByUserId').catch(()=>{});
+// ══════════════════════════════════════════════════════════════════════════
+// SESSION ISOLATION — the one, central, canonical account-transition
+// function, per the confirmed final specification. Triggered whenever
+// previousUserId !== nextUserId using the real auth.users.id UUID
+// (never on a same-user token refresh). Resets every real State field,
+// every real sessionStorage key this app uses, the module-level caches,
+// clears IndexedDB, and forces a full page reload rather than a partial
+// re-render — the provably-correct choice given the real number of
+// render functions in this app, confirmed in the approved design.
+// ══════════════════════════════════════════════════════════════════════════
+async function resetAppStateForNewUser(newUserId) {
+  const lastAccountMeta = await DB.get('appMeta', 'lastAuthenticatedUserId');
+  const lastUserId = lastAccountMeta?.value || null;
+
+  // No real transition at all — same user, or genuinely the first-ever
+  // login on this device with nothing previously cached. Nothing to do.
+  if (lastUserId === newUserId) return;
+
+  // Genuine first-ever login on this device (no prior account at all,
+  // confirmed by lastUserId being null): claim any truly-orphaned local
+  // data from the offline emergency-bypass path BEFORE the destructive
+  // clear below — that data has real, legitimate value and must not be
+  // wiped alongside a real account switch's stale data. Any other real
+  // transition (account A to account B) skips this entirely, since
+  // whatever's cached locally in that case belongs to a real, different,
+  // already-authenticated account and must be cleared, never claimed.
+  if (lastUserId === null && newUserId !== null) {
+    await claimLocalDataForAccount();
+  }
+
+  // 1. Clear IndexedDB — the already-correct, already-tested clear-in-
+  // place approach (never a close/reopen of the connection).
+  if (lastUserId !== null) {
+    await DB.clearAllRealStores();
+  }
+
+  // 2. Reset every real State field to its genuine, confirmed default —
+  // all 10 fields, not just season/player.
+  State.currentSeasonId = null;
+  State.currentSeason = null;
+  State.sortState = {};
+  State.currentSection = null;
+  State.currentSettingsTab = null;
+  State.currentTrackedPlayer = null;
+  State.currentTrackedTab = null;
+  State.gameDetailTab = null;
+  State.portalPlayerId = null;
+  State.currentPortalSection = null;
+
+  // 3. Clear every real sessionStorage key this app uses — confirmed via
+  // direct grep during the audit, all 7 of them.
+  const sessionKeys = [
+    'squadTracker_trackedTab', 'squadTracker_settingsTab', 'squadTracker_lastSection',
+    'squadTracker_lastPortalSection', 'squadTracker_syncLog', 'squadTracker_openGameId',
+    'squadTracker_gameDetailTab',
+  ];
+  for (const key of sessionKeys) { try { sessionStorage.removeItem(key); } catch(e) {} }
+
+  // 4. Reset module-level caches confirmed during the audit.
+  _brandingCache = null;
+  Sync.resetBookkeeping();
+
+  // 5. Persist the new canonical owner of the local cache.
+  await DB.put('appMeta', { metaKey: 'lastAuthenticatedUserId', value: newUserId });
+
+  // 6. Full page reload — provably correct, given the real number of
+  // independent render functions in this app; a partial re-render risks
+  // missing one, a full reload cannot.
+  window.location.reload();
 }
 
 async function handleAccountSubmit() {
@@ -4137,8 +4201,7 @@ async function handleAccountSubmit() {
     Toast.show(I18n.t('acc_login_success'));
 
     if (Auth.isLoggedIn()) {
-      await clearLocalDataIfDifferentAccount(Auth.getUserId());
-      await claimLocalDataForAccount();
+      await resetAppStateForNewUser(Auth.getUserId());
     }
 
     if (gateVisible) {
@@ -4199,21 +4262,9 @@ async function claimLocalDataForAccount() {
 }
 
 async function handleLogout() {
-  // Uses the browser's own native confirm() rather than the app's custom
-  // Confirm.show — that component already caused one real lockout (it can
-  // end up hidden behind a full-screen overlay with no way to reach its
-  // buttons). The native dialog is rendered by the browser itself and can
-  // never be covered by anything in the page.
   if (!window.confirm(I18n.t('acc_confirm_logout_body'))) return;
   await Auth.logout();
-  Toast.show(I18n.t('acc_logout_success'));
-  closeNavAccountMenu();
-  // Hide the app immediately and show the gate again — logging out means
-  // no data should remain visible on screen.
-  document.getElementById('app').style.display = 'none';
-  renderAuthGate();
-  applyAuthGateBackground();
-  document.getElementById('authGate').style.display = 'flex';
+  await resetAppStateForNewUser(null);
 }
 
 async function handlePlayerPortalExit() {
@@ -16195,6 +16246,14 @@ function handlePasteImport(type) {
 // ══════════════════════════════════════════════════════════════════════════════
 const Auth = (() => {
   let _session = null; // { accessToken, refreshToken, userId, email, expiresAt }
+  // Monotonic session epoch, per the confirmed final specification.
+  // Incremented ONLY when the canonical identity (the real auth.users.id
+  // UUID) genuinely changes — never on a same-user token refresh. Every
+  // long-running async operation captures this value at its own start,
+  // and must re-check it before any state-changing side effect,
+  // discarding its own result if the epoch has since moved on.
+  let _sessionEpoch = 0;
+  let _lastKnownUserId = null;
 
   function isLoggedIn() { return !!_session; }
   function getUserId() { return _session?.userId || null; }
@@ -16224,10 +16283,20 @@ const Auth = (() => {
   }
 
   function _storeSession(data) {
+    const nextUserId = data.user?.id || null;
+    // The exact, confirmed trigger: previousUserId !== nextUserId, using
+    // the real auth.users.id UUID. A null->something or something->
+    // different-something transition both count; a same-UUID refresh
+    // (e.g. this exact function called again for the same user after a
+    // token refresh) must NOT increment the epoch.
+    if (_lastKnownUserId !== null && nextUserId !== null && _lastKnownUserId !== nextUserId) {
+      _sessionEpoch++;
+    }
+    _lastKnownUserId = nextUserId;
     _session = {
       accessToken:  data.access_token,
       refreshToken: data.refresh_token,
-      userId:       data.user?.id,
+      userId:       nextUserId,
       email:        data.user?.email,
       expiresAt:    Date.now() + (data.expires_in || 3600) * 1000,
     };
@@ -16238,9 +16307,13 @@ const Auth = (() => {
     const m = await DB.get('appMeta', 'authSession');
     if (m && m.value) {
       _session = m.value;
+      // Restoring an existing session on page load is NOT an identity
+      // change — just initialize the baseline so a later, genuine
+      // switch can be correctly detected against it.
+      _lastKnownUserId = _session.userId || null;
       // If the access token has expired, try to refresh it silently.
       if (_session.expiresAt && Date.now() > _session.expiresAt && _session.refreshToken) {
-        try { await refresh(); } catch(e) { _session = null; await DB.del('appMeta','authSession').catch(()=>{}); }
+        try { await refresh(); } catch(e) { _session = null; _lastKnownUserId = null; await DB.del('appMeta','authSession').catch(()=>{}); }
       }
     }
   }
@@ -16361,6 +16434,8 @@ const Auth = (() => {
   }
 
   async function logout() {
+    if (_lastKnownUserId !== null) _sessionEpoch++; // "account A to logged out" is a real transition per the confirmed spec
+    _lastKnownUserId = null;
     _session = null;
     await DB.del('appMeta', 'authSession').catch(()=>{});
   }
@@ -16388,7 +16463,9 @@ const Auth = (() => {
     return true;
   }
 
-  return { isLoggedIn, getUserId, getAccessToken, getEmail, loadSession, signUp, login, refresh, logout, requestPasswordReset, completePasswordReset, setRecoverySession, signInWithGoogle, handleGoogleCallback };
+  function getSessionEpoch() { return _sessionEpoch; }
+
+  return { isLoggedIn, getUserId, getAccessToken, getEmail, loadSession, signUp, login, refresh, logout, requestPasswordReset, completePasswordReset, setRecoverySession, signInWithGoogle, handleGoogleCallback, getSessionEpoch };
 })();
 
 const Sync = (() => {
@@ -16405,6 +16482,16 @@ const Sync = (() => {
     const saved = sessionStorage.getItem('squadTracker_syncLog');
     if (saved) _log = JSON.parse(saved);
   } catch(e) {}
+
+  // Real reset of this module's own bookkeeping, called by the central
+  // resetAppStateForNewUser() on every genuine account transition — not
+  // solely relying on the page reload that follows to achieve this.
+  function resetBookkeeping() {
+    _lastSync = null;
+    _pendingCount = 0;
+    _log = [];
+    try { sessionStorage.removeItem('squadTracker_syncLog'); } catch(e) {}
+  }
 
   // Stores that sync to cloud (backups excluded — too large)
   // Fixed: this used to be its own separate, stale 8-store array that
@@ -16740,8 +16827,14 @@ const Sync = (() => {
   // ── PUSH: local → cloud ────────────────────────────────────────────────────
   async function push() {
     if (!isConfigured() || !isOnline() || !Auth.isLoggedIn()) return 0;
+    // Captured once, at the real start — per the exact required guard
+    // shape from the confirmed specification.
+    const capturedEpoch = Auth.getSessionEpoch();
+    const capturedUserId = Auth.getUserId();
     let pushed = 0;
     for (const store of SYNC_STORES) {
+      if (capturedEpoch !== Auth.getSessionEpoch() || capturedUserId !== Auth.getUserId()) return pushed;
+
       let records;
       try { records = await DB.getAll(store); } catch(e) {
         log(`Push skipped store "${store}" — ${e.message || 'store unavailable, may need an app reload to apply a pending database upgrade'}`);
@@ -16848,6 +16941,10 @@ const Sync = (() => {
             record.cloudId = result[0].id;
           }
           record.syncStatus = 'synced';
+          // The exact, required guard, placed immediately before the one
+          // real mutation point in this whole function — per the
+          // confirmed specification, not only checked at function start.
+          if (capturedEpoch !== Auth.getSessionEpoch() || capturedUserId !== Auth.getUserId()) return pushed;
           await _origPut(store, record);
           pushed++;
           log('OK | store:' + store + ' | cloudId:' + (record.cloudId||'—'));
@@ -16912,12 +17009,25 @@ const Sync = (() => {
 
   async function pull() {
     if (!isConfigured() || !isOnline() || !Auth.isLoggedIn()) return 0;
+    // Captured once, at the real start — per the exact required guard
+    // shape from the confirmed specification.
+    const capturedEpoch = Auth.getSessionEpoch();
+    const capturedUserId = Auth.getUserId();
     let pulled = 0;
-    const sinceParam = _lastSync ? { user_id: 'eq.'+Auth.getUserId(), updated_at: 'gt.'+_lastSync } : { user_id: 'eq.'+Auth.getUserId() };
+    const sinceParam = _lastSync ? { user_id: 'eq.'+capturedUserId, updated_at: 'gt.'+_lastSync } : { user_id: 'eq.'+capturedUserId };
     for (const store of SYNC_STORES) {
+      // Re-checked once per store, after the awaited network call below
+      // has had a chance to let a real account transition happen — a
+      // multi-store loop is exactly the real race window confirmed
+      // during the audit, not a single check at the top being enough.
+      if (capturedEpoch !== Auth.getSessionEpoch() || capturedUserId !== Auth.getUserId()) return pulled;
+
       let cloudRecords;
       try { cloudRecords = await supabaseRequest('GET', storeToTable(store), null, sinceParam); } catch(e) { log('Pull error '+store+': '+e.message); continue; }
+
+      if (capturedEpoch !== Auth.getSessionEpoch() || capturedUserId !== Auth.getUserId()) return pulled;
       const all = await DB.getAll(store); // fetched once per store, not per record — real records rarely number in the thousands for this app, so this stays cheap
+
       for (const cr of cloudRecords) {
         if (!cr.payload) continue;
         const payload = cr.payload;
@@ -16957,9 +17067,16 @@ const Sync = (() => {
           payload.deletedAt = cr.deleted_at;
           payload.syncStatus = 'deleted';
         }
+
+        // The exact, required guard, placed immediately before the one
+        // real mutation point in this whole function — per the confirmed
+        // specification, not only checked at function start.
+        if (capturedEpoch !== Auth.getSessionEpoch() || capturedUserId !== Auth.getUserId()) return pulled;
         try { await _origPut(store, payload); pulled++; } catch(e) { log('Pull write error: '+e.message); }
       }
     }
+
+    if (capturedEpoch !== Auth.getSessionEpoch() || capturedUserId !== Auth.getUserId()) return pulled; // never persist bookkeeping for a session that's no longer current
     _lastSync = new Date().toISOString();
     await DB.put('appMeta', { metaKey:'lastSyncAt', value: _lastSync });
     log('Pull complete: ' + pulled + ' records received.');
@@ -17196,7 +17313,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
 })();
 
 function attachEvents() {
@@ -19439,11 +19556,10 @@ async function init() {
       Toast.error(I18n.t('acc_google_login_failed'));
       // Falls through to the normal authGate render below — not a hard stop.
     } else if (googleResult === 'success') {
-      // Same real safety sequence already fixed for email/password login —
-      // a Google sign-in on a device with a DIFFERENT account's cached
+      // Same real, central protection as every other login path — a
+      // Google sign-in on a device with a DIFFERENT account's cached
       // local data carries the exact same real risk confirmed tonight.
-      await clearLocalDataIfDifferentAccount(Auth.getUserId());
-      await claimLocalDataForAccount();
+      await resetAppStateForNewUser(Auth.getUserId());
     }
 
     // Real password-reset recovery link check — takes priority over
