@@ -79,6 +79,12 @@ nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--nav
 
 /* ── CARDS ────────────────────────────────────────────────────────────────── */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);margin-bottom:16px}
+/* Home: Next Game + Next Training. Two balanced columns when there's room,
+   automatically stacking to one column on narrow/mobile widths — no media
+   query needed, since auto-fit collapses the grid on its own. */
+.home-activity-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:16px;align-items:start}
+.home-activity-row > div{margin-bottom:0}
+.home-activity-empty{display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:0}
 .card-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px}
 
 /* ── STAT CARDS ───────────────────────────────────────────────────────────── */
@@ -13000,6 +13006,21 @@ let _trainingFormEditingId = null;
 let _trainingCompletionSessionId = null;
 let _trainingCompletionViewAs = null;
 
+// Opens the tracked player's Training section from Home, optionally
+// opening a specific session. Reuses the existing switchTrackedTab() and
+// openTrainingForm() functions directly rather than duplicating any
+// form-opening logic. The short delay matches the pattern Home's own
+// "+ Add Game" action already uses — the target section must finish
+// rendering before its form panel exists in the DOM.
+function openHomeTraining(playerId, sessionId) {
+  if (!playerId) return;
+  Nav.go('tracked-' + playerId);
+  setTimeout(() => {
+    switchTrackedTab(playerId, 'training');
+    setTimeout(() => openTrainingForm(playerId, 'guardian', sessionId || undefined), 120);
+  }, 120);
+}
+
 async function openTrainingForm(playerId, viewAs, existingSessionId) {
   const panel = document.getElementById(`trainingFormPanel-${playerId}`);
   if (!panel) return;
@@ -14601,14 +14622,29 @@ const Render = (() => {
     // model, not per-team, so this shows the currently tracked player's
     // next session. Completed sessions are excluded using the real
     // status value confirmed in the existing code ('Completed').
+    //
+    // Date comparison uses the app's own established local-time pattern
+    // (see isGameResultVisible, line ~1065): construct a Date from
+    // `${date}T${time}` — which JS parses as LOCAL time — and compare
+    // against new Date(). Training sessions genuinely have no time
+    // field at all (confirmed from saveTrainingFormSession), so the
+    // same end-of-day fallback that games use when they have no kickoff
+    // time applies here: a session stays "upcoming" until its scheduled
+    // day has fully passed locally.
     let nextTraining = null;
+    let trackedPlayerName = '';
     if (State.currentTrackedPlayer) {
       try {
+        const trackedRec = await DB.get('players', State.currentTrackedPlayer);
+        trackedPlayerName = trackedRec ? shortName(trackedRec.fullName) : '';
         const sessions = await getTrainingSessionsForPlayer(State.currentTrackedPlayer, State.currentSeasonId);
-        const todayStr = new Date().toISOString().slice(0,10);
+        const now = new Date();
         nextTraining = sessions
-          .filter(s => s.scheduledDate && s.scheduledDate >= todayStr && s.status !== 'Completed')
-          .sort((a,b) => a.scheduledDate.localeCompare(b.scheduledDate))[0] || null;
+          .filter(s => s.scheduledDate && s.status !== 'Completed' && new Date(`${s.scheduledDate}T23:59:59`) >= now)
+          // No time field exists on training sessions, so same-date
+          // sessions fall back to trainingSessionId — a stable, real
+          // tiebreaker rather than an arbitrary or invented one.
+          .sort((a,b) => a.scheduledDate.localeCompare(b.scheduledDate) || ((a.trainingSessionId||0) - (b.trainingSessionId||0)))[0] || null;
       } catch(e) { /* training is a secondary Home section — never block the page on it */ }
     }
 
@@ -14629,30 +14665,33 @@ const Render = (() => {
     }
 
     el.innerHTML = headerHtml + `
-      <!-- NEXT GAME — primary focus -->
+      <!-- NEXT GAME + NEXT TRAINING — balanced two-column row on desktop,
+           stacked on mobile. Each side expands naturally when it has real
+           data and stays compact when empty. -->
+      <div class="home-activity-row">
       ${upcoming.length ? `
-      ${renderNextGameCarousel(upcoming, 'guardian', true, `<button class="btn btn-primary" onclick="goToGameDetail(${(upcoming[Math.min(_homeCarouselIndex.guardian||0, upcoming.length-1)]).gameId})">${I18n.t('home_btn_open_game')}</button>`)}` : `
-      <div class="card" style="display:flex;align-items:center;gap:10px;padding:10px 14px">
+      <div>${renderNextGameCarousel(upcoming, 'guardian', true, `<button class="btn btn-primary" onclick="goToGameDetail(${(upcoming[Math.min(_homeCarouselIndex.guardian||0, upcoming.length-1)]).gameId})">${I18n.t('home_btn_open_game')}</button>`)}</div>` : `
+      <div class="card home-activity-empty">
         <span style="font-size:16px">&#128197;</span>
         <span style="font-size:13px;color:var(--muted);flex:1">${I18n.t('home_no_upcoming')}</span>
         <button class="btn btn-primary btn-sm" onclick="Nav.go('games');setTimeout(()=>document.getElementById('btnAddGame')?.click(),100)">+ ${I18n.t('home_btn_add_game')}</button>
       </div>`}
 
-      <!-- NEXT TRAINING — same compact/expanded treatment as Next Game -->
       ${nextTraining ? `
-      <div class="card" style="cursor:pointer" onclick="Nav.go('tracked-${State.currentTrackedPlayer}')">
-        <div class="card-title" style="margin-top:0">${I18n.t('home_card_next_training')}</div>
+      <div class="card" style="cursor:pointer;margin-bottom:0" onclick="openHomeTraining(${State.currentTrackedPlayer}, ${nextTraining.trainingSessionId})">
+        <div class="card-title" style="margin-top:0">${I18n.t('home_card_next_training')}${trackedPlayerName ? ' — ' + esc(trackedPlayerName) : ''}</div>
         <div style="font-weight:700;font-size:14px">${esc(nextTraining.title || I18n.t('home_training_untitled'))}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:3px">
-          ${fmtDate(nextTraining.scheduledDate)}${nextTraining.location ? ' · ' + esc(nextTraining.location) : ''}${nextTraining.status ? ' · ' + esc(nextTraining.status) : ''}
+          ${fmtDate(nextTraining.scheduledDate)}${nextTraining.status ? ' · ' + esc(nextTraining.status) : ''}
         </div>
         ${nextTraining.drills?.length ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${nextTraining.drills.length} ${I18n.t('home_training_drills_suffix')}</div>` : ''}
       </div>` : `
-      <div class="card" style="display:flex;align-items:center;gap:10px;padding:10px 14px">
+      <div class="card home-activity-empty">
         <span style="font-size:16px">&#127939;</span>
-        <span style="font-size:13px;color:var(--muted);flex:1">${I18n.t('home_no_training')}</span>
-        ${State.currentTrackedPlayer ? `<button class="btn btn-secondary btn-sm" onclick="Nav.go('tracked-${State.currentTrackedPlayer}')">+ ${I18n.t('home_btn_add_training')}</button>` : ''}
+        <span style="font-size:13px;color:var(--muted);flex:1">${I18n.t('home_no_training')}${trackedPlayerName ? ' — ' + esc(trackedPlayerName) : ''}</span>
+        ${State.currentTrackedPlayer ? `<button class="btn btn-secondary btn-sm" onclick="openHomeTraining(${State.currentTrackedPlayer})">+ ${I18n.t('home_btn_add_training')}</button>` : ''}
       </div>`}
+      </div>
 
       ${tournamentCardHtml}
 
@@ -14691,6 +14730,7 @@ const Render = (() => {
         <div class="btn-group" style="flex-wrap:wrap">
           <button class="btn btn-primary" onclick="Nav.go('games');setTimeout(()=>document.getElementById('btnAddGame')?.click(),100)">+ ${I18n.t('home_btn_add_game')}</button>
           <button class="btn btn-secondary" onclick="Nav.go('squad');setTimeout(()=>document.getElementById('btnAddPlayer')?.click(),100)">+ ${I18n.t('home_btn_add_player')}</button>
+          ${State.currentTrackedPlayer ? `<button class="btn btn-secondary" onclick="openHomeTraining(${State.currentTrackedPlayer})">+ ${I18n.t('home_btn_add_training')}</button>` : ''}
           <button class="btn btn-secondary" onclick="handleBackupNow()">&#128190; ${I18n.t('home_btn_backup')}</button>
           <button class="btn btn-secondary" onclick="Nav.go('dashboard')">&#128202; ${I18n.t('home_btn_dashboard')}</button>
         </div>
