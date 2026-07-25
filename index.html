@@ -394,6 +394,19 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
   .form-grid{grid-template-columns:1fr}
   table{min-width:500px}
   .club-card-jersey{display:none}
+  /* Squad table on mobile. The global .game-detail-table sets min-width:760px,
+     which a bare `table` selector cannot override (class beats element), so
+     the Squad table previously stayed 760px wide on phones. These rules are
+     scoped to #squadContent only — no other table or page is affected, and
+     the desktop layout above this breakpoint is unchanged. */
+  #squadContent .game-detail-table{min-width:620px}
+  #squadContent .game-detail-table th,
+  #squadContent .game-detail-table td{padding:6px}
+  /* Action buttons: the global .btn-sm yields roughly a 20-22px touch
+     target, well under half the 44px guideline, with up to five adjacent
+     per row. 40px is used rather than 44px to avoid pushing the actions
+     column even wider in an already horizontally-scrolling table. */
+  #squadContent .btn-sm{min-height:40px;padding:8px 10px;font-size:11px}
   .club-card-desktop-only{display:none}
   .club-card-mobile-only{display:block}
 }
@@ -1039,6 +1052,17 @@ function resolvePlayerName(gp, players, tempPlayers) {
 // field was missing, so a strict lookup by startYear silently found
 // nothing. seasonName is always "YYYY/YY" format (see buildSeasonName),
 // so parsing the first 4 digits back out is a safe, reliable fallback.
+// Generic debounce — delays a call until the caller stops firing it for
+// `delay` ms. Added for the Squad search input; kept generic so any
+// future input can reuse it rather than growing a second copy.
+function debounce(fn, delay = 250) {
+  let timer;
+  return function(...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
 function getSeasonStartYear(season) {
   if (!season) return null;
   if (typeof season.startYear === 'number' && !isNaN(season.startYear)) return season.startYear;
@@ -4230,6 +4254,10 @@ async function resetAppStateForNewUser(newUserId) {
   State.gameDetailTab = null;
   State.portalPlayerId = null;
   State.currentPortalSection = null;
+  // Squad archived-player visibility — a user-scoped UI preference that
+  // was previously left set across account switches. false matches the
+  // app's existing default (archived players hidden).
+  State.squadShowArchived = false;
 
   // 3. Clear every real sessionStorage key this app uses — confirmed via
   // direct grep during the audit, all 7 of them.
@@ -5078,6 +5106,13 @@ const TR = {
     squad_search_placeholder:'Search players...',
     squad_all_positions:'All positions',
     squad_no_players_title:'No players found',
+    squad_empty_none_title:'No players in this squad', squad_empty_none_desc:'Add your first player to start building the squad.',
+    squad_empty_filtered_title:'No players match your filters',
+    squad_empty_filtered_search:'No players match “{q}”.',
+    squad_empty_filtered_position:'No players match the selected position.',
+    squad_empty_filtered_both:'No players match “{q}” and the selected position.',
+    squad_btn_clear_filters:'Clear Filters',
+    squad_empty_archived_title:'No active players', squad_empty_archived_desc:'Archived players are currently hidden.',
     squad_no_players_desc:'Add your first player using the button above.',
     squad_col_status:'Status',
     squad_col_actions:'Actions',
@@ -6278,6 +6313,13 @@ const TR = {
     squad_search_placeholder:'Pesquisar jogadores...',
     squad_all_positions:'Todas as posições',
     squad_no_players_title:'Nenhum jogador encontrado',
+    squad_empty_none_title:'Nenhum jogador neste plantel', squad_empty_none_desc:'Adicione o primeiro jogador para começar a construir o plantel.',
+    squad_empty_filtered_title:'Nenhum jogador corresponde aos filtros',
+    squad_empty_filtered_search:'Nenhum jogador corresponde a “{q}”.',
+    squad_empty_filtered_position:'Nenhum jogador corresponde à posição selecionada.',
+    squad_empty_filtered_both:'Nenhum jogador corresponde a “{q}” e à posição selecionada.',
+    squad_btn_clear_filters:'Limpar Filtros',
+    squad_empty_archived_title:'Sem jogadores ativos', squad_empty_archived_desc:'Os jogadores arquivados estão ocultos.',
     squad_no_players_desc:'Adicione o seu primeiro jogador usando o botão acima.',
     squad_col_status:'Estado',
     squad_col_actions:'Ações',
@@ -14882,22 +14924,27 @@ const Render = (() => {
   // was used in the most recent game; falls back to the player's own
   // primaryPosition when no game-specific position has ever been
   // recorded at all.
-  async function computeMostPlayedPosition(playerId, primaryPosition) {
-    const gps = (await DB.getAll('gamePlayers', 'playerId', playerId))
-      .filter(gp => gp.calledUp && gp.positionPlayed);
+  // Most-played position — PURE function, no database access.
+  //
+  // Previously this performed two DB reads PER PLAYER, one of which was a
+  // full DB.getAll('games') scan, awaited serially inside the render loop.
+  // The caller now loads gamePlayers and games once per render and passes
+  // in prepared lookups.
+  //
+  // The scoring algorithm below is unchanged: same position counting, same
+  // recency tie-breaking, same fallback to primaryPosition. Data access
+  // only.
+  function computeMostPlayedPosition(playerGPs, gamesById, primaryPosition) {
+    const gps = (playerGPs || []).filter(gp => gp.calledUp && gp.positionPlayed);
 
     if (!gps.length) return primaryPosition || null;
-
-    const games = await DB.getAll('games');
-    const gameById = {};
-    games.forEach(g => { gameById[g.gameId] = g; });
 
     const counts = {};
     const mostRecentDateForPosition = {};
     gps.forEach(gp => {
       const pos = gp.positionPlayed;
       counts[pos] = (counts[pos] || 0) + 1;
-      const game = gameById[gp.gameId];
+      const game = gamesById.get(gp.gameId);
       const key = game ? gameSortKey(game) : 0;
       if (!mostRecentDateForPosition[pos] || key > mostRecentDateForPosition[pos]) {
         mostRecentDateForPosition[pos] = key;
@@ -14916,6 +14963,12 @@ const Render = (() => {
     return best || primaryPosition || null;
   }
 
+  // Guards against stale async renders: rapid typing can start several
+  // renders, and without this an earlier (slower) one could overwrite a
+  // later result. Every render captures the sequence at entry and checks
+  // it again before touching the DOM.
+  let _squadRenderSeq = 0;
+
   async function squad(search='', posFilter='') {
     const el = document.getElementById('squadContent');
     const sub = document.getElementById('squadSubtitle');
@@ -14923,12 +14976,46 @@ const Render = (() => {
     if (!State.currentSeason) { el.innerHTML = noSeason(); return; }
     sub.textContent = State.currentSeason.seasonName;
 
-    let players = await DB.getAll('players','seasonId',State.currentSeasonId);
-    const allInjuries = await DB.getAll('injuries');
+    const mySeq = ++_squadRenderSeq;
+
+    // All four datasets loaded ONCE per render, in parallel. Previously
+    // gamePlayers and games were re-read inside the per-player loop —
+    // two reads per player, one a full games table scan. Read count is
+    // now constant regardless of squad size.
+    let allSeasonPlayers, allInjuries, allGPForSquad, allGames;
+    try {
+      [allSeasonPlayers, allInjuries, allGPForSquad, allGames] = await Promise.all([
+        DB.getAll('players','seasonId',State.currentSeasonId),
+        DB.getAll('injuries'),
+        DB.getAll('gamePlayers'),
+        DB.getAll('games'),
+      ]);
+    } catch (err) {
+      // Never silently render an empty squad on a read failure — that
+      // looks identical to "you have no players", which is misleading.
+      console.error('Squad render error:', err);
+      if (mySeq === _squadRenderSeq) Toast.error(err.message || 'Could not load the squad.');
+      return;
+    }
+
+    if (mySeq !== _squadRenderSeq) return; // a newer render started while we awaited
+
     const activeInjuryByPlayer = {};
     allInjuries.forEach(inj => {
       if (inj.status === 'Injured') activeInjuryByPlayer[inj.playerId] = inj;
     });
+
+    // In-memory lookups built once, replacing per-player DB reads and
+    // repeated .filter()/.find() scans across the full collections.
+    const gamesById = new Map(allGames.map(g => [g.gameId, g]));
+    const gpByPlayerId = new Map();
+    for (const gp of allGPForSquad) {
+      if (!gp.playerId) continue;
+      if (!gpByPlayerId.has(gp.playerId)) gpByPlayerId.set(gp.playerId, []);
+      gpByPlayerId.get(gp.playerId).push(gp);
+    }
+
+    let players = [...allSeasonPlayers];
     players.sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99)||(a.fullName||'').localeCompare(b.fullName||''));
 
     // Archived players (e.g. left the club, moved up an age group) are
@@ -14938,6 +15025,7 @@ const Render = (() => {
     // season over season. A toggle reveals them separately, still with
     // restore available, rather than removing the data.
     const archivedCount = players.filter(p => !p.isActive).length;
+    const activeCount = players.filter(p => p.isActive).length;
     const showArchived = !!State.squadShowArchived;
     if (!showArchived) players = players.filter(p => p.isActive);
 
@@ -14949,8 +15037,34 @@ const Render = (() => {
         <button type="button" class="btn btn-secondary btn-sm" onclick="toggleSquadShowArchived()">${showArchived ? I18n.t('squad_btn_hide_archived') : I18n.t('squad_btn_show_archived', {n: archivedCount})}</button>
       </div>` : '';
 
+    // Three genuinely distinct empty states, decided from the UNFILTERED
+    // dataset — never inferred from filteredPlayers.length alone, which
+    // previously told a coach with a full squad to "add your first player".
     if (!players.length) {
-      el.innerHTML = archivedToggle + `<div class="empty"><strong>${I18n.t('squad_no_players_title')}</strong><p>${I18n.t('squad_no_players_desc')}</p></div>`;
+      const filtersActive = !!(search || posFilter);
+      let emptyHtml;
+
+      if (!allSeasonPlayers.length) {
+        // Case A — genuinely no players at all this season.
+        emptyHtml = `<div class="empty"><strong>${I18n.t('squad_empty_none_title')}</strong><p>${I18n.t('squad_empty_none_desc')}</p>
+          <button class="btn btn-primary" onclick="document.getElementById('btnAddPlayer')?.click()">+ ${I18n.t('squad_btn_add')}</button></div>`;
+      } else if (filtersActive) {
+        // Case B — players exist, filters excluded them all.
+        const desc = search && posFilter ? I18n.t('squad_empty_filtered_both', {q: esc(search)})
+                   : search              ? I18n.t('squad_empty_filtered_search', {q: esc(search)})
+                                         : I18n.t('squad_empty_filtered_position');
+        emptyHtml = `<div class="empty"><strong>${I18n.t('squad_empty_filtered_title')}</strong><p>${desc}</p>
+          <button class="btn btn-secondary" onclick="clearSquadFilters()">${I18n.t('squad_btn_clear_filters')}</button></div>`;
+      } else if (!activeCount && archivedCount && !showArchived) {
+        // Case C — only archived players exist, and they're hidden.
+        emptyHtml = `<div class="empty"><strong>${I18n.t('squad_empty_archived_title')}</strong><p>${I18n.t('squad_empty_archived_desc')}</p>
+          <button class="btn btn-secondary" onclick="toggleSquadShowArchived()">${I18n.t('squad_btn_show_archived', {n: archivedCount})}</button></div>`;
+      } else {
+        emptyHtml = `<div class="empty"><strong>${I18n.t('squad_empty_none_title')}</strong></div>`;
+      }
+
+      if (mySeq !== _squadRenderSeq) return;
+      el.innerHTML = archivedToggle + emptyHtml;
       return;
     }
 
@@ -14980,13 +15094,14 @@ const Render = (() => {
 
     const mostPlayedByPlayerId = {};
     for (const p of players) {
-      mostPlayedByPlayerId[p.playerId] = await computeMostPlayedPosition(p.playerId, p.primaryPosition);
+      mostPlayedByPlayerId[p.playerId] = computeMostPlayedPosition(
+        gpByPlayerId.get(p.playerId) || [], gamesById, p.primaryPosition
+      );
     }
 
-    // PLAYER-001 — precompute once (a single DB.getAll, not one per
-    // player) which players genuinely have zero game history, so the
-    // Delete button can be conditionally shown/enabled per row.
-    const allGPForSquad = await DB.getAll('gamePlayers');
+    // PLAYER-001 — which players genuinely have zero game history, so the
+    // Delete button can be conditionally shown per row. Derived from the
+    // gamePlayers collection already loaded above (no extra read).
     const playerIdsWithHistory = new Set(allGPForSquad.map(gp => gp.playerId).filter(Boolean));
 
     const rows = players.map(p => {
@@ -15015,6 +15130,7 @@ const Render = (() => {
       </tr>`;
     }).join('');
 
+    if (mySeq !== _squadRenderSeq) return; // a newer render superseded this one
     el.innerHTML = archivedToggle + `
       <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:700">${I18n.t('squad_total_count', {n: players.length})}${(!showArchived && archivedCount) ? ' · ' + I18n.t('squad_archived_hidden_count', {n: archivedCount}) : ''}</div>
       <div class="game-detail-table-wrap">
@@ -17670,9 +17786,16 @@ function attachEvents() {
   });
   document.getElementById('btnSavePlayer')?.addEventListener('click', savePlayer);
 
-  document.getElementById('squadSearch').addEventListener('input', () => {
-    Render.squad(document.getElementById('squadSearch').value, document.getElementById('squadFilter').value);
-  });
+  // Search is debounced (250ms) so a full async re-render doesn't fire on
+  // every keystroke. Values are read at execution time, so the debounced
+  // call always uses the latest input. The position filter stays
+  // immediate — it's a single deliberate choice, not continuous typing.
+  // Bound here in attachEvents(), which runs exactly once at startup, so
+  // no duplicate listeners can accumulate.
+  const debouncedSquadSearch = debounce(() => {
+    Render.squad(document.getElementById('squadSearch')?.value || '', document.getElementById('squadFilter')?.value || '');
+  }, 250);
+  document.getElementById('squadSearch').addEventListener('input', debouncedSquadSearch);
   document.getElementById('squadFilter').addEventListener('change', () => {
     Render.squad(document.getElementById('squadSearch').value, document.getElementById('squadFilter').value);
   });
@@ -18332,6 +18455,17 @@ async function deletePlayer(id) {
 function toggleSquadShowArchived() {
   State.squadShowArchived = !State.squadShowArchived;
   Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||'');
+}
+
+// Clears the search box and position filter, then re-renders. Archived
+// visibility is deliberately preserved — it's a separate user choice
+// from filtering, not part of the filter set.
+function clearSquadFilters() {
+  const s = document.getElementById('squadSearch');
+  const f = document.getElementById('squadFilter');
+  if (s) s.value = '';
+  if (f) f.value = '';
+  Render.squad('', '');
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
