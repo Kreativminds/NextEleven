@@ -4258,6 +4258,18 @@ async function resetAppStateForNewUser(newUserId) {
   // was previously left set across account switches. false matches the
   // app's existing default (archived players hidden).
   State.squadShowArchived = false;
+  // Session-level manual game-edit unlocks — an override granted under
+  // one account must not persist into another. {} matches how this is
+  // initialised in toggleGameEditOverride.
+  State.gameEditOverrides = {};
+  // Temporary Game Detail state held outside State. These can reference
+  // the previous account's players and game, so they're cleared here too.
+  // Arrays stay arrays (downstream code calls array methods on them);
+  // only the id and the flag become null/false.
+  window._gdPlayers = [];
+  window._gdTempPlayers = [];
+  window._gdGameId = null;
+  window._gdIsEditable = false;
 
   // 3. Clear every real sessionStorage key this app uses — confirmed via
   // direct grep during the audit, all 7 of them.
@@ -5165,6 +5177,16 @@ const TR = {
     tourn_games_count_suffix:'games', tourn_no_games_yet:'No games added to this tournament yet.',
     tourn_all_stages:'All stages', tourn_no_games_match_stage:'No games match that stage.',
     games_no_games_title:'No games logged yet',
+    games_empty_none_title:'No games scheduled', games_empty_none_desc:'Add your first game for this season.',
+    games_empty_filtered_title:'No games match your filters',
+    games_empty_filtered_search:'No games match “{q}”.',
+    games_empty_filtered_comp:'No games match the selected competition.',
+    games_empty_filtered_both:'No games match “{q}” and the selected competition.',
+    games_btn_clear_filters:'Clear Filters',
+    games_empty_tourn_only_title:'No standard games scheduled',
+    games_empty_tourn_only_desc:'This season has {n} tournament games, available in Tournament Summary.',
+    games_empty_tourn_only_desc_one:'This season has 1 tournament game, available in Tournament Summary.',
+    games_btn_view_tournament:'View Tournament Games',
     games_no_games_desc:'Add your first game using the button above.',
     games_back_to_games:'Back to Games',
     games_col_date:'Date', games_col_opponent:'Opponent', games_col_homeaway:'H/A',
@@ -6372,6 +6394,16 @@ const TR = {
     tourn_games_count_suffix:'jogos', tourn_no_games_yet:'Ainda sem jogos adicionados a este torneio.',
     tourn_all_stages:'Todas as fases', tourn_no_games_match_stage:'Nenhum jogo corresponde a essa fase.',
     games_no_games_title:'Ainda sem jogos registados',
+    games_empty_none_title:'Sem jogos agendados', games_empty_none_desc:'Adicione o primeiro jogo desta época.',
+    games_empty_filtered_title:'Nenhum jogo corresponde aos filtros',
+    games_empty_filtered_search:'Nenhum jogo corresponde a “{q}”.',
+    games_empty_filtered_comp:'Nenhum jogo corresponde à competição selecionada.',
+    games_empty_filtered_both:'Nenhum jogo corresponde a “{q}” e à competição selecionada.',
+    games_btn_clear_filters:'Limpar Filtros',
+    games_empty_tourn_only_title:'Sem jogos regulares agendados',
+    games_empty_tourn_only_desc:'Esta época tem {n} jogos de torneio, disponíveis no Resumo de Torneio.',
+    games_empty_tourn_only_desc_one:'Esta época tem 1 jogo de torneio, disponível no Resumo de Torneio.',
+    games_btn_view_tournament:'Ver Jogos de Torneio',
     games_no_games_desc:'Adicione o seu primeiro jogo usando o botão acima.',
     games_back_to_games:'Voltar aos Jogos',
     games_col_date:'Data', games_col_opponent:'Adversário', games_col_homeaway:'C/F',
@@ -9791,9 +9823,7 @@ async function getTemporaryPlayersForSeason(seasonId) {
 
 // ── TOURNAMENTS (Pass 2 — UI) ─────────────────────────────────────────────────
 async function openTournamentForm(tournamentId) {
-  console.log('[TOURN DEBUG] openTournamentForm called with tournamentId =', tournamentId, typeof tournamentId);
   const existing = tournamentId ? await getTournamentById(tournamentId) : null;
-  console.log('[TOURN DEBUG] existing tournament loaded =', existing);
   const overlay = document.createElement('div');
   overlay.className = 'rm-form-overlay open';
   overlay.id = 'tournamentFormOverlay';
@@ -15152,6 +15182,10 @@ const Render = (() => {
   }
 
   // ── GAMES LIST ─────────────────────────────────────────────────────────────
+  // Guards against stale async renders during rapid typing — an earlier,
+  // slower render must never overwrite a newer result.
+  let _gamesRenderSeq = 0;
+
   async function gamesList(search='', compFilter='') {
     const el = document.getElementById('gamesContent');
     const sub = document.getElementById('gamesSubtitle');
@@ -15159,21 +15193,61 @@ const Render = (() => {
     if (!State.currentSeason) { el.innerHTML = noSeason(); return; }
     sub.textContent = State.currentSeason.seasonName;
 
+    const mySeq = ++_gamesRenderSeq;
+
     // Tournament games now live entirely in their own tab (see
     // renderTournamentGamesTab) — excluded here so the main list only
     // ever shows League/Cup/Friendly/Trial games, genuinely separated
     // rather than just labeled differently in one shared list.
-    let games = (await DB.getAll('games','seasonId',State.currentSeasonId)).filter(g => !g.tournamentId);
+    const allSeasonGames = await DB.getAll('games','seasonId',State.currentSeasonId);
+    if (mySeq !== _gamesRenderSeq) return;
+
+    const mainGames = allSeasonGames.filter(g => !g.tournamentId);
+    const tournamentGamesCount = allSeasonGames.length - mainGames.length;
+
+    let games = mainGames;
     if (search) games = games.filter(g=>g.opponent.toLowerCase().includes(search.toLowerCase()));
     if (compFilter) games = games.filter(g=>g.competitionType===compFilter);
 
+    // Four genuinely distinct empty states, decided from the UNFILTERED
+    // season data — the previous single message claimed "no games" even
+    // when the season was full of tournament games or the user had simply
+    // typed a search that matched nothing.
     if (!games.length) {
-      el.innerHTML = `<div class="empty"><strong>${I18n.t('games_no_games_title')}</strong><p>${I18n.t('games_no_games_desc')}</p></div>`;
+      let emptyHtml;
+      const filtersActive = !!(search || compFilter);
+
+      if (!allSeasonGames.length) {
+        // A — genuinely no games of any kind this season.
+        emptyHtml = `<div class="empty"><strong>${I18n.t('games_empty_none_title')}</strong><p>${I18n.t('games_empty_none_desc')}</p>
+          <button class="btn btn-primary" onclick="document.getElementById('btnAddGame')?.click()">+ ${I18n.t('games_btn_add')}</button></div>`;
+      } else if (filtersActive) {
+        // C — games exist on this page, but the filters excluded them all.
+        const desc = search && compFilter ? I18n.t('games_empty_filtered_both', {q: esc(search)})
+                   : search               ? I18n.t('games_empty_filtered_search', {q: esc(search)})
+                                          : I18n.t('games_empty_filtered_comp');
+        emptyHtml = `<div class="empty"><strong>${I18n.t('games_empty_filtered_title')}</strong><p>${desc}</p>
+          <button class="btn btn-secondary" onclick="clearGamesFilters()">${I18n.t('games_btn_clear_filters')}</button></div>`;
+      } else if (!mainGames.length && tournamentGamesCount) {
+        // B — the season has games, but they're all tournament games and
+        // therefore deliberately shown elsewhere. Explain, don't mislead.
+        emptyHtml = `<div class="empty"><strong>${I18n.t('games_empty_tourn_only_title')}</strong>
+          <p>${tournamentGamesCount === 1 ? I18n.t('games_empty_tourn_only_desc_one') : I18n.t('games_empty_tourn_only_desc', {n: tournamentGamesCount})}</p>
+          <button class="btn btn-secondary" onclick="Nav.go('tournSummary')">${I18n.t('games_btn_view_tournament')}</button></div>`;
+      } else {
+        // D — no games on this page for another established reason. State
+        // only what's actually known; invent no status that doesn't exist.
+        emptyHtml = `<div class="empty"><strong>${I18n.t('games_empty_none_title')}</strong></div>`;
+      }
+
+      if (mySeq !== _gamesRenderSeq) return;
+      el.innerHTML = emptyHtml;
       return;
     }
 
     const allGP = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
     const allOpponents = await DB.getAll('opponents');
+    if (mySeq !== _gamesRenderSeq) return;
     const opponentLogoByName = {};
     allOpponents.forEach(o => { if (o.logoUrl) opponentLogoByName[(o.opponentName||'').toLowerCase()] = o.logoUrl; });
 
@@ -15181,6 +15255,7 @@ const Render = (() => {
     // games on the same day still order correctly by actual kickoff time.
     const sorted = [...games].sort((a,b) => gameSortKey(b) - gameSortKey(a));
 
+    if (mySeq !== _gamesRenderSeq) return; // a newer render superseded this one
     el.innerHTML = sorted.map(g => {
       const gps = allGP.filter(r=>r.gameId===g.gameId);
       const our = Calc.teamGoals(gps, g);
@@ -15241,16 +15316,11 @@ const Render = (() => {
     // it always has been.
     let tempPlayersForGame = [];
     let lockedPlayers = activePlayers; // default: no lock, show full season squad
-    console.log('[TOURN DEBUG] game.tournamentId =', game.tournamentId, typeof game.tournamentId);
     if (game.tournamentId) {
       const tournament = await getTournamentById(game.tournamentId);
-      console.log('[TOURN DEBUG] tournament loaded for this game =', tournament);
       if (tournament?.team?.temporaryPlayerIds?.length) {
         const allTempPlayers = await getTemporaryPlayersForSeason(State.currentSeasonId);
         tempPlayersForGame = allTempPlayers.filter(tp => tournament.team.temporaryPlayerIds.includes(tp.tempPlayerId));
-        console.log('[TOURN DEBUG] temp players resolved for this game =', tempPlayersForGame);
-      } else {
-        console.log('[TOURN DEBUG] tournament has NO temporaryPlayerIds, or tournament itself is null/undefined');
       }
       // Tournament squad locking: if the tournament has an actual player
       // selection saved, every game linked to it only shows that list —
@@ -17829,9 +17899,17 @@ function attachEvents() {
   });
   document.getElementById('btnSaveGame')?.addEventListener('click', saveGame);
 
-  document.getElementById('gamesSearch').addEventListener('input', () => {
-    Render.gamesList(document.getElementById('gamesSearch').value, document.getElementById('gamesFilter').value);
-  });
+  // Search debounced (250ms), reusing the same debounce() utility added
+  // for Squad — no second implementation. Values are read at execution
+  // time so the latest input always wins. The competition filter stays
+  // immediate: it's one deliberate choice, not continuous typing. Bound
+  // here in attachEvents(), which runs exactly once, so no duplicate
+  // listeners can accumulate.
+  const debouncedGamesSearch = debounce(() => {
+    const gf = getCurrentGamesFilters();
+    Render.gamesList(gf.search, gf.compFilter);
+  }, 250);
+  document.getElementById('gamesSearch').addEventListener('input', debouncedGamesSearch);
   document.getElementById('gamesFilter').addEventListener('change', () => {
     Render.gamesList(document.getElementById('gamesSearch').value, document.getElementById('gamesFilter').value);
   });
@@ -18452,6 +18530,25 @@ async function deletePlayer(id) {
   });
 }
 
+// Reads the currently active Games filters. Safe to call from anywhere —
+// if the Games controls aren't in the DOM, returns empty defaults rather
+// than throwing.
+function getCurrentGamesFilters() {
+  return {
+    search: document.getElementById('gamesSearch')?.value || '',
+    compFilter: document.getElementById('gamesFilter')?.value || '',
+  };
+}
+
+// Clears the Games search and competition filter, then re-renders.
+function clearGamesFilters() {
+  const s = document.getElementById('gamesSearch');
+  const f = document.getElementById('gamesFilter');
+  if (s) s.value = '';
+  if (f) f.value = '';
+  Render.gamesList('', '');
+}
+
 function toggleSquadShowArchived() {
   State.squadShowArchived = !State.squadShowArchived;
   Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||'');
@@ -18654,7 +18751,6 @@ async function saveGame() {
       stage: document.getElementById('gf-stage')?.value || null,
       venue: document.getElementById('gf-ground').value.trim()||null,
       teamNotes: document.getElementById('gf-notes').value.trim()||null,
-      createdAt: new Date().toISOString(),
     };
     if (existingId) {
       game.gameId = parseInt(existingId);
@@ -18662,6 +18758,12 @@ async function saveGame() {
       // this form no longer has an Opponent Score field, so never reset it.
       const existingGame = await DB.get('games', game.gameId);
       game.opponentScore = existingGame ? (existingGame.opponentScore||0) : 0;
+      // Preserve the original creation timestamp. Previously createdAt was
+      // set unconditionally on the literal above, so every edit silently
+      // overwrote it and the real creation time was lost permanently.
+      // Reuses the record already fetched here — no extra read. Falls back
+      // to now only for a legacy game that genuinely has no stored value.
+      game.createdAt = (existingGame && existingGame.createdAt) || new Date().toISOString();
       // If this game's own gamePlayers rows exist and the season is being
       // corrected, move them along too, same reasoning as the tournament
       // fix — a game and its player records must stay in the same season.
@@ -18674,13 +18776,18 @@ async function saveGame() {
       }
     } else {
       game.opponentScore = 0;
+      game.createdAt = new Date().toISOString();
     }
     await Backup.create('before-save');
     await DB.put('games', game);
     Toast.show(existingId ? I18n.t('game_updated') : I18n.t('game_added'));
     document.getElementById('addGamePanel').classList.add('panel-hidden');
     resetGameForm();
-    await Render.gamesList();
+    // Return to the list using the filters that are currently active,
+    // rather than the previous no-argument call which silently reset the
+    // user's search and competition filter on every save.
+    const gf = getCurrentGamesFilters();
+    await Render.gamesList(gf.search, gf.compFilter);
     // A Stage edit here can change the tournament's furthest-reached game,
     // and therefore its outcome — this form doesn't go through
     // refreshGameHeaderScore at all, so it needs its own sync trigger.
