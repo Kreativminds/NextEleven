@@ -452,6 +452,15 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
   <div class="spinner" id="splashSpinner"></div>
   <p>Loading...</p>
 </div>
+<div id="syncFailureScreen" style="display:none;position:fixed;inset:0;background:#fff;z-index:1000;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:24px;text-align:center">
+  <div style="font-size:36px">&#9888;</div>
+  <div style="font-weight:800;font-size:16px" id="syncFailureTitle"></div>
+  <p style="font-size:13px;color:var(--muted);max-width:320px" id="syncFailureBody"></p>
+  <div style="display:flex;gap:10px">
+    <button class="btn btn-primary" onclick="retryBlockingStartupSync()">Retry</button>
+    <button class="btn btn-secondary" onclick="continueOfflineFromStartup()">Continue Offline</button>
+  </div>
+</div>
 <script>
   // Genuinely synchronous, runs the instant the browser parses this far —
   // before any async IndexedDB/network work, before the main script block
@@ -4237,8 +4246,20 @@ async function resetAppStateForNewUser(newUserId) {
   // the plain spinner) rather than a stale, wrong account's image.
   try { localStorage.removeItem('nexteleven_splash_url'); } catch(e) {}
 
-  // 5. Persist the new canonical owner of the local cache.
+  // 5. Persist the new canonical owner of the local cache, and flag that
+  // the NEXT startup must perform a real, blocking sync-down before
+  // hiding the splash — per the explicit requirement that the splash
+  // must stay visible until the account is genuinely, fully ready, not
+  // just until a background sync has been scheduled.
   await DB.put('appMeta', { metaKey: 'lastAuthenticatedUserId', value: newUserId });
+  if (newUserId !== null) {
+    await DB.put('appMeta', { metaKey: 'requiresBlockingSyncOnNextLoad', value: true });
+  }
+  // Real cross-tab notification — any OTHER real tab of this same origin
+  // will receive a genuine 'storage' event from this write and reload
+  // itself, rather than silently continuing to show a stale, wrong-
+  // account session indefinitely (the confirmed real gap from point 3).
+  try { localStorage.setItem('nexteleven_account_epoch', String(Date.now())); } catch(e) {}
 
   // 6. Full page reload — provably correct, given the real number of
   // independent render functions in this app; a partial re-render risks
@@ -4901,7 +4922,10 @@ const TR = {
     home_carousel_count:'Game {current} of {total} upcoming',
     home_arrive_by:'Arrive by',
     home_btn_open_game:'Open Game',
-    home_no_upcoming:'No upcoming games scheduled.',
+    home_no_upcoming:'No upcoming games',
+    home_card_next_training:'Next Training', home_no_training:'No training scheduled',
+    home_btn_add_training:'Add Training', home_training_untitled:'Training session',
+    home_training_drills_suffix:'drills',
     home_btn_add_game:'Add Game',
     home_card_last_game:'Last Game',
     home_card_last_games:'Last {n} Games',
@@ -6096,7 +6120,10 @@ const TR = {
     home_carousel_count:'Jogo {current} de {total} agendados',
     home_arrive_by:'Chegar até',
     home_btn_open_game:'Abrir Jogo',
-    home_no_upcoming:'Sem jogos agendados.',
+    home_no_upcoming:'Sem jogos agendados',
+    home_card_next_training:'Próximo Treino', home_no_training:'Sem treino agendado',
+    home_btn_add_training:'Adicionar Treino', home_training_untitled:'Sessão de treino',
+    home_training_drills_suffix:'exercícios',
     home_btn_add_game:'Adicionar Jogo',
     home_card_last_game:'Último Jogo',
     home_card_last_games:'Últimos {n} Jogos',
@@ -14364,6 +14391,102 @@ DB.put = async function(store, obj) {
   return _origPut(store, obj);
 };
 
+// Real network probe — navigator.onLine is confirmed unreliable (it can
+// report true on a captive portal or a technically-connected-but-non-
+// functional network), so this genuinely attempts a real, tiny request
+// to Supabase itself rather than trusting the browser's own flag alone.
+async function probeRealConnectivity() {
+  if (!navigator.onLine) return false; // if the browser itself thinks it's offline, trust that much at least
+  try {
+    const cfg = Sync.getRawConfig();
+    if (!cfg?.url) return false;
+    const res = await fetch(cfg.url + '/rest/v1/', { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+    return true; // no-cors mode can't read the real status, but a genuine network-level failure would throw before reaching here
+  } catch(e) {
+    return false;
+  }
+}
+
+// The real, complete, blocking startup sync — addresses every point from
+// the confirmed audit. Returns 'success', 'failed' (real failure screen
+// now showing, caller must stop), or 'offline' (explicit, informed
+// continue, not a silent one).
+async function performBlockingStartupSync(isRetry) {
+  await DB.del('appMeta', 'requiresBlockingSyncOnNextLoad').catch(()=>{});
+
+  if (!Auth.isLoggedIn() || !Sync.isConfigured()) {
+    await loadMeta();
+    return 'success'; // genuinely nothing to sync — not a failure
+  }
+
+  const reallyOnline = await probeRealConnectivity();
+  if (!reallyOnline) {
+    if (isRetry) {
+      showSyncFailureScreen(
+        'You appear to be offline',
+        'We couldn\'t reach the server to load your account. Check your connection and try again, or continue with whatever data is already on this device.'
+      );
+      return 'failed';
+    }
+    // First attempt, genuinely offline — this is a real, honest state,
+    // not a bug to retry against. Show the same real choice screen
+    // rather than silently proceeding into a possibly-empty app.
+    showSyncFailureScreen(
+      'You appear to be offline',
+      'We couldn\'t reach the server to load your account. Check your connection and try again, or continue with whatever data is already on this device.'
+    );
+    return 'failed';
+  }
+
+  // Real retry — up to 2 automatic attempts with a short real delay,
+  // before ever showing the failure screen. Per the confirmed audit
+  // point that a single transient failure was previously treated as
+  // permanent with no second attempt at all.
+  let succeeded = false;
+  for (let attempt = 0; attempt < 2 && !succeeded; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 1500));
+    succeeded = await Sync.run(true);
+  }
+
+  if (!succeeded) {
+    showSyncFailureScreen(
+      'Couldn\'t load your account',
+      'Something went wrong while downloading your data. Please try again, or continue with whatever data is already on this device — some information may be missing or out of date.'
+    );
+    return 'failed';
+  }
+
+  await loadMeta();
+  return 'success';
+}
+
+function showSyncFailureScreen(title, body) {
+  document.getElementById('syncFailureTitle').textContent = title;
+  document.getElementById('syncFailureBody').textContent = body;
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('syncFailureScreen').style.display = 'flex';
+}
+
+async function retryBlockingStartupSync() {
+  document.getElementById('syncFailureScreen').style.display = 'none';
+  document.getElementById('loading').style.display = 'flex';
+  const outcome = await performBlockingStartupSync(true);
+  if (outcome === 'success') {
+    // A real retry succeeded outside the main startup function's own
+    // flow — simplest, safest way to genuinely re-enter the rest of
+    // startup correctly is a real reload, now that data has arrived.
+    window.location.reload();
+  }
+}
+
+function continueOfflineFromStartup() {
+  // A real, explicit, informed choice — never a silent default. The
+  // Parent has been told plainly what this means before choosing it.
+  document.getElementById('syncFailureScreen').style.display = 'none';
+  document.getElementById('loading').style.display = 'flex';
+  loadMeta().then(() => window.location.reload());
+}
+
 async function loadMeta() {
   const m = await DB.get('appMeta', 'currentSeason');
   if (m) { State.currentSeasonId = m.value; }
@@ -14471,6 +14594,24 @@ const Render = (() => {
       .sort((a,b) => new Date(b.date+'T'+(b.gameTime||'00:00')) - new Date(a.date+'T'+(a.gameTime||'00:00')));
     const lastGame = played[0] || null;
 
+    // Next training — reuses the existing getTrainingSessionsForPlayer()
+    // function (the app's one real training data source), correctly
+    // scoped to the current season so sessions from other seasons can
+    // never appear here. Training is genuinely per-player in this data
+    // model, not per-team, so this shows the currently tracked player's
+    // next session. Completed sessions are excluded using the real
+    // status value confirmed in the existing code ('Completed').
+    let nextTraining = null;
+    if (State.currentTrackedPlayer) {
+      try {
+        const sessions = await getTrainingSessionsForPlayer(State.currentTrackedPlayer, State.currentSeasonId);
+        const todayStr = new Date().toISOString().slice(0,10);
+        nextTraining = sessions
+          .filter(s => s.scheduledDate && s.scheduledDate >= todayStr && s.status !== 'Completed')
+          .sort((a,b) => a.scheduledDate.localeCompare(b.scheduledDate))[0] || null;
+      } catch(e) { /* training is a secondary Home section — never block the page on it */ }
+    }
+
     // Home tournament highlight — at most one card, only when a
     // tournament has a game within the last or next 7 days. Tapping opens
     // Tournament Summary directly, since that page (not this card) is the
@@ -14491,10 +14632,26 @@ const Render = (() => {
       <!-- NEXT GAME — primary focus -->
       ${upcoming.length ? `
       ${renderNextGameCarousel(upcoming, 'guardian', true, `<button class="btn btn-primary" onclick="goToGameDetail(${(upcoming[Math.min(_homeCarouselIndex.guardian||0, upcoming.length-1)]).gameId})">${I18n.t('home_btn_open_game')}</button>`)}` : `
-      <div class="card" style="text-align:center;padding:24px">
-        <div style="font-size:28px;margin-bottom:8px">&#128197;</div>
-        <p style="color:var(--muted);font-size:13px">${I18n.t('home_no_upcoming')}</p>
-        <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="Nav.go('games');setTimeout(()=>document.getElementById('btnAddGame')?.click(),100)">+ ${I18n.t('home_btn_add_game')}</button>
+      <div class="card" style="display:flex;align-items:center;gap:10px;padding:10px 14px">
+        <span style="font-size:16px">&#128197;</span>
+        <span style="font-size:13px;color:var(--muted);flex:1">${I18n.t('home_no_upcoming')}</span>
+        <button class="btn btn-primary btn-sm" onclick="Nav.go('games');setTimeout(()=>document.getElementById('btnAddGame')?.click(),100)">+ ${I18n.t('home_btn_add_game')}</button>
+      </div>`}
+
+      <!-- NEXT TRAINING — same compact/expanded treatment as Next Game -->
+      ${nextTraining ? `
+      <div class="card" style="cursor:pointer" onclick="Nav.go('tracked-${State.currentTrackedPlayer}')">
+        <div class="card-title" style="margin-top:0">${I18n.t('home_card_next_training')}</div>
+        <div style="font-weight:700;font-size:14px">${esc(nextTraining.title || I18n.t('home_training_untitled'))}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">
+          ${fmtDate(nextTraining.scheduledDate)}${nextTraining.location ? ' · ' + esc(nextTraining.location) : ''}${nextTraining.status ? ' · ' + esc(nextTraining.status) : ''}
+        </div>
+        ${nextTraining.drills?.length ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${nextTraining.drills.length} ${I18n.t('home_training_drills_suffix')}</div>` : ''}
+      </div>` : `
+      <div class="card" style="display:flex;align-items:center;gap:10px;padding:10px 14px">
+        <span style="font-size:16px">&#127939;</span>
+        <span style="font-size:13px;color:var(--muted);flex:1">${I18n.t('home_no_training')}</span>
+        ${State.currentTrackedPlayer ? `<button class="btn btn-secondary btn-sm" onclick="Nav.go('tracked-${State.currentTrackedPlayer}')">+ ${I18n.t('home_btn_add_training')}</button>` : ''}
       </div>`}
 
       ${tournamentCardHtml}
@@ -17178,7 +17335,19 @@ const Sync = (() => {
     // Return-to-app: only if it's actually been a meaningful while since
     // the last successful sync, so switching tabs briefly doesn't
     // trigger a sync every single time.
-    document.addEventListener('visibilitychange', () => {
+    // Real, honest fix for cross-tab account-switch detection - IndexedDB/
+  // appMeta changes don't fire any cross-tab event at all, but
+  // localStorage genuinely does via the 'storage' event, which (per the
+  // real browser spec) only fires in OTHER tabs, never the one that made
+  // the change itself - exactly the right signal for "a different tab
+  // just logged out or switched accounts, I need to reload too."
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'nexteleven_account_epoch') {
+      window.location.reload();
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
       if (!Auth.isLoggedIn()) return;
       const twoMinutes = 2 * 60 * 1000;
@@ -17223,9 +17392,9 @@ const Sync = (() => {
   }
 
   async function run(silent=false) {
-    if (!isConfigured()) { if (!silent) Toast.error(I18n.t('sync_err_not_configured')); return; }
-    if (!Auth.isLoggedIn()) { if (!silent) Toast.error(I18n.t('acc_err_login_required')); return; }
-    if (!isOnline()) { if (!silent) Toast.error(I18n.t('sync_err_no_internet')); return; }
+    if (!isConfigured()) { if (!silent) Toast.error(I18n.t('sync_err_not_configured')); return false; }
+    if (!Auth.isLoggedIn()) { if (!silent) Toast.error(I18n.t('acc_err_login_required')); return false; }
+    if (!isOnline()) { if (!silent) Toast.error(I18n.t('sync_err_no_internet')); return false; }
     // Never run more than one sync at a time. If one is already in
     // flight, just flag that another pass is needed once it finishes —
     // covers changes that happen while a sync is actively running,
@@ -17233,17 +17402,19 @@ const Sync = (() => {
     // local data at once.
     if (_syncInFlight) {
       _runAgainAfter = true;
-      return;
+      return false; // genuinely didn't run this time — caller must not assume success
     }
     _syncInFlight = true;
     _status = 'syncing';
     updateSyncUI();
     if (!silent) log('Starting sync...');
+    let succeeded = false;
     try {
       const pulled = await pull();
       const pushed = await push();
       _status = 'connected';
       _consecutiveFailures = 0;
+      succeeded = true;
       if (typeof runSilentIntegrityCheck === 'function') await runSilentIntegrityCheck();
       if (!silent) {
         log('Sync complete — pulled: ' + pulled + ', pushed: ' + pushed);
@@ -17275,6 +17446,7 @@ const Sync = (() => {
       _runAgainAfter = false;
       run(true);
     }
+    return succeeded;
   }
 
   // ── RESET CLOUD IDs — clears cloudId so next push is all INSERTs ──────────
@@ -19746,6 +19918,18 @@ async function continueAppLoadAfterLogin() {
     await buildTrackedNav();
     await initAdmin();
     if (await isDebugModeOn()) { ensureDebugPanel(); gdDebugLog('App loaded — debug mode active'); gdDebugLog('APP VERSION: ' + CONFIG.APP_VERSION); }
+
+    // Real, blocking sync-down check — set by resetAppStateForNewUser()
+    // right before its own reload. Only true immediately after a genuine
+    // account transition; a normal, same-session page load never sets
+    // this, so the app loads exactly as fast as it always has in that
+    // case.
+    const blockingSyncFlag = await DB.get('appMeta', 'requiresBlockingSyncOnNextLoad');
+    if (blockingSyncFlag?.value === true) {
+      const outcome = await performBlockingStartupSync();
+      if (outcome === 'failed') return; // real failure screen is now showing; startup stops here until Retry/Continue Offline
+    }
+
     Sync.startPeriodicSync();
     await runSilentIntegrityCheck();
     checkForStaleVersion();
