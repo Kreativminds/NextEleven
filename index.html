@@ -407,6 +407,14 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
      per row. 40px is used rather than 44px to avoid pushing the actions
      column even wider in an already horizontally-scrolling table. */
   #squadContent .btn-sm{min-height:40px;padding:8px 10px;font-size:11px}
+  /* Scroll affordance for the Tracked Player tab bar only (7 tabs). A soft
+     trailing fade signals that more tabs exist off-screen. Deliberately
+     scoped to .tracked-player-tabs so no other .tab-bar-row — Games,
+     Admin, Auth, Player Portal, Game Detail, Settings, Import — is
+     affected. Purely visual: overflow-x:auto and flex-wrap:nowrap from the
+     base rule are untouched, as are tab order, labels, count and clicks.
+     Where mask-image is unsupported the bar renders exactly as before. */
+  .tracked-player-tabs{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent 100%);mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent 100%)}
   .club-card-desktop-only{display:none}
   .club-card-mobile-only{display:block}
 }
@@ -5261,6 +5269,10 @@ const TR = {
 
     // ── TRACKED PLAYER — OVERVIEW TAB ──
     tp_not_found_title:'Player not found in current season',
+    tp_archived_notice:'This player is archived. Their record is shown for reference.',
+    tp_log_no_games_title:'No games this season', tp_log_no_games_desc:'Match log will appear once games are added.',
+    tp_log_no_apps_title:'No completed appearances yet', tp_log_no_apps_desc:'The match log will fill in once this player has played a completed game.',
+    tp_stats_no_games_title:'No completed appearances yet', tp_stats_no_games_desc:'Extended stats will appear after this player\u2019s first completed game.',
     tp_not_found_desc:'Go to Squad and check this player is active.',
     tp_btn_go_squad:'Go to Squad',
     tp_stat_appearances:'Appearances', tp_stat_starts:'Starts', tp_stat_as_sub:'as sub',
@@ -6479,6 +6491,10 @@ const TR = {
 
     // ── TRACKED PLAYER — OVERVIEW TAB ──
     tp_not_found_title:'Jogador não encontrado na época atual',
+    tp_archived_notice:'Este jogador está arquivado. O registo é apresentado para consulta.',
+    tp_log_no_games_title:'Sem jogos nesta época', tp_log_no_games_desc:'O registo de jogos aparece depois de adicionar jogos.',
+    tp_log_no_apps_title:'Ainda sem jogos concluídos', tp_log_no_apps_desc:'O registo de jogos aparece depois do primeiro jogo concluído deste jogador.',
+    tp_stats_no_games_title:'Ainda sem jogos concluídos', tp_stats_no_games_desc:'As estatísticas detalhadas aparecem após o primeiro jogo concluído deste jogador.',
     tp_not_found_desc:'Vá ao Plantel e verifique se este jogador está ativo.',
     tp_btn_go_squad:'Ir para o Plantel',
     tp_stat_appearances:'Jogos', tp_stat_starts:'Titularidades', tp_stat_as_sub:'como suplente',
@@ -8886,7 +8902,15 @@ function updateDashSyncStatus() {
 async function buildTrackedNav() {
   if (!State.currentSeasonId) return;
   const players = await DB.getAll('players','seasonId',State.currentSeasonId);
-  const tracked = players.filter(p => p.trackingStatus === 'tracked' && p.isActive);
+  // Archived tracked players are INCLUDED. Previously this also required
+  // p.isActive, which meant archiving a player at season end removed
+  // their nav entry AND their entire section from the DOM — making their
+  // stats, match log, club history and achievements permanently
+  // unreachable even though every record was intact. They are still
+  // clearly marked as archived, and sorted after active players.
+  const tracked = players
+    .filter(p => p.trackingStatus === 'tracked')
+    .sort((a,b) => (a.isActive === b.isActive) ? 0 : (a.isActive ? -1 : 1));
 
   // Build nav links
   const navEl    = document.getElementById('trackedNavLinks');
@@ -8896,11 +8920,11 @@ async function buildTrackedNav() {
   if (!navEl || !sectionsEl) return;
 
   navEl.innerHTML = tracked.map(p =>
-    `<button class="nav-link" data-section="tracked-${p.playerId}" onclick="Nav.go('tracked-${p.playerId}')">${esc(shortName(p.fullName))}</button>`
+    `<button class="nav-link" data-section="tracked-${p.playerId}" onclick="Nav.go('tracked-${p.playerId}')">${esc(shortName(p.fullName))}${p.isActive?'':` <span class="badge-nc badge" style="font-size:9px">${I18n.t('squad_archived_badge')}</span>`}</button>`
   ).join('');
 
   if (mobileEl) mobileEl.innerHTML = tracked.map(p =>
-    `<button class="nav-link" data-section="tracked-${p.playerId}" onclick="Nav.go('tracked-${p.playerId}');document.getElementById('mobileMenu').classList.remove('open')">${esc(shortName(p.fullName))}</button>`
+    `<button class="nav-link" data-section="tracked-${p.playerId}" onclick="Nav.go('tracked-${p.playerId}');document.getElementById('mobileMenu').classList.remove('open')">${esc(shortName(p.fullName))}${p.isActive?'':` <span class="badge-nc badge" style="font-size:9px">${I18n.t('squad_archived_badge')}</span>`}</button>`
   ).join('');
 
   // Build dynamic sections
@@ -8908,7 +8932,7 @@ async function buildTrackedNav() {
     <div class="section" id="sec-tracked-${p.playerId}">
       <div class="page-header">
         <div>
-          <h1>${esc(shortName(p.fullName))}</h1>
+          <h1>${esc(shortName(p.fullName))}${p.isActive?'':` <span class="badge-nc badge" style="font-size:10px;vertical-align:middle">${I18n.t('squad_archived_badge')}</span>`}</h1>
           <div class="page-header-sub" id="tracked-subtitle-${p.playerId}"></div>
         </div>
         <div class="btn-group">
@@ -8917,7 +8941,7 @@ async function buildTrackedNav() {
         </div>
       </div>
       <!-- Sub-tabs -->
-      <div class="tab-bar-row">
+      <div class="tab-bar-row tracked-player-tabs">
         <button class="import-tab active-tab" id="tab-overview-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'overview')">${I18n.t('tptab_overview')}</button>
         <button class="import-tab" id="tab-stats-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'stats')">${I18n.t('tptab_stats')}</button>
         <button class="import-tab" id="tab-log-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'log')">${I18n.t('tptab_log')}</button>
@@ -12237,6 +12261,22 @@ async function renderExtendedStats(playerId) {
     .filter(g => g.date)
     .sort((a,b) => gameSortKey(b)-gameSortKey(a));
 
+  // Extended stats are only meaningful once this player has actually
+  // played a completed game. A games-length check alone was insufficient:
+  // it still rendered zero-value tables when the season held nothing but
+  // future fixtures, or when games were complete but this player was
+  // never called up. Uses the existing isGameResultVisible rule and the
+  // real gamePlayers participation records — no new completion rule.
+  const allGPForStats = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
+  const hasCompletedParticipation = games.some(g =>
+    isGameResultVisible(g) &&
+    allGPForStats.some(gp => gp.gameId === g.gameId && gp.playerId === playerId && gp.calledUp)
+  );
+  if (!hasCompletedParticipation) {
+    el.innerHTML = `<div class="empty"><strong>${I18n.t('tp_stats_no_games_title')}</strong><p>${I18n.t('tp_stats_no_games_desc')}</p></div>`;
+    return;
+  }
+
   const allPGS = await DB.getAll('playerGameStats','playerId',playerId);
 
   // Calculate season totals (still computed for ALL fields — hiding is display-only)
@@ -12455,6 +12495,25 @@ async function renderMatchLog(playerId) {
   const games = await DB.getAll('games','seasonId',State.currentSeasonId);
   const allGP = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
   const lorGP = allGP.filter(r => r.playerId === playerId);
+
+  // A future call-up is not match history. Relevance requires a completed
+  // game (existing isGameResultVisible rule), a matching participation
+  // record, and the same calledUp rule the table rows already use. This
+  // count decides empty-state vs table only — row building, sorting and
+  // all score/result logic below are unchanged.
+  if (!games.length) {
+    el.innerHTML = `<div class="empty"><strong>${I18n.t('tp_log_no_games_title')}</strong><p>${I18n.t('tp_log_no_games_desc')}</p></div>`;
+    return;
+  }
+  const completedRelevantCount = games.filter(g => {
+    if (!isGameResultVisible(g)) return false;
+    const gp = lorGP.find(r => r.gameId === g.gameId);
+    return !!(gp && gp.calledUp);
+  }).length;
+  if (!completedRelevantCount) {
+    el.innerHTML = `<div class="empty"><strong>${I18n.t('tp_log_no_apps_title')}</strong><p>${I18n.t('tp_log_no_apps_desc')}</p></div>`;
+    return;
+  }
 
   // Pre-compute everything needed for sorting
   const enriched = games.map(g => {
@@ -15422,18 +15481,35 @@ const Render = (() => {
 
     if (!State.currentSeason) { el.innerHTML = noSeason(); return; }
 
-    const players = await DB.getAll('players','seasonId',State.currentSeasonId);
-    const lor = players.find(p=>p.playerId===playerId && p.isActive);
+    // Three reads issued together rather than sequentially — same pattern
+    // Team Summary already uses. Identical data, identical arguments.
+    const [players, games, allGP] = await Promise.all([
+      DB.getAll('players','seasonId',State.currentSeasonId),
+      DB.getAll('games','seasonId',State.currentSeasonId),
+      DB.getAll('gamePlayers','seasonId',State.currentSeasonId),
+    ]);
+
+    // Archived players are viewable. The isActive requirement here (plus
+    // the matching one in buildTrackedNav) previously made an archived
+    // player's entire record unreachable. "Not found" is now reserved for
+    // a genuinely missing player.
+    const lor = players.find(p=>p.playerId===playerId);
 
     if (!lor) {
       el.innerHTML = `<div class="empty"><strong>${I18n.t('tp_not_found_title')}</strong><p>${I18n.t('tp_not_found_desc')}</p><button class="btn btn-primary" onclick="Nav.go('squad')">${I18n.t('tp_btn_go_squad')}</button></div>`;
       return;
     }
 
+    // Read-only notice for an archived player. Editing controls elsewhere
+    // are unchanged — this states the status, it doesn't enforce it.
+    const archivedBanner = lor.isActive ? '' : `
+      <div class="card" style="background:#f0f0f0;border-color:#ddd;display:flex;align-items:center;gap:10px;padding:10px 14px">
+        <span style="font-size:16px">&#128451;</span>
+        <span style="font-size:13px;color:var(--muted)">${I18n.t('tp_archived_notice')}</span>
+      </div>`;
+
     if (sub) sub.textContent = State.currentSeason.seasonName;
 
-    const games = await DB.getAll('games','seasonId',State.currentSeasonId);
-    const allGP = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
     const lorGP = allGP.filter(r=>r.playerId===lor.playerId);
     // Only count games whose result is actually visible (i.e. likely finished)
     // towards season totals — an in-progress game shouldn't inflate stats yet.
@@ -15477,8 +15553,8 @@ const Render = (() => {
     // position breakdown
     const posEntries = Object.entries(s.positionBreakdown).sort((a,b)=>b[1]-a[1]);
 
-    el.innerHTML = `
-      <div class="print-header" style="display:none;margin-bottom:20px">
+    el.innerHTML = archivedBanner + `
+      <div class="print-header print-only" style="margin-bottom:20px">
         <h2>${esc(lor.fullName)} — ${State.currentSeason.seasonName}</h2>
         <p style="color:var(--muted);font-size:13px">${State.currentSeason.seasonName} · ${State.currentSeason.clubName||''}</p>
       </div>
