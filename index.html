@@ -6137,6 +6137,7 @@ const TR = {
 
     // ── TEAM SUMMARY ──
     ts_no_games_title:'No games yet',
+    ts_no_completed_title:'No completed games yet', ts_no_completed_desc:'Team statistics will appear after the first completed game.',
     ts_no_games_desc:'Add games to see team statistics.',
     ts_played:'Played', ts_wins:'Wins', ts_draws:'Draws', ts_losses:'Losses',
     ts_goals_for:'Goals For', ts_goals_against:'Goals Against', ts_goal_diff:'Goal Diff', ts_clean_sheets:'Clean Sheets',
@@ -7354,6 +7355,7 @@ const TR = {
 
     // ── TEAM SUMMARY ──
     ts_no_games_title:'Ainda sem jogos',
+    ts_no_completed_title:'Ainda sem jogos concluídos', ts_no_completed_desc:'As estatísticas da equipa aparecem após o primeiro jogo concluído.',
     ts_no_games_desc:'Adicione jogos para ver as estatísticas da equipa.',
     ts_played:'Jogos', ts_wins:'Vitórias', ts_draws:'Empates', ts_losses:'Derrotas',
     ts_goals_for:'Golos Marcados', ts_goals_against:'Golos Sofridos', ts_goal_diff:'Diferença de Golos', ts_clean_sheets:'Jogos sem Sofrer Golos',
@@ -7953,7 +7955,7 @@ const Calc = (() => {
       if (their===0) s.cleanSheets++;
       if (our===0) s.failedToScore++;
 
-      const haScore = homeAwayScore(g.homeAway, our, their);
+      const haScore = homeAwayScore(g.homeAway, our, their, g.neutralSide);
       const haScoreStr = `${haScore.home}-${haScore.away}`;
       if (res==='W' && (!s.biggestWin || gd > s.biggestWin.gd)) s.biggestWin = { score:haScoreStr, opp:g.opponent, gd };
       if (res==='L' && (!s.biggestLoss || gd < s.biggestLoss.gd)) s.biggestLoss = { score:haScoreStr, opp:g.opponent, gd };
@@ -15210,9 +15212,14 @@ const Render = (() => {
     if (compFilter) games = games.filter(g=>g.competitionType===compFilter);
 
     // Four genuinely distinct empty states, decided from the UNFILTERED
-    // season data — the previous single message claimed "no games" even
-    // when the season was full of tournament games or the user had simply
-    // typed a search that matched nothing.
+    // season data.
+    //
+    // Order matters. The tournament-only check MUST come before the
+    // filter check: if a season has no standard games at all, there is
+    // nothing on this page for a filter to have excluded, so blaming the
+    // filters would be misleading. The user needs to know the games are
+    // in the Tournament area — whether or not a search happens to be
+    // typed at that moment.
     if (!games.length) {
       let emptyHtml;
       const filtersActive = !!(search || compFilter);
@@ -15221,19 +15228,22 @@ const Render = (() => {
         // A — genuinely no games of any kind this season.
         emptyHtml = `<div class="empty"><strong>${I18n.t('games_empty_none_title')}</strong><p>${I18n.t('games_empty_none_desc')}</p>
           <button class="btn btn-primary" onclick="document.getElementById('btnAddGame')?.click()">+ ${I18n.t('games_btn_add')}</button></div>`;
-      } else if (filtersActive) {
-        // C — games exist on this page, but the filters excluded them all.
+      } else if (!mainGames.length && tournamentGamesCount > 0) {
+        // B — the season has games, but they're all tournament games and
+        // therefore deliberately shown elsewhere. Explain, don't mislead.
+        // Checked BEFORE filters: with zero standard games, no filter can
+        // meaningfully be "the reason" the list is empty.
+        emptyHtml = `<div class="empty"><strong>${I18n.t('games_empty_tourn_only_title')}</strong>
+          <p>${tournamentGamesCount === 1 ? I18n.t('games_empty_tourn_only_desc_one') : I18n.t('games_empty_tourn_only_desc', {n: tournamentGamesCount})}</p>
+          <button class="btn btn-secondary" onclick="Nav.go('tournSummary')">${I18n.t('games_btn_view_tournament')}</button></div>`;
+      } else if (filtersActive && !games.length) {
+        // C — standard games DO exist on this page, and the filters
+        // excluded all of them. Only reachable when mainGames.length > 0.
         const desc = search && compFilter ? I18n.t('games_empty_filtered_both', {q: esc(search)})
                    : search               ? I18n.t('games_empty_filtered_search', {q: esc(search)})
                                           : I18n.t('games_empty_filtered_comp');
         emptyHtml = `<div class="empty"><strong>${I18n.t('games_empty_filtered_title')}</strong><p>${desc}</p>
           <button class="btn btn-secondary" onclick="clearGamesFilters()">${I18n.t('games_btn_clear_filters')}</button></div>`;
-      } else if (!mainGames.length && tournamentGamesCount) {
-        // B — the season has games, but they're all tournament games and
-        // therefore deliberately shown elsewhere. Explain, don't mislead.
-        emptyHtml = `<div class="empty"><strong>${I18n.t('games_empty_tourn_only_title')}</strong>
-          <p>${tournamentGamesCount === 1 ? I18n.t('games_empty_tourn_only_desc_one') : I18n.t('games_empty_tourn_only_desc', {n: tournamentGamesCount})}</p>
-          <button class="btn btn-secondary" onclick="Nav.go('tournSummary')">${I18n.t('games_btn_view_tournament')}</button></div>`;
       } else {
         // D — no games on this page for another established reason. State
         // only what's actually known; invent no status that doesn't exist.
@@ -15596,6 +15606,16 @@ const Render = (() => {
     // a game still in progress shouldn't affect the table yet.
     const finishedGames = games.filter(g => isGameResultVisible(g));
 
+    // Games are scheduled, but none have been played yet. Previously this
+    // fell through and rendered a full page of zeros plus an empty pitch,
+    // which reads as "the team has played and achieved nothing" rather
+    // than "nothing has happened yet". Uses the same completion rule as
+    // every calculation below — no separate test, no status field.
+    if (!finishedGames.length) {
+      el.innerHTML = `<div class="empty"><strong>${I18n.t('ts_no_completed_title')}</strong><p>${I18n.t('ts_no_completed_desc')}</p></div>`;
+      return;
+    }
+
     const ts = Calc.teamSeasonStats(finishedGames, allGP);
 
     // player stats
@@ -15603,19 +15623,23 @@ const Render = (() => {
       ...p, ...Calc.playerSeasonStats(p.playerId, finishedGames, allGP)
     }));
 
-    const topScorers = [...pStats].sort((a,b)=>b.goals-a.goals).slice(0,5);
-    const topAssisters = [...pStats].sort((a,b)=>b.assists-a.assists).slice(0,5);
+    // Zero-value players are filtered out of every board, so a squad that
+    // has scored nothing can't show a "Top Scorer" on 0. Goals and assists
+    // previously skipped this filter; Most Used and Player of the Match
+    // already had it, and are unchanged.
+    const topScorers = [...pStats].filter(p=>p.goals>0).sort((a,b)=>b.goals-a.goals).slice(0,5);
+    const topAssisters = [...pStats].filter(p=>p.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,5);
     const mostApps = [...pStats].filter(p=>p.calledUp>0).sort((a,b)=>b.calledUp-a.calledUp).slice(0,5);
     const mostMoM = [...pStats].sort((a,b)=>b.mom-a.mom).filter(p=>p.mom>0).slice(0,5);
-
-    window._teamSummaryAllStats = pStats; // store full dataset for re-sort
 
     // Most Used Lineup — best XI based on appearances per position this season
     const mostUsedLineup = buildMostUsedLineup(players, finishedGames, allGP);
     const shirtColor = State.currentSeason?.shirtColor || '#B23333';
 
-    // Squad-wide injury report for this season
-    const allPlayers = await DB.getAll('players','seasonId',State.currentSeasonId);
+    // Squad-wide injury report for this season. Reuses the `players` array
+    // already loaded in the parallel read above — this previously issued a
+    // second, identical season-scoped players query.
+    const allPlayers = players;
     const allInjuriesThisSeason = (await DB.getAll('injuries','seasonId',State.currentSeasonId));
     const injuriesByPlayer = {};
     allInjuriesThisSeason.forEach(inj => {
@@ -15669,14 +15693,20 @@ const Render = (() => {
         ` : ''}
       </div>
 
-      <div class="leader-grid">
-        ${leaderCard(I18n.t('ts_top_scorers'), topScorers, 'goals', I18n.t('ts_stat_goals'))}
-        ${leaderCard(I18n.t('ts_top_assisters'), topAssisters, 'assists', I18n.t('ts_stat_assists'))}
-      </div>
-      <div class="leader-grid">
-        ${leaderCard(I18n.t('ts_most_used'), mostApps, 'calledUp', I18n.t('ts_stat_apps'))}
-        ${mostMoM.length ? leaderCard(I18n.t('ts_player_of_match'), mostMoM, 'mom', I18n.t('ts_stat_mom')) : '<div></div>'}
-      </div>
+      ${(() => {
+        // Only boards with at least one qualifying player are rendered.
+        // Previously empty boards emitted a placeholder <div></div>, which
+        // left a visible hole in the two-column grid. Cards flow into the
+        // existing .leader-grid unchanged, so desktop layout is identical
+        // whenever all four boards are populated.
+        const cards = [
+          leaderCard(I18n.t('ts_top_scorers'), topScorers, 'goals', I18n.t('ts_stat_goals')),
+          leaderCard(I18n.t('ts_top_assisters'), topAssisters, 'assists', I18n.t('ts_stat_assists')),
+          leaderCard(I18n.t('ts_most_used'), mostApps, 'calledUp', I18n.t('ts_stat_apps')),
+          leaderCard(I18n.t('ts_player_of_match'), mostMoM, 'mom', I18n.t('ts_stat_mom')),
+        ].filter(html => html && html !== '<div></div>');
+        return cards.length ? `<div class="leader-grid">${cards.join('')}</div>` : '';
+      })()}
 
       <div id="seasonResourcesContainer"></div>
     `;
