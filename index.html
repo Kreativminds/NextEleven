@@ -560,6 +560,22 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
     <button class="hamburger" id="portalHamburger" aria-label="Menu">
       <span></span><span></span><span></span>
     </button>
+    <!-- Desktop navigation. This block was missing entirely: the portal had
+         ONLY the hamburger + mobile menu, and .hamburger is display:none above
+         768px. Above that width the portal therefore had no navigation and no
+         way to log out at all. Mirrors the mobile menu exactly. -->
+    <div class="nav-links" id="portalNavLinks">
+      <button class="nav-link active" data-portal-section="home" onclick="Nav.goPortal('home')"><span data-i18n="pp_nav_home">Home</span></button>
+      <button class="nav-link" data-portal-section="dashboard" onclick="Nav.goPortal('dashboard')"><span data-i18n="pp_nav_dashboard">Overview</span></button>
+      <button class="nav-link" data-portal-section="stats" onclick="Nav.goPortal('stats')"><span data-i18n="pp_nav_stats">Stats</span></button>
+      <button class="nav-link" data-portal-section="training" onclick="Nav.goPortal('training')"><span data-i18n="pp_nav_training">Training</span></button>
+      <button class="nav-link" data-portal-section="games" onclick="Nav.goPortal('games')"><span data-i18n="pp_nav_games">Games</span></button>
+      <button class="nav-link" data-portal-section="clubs" onclick="Nav.goPortal('clubs')"><span data-i18n="pp_nav_clubs">Club History</span></button>
+      <button class="nav-link" data-portal-section="achievements" onclick="Nav.goPortal('achievements')"><span data-i18n="pp_nav_achievements">Achievements</span></button>
+      <button class="nav-link" data-portal-section="events" onclick="Nav.goPortal('events')"><span data-i18n="pp_nav_events">Events</span></button>
+      <button class="nav-link" data-portal-section="teamsummary" onclick="Nav.goPortal('teamsummary')"><span data-i18n="pp_nav_teamsummary">Team Summary</span></button>
+      <button class="nav-link" onclick="handlePlayerPortalExit()" style="color:#ffb4b4">&#128274; <span data-i18n="acc_btn_logout">Log Out</span></button>
+    </div>
   </nav>
   <div class="mobile-menu" id="portalMobileMenu">
     <button class="nav-link" data-portal-section="home" onclick="Nav.goPortal('home');document.getElementById('portalMobileMenu').classList.remove('open')">&#127968; <span data-i18n="pp_nav_home">Home</span></button>
@@ -3741,16 +3757,33 @@ async function handlePlayerPinSubmit() {
 
     let match = null;
     if (codeValid) {
+      // Season context must be loaded BEFORE the match below, since the
+      // resolution prefers the current season's row.
+      await loadMeta();
       // Fast path: correct code confirmed locally, safe to check PIN against
       // this device's own synced player data, fully offline.
+      //
+      // A tracked player has one row PER SEASON, all carrying the same PIN.
+      // Taking the first arbitrary match was a real bug: the portal could
+      // attach to, say, Lorenzo's season-1 row (playerId 1) while the
+      // guardian app is working in season 5 (playerId 68). Sessions and
+      // drills created in the portal would then be stored against the wrong
+      // player id and stay invisible in the guardian's current-season views.
+      //
+      // Resolution now mirrors portal_bootstrap server-side: prefer the row
+      // for the CURRENT season, otherwise the highest season number.
       const allPlayers = await DB.getAll('players');
-      match = allPlayers.find(p => p.viewerPin && p.viewerPin === enteredPin);
+      const pinMatches = allPlayers.filter(p => p.viewerPin && p.viewerPin === enteredPin && p.careerPlayerId);
+      if (pinMatches.length) {
+        const seasonNum = (p) => Number(p.seasonId) || 0;
+        match = pinMatches.find(p => String(p.seasonId) === String(State.currentSeasonId))
+             || pinMatches.slice().sort((a,b) => seasonNum(b) - seasonNum(a))[0];
+      }
       // Self-healing: a player record bootstrapped before careerPlayerId was
       // included (a real, confirmed bug) would match here but be missing
-      // data Club History/Achievements/Events all require. Treat that as
-      // "no local match" so the code below falls through to a fresh
-      // network bootstrap instead of silently continuing with stale data.
-      if (match && !match.careerPlayerId) match = null;
+      // data Club History/Achievements/Events all require. The filter above
+      // already excludes those, so an incomplete record falls through to a
+      // fresh network bootstrap instead of silently continuing with stale data.
     }
 
     if (!match) {
@@ -9620,7 +9653,9 @@ async function saveCustomDrill(drill) {
     }
   }
   if (!drill.status) drill.status = 'active';
-  return DB.put('customDrills', drill);
+  const res = await DB.put('customDrills', drill);
+  Sync.scheduleAutoSync(); // was missing — player-created drills never uploaded
+  return res;
 }
 
 // Pass 4 — archiving, not hard deletion. A custom drill that's already
@@ -9636,6 +9671,7 @@ async function archiveCustomDrill(drillId, requestingAs, requestingOwnerId) {
   }
   drill.status = 'archived';
   await DB.put('customDrills', drill);
+  Sync.scheduleAutoSync();
 }
 
 async function restoreCustomDrill(drillId, requestingAs, requestingOwnerId) {
@@ -9646,6 +9682,7 @@ async function restoreCustomDrill(drillId, requestingAs, requestingOwnerId) {
   }
   drill.status = 'active';
   await DB.put('customDrills', drill);
+  Sync.scheduleAutoSync();
 }
 
 // Official drills can never be edited or archived by anyone — guardian or
@@ -9847,9 +9884,11 @@ async function toggleDrillFavourite(drillKey, userType, userId) {
   const existing = all.find(f => f.userType === userType && String(f.userId) === String(userId) && f.drillKey === drillKey);
   if (existing) {
     await DB.del('drillFavourites', existing.favouriteId);
+    Sync.scheduleAutoSync();
     return false; // now unfavourited
   } else {
     await DB.put('drillFavourites', { userType, userId, drillKey });
+    Sync.scheduleAutoSync();
     return true; // now favourited
   }
 }
@@ -11831,7 +11870,9 @@ async function saveTrainingPack(pack) {
     }
   }
   if (!pack.status) pack.status = 'active';
-  return DB.put('trainingPacks', pack);
+  const res = await DB.put('trainingPacks', pack);
+  Sync.scheduleAutoSync(); // was missing — packs never uploaded
+  return res;
 }
 
 async function archiveTrainingPack(packId, requestingAs, requestingOwnerId) {
@@ -11842,6 +11883,7 @@ async function archiveTrainingPack(packId, requestingAs, requestingOwnerId) {
   }
   pack.status = 'archived';
   await DB.put('trainingPacks', pack);
+  Sync.scheduleAutoSync();
 }
 
 async function duplicateTrainingPack(packId, requestingAs, requestingOwnerId) {
@@ -13769,6 +13811,11 @@ async function saveTrainingFormSession() {
 
   try {
     await saveTrainingSession(session);
+    // Without this the record sat locally as 'pending' with nothing ever
+    // scheduling an upload — the guardian side never saw it. Every other
+    // save handler in the app already does this; the training and drill
+    // handlers were missed.
+    Sync.scheduleAutoSync();
     Toast.show(I18n.t('tr_saved'));
     document.getElementById(`trainingFormPanel-${playerId}`)?.classList.add('panel-hidden');
     await renderPlayerTraining(playerId, viewAs);
@@ -14067,6 +14114,7 @@ function confirmDeleteTrainingSession(sessionId, viewAs) {
     }
     try {
       await deleteTrainingSession(sessionId, viewAs);
+      Sync.scheduleAutoSync(); // deletions must propagate too
       document.getElementById('trainingViewerOverlay')?.remove();
       Toast.show(I18n.t('ch_deleted'));
       if (session) await renderPlayerTraining(session.playerId, viewAs);
@@ -19054,6 +19102,7 @@ async function savePortalPin(playerId) {
     row.viewerPin = pin;
     await DB.put('players', row);
   }
+  Sync.scheduleAutoSync(); // PIN changes must reach the cloud, or portal login on other devices keeps the old PIN
   document.getElementById('pinModalOverlay')?.remove();
   Toast.show(rows.length > 1
     ? I18n.t('acc_pin_saved_career', {count: rows.length})
@@ -19070,6 +19119,7 @@ async function removePortalPin(playerId) {
     row.viewerPin = null;
     await DB.put('players', row);
   }
+  Sync.scheduleAutoSync(); // revocation must reach the cloud or the old PIN keeps working elsewhere
   document.getElementById('pinModalOverlay')?.remove();
   Toast.show(rows.length > 1
     ? I18n.t('acc_pin_removed_career', {count: rows.length})
