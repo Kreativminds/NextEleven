@@ -593,6 +593,14 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
     </div>
   </div>
   <div class="main-content">
+    <!-- PHASE 1 — sync status bar. Four required states: loading, success,
+         error, and last successfully updated. Present on every portal page
+         so the person never has to wonder whether they are seeing current
+         data — the single most common complaint before this existed. -->
+    <div id="portalSyncBar" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 12px;margin:-6px -6px 10px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border)">
+      <span id="portalSyncStatus"></span>
+      <button id="portalRefreshBtn" class="btn btn-secondary" style="padding:4px 12px;font-size:11px" onclick="handlePortalManualRefresh()">&#8635; <span data-i18n="pp_refresh">Refresh</span></button>
+    </div>
     <div class="section active" id="pp-sec-home"></div>
     <div class="section" id="pp-sec-dashboard" style="display:none"></div>
     <div class="section" id="pp-sec-stats" style="display:none"></div>
@@ -3850,6 +3858,11 @@ async function handlePlayerPinSubmit() {
         await DB.put('appMeta', { metaKey: 'portalSessionToken', value: remoteResult.session_token });
         await DB.put('appMeta', { metaKey: 'portalSessionExpiresAt', value: remoteResult.session_expires_at || null });
       }
+      // Hand off to incremental pull: the snapshot sits at this point in the
+      // change log, so the first pull asks for everything AFTER it. No gap,
+      // and no replay of changes the snapshot already contains.
+      await DB.put('appMeta', { metaKey: 'portalSyncCursor', value: remoteResult.current_sequence || 0 });
+      await DB.put('appMeta', { metaKey: 'portalLastSyncedAt', value: new Date().toISOString() });
       if (!Auth.isLoggedIn()) {
         await DB.put('appMeta', { metaKey: 'portalStandalone', value: true });
       }
@@ -3874,6 +3887,8 @@ async function handlePlayerPinSubmit() {
     await loadMeta();
     await Nav.goPortal('home');
     Toast.show(I18n.t('acc_player_login_success', {name: shortName(match.fullName)}));
+    // Catch anything assigned between the snapshot and this moment.
+    Sync.portalPull({force:true}).catch(e => console.error('[portal pull]', e));
   } catch(err) {
     // Last-resort catch: anything unexpected shows the generic message,
     // with the real error going to the console only.
@@ -4546,6 +4561,73 @@ async function handleLogout() {
   await resetAppStateForNewUser(null);
 }
 
+// ── PHASE 1 — PORTAL SYNC STATUS + MANUAL REFRESH ───────────────────────────
+// Four states, as required: loading, success, error, last-updated.
+async function renderPortalSyncStatus(state, detail) {
+  const el = document.getElementById('portalSyncStatus');
+  if (!el) return;
+  if (state === 'loading') {
+    el.textContent = I18n.t('pp_refreshing');
+    el.style.color = 'var(--muted)';
+    return;
+  }
+  if (state === 'error') {
+    el.textContent = I18n.t('pp_refresh_err');
+    el.style.color = '#b03030';
+    return;
+  }
+  if (state === 'resync') {
+    el.textContent = I18n.t('pp_resync_needed');
+    el.style.color = '#b03030';
+    return;
+  }
+  // Default / success: show when the data was last confirmed current.
+  const last = (await DB.get('appMeta','portalLastSyncedAt'))?.value;
+  if (!last) {
+    el.textContent = I18n.t('pp_never_synced');
+    el.style.color = 'var(--muted)';
+    return;
+  }
+  const d = new Date(last);
+  const time = d.toLocaleTimeString(I18n.get() === 'PT' ? 'pt-PT' : 'en-GB',
+                                    { hour:'2-digit', minute:'2-digit' });
+  el.textContent = detail && detail.applied
+    ? I18n.t('pp_refresh_new', {n: detail.applied})
+    : I18n.t('pp_last_updated', {time});
+  el.style.color = 'var(--muted)';
+}
+
+let _portalRefreshBusy = false;
+async function handlePortalManualRefresh() {
+  if (_portalRefreshBusy) return; // duplicate-tap guard
+  _portalRefreshBusy = true;
+  const btn = document.getElementById('portalRefreshBtn');
+  if (btn) btn.disabled = true;
+  await renderPortalSyncStatus('loading');
+  try {
+    // force:true bypasses the 30s freshness threshold — an explicit tap
+    // must always actually check, or the control feels broken.
+    const res = await Sync.portalPull({force:true});
+    if (res && res.resynced) {
+      await renderPortalSyncStatus('resync');
+      Toast.error(I18n.t('pp_resync_needed'));
+    } else {
+      await renderPortalSyncStatus('success', res);
+      if (res && res.applied) {
+        // New data arrived — re-render the page the person is looking at.
+        await Nav.goPortal(State.currentPortalSection || 'home');
+        Toast.show(I18n.t('pp_refresh_new', {n: res.applied}));
+      }
+    }
+  } catch(err) {
+    console.error('[portal refresh]', err);
+    await renderPortalSyncStatus('error');
+  } finally {
+    _portalRefreshBusy = false;
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function handlePlayerPortalExit(skipConfirm) {
   if (!skipConfirm && !window.confirm(I18n.t('pp_exit_confirm'))) return;
   // ── COMPLETE PORTAL EXIT CLEANUP ────────────────────────────────────────
@@ -4559,7 +4641,7 @@ async function handlePlayerPortalExit(skipConfirm) {
   State.currentPortalSection = null;
   State.portalTrainingSubTab = null;
   try { sessionStorage.removeItem('squadTracker_lastPortalSection'); } catch(e) {}
-  for (const k of ['portalPlayerId','portalOwnerUserId','portalAccountCode','portalSessionToken','portalSessionExpiresAt','portalStandalone']) {
+  for (const k of ['portalPlayerId','portalOwnerUserId','portalAccountCode','portalSessionToken','portalSessionExpiresAt','portalStandalone','portalSyncCursor','portalLastSyncedAt']) {
     await DB.del('appMeta', k).catch(()=>{});
   }
   // A standalone portal device must not leave the family's data cached
@@ -6008,6 +6090,11 @@ const TR = {
     acc_lbl_account_code:'Account Code', acc_err_pin_network:'Could not check that Account Code — {msg}',
     acc_err_portal_login_failed:'Login is not available right now. Please check your details and try again.',
     acc_err_portal_session_expired:'Your session has expired. Please sign in again with your Account Code and PIN.',
+    pp_refresh:'Refresh', pp_refreshing:'Checking for updates…',
+    pp_refresh_ok:'Up to date', pp_refresh_new:'{n} update(s) applied',
+    pp_refresh_err:'Could not check for updates. Tap to retry.',
+    pp_last_updated:'Last updated {time}', pp_never_synced:'Not synced yet',
+    pp_resync_needed:'Please sign in again to refresh your data.',
     acc_pin_saved_career:'PIN saved — applies to all {count} seasons for this player.',
     acc_pin_removed_career:'PIN removed from all {count} seasons. Portal access is revoked.',
     acc_pin_career_note:'This PIN belongs to the player, not the season. Saving or removing it applies to all {count} of their seasons.',
@@ -7244,6 +7331,11 @@ const TR = {
     acc_lbl_account_code:'Código da Conta', acc_err_pin_network:'Não foi possível verificar esse Código da Conta — {msg}',
     acc_err_portal_login_failed:'Não é possível iniciar sessão neste momento. Verifique os dados e tente novamente.',
     acc_err_portal_session_expired:'A sua sessão expirou. Inicie sessão novamente com o Código da Conta e o PIN.',
+    pp_refresh:'Atualizar', pp_refreshing:'A procurar atualizações…',
+    pp_refresh_ok:'Atualizado', pp_refresh_new:'{n} atualização(ões) aplicada(s)',
+    pp_refresh_err:'Não foi possível procurar atualizações. Toque para tentar novamente.',
+    pp_last_updated:'Última atualização {time}', pp_never_synced:'Ainda não sincronizado',
+    pp_resync_needed:'Inicie sessão novamente para atualizar os seus dados.',
     acc_pin_saved_career:'PIN guardado — aplica-se a todas as {count} épocas deste jogador.',
     acc_pin_removed_career:'PIN removido de todas as {count} épocas. O acesso ao portal foi revogado.',
     acc_pin_career_note:'Este PIN pertence ao jogador, não à época. Guardar ou remover aplica-se a todas as {count} épocas.',
@@ -17893,6 +17985,152 @@ const Sync = (() => {
   // dataset. Stored locally afterward so subsequent logins on this same
   // device use the fast local-match path instead of hitting the network
   // again every time.
+  // ── PHASE 1 — INCREMENTAL PORTAL PULL ────────────────────────────────────
+  // Before this existed, a standalone portal device received data once at
+  // login and was then frozen: a session assigned by the guardian never
+  // reached it. This is the catch-up feed.
+  //
+  // Cursor discipline is the whole point. The cursor advances ONLY after a
+  // page has been applied atomically. A partial apply throws, writes
+  // nothing, leaves the cursor untouched, and the same page is re-fetched
+  // next time. Replaying a range is safe because every change is an upsert
+  // or a delete keyed by cloud id.
+  let _portalPullInFlight = false;
+  let _portalPullAgain    = false;
+  let _lastPortalPullAt   = 0;
+
+  async function portalPullRemote(sessionToken, afterSequence, limit) {
+    if (!isConfigured()) throw new Error('Sync not configured on this device.');
+    const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
+    const res = await fetch(base + 'rpc/portal_pull', {
+      method: 'POST',
+      headers: {
+        'apikey':        _cfg.anonKey,
+        'Authorization': 'Bearer ' + _cfg.anonKey,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        p_session_token:  sessionToken,
+        p_after_sequence: afterSequence || 0,
+        p_limit:          limit || 500,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error('Portal pull failed: ' + res.status + ' ' + err.slice(0,200));
+    }
+    return await res.json();
+  }
+
+  // Maps a change-log entity_type back to its local store name.
+  function tableToStore(table) {
+    for (const [store, tbl] of Object.entries({
+      seasons:'seasons', players:'players', games:'games', gamePlayers:'game_players',
+      achievements:'achievements', clubHistory:'club_history', globalPlayers:'global_players',
+      opponents:'opponents', playerGameStats:'player_game_stats', events:'events',
+      injuries:'injuries', trainingSessions:'training_sessions', customDrills:'custom_drills',
+      drillFavourites:'drill_favourites', trainingPacks:'training_packs',
+      tournaments:'tournaments', temporaryPlayers:'temporary_players',
+      clubTeams:'club_teams', externalResources:'external_resources',
+    })) { if (tbl === table) return store; }
+    return null;
+  }
+
+  // Applies one page atomically. Upserts and deletions are separated because
+  // DB.putManyAtomic() only writes; deletions are applied first so a delete
+  // followed by a re-create within the same page resolves correctly.
+  async function applyPortalPullPage(changes) {
+    const upserts = {};
+    const deletes = [];
+
+    for (const c of changes) {
+      const store = tableToStore(c.entity_type);
+      if (!store) continue; // unknown table — ignore rather than fail the page
+      if (c.operation === 'delete' || !c.payload) {
+        deletes.push({ store, cloudId: c.entity_id });
+        continue;
+      }
+      const payload = { ...c.payload };
+      payload.cloudId = c.entity_id;
+      payload.syncStatus = 'synced';
+      delete payload.viewerPin; // defence in depth — the server strips it too
+      payload.portalBootstrapRecord = true;
+      payload.portalOwnerUserId = (await DB.get('appMeta','portalOwnerUserId'))?.value || null;
+      (upserts[store] = upserts[store] || []).push(payload);
+    }
+
+    // Resolve each incoming record against the local row that already
+    // carries this cloudId, so the write updates it instead of inserting a
+    // duplicate under a fresh local key.
+    for (const store of Object.keys(upserts)) {
+      const local = await DB.getAll(store);
+      const keyField = getKey(store);
+      for (const rec of upserts[store]) {
+        const existing = local.find(r => r.cloudId === rec.cloudId);
+        if (existing) rec[keyField] = existing[keyField];
+      }
+    }
+
+    for (const d of deletes) {
+      const local = await DB.getAll(d.store);
+      const hit = local.find(r => r.cloudId === d.cloudId);
+      if (hit) await DB.del(d.store, hit[getKey(d.store)]).catch(()=>{});
+    }
+
+    return await DB.putManyAtomic(upserts); // throws on any failure
+  }
+
+  // The public entry point. Returns { applied, resynced } or null when a
+  // pull was not attempted (offline, no session, too soon, already running).
+  async function portalPull(opts) {
+    const force = !!(opts && opts.force);
+    if (_portalPullInFlight) { _portalPullAgain = true; return null; }
+    if (!isConfigured() || !isOnline()) return null;
+    if (!State.portalPlayerId) return null;
+    if (!force && Date.now() - _lastPortalPullAt < 30000) return null; // freshness threshold
+
+    const token = await getValidPortalToken(); // null if missing or expired
+    if (!token) return null;
+
+    _portalPullInFlight = true;
+    let applied = 0;
+    let resynced = false;
+    try {
+      let cursor = (await DB.get('appMeta','portalSyncCursor'))?.value || 0;
+      let guard = 0;
+      while (guard++ < 20) {
+        const res = await portalPullRemote(token, cursor, 500);
+        if (!res) break;
+
+        if (res.resync_required) {
+          // The cursor predates retained history — incremental catch-up is
+          // impossible, so a full bootstrap is the honest recovery path.
+          // Requires the PIN, which is deliberately never stored, so the
+          // person is asked to sign in again rather than shown stale data.
+          resynced = true;
+          await DB.del('appMeta','portalSyncCursor').catch(()=>{});
+          log('Portal pull: cursor too old, full re-login required.');
+          break;
+        }
+
+        const changes = res.changes || [];
+        if (changes.length) {
+          applied += await applyPortalPullPage(changes); // throws → cursor unchanged
+          cursor = res.next_sequence;
+          await DB.put('appMeta', { metaKey:'portalSyncCursor', value: cursor });
+        }
+        if (!res.has_more) break;
+      }
+      _lastPortalPullAt = Date.now();
+      await DB.put('appMeta', { metaKey:'portalLastSyncedAt', value: new Date().toISOString() });
+      if (applied) log(`Portal pull applied ${applied} changes.`);
+      return { applied, resynced };
+    } finally {
+      _portalPullInFlight = false;
+      if (_portalPullAgain) { _portalPullAgain = false; setTimeout(() => portalPull({force:true}), 0); }
+    }
+  }
+
   async function bootstrapPlayerFromRemote(rpcResult) {
     const { parent_user_id, player_local_id, player_name, career_player_id, shirt_number, primary_position, date_of_birth, nationality, dominant_foot, photo_url } = rpcResult;
     const minimalPlayer = {
@@ -17953,7 +18191,7 @@ const Sync = (() => {
   async function portalBootstrapRemote(accountCode, pin) {
     if (!isConfigured()) throw new Error('Sync not configured on this device.');
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
-    const res = await fetch(base + 'rpc/portal_bootstrap', {
+    const res = await fetch(base + 'rpc/portal_bootstrap_v2', {
       method: 'POST',
       headers: {
         'apikey':       _cfg.anonKey,
@@ -18456,6 +18694,16 @@ const Sync = (() => {
 
   document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
+
+      // Portal devices have no guardian account, so the guardian sync path
+      // below never runs for them. Pull-on-focus is their catch-up: the
+      // 30-second freshness threshold and the in-flight guard both live
+      // inside portalPull(), so calling it on every focus is safe.
+      if (State.portalPlayerId) {
+        portalPull().catch(e => console.error('[portal pull]', e));
+        return;
+      }
+
       if (!Auth.isLoggedIn()) return;
       const twoMinutes = 2 * 60 * 1000;
       if (!_lastSync || (Date.now() - new Date(_lastSync).getTime()) > twoMinutes) {
@@ -18670,7 +18918,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
 })();
 
 function attachEvents() {
@@ -21083,13 +21331,17 @@ async function init() {
           }
         } catch(e) {}
         await Nav.goPortal(restoredPortalSection);
+        // App-open pull: the device may have been closed for days.
+        Sync.portalPull({force:true})
+            .then(r => { if (r && r.applied) Nav.goPortal(restoredPortalSection); })
+            .catch(e => console.error('[portal pull]', e));
         return; // stop here — never fall through to the guardian gate or app
       } else {
         // Stale, incomplete, foreign, or expired portal session — clear every
         // piece of portal session state rather than restoring wrongly.
         // Cached read-only data is deliberately preserved.
         console.warn('[portal restore] refused —', restoreFailReason);
-        for (const k of ['portalPlayerId','portalOwnerUserId','portalAccountCode','portalSessionToken','portalSessionExpiresAt','portalStandalone']) {
+        for (const k of ['portalPlayerId','portalOwnerUserId','portalAccountCode','portalSessionToken','portalSessionExpiresAt','portalStandalone','portalSyncCursor','portalLastSyncedAt']) {
           await DB.del('appMeta', k).catch(()=>{});
         }
         try { sessionStorage.removeItem('squadTracker_lastPortalSection'); } catch(e) {}
