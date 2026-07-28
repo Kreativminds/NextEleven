@@ -301,6 +301,12 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .info-row .ir-label{color:var(--muted);font-size:12px}
 .info-row .ir-value{font-weight:600}
 .danger-zone{border:1px solid #e8c8c8;border-radius:var(--radius);padding:16px;background:#fffafa}
+/* Danger Zone tab — visually distinguished from the nine benign Settings
+   tabs so a destructive area isn't identical to Brand Assets. Colour only:
+   position, label, order, switching and every confirmation flow are
+   unchanged. Reuses the same red family as .danger-zone above. */
+.import-tab.danger-tab{color:#b03030}
+.import-tab.danger-tab.active-tab{color:#b03030;border-bottom-color:#b03030}
 .danger-zone h3{color:#b03030}
 
 /* ── BACKUP LIST ──────────────────────────────────────────────────────────── */
@@ -415,6 +421,13 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
      base rule are untouched, as are tab order, labels, count and clicks.
      Where mask-image is unsupported the bar renders exactly as before. */
   .tracked-player-tabs{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent 100%);mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent 100%)}
+  /* Same affordance for the two other long tab bars: Settings (10 tabs)
+     and Admin (5). Each is opted in by its own class rather than styling
+     .tab-bar-row broadly, so Games, Auth, Player Portal, Game Detail and
+     Import bars remain untouched. Visual only — overflow-x:auto and
+     flex-wrap:nowrap come from the unchanged base rule, and tab order,
+     labels, count and clicks are unaffected. */
+  .settings-tabs,.admin-tabs{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent 100%);mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent 100%)}
   .club-card-desktop-only{display:none}
   .club-card-mobile-only{display:block}
 }
@@ -818,7 +831,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
       </div>
     </div>
     <!-- Admin sub-tabs -->
-    <div class="tab-bar-row">
+    <div class="tab-bar-row admin-tabs">
       <button class="import-tab active-tab" id="atab-roadmap" onclick="switchAdminTab('roadmap')">&#128202; <span data-i18n="adm_tab_roadmap">Roadmap</span></button>
       <button class="import-tab" id="atab-kanban" onclick="switchAdminTab('kanban')">&#9646;&#9646; <span data-i18n="adm_tab_kanban">Kanban</span></button>
       <button class="import-tab" id="atab-fields" onclick="switchAdminTab('fields')">&#128065; <span data-i18n="adm_tab_fields">Field Visibility</span></button>
@@ -3563,7 +3576,7 @@ function renderAuthGate() {
         </div>
       </div>
       <div id="player-pin-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
-      <button class="btn btn-primary" style="width:100%" onclick="handlePlayerPinSubmit()">${I18n.t('acc_btn_player_login')}</button>
+      <button class="btn btn-primary" id="player-login-btn" style="width:100%" onclick="handlePlayerPinSubmit()">${I18n.t('acc_btn_player_login')}</button>
       <p style="font-size:11px;color:var(--muted);margin-top:14px;text-align:center">${I18n.t('acc_player_pin_note')}</p>
     </div>
   `;
@@ -3657,9 +3670,41 @@ function togglePinVisibility() {
 // fully offline, since the PIN is just a value already stored locally —
 // no Supabase call needed at all, matching the "player logs in with PIN"
 // requirement without depending on connectivity.
+// ── PORTAL SESSION TOKEN — expiry handling ───────────────────────────────────
+// The raw PIN is NEVER stored. Only the server-issued token and its explicit
+// expiry are persisted. Every path that could hit an RPC checks this first.
+async function getValidPortalToken() {
+  const tokenMeta = await DB.get('appMeta', 'portalSessionToken');
+  const expMeta   = await DB.get('appMeta', 'portalSessionExpiresAt');
+  if (!tokenMeta?.value) return null;
+  const expiresAt = expMeta?.value ? Date.parse(expMeta.value) : NaN;
+  if (!expiresAt || isNaN(expiresAt) || expiresAt <= Date.now()) {
+    // Expired or unusable — clear the credentials, keep the cached
+    // read-only data, and force a fresh Account Code + PIN login before
+    // any write. Never attempt an RPC with a dead token.
+    await clearPortalSessionCredentials();
+    return null;
+  }
+  return tokenMeta.value;
+}
+
+// Clears only the session CREDENTIALS. Cached read-only data is deliberately
+// preserved so an expired session still shows what it already had.
+async function clearPortalSessionCredentials() {
+  for (const k of ['portalSessionToken','portalSessionExpiresAt']) {
+    await DB.del('appMeta', k).catch(()=>{});
+  }
+}
+
+let _pinLoginInFlight = false;
 async function handlePlayerPinSubmit() {
+  // Duplicate-submit guard: a slow network login must not be re-triggered
+  // by a second tap — that could run two bootstraps interleaved.
+  if (_pinLoginInFlight) return;
+
   const pinInput = document.getElementById('player-pin');
   const codeInput = document.getElementById('player-account-code');
+  const btn = document.getElementById('player-login-btn');
   const errEl = document.getElementById('player-pin-error');
   if (errEl) errEl.style.display = 'none';
   const enteredPin = pinInput?.value.trim();
@@ -3681,64 +3726,130 @@ async function handlePlayerPinSubmit() {
     return;
   }
 
-  // Validate the Account Code itself first — locally if this device has a
-  // cached copy of the guardian's own code (from being the guardian's own
-  // device), otherwise via the network RPC. Either way, a wrong code stops
-  // the process here, before the PIN is ever checked against anything.
-  let codeValid = false;
-  const cachedCode = (await DB.get('appMeta', 'ownAccountCode'))?.value;
-  if (cachedCode && cachedCode.toUpperCase() === enteredCode.toUpperCase()) {
-    codeValid = true;
-  }
-
-  let match = null;
-  if (codeValid) {
-    // Fast path: correct code confirmed locally, safe to check PIN against
-    // this device's own synced player data, fully offline.
-    const allPlayers = await DB.getAll('players');
-    match = allPlayers.find(p => p.viewerPin && p.viewerPin === enteredPin);
-    // Self-healing: a player record bootstrapped before careerPlayerId was
-    // included (a real, confirmed bug) would match here but be missing
-    // data Club History/Achievements/Events all require. Treat that as
-    // "no local match" so the code below falls through to a fresh
-    // network bootstrap instead of silently continuing with stale data.
-    if (match && !match.careerPlayerId) match = null;
-  }
-
-  if (!match) {
-    // Either the code didn't match locally, or the local PIN check found
-    // nothing — try the secure server-side RPC, which independently
-    // re-validates BOTH the code and the PIN together, never one alone.
-    try {
-      const rpcResult = await Sync.validatePlayerPinRemote(enteredCode, enteredPin);
-      if (!rpcResult) {
-        if (errEl) { errEl.textContent = I18n.t('acc_err_pin_invalid'); errEl.style.display = ''; }
-        return;
-      }
-      match = await Sync.bootstrapPlayerFromRemote(rpcResult);
-      if (!match) {
-        if (errEl) { errEl.textContent = I18n.t('acc_err_pin_invalid'); errEl.style.display = ''; }
-        return;
-      }
-    } catch(err) {
-      if (errEl) { errEl.textContent = I18n.t('acc_err_pin_network', {msg: err.message}); errEl.style.display = ''; }
-      return;
+  _pinLoginInFlight = true;
+  if (btn) { btn.disabled = true; btn.textContent = I18n.t('common_saving'); }
+  try {
+    // Validate the Account Code itself first — locally if this device has a
+    // cached copy of the guardian's own code (from being the guardian's own
+    // device), otherwise via the network RPC. Either way, a wrong code stops
+    // the process here, before the PIN is ever checked against anything.
+    let codeValid = false;
+    const cachedCode = (await DB.get('appMeta', 'ownAccountCode'))?.value;
+    if (cachedCode && cachedCode.toUpperCase() === enteredCode.toUpperCase()) {
+      codeValid = true;
     }
-  }
 
-  State.portalPlayerId = match.playerId;
-  await DB.put('appMeta', { metaKey: 'portalPlayerId', value: match.playerId });
-  document.getElementById('authGate').style.display = 'none';
-  document.getElementById('playerPortal').style.display = 'flex';
-  document.getElementById('playerPortalName').textContent = shortName(match.fullName);
-  const portalInfoEl1 = document.getElementById('portalMobileAccountInfo');
-  if (portalInfoEl1) portalInfoEl1.textContent = I18n.t('acc_logged_in_as') + ': ' + shortName(match.fullName);
-  setupPlayerPortalNav();
-  // Make sure the season/meta context is loaded the same way the guardian
-  // app loads it, since the portal reuses the same season-scoped data.
-  await loadMeta();
-  await Nav.goPortal('home');
-  Toast.show(I18n.t('acc_player_login_success', {name: shortName(match.fullName)}));
+    let match = null;
+    if (codeValid) {
+      // Fast path: correct code confirmed locally, safe to check PIN against
+      // this device's own synced player data, fully offline.
+      const allPlayers = await DB.getAll('players');
+      match = allPlayers.find(p => p.viewerPin && p.viewerPin === enteredPin);
+      // Self-healing: a player record bootstrapped before careerPlayerId was
+      // included (a real, confirmed bug) would match here but be missing
+      // data Club History/Achievements/Events all require. Treat that as
+      // "no local match" so the code below falls through to a fresh
+      // network bootstrap instead of silently continuing with stale data.
+      if (match && !match.careerPlayerId) match = null;
+    }
+
+    if (!match) {
+      // Either the code didn't match locally, or the local PIN check found
+      // nothing — go through the secure server-side bootstrap RPC, which
+      // independently re-validates BOTH the code and the PIN together,
+      // issues an expiring portal session token, and returns the
+      // player-scoped dataset the portal needs on a brand-new device.
+      let remoteResult = null;
+      try {
+        remoteResult = await Sync.portalBootstrapRemote(enteredCode, enteredPin);
+      } catch(err) {
+        // Generic translated error only — never surface raw internals here.
+        console.error('[portal login] bootstrap error:', err);
+        if (errEl) { errEl.textContent = I18n.t('acc_err_portal_login_failed'); errEl.style.display = ''; }
+        return;
+      }
+      if (!remoteResult) {
+        if (errEl) { errEl.textContent = I18n.t('acc_err_pin_invalid'); errEl.style.display = ''; }
+        return;
+      }
+
+      // ── OWNER / CACHE BOUNDARY ──────────────────────────────────────────
+      // 1. On a guardian's own device, a code belonging to a DIFFERENT
+      //    account must never bootstrap foreign family data over the
+      //    guardian's local data. Refuse outright.
+      if (Auth.isLoggedIn() && remoteResult.parent_user_id !== Auth.getUserId()) {
+        console.error('[portal login] refused: Account Code belongs to a different account than this device');
+        if (errEl) { errEl.textContent = I18n.t('acc_err_portal_login_failed'); errEl.style.display = ''; }
+        return;
+      }
+      // 2. On a standalone portal device, switching to a different Account
+      //    Code removes only the PREVIOUS PORTAL OWNER'S imported records —
+      //    never a blanket wipe, so guardian-owned local data (if any ever
+      //    exists on this device) is structurally untouchable here.
+      const prevOwner = (await DB.get('appMeta', 'portalOwnerUserId'))?.value;
+      if (prevOwner && prevOwner !== remoteResult.parent_user_id) {
+        await Sync.clearPortalCachedData(prevOwner);
+      }
+
+      // ── ATOMIC IMPORT ───────────────────────────────────────────────────
+      // Validates the whole response, prepares every record, then writes in
+      // a single transaction. Any failure throws here and NO portal session
+      // is created — a partial portal is never opened.
+      try {
+        await Sync.applyPortalBootstrap(remoteResult);
+      } catch(err) {
+        console.error('[portal login] bootstrap import rejected/failed:', err);
+        if (errEl) { errEl.textContent = I18n.t('acc_err_portal_login_failed'); errEl.style.display = ''; }
+        return; // session meta deliberately NOT written
+      }
+
+      match = await DB.get('players', parseInt(remoteResult.player_local_id));
+      if (!match || !match.careerPlayerId) {
+        console.error('[portal login] import completed but matched player is missing or incomplete');
+        if (errEl) { errEl.textContent = I18n.t('acc_err_portal_login_failed'); errEl.style.display = ''; }
+        return;
+      }
+
+      // Import verified — only now are the session credentials created.
+      await DB.put('appMeta', { metaKey: 'portalOwnerUserId', value: remoteResult.parent_user_id });
+      await DB.put('appMeta', { metaKey: 'portalAccountCode', value: enteredCode.toUpperCase() });
+      if (remoteResult.session_token) {
+        await DB.put('appMeta', { metaKey: 'portalSessionToken', value: remoteResult.session_token });
+        await DB.put('appMeta', { metaKey: 'portalSessionExpiresAt', value: remoteResult.session_expires_at || null });
+      }
+      if (!Auth.isLoggedIn()) {
+        await DB.put('appMeta', { metaKey: 'portalStandalone', value: true });
+      }
+    } else {
+      // Local fast path — this device is the guardian's own, so the portal
+      // owner is the logged-in guardian and no server token is needed.
+      if (Auth.isLoggedIn()) {
+        await DB.put('appMeta', { metaKey: 'portalOwnerUserId', value: Auth.getUserId() });
+      }
+    }
+
+    State.portalPlayerId = match.playerId;
+    await DB.put('appMeta', { metaKey: 'portalPlayerId', value: match.playerId });
+    document.getElementById('authGate').style.display = 'none';
+    document.getElementById('playerPortal').style.display = 'flex';
+    document.getElementById('playerPortalName').textContent = shortName(match.fullName);
+    const portalInfoEl1 = document.getElementById('portalMobileAccountInfo');
+    if (portalInfoEl1) portalInfoEl1.textContent = I18n.t('acc_logged_in_as') + ': ' + shortName(match.fullName);
+    setupPlayerPortalNav();
+    // Make sure the season/meta context is loaded the same way the guardian
+    // app loads it, since the portal reuses the same season-scoped data.
+    await loadMeta();
+    await Nav.goPortal('home');
+    Toast.show(I18n.t('acc_player_login_success', {name: shortName(match.fullName)}));
+  } catch(err) {
+    // Last-resort catch: anything unexpected shows the generic message,
+    // with the real error going to the console only.
+    console.error('[portal login] unexpected error:', err);
+    if (errEl) { errEl.textContent = I18n.t('acc_err_portal_login_failed'); errEl.style.display = ''; }
+  } finally {
+    _pinLoginInFlight = false;
+    if (btn) { btn.disabled = false; btn.textContent = I18n.t('acc_btn_player_login'); }
+  }
 }
 
 // Wires the portal's hamburger menu open/close — separate from the
@@ -4402,11 +4513,30 @@ async function handleLogout() {
   await resetAppStateForNewUser(null);
 }
 
-async function handlePlayerPortalExit() {
-  if (!window.confirm(I18n.t('pp_exit_confirm'))) return;
+async function handlePlayerPortalExit(skipConfirm) {
+  if (!skipConfirm && !window.confirm(I18n.t('pp_exit_confirm'))) return;
+  // ── COMPLETE PORTAL EXIT CLEANUP ────────────────────────────────────────
+  // Every piece of portal state goes: in-memory State, sessionStorage, and
+  // all portal appMeta keys — nothing may leak into a following guardian
+  // session or a different player's login.
+  const wasStandalone = !!((await DB.get('appMeta', 'portalStandalone'))?.value);
+  const ownerUserId = (await DB.get('appMeta', 'portalOwnerUserId'))?.value || null;
   document.getElementById('playerPortal').style.display = 'none';
   State.portalPlayerId = null;
-  await DB.del('appMeta', 'portalPlayerId').catch(()=>{});
+  State.currentPortalSection = null;
+  State.portalTrainingSubTab = null;
+  try { sessionStorage.removeItem('squadTracker_lastPortalSection'); } catch(e) {}
+  for (const k of ['portalPlayerId','portalOwnerUserId','portalAccountCode','portalSessionToken','portalSessionExpiresAt','portalStandalone']) {
+    await DB.del('appMeta', k).catch(()=>{});
+  }
+  // A standalone portal device must not leave the family's data cached
+  // after logout — this is the shared-device scenario the Account Code +
+  // PIN design exists for. Only records THIS portal owner imported are
+  // removed (they carry the portalBootstrapRecord marker); guardian-owned
+  // data carries no marker and is structurally unreachable from here.
+  if (wasStandalone && !Auth.isLoggedIn()) {
+    await Sync.clearPortalCachedData(ownerUserId);
+  }
   renderAuthGate();
   applyAuthGateBackground();
   document.getElementById('authGate').style.display = 'flex';
@@ -4662,6 +4792,25 @@ async function deleteOpponent(id) {
 // controls shown when not permitted) — see renderTrainingTab and the player
 // portal for where each side's buttons are conditionally shown.
 
+// ── PLAYER PORTAL SECURITY PASS — central training authorization ─────────────
+// The training identity is derived from State.portalPlayerId, never from a
+// caller-supplied viewAs alone: while a portal session is active, every
+// training call acts as THAT player and only for that player's data; outside
+// a portal session, a caller claiming 'player' is downgraded to 'guardian'
+// (the trusted identity on a guardian device is the logged-in guardian).
+function resolveTrainingActor(requestedViewAs) {
+  if (State.portalPlayerId) return { as: 'player', playerId: State.portalPlayerId };
+  return { as: 'guardian', playerId: null };
+}
+
+// True only if the active identity may act on the given player's training
+// data: a portal player may only ever touch their own; a guardian may touch
+// any of their tracked players.
+function isTrainingOwnershipAllowed(targetPlayerId) {
+  if (!State.portalPlayerId) return true;
+  return parseInt(targetPlayerId) === parseInt(State.portalPlayerId);
+}
+
 async function getTrainingSessionsForPlayer(playerId, seasonId) {
   const all = await DB.getAll('trainingSessions', 'playerId', playerId);
   return seasonId ? all.filter(s => s.seasonId === seasonId) : all;
@@ -4672,16 +4821,100 @@ async function saveTrainingSession(session) {
   //             status, createdBy, drills: [...], notes }
   if (!session.playerId) throw new Error('Training session must have a playerId.');
   if (!session.createdBy) throw new Error('Training session must have a createdBy.');
+
+  // ── CENTRAL PORTAL AUTHORIZATION ───────────────────────────────────────
+  // Based on State.portalPlayerId, not on anything the caller claims.
+  if (State.portalPlayerId) {
+    if (!isTrainingOwnershipAllowed(session.playerId)) {
+      throw new Error(I18n.t('tr_err_not_your_session'));
+    }
+
+    // ── OWNERSHIP RULES ──────────────────────────────────────────────────
+    // A player may CREATE their own sessions, EDIT their own sessions, and
+    // COMPLETE a guardian-created one — but completing must never convert
+    // a guardian-assigned session into a player-created one, and must never
+    // let the player rewrite the guardian's assignment structure.
+    const existing = session.trainingSessionId
+      ? await DB.get('trainingSessions', session.trainingSessionId)
+      : null;
+
+    if (!existing) {
+      session.createdBy = 'player'; // new session authored by the player
+    } else if (existing.createdBy === 'guardian') {
+      // Guardian-assigned: rebuild from the STORED record so only the
+      // completion fields can change. Structural fields are restored from
+      // the guardian's version regardless of what the caller sent.
+      session = {
+        ...existing,
+        status: session.status,
+        drills: session.drills,
+        notes:  session.notes !== undefined ? session.notes : existing.notes,
+        // Immutable — always the guardian's values:
+        trainingSessionId: existing.trainingSessionId,
+        playerId:          existing.playerId,
+        seasonId:          existing.seasonId,
+        title:             existing.title,
+        scheduledDate:     existing.scheduledDate,
+        createdBy:         'guardian',
+      };
+    } else {
+      session.createdBy = 'player'; // editing own session — ownership unchanged
+    }
+
+    // ── STANDALONE DEVICE: SERVER-SIDE WRITE ─────────────────────────────
+    // No guardian account on this device means no authenticated push path
+    // exists — the write must be accepted server-side via the portal
+    // session token, where ownership is re-verified, before it is kept
+    // locally. A rejected or unreachable server means the save fails,
+    // never a silent local-only write that would be lost.
+    if (!Auth.isLoggedIn()) {
+      if (!session.trainingSessionId) session.trainingSessionId = Date.now();
+      const token = await getValidPortalToken(); // null if missing or expired
+      if (!token) {
+        console.error('[portal] training save refused — portal session token missing or expired');
+        throw new Error(I18n.t('acc_err_portal_session_expired'));
+      }
+      try {
+        const saved = await Sync.portalTrainingSaveRemote(token, session.cloudId || null, session.trainingSessionId, session);
+        if (saved && saved.id) session.cloudId = saved.id;
+        session.syncStatus = 'synced';
+      } catch(err) {
+        console.error('[portal] remote training save failed:', err);
+        throw new Error(I18n.t('tr_err_save_failed'));
+      }
+      return _origPut('trainingSessions', session); // already synced — must not be re-marked as locally modified
+    }
+  }
   return DB.put('trainingSessions', session);
 }
 
 async function deleteTrainingSession(id, requestingAs) {
   const existing = await DB.get('trainingSessions', id);
   if (!existing) return;
-  // Enforce the permission rule even if a UI bug ever lets the call through —
-  // the player can only delete their own sessions, never a guardian-assigned one.
-  if (requestingAs === 'player' && existing.createdBy !== 'player') {
-    throw new Error('Players cannot delete sessions created by a guardian.');
+  const actor = resolveTrainingActor(requestingAs);
+  if (actor.as === 'player') {
+    // A portal player may only ever delete their own, player-created sessions.
+    if (!isTrainingOwnershipAllowed(existing.playerId)) {
+      throw new Error(I18n.t('tr_err_not_your_session'));
+    }
+    if (existing.createdBy !== 'player') {
+      throw new Error('Players cannot delete sessions created by a guardian.');
+    }
+    // Standalone device: the delete must be accepted server-side first —
+    // the RPC re-verifies the token, the player, and the createdBy rule.
+    if (!Auth.isLoggedIn() && existing.cloudId) {
+      const token = await getValidPortalToken();
+      if (!token) {
+        console.error('[portal] training delete refused — portal session token missing or expired');
+        throw new Error(I18n.t('acc_err_portal_session_expired'));
+      }
+      try {
+        await Sync.portalTrainingDeleteRemote(token, existing.cloudId);
+      } catch(err) {
+        console.error('[portal] remote training delete failed:', err);
+        throw new Error(I18n.t('tr_err_save_failed'));
+      }
+    }
   }
   await DB.softDelete('trainingSessions', id);
 }
@@ -5000,6 +5233,11 @@ const TR = {
     // ── DASHBOARD PAGE ──
     dash_card_season_record:'Season Record',
     dash_played:'Played', dash_won:'Won', dash_drawn:'Drawn', dash_lost:'Lost',
+    dash_empty_none_title:'No games scheduled', dash_empty_none_desc:'Add your first game to start tracking this season.',
+    dash_error_title:'Couldn\u2019t load the dashboard', dash_error_desc:'Something went wrong while loading this page. Please try again.',
+    common_retry:'Try Again',
+    dash_empty_no_completed_title:'No completed games yet', dash_empty_no_completed_desc:'Season statistics will appear after the first completed game.',
+    dash_no_tracked_players:'No players are being tracked yet',
     dash_goals_for:'Goals For', dash_goals_against:'Against', dash_current_form:'Current Form',
     set_tab_brandassets:'Branding',
     set_brandassets_title:'Brand Assets', set_brandassets_intro:'Manage the images used across every Team page, such as the header background and default logos. Change a URL here and every page updates automatically — no code changes needed.',
@@ -5735,6 +5973,14 @@ const TR = {
     acc_player_gate_intro:'Enter the PIN your guardian gave you to see your stats and training.',
     acc_lbl_pin:'PIN',
     acc_lbl_account_code:'Account Code', acc_err_pin_network:'Could not check that Account Code — {msg}',
+    acc_err_portal_login_failed:'Login is not available right now. Please check your details and try again.',
+    acc_err_portal_session_expired:'Your session has expired. Please sign in again with your Account Code and PIN.',
+    acc_pin_saved_career:'PIN saved — applies to all {count} seasons for this player.',
+    acc_pin_removed_career:'PIN removed from all {count} seasons. Portal access is revoked.',
+    acc_pin_career_note:'This PIN belongs to the player, not the season. Saving or removing it applies to all {count} of their seasons.',
+    pp_err_page_generic:'Something went wrong loading this page. Please try again.',
+    tr_err_not_your_session:'You can only manage your own training sessions.',
+    tr_err_save_failed:'Could not save the training session. Please check your connection and try again.',
     acc_loading_code:'Loading your Account Code...',
     acc_account_code_label:'Your Account Code',
     acc_code_hint:'Share this code with your player, along with their PIN, so they can log in on a new phone.',
@@ -5901,6 +6147,7 @@ const TR = {
     adm_subtitle:'Super Admin — NextEleven',
     adm_btn_add_item:'Add Item',
     adm_tab_roadmap:'Roadmap', adm_tab_kanban:'Kanban', adm_tab_fields:'Field Visibility', adm_tab_debug:'Debug',
+    adm_err_not_authorised:'You do not have access to that area.',
     adm_tab_integrity:'Database Integrity',
     integ_title:'Database Integrity', integ_intro:'Scans for duplicate records and broken references caused by sync issues, and repairs them safely without losing any data.',
     integ_btn_scan:'Scan Database', integ_scanning:'Scanning…', integ_all_clean:'No issues found. Everything looks clean.',
@@ -6222,6 +6469,11 @@ const TR = {
     // ── DASHBOARD PAGE ──
     dash_card_season_record:'Registo da Época',
     dash_played:'Jogos', dash_won:'Vitórias', dash_drawn:'Empates', dash_lost:'Derrotas',
+    dash_empty_none_title:'Sem jogos agendados', dash_empty_none_desc:'Adicione o primeiro jogo para começar a acompanhar esta época.',
+    dash_error_title:'Não foi possível carregar o painel', dash_error_desc:'Ocorreu um erro ao carregar esta página. Por favor tente novamente.',
+    common_retry:'Tentar Novamente',
+    dash_empty_no_completed_title:'Ainda sem jogos concluídos', dash_empty_no_completed_desc:'As estatísticas da época aparecem após o primeiro jogo concluído.',
+    dash_no_tracked_players:'Ainda não há jogadores acompanhados',
     dash_goals_for:'Golos Marcados', dash_goals_against:'Golos Sofridos', dash_current_form:'Forma Atual',
     set_tab_brandassets:'Marca',
     set_brandassets_title:'Recursos de Marca', set_brandassets_intro:'Gira as imagens usadas em todas as páginas de Equipa, como o fundo do cabeçalho e os logótipos por defeito. Altere um URL aqui e todas as páginas atualizam automaticamente — sem necessidade de alterar código.',
@@ -6957,6 +7209,14 @@ const TR = {
     acc_player_gate_intro:'Introduza o PIN que o seu encarregado lhe deu para ver as suas estatísticas e treino.',
     acc_lbl_pin:'PIN',
     acc_lbl_account_code:'Código da Conta', acc_err_pin_network:'Não foi possível verificar esse Código da Conta — {msg}',
+    acc_err_portal_login_failed:'Não é possível iniciar sessão neste momento. Verifique os dados e tente novamente.',
+    acc_err_portal_session_expired:'A sua sessão expirou. Inicie sessão novamente com o Código da Conta e o PIN.',
+    acc_pin_saved_career:'PIN guardado — aplica-se a todas as {count} épocas deste jogador.',
+    acc_pin_removed_career:'PIN removido de todas as {count} épocas. O acesso ao portal foi revogado.',
+    acc_pin_career_note:'Este PIN pertence ao jogador, não à época. Guardar ou remover aplica-se a todas as {count} épocas.',
+    pp_err_page_generic:'Ocorreu um erro ao carregar esta página. Tente novamente.',
+    tr_err_not_your_session:'Só pode gerir as suas próprias sessões de treino.',
+    tr_err_save_failed:'Não foi possível guardar a sessão de treino. Verifique a ligação e tente novamente.',
     acc_loading_code:'A carregar o seu Código da Conta...',
     acc_account_code_label:'O Seu Código da Conta',
     acc_code_hint:'Partilhe este código com o seu jogador, junto com o PIN dele, para que possa iniciar sessão num novo telemóvel.',
@@ -7123,6 +7383,7 @@ const TR = {
     adm_subtitle:'Super Admin — NextEleven',
     adm_btn_add_item:'Adicionar Item',
     adm_tab_roadmap:'Roteiro', adm_tab_kanban:'Kanban', adm_tab_fields:'Visibilidade de Campos', adm_tab_debug:'Depuração',
+    adm_err_not_authorised:'Não tem acesso a essa área.',
     adm_tab_integrity:'Integridade da Base de Dados',
     integ_title:'Integridade da Base de Dados', integ_intro:'Procura registos duplicados e referências quebradas causadas por problemas de sincronização, e corrige-os em segurança sem perder dados.',
     integ_btn_scan:'Analisar Base de Dados', integ_scanning:'A analisar…', integ_all_clean:'Nenhum problema encontrado. Está tudo limpo.',
@@ -7702,6 +7963,54 @@ const DB = (() => {
     return put(store, record);
   }
 
+  // ── ATOMIC MULTI-STORE WRITE ────────────────────────────────────────────
+  // One IndexedDB transaction spanning every affected store: either all
+  // records land or none do. Used by the Player Portal bootstrap, where a
+  // partially-imported cache is worse than no cache at all.
+  //
+  // Every put() is issued synchronously inside the same tick — an await
+  // between them would let the transaction auto-commit and silently break
+  // the atomicity guarantee. The first row-level failure aborts the whole
+  // transaction and the promise rejects; nothing is swallowed.
+  function putManyAtomic(recordsByStore) {
+    return new Promise((resolve, reject) => {
+      const stores = Object.keys(recordsByStore).filter(s => (recordsByStore[s] || []).length);
+      if (!stores.length) { resolve(0); return; }
+      const missing = stores.filter(s => !_db.objectStoreNames.contains(s));
+      if (missing.length) {
+        reject(new Error(`Cannot import — missing object store(s): ${missing.join(', ')}. Reload the app to apply a pending database upgrade.`));
+        return;
+      }
+      let t;
+      try { t = tx(stores, 'readwrite'); }
+      catch(err) { reject(err); return; }
+
+      let written = 0;
+      let failure = null;
+      t.oncomplete = () => { if (failure) reject(failure); else resolve(written); };
+      t.onerror    = e  => reject(failure || e.target.error || new Error('Atomic import transaction failed.'));
+      t.onabort    = () => reject(failure || new Error('Atomic import transaction aborted.'));
+
+      try {
+        for (const store of stores) {
+          const os = t.objectStore(store);
+          for (const rec of recordsByStore[store]) {
+            const req = os.put(rec);
+            req.onsuccess = () => { written++; };
+            req.onerror = e => {
+              failure = e.target.error || new Error(`Write failed in store "${store}".`);
+              e.preventDefault(); // suppress the default abort so our own error survives
+              try { t.abort(); } catch(_) {}
+            };
+          }
+        }
+      } catch(err) {
+        failure = err;
+        try { t.abort(); } catch(_) {}
+      }
+    });
+  }
+
   function clear(store) {
     return new Promise((resolve, reject) => {
       const t = tx(store, 'readwrite');
@@ -7756,7 +8065,7 @@ const DB = (() => {
     }
   }
 
-  return { open, get, getAll, put, del, softDelete, clear, getAllFromAllStores, restoreAllStores, hasStore, clearAllRealStores };
+  return { open, get, getAll, put, del, softDelete, clear, putManyAtomic, getAllFromAllStores, restoreAllStores, hasStore, clearAllRealStores };
 })();
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -8193,7 +8502,10 @@ async function initAdmin() {
 // ── Admin tab switching ────────────────────────────────────────────────────────
 function switchAdminTab(tab) {
   ['roadmap','kanban','fields','debug','integrity'].forEach(t => {
-    document.getElementById(`admin-panel-${t}`).style.display = t === tab ? '' : 'none';
+    // Guarded the same way switchSettingsTab does — a missing panel
+    // previously threw here and stopped every tab from switching.
+    const panel = document.getElementById(`admin-panel-${t}`);
+    if (panel) panel.style.display = t === tab ? '' : 'none';
     document.getElementById(`atab-${t}`)?.classList.toggle('active-tab', t === tab);
   });
   if (tab === 'roadmap') renderRoadmapTable();
@@ -13160,6 +13472,14 @@ function openHomeTraining(playerId) {
 }
 
 async function openTrainingForm(playerId, viewAs, existingSessionId) {
+  // Central authorization — identity comes from the portal state, never
+  // from the caller-supplied viewAs alone.
+  const actor = resolveTrainingActor(viewAs);
+  viewAs = actor.as;
+  if (!isTrainingOwnershipAllowed(playerId)) {
+    Toast.error(I18n.t('tr_err_not_your_session'));
+    return;
+  }
   const panel = document.getElementById(`trainingFormPanel-${playerId}`);
   if (!panel) return;
   _trainingFormPlayerId = playerId;
@@ -13415,7 +13735,14 @@ async function saveTrainingFormSession() {
   const title = document.getElementById('tr-title')?.value.trim();
   if (!title) { Toast.error(I18n.t('tr_err_title_required')); return; }
   const playerId = _trainingFormPlayerId;
-  const viewAs = _trainingFormViewAs;
+  // Re-resolve the identity at save time — the stored viewAs is never
+  // trusted on its own, and ownership is re-checked here in case the
+  // portal state changed between opening the form and saving it.
+  const viewAs = resolveTrainingActor(_trainingFormViewAs).as;
+  if (!isTrainingOwnershipAllowed(playerId)) {
+    Toast.error(I18n.t('tr_err_not_your_session'));
+    return;
+  }
 
   const session = {
     playerId,
@@ -13454,6 +13781,13 @@ async function saveTrainingFormSession() {
 async function openTrainingViewer(sessionId, viewAs) {
   const session = await DB.get('trainingSessions', sessionId);
   if (!session) return;
+  // Central authorization — a portal player may only ever view their own
+  // sessions; the effective role comes from the portal state, not the caller.
+  viewAs = resolveTrainingActor(viewAs).as;
+  if (!isTrainingOwnershipAllowed(session.playerId)) {
+    Toast.error(I18n.t('tr_err_not_your_session'));
+    return;
+  }
   const player = await DB.get('players', session.playerId);
   const canEdit = canEditTrainingSession(session, viewAs);
   const canDelete = canDeleteTrainingSession(session, viewAs);
@@ -13511,6 +13845,13 @@ async function openTrainingViewer(sessionId, viewAs) {
 async function openTrainingCompletionForm(sessionId, viewAs) {
   const session = await DB.get('trainingSessions', sessionId);
   if (!session) return;
+  // Central authorization — same rule as the viewer: identity from the
+  // portal state, ownership re-checked against the session's player.
+  viewAs = resolveTrainingActor(viewAs).as;
+  if (!isTrainingOwnershipAllowed(session.playerId)) {
+    Toast.error(I18n.t('tr_err_not_your_session'));
+    return;
+  }
   const player = await DB.get('players', session.playerId);
 
   _trainingFormDrills = JSON.parse(JSON.stringify(session.drills||[]));
@@ -13601,6 +13942,14 @@ function handleCompletionStatusChange(index, newStatus) {
 async function saveTrainingCompletion() {
   const session = await DB.get('trainingSessions', _trainingCompletionSessionId);
   if (!session) return;
+  // Central authorization — re-checked at save time against the portal
+  // state, in case it changed while the completion overlay was open.
+  _trainingCompletionViewAs = resolveTrainingActor(_trainingCompletionViewAs).as;
+  if (!isTrainingOwnershipAllowed(session.playerId)) {
+    Toast.error(I18n.t('tr_err_not_your_session'));
+    document.getElementById('trainingCompletionOverlay')?.remove();
+    return;
+  }
 
   // ── PHASE 2 — Personal Best celebration ──────────────────────────────────
   // Capture each drill's Personal Best BEFORE this save, so after saving we
@@ -13709,6 +14058,13 @@ function confirmDeleteTrainingSession(sessionId, viewAs) {
   if (!window.confirm(I18n.t('tr_confirm_delete_body'))) return;
   (async () => {
     const session = await DB.get('trainingSessions', sessionId);
+    // Central authorization — identity from portal state; deleteTrainingSession
+    // below enforces the same rules again as the last line of defence.
+    viewAs = resolveTrainingActor(viewAs).as;
+    if (session && !isTrainingOwnershipAllowed(session.playerId)) {
+      Toast.error(I18n.t('tr_err_not_your_session'));
+      return;
+    }
     try {
       await deleteTrainingSession(sessionId, viewAs);
       document.getElementById('trainingViewerOverlay')?.remove();
@@ -14181,8 +14537,13 @@ async function renderPlayerPortalTeamSummary() {
   const pStats = players.filter(p=>p.isActive).map(p => ({
     ...p, ...Calc.playerSeasonStats(p.playerId, finishedGames, allGP)
   }));
-  const topScorers = [...pStats].sort((a,b)=>b.goals-a.goals).slice(0,5);
-  const topAssisters = [...pStats].sort((a,b)=>b.assists-a.assists).slice(0,5);
+  // Zero-value players are filtered out, matching mostApps and mostMoM
+  // below and the coach-facing Team Summary. Without this a squad that
+  // has scored nothing still showed a "Top Scorer" on 0 goals — the same
+  // defect already corrected on the coach side. The shared leaderCard
+  // helper and the layout are deliberately unchanged.
+  const topScorers = [...pStats].filter(p=>p.goals>0).sort((a,b)=>b.goals-a.goals).slice(0,5);
+  const topAssisters = [...pStats].filter(p=>p.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,5);
   const mostApps = [...pStats].filter(p=>p.calledUp>0).sort((a,b)=>b.calledUp-a.calledUp).slice(0,5);
   const mostMoM = [...pStats].sort((a,b)=>b.mom-a.mom).filter(p=>p.mom>0).slice(0,5);
 
@@ -14901,6 +15262,11 @@ const Render = (() => {
   }
 
   // ── DASHBOARD — pure analytics ──────────────────────────────────────────────
+  // Guards against stale async renders, matching the pattern already used
+  // by Squad and Games — an earlier, slower render must never overwrite a
+  // newer one.
+  let _dashRenderSeq = 0;
+
   async function dashboard() {
     const el  = document.getElementById('dashContent');
     const sub = document.getElementById('dashSubtitle');
@@ -14910,6 +15276,8 @@ const Render = (() => {
       el.innerHTML = `<div class="empty"><strong>${I18n.t('home_no_season_title')}</strong><p>${I18n.t('home_no_season_desc')}</p><button class="btn btn-primary" onclick="Nav.go('home')">${I18n.t('home_go_to_home')}</button></div>`;
       return;
     }
+
+    const mySeq = ++_dashRenderSeq;
 
     try {
 
@@ -14922,12 +15290,37 @@ const Render = (() => {
       DB.getAll('gamePlayers','seasonId',State.currentSeasonId),
     ]);
 
+    if (mySeq !== _dashRenderSeq) return; // a newer render started while we awaited
+
     // Only finished games count towards season totals shown here.
     const finishedGames = games.filter(g => isGameResultVisible(g));
 
-    const ts = Calc.teamSeasonStats(finishedGames, allGP);
-    const trackedPlayers = allPlayers.filter(p => p.trackingStatus === 'tracked' && p.isActive);
+    // Two genuinely distinct empty states, decided from the unfiltered
+    // season data. Previously a season with no games — or nothing but
+    // future fixtures — rendered a full record of zeros, which reads as
+    // "played and achieved nothing" rather than "nothing has happened
+    // yet". Uses the same isGameResultVisible rule as every calculation
+    // below; no new completion rule.
+    if (!games.length) {
+      if (mySeq !== _dashRenderSeq) return;
+      el.innerHTML = `<div class="empty"><strong>${I18n.t('dash_empty_none_title')}</strong><p>${I18n.t('dash_empty_none_desc')}</p>
+        <button class="btn btn-primary" onclick="Nav.go('games');setTimeout(()=>document.getElementById('btnAddGame')?.click(),100)">+ ${I18n.t('games_btn_add')}</button></div>`;
+      return;
+    }
+    if (!finishedGames.length) {
+      if (mySeq !== _dashRenderSeq) return;
+      el.innerHTML = `<div class="empty"><strong>${I18n.t('dash_empty_no_completed_title')}</strong><p>${I18n.t('dash_empty_no_completed_desc')}</p></div>`;
+      return;
+    }
 
+    const ts = Calc.teamSeasonStats(finishedGames, allGP);
+    // Archived tracked players are included, matching the Tracked Player
+    // page. Previously an isActive requirement here meant archiving a
+    // player at season end silently removed them from the Dashboard even
+    // though their record was intact. They are clearly marked.
+    const trackedPlayers = allPlayers.filter(p => p.trackingStatus === 'tracked');
+
+    if (mySeq !== _dashRenderSeq) return; // a newer render superseded this one
     el.innerHTML = `
       <!-- SEASON RECORD -->
       <div class="card">
@@ -14956,6 +15349,12 @@ const Render = (() => {
       </div>
 
       <!-- TRACKED PLAYERS -->
+      ${!trackedPlayers.length ? `
+      <div class="card" style="display:flex;align-items:center;gap:10px;padding:10px 14px">
+        <span style="font-size:16px">&#11088;</span>
+        <span style="font-size:13px;color:var(--muted);flex:1">${I18n.t('dash_no_tracked_players')}</span>
+        <button class="btn btn-secondary btn-sm" onclick="Nav.go('squad')">${I18n.t('home_btn_go_to_squad')}</button>
+      </div>` : ''}
       ${trackedPlayers.map(tp => {
         const tpStats = Calc.playerSeasonStats(tp.playerId, finishedGames, allGP);
         const tpGames = [...games].sort((a,b)=>gameSortKey(b)-gameSortKey(a)).slice(0,5);
@@ -14973,7 +15372,7 @@ const Render = (() => {
         <div class="card" style="cursor:pointer" onclick="Nav.go('tracked-${tp.playerId}')">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
             <div>
-              <div style="font-weight:700;font-size:14px">${esc(tp.fullName)}</div>
+              <div style="font-weight:700;font-size:14px">${esc(tp.fullName)}${tp.isActive?'':` <span class="badge-nc badge" style="font-size:9px">${I18n.t('squad_archived_badge')}</span>`}</div>
               <div style="font-size:11px;color:var(--muted)">${tp.primaryPosition||''}</div>
             </div>
             <span style="font-size:11px;color:var(--muted)">${I18n.t('dash_tap_arrow')}</span>
@@ -15003,8 +15402,12 @@ const Render = (() => {
     `;
 
     } catch(err) {
+      // Full diagnostics — message and stack — stay in the console. The
+      // page previously rendered err.stack directly, which is unreadable
+      // for a coach and exposes internals for no benefit.
       console.error('Dashboard render error:', err);
-      el.innerHTML = `<div class="empty"><strong>Dashboard error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;text-align:left;white-space:pre-wrap">${esc(err.message)}\n\n${esc(err.stack||'')}</p></div>`;
+      el.innerHTML = `<div class="empty"><strong>${I18n.t('dash_error_title')}</strong><p>${I18n.t('dash_error_desc')}</p>
+        <button class="btn btn-primary" onclick="Render.dashboard()">${I18n.t('common_retry')}</button></div>`;
     }
   }
 
@@ -15933,11 +16336,19 @@ const Render = (() => {
     // Load sync config for the form
     await Sync.loadConfig();
     const ss = Sync.getStatus();
+    // Four independent appMeta reads issued together rather than one after
+    // another. Same keys, same '' fallbacks, same resulting object.
+    const [uUrl, uKey, uDev, uName] = await Promise.all([
+      DB.get('appMeta','supabaseUrl'),
+      DB.get('appMeta','supabaseAnonKey'),
+      DB.get('appMeta','deviceId'),
+      DB.get('appMeta','deviceName'),
+    ]);
     const syncCfg = {
-      url: (await DB.get('appMeta','supabaseUrl'))?.value||'',
-      anonKey: (await DB.get('appMeta','supabaseAnonKey'))?.value||'',
-      deviceId: (await DB.get('appMeta','deviceId'))?.value||'',
-      deviceName: (await DB.get('appMeta','deviceName'))?.value||'',
+      url: uUrl?.value||'',
+      anonKey: uKey?.value||'',
+      deviceId: uDev?.value||'',
+      deviceName: uName?.value||'',
     };
 
     el.innerHTML = `
@@ -15951,7 +16362,7 @@ const Render = (() => {
            Tournament Management, Data (Import/Sync/Backup grouped in order),
            Danger kept separate and last. Each existing tab's own internal
            content is unchanged; only grouping/order and two new tabs added. -->
-      <div class="tab-bar-row">
+      <div class="tab-bar-row settings-tabs">
         <button class="import-tab active-tab" id="stab-seasons" onclick="switchSettingsTab('seasons')">${I18n.t('set_tab_seasons')}</button>
         <button class="import-tab" id="stab-opponents" onclick="switchSettingsTab('opponents')">${I18n.t('set_tab_opponents_catalogue')}</button>
         <button class="import-tab" id="stab-sharing" onclick="switchSettingsTab('sharing')">${I18n.t('set_tab_sharing')}</button>
@@ -15961,7 +16372,7 @@ const Render = (() => {
         <button class="import-tab" id="stab-backup" onclick="switchSettingsTab('backup')">${I18n.t('set_tab_backup')}</button>
         <button class="import-tab" id="stab-diagnostics" onclick="switchSettingsTab('diagnostics')">${I18n.t('set_tab_diagnostics')}</button>
         <button class="import-tab" id="stab-brandassets" onclick="switchSettingsTab('brandassets')">${I18n.t('set_tab_brandassets')}</button>
-        <button class="import-tab" id="stab-danger" onclick="switchSettingsTab('danger')">${I18n.t('set_tab_danger')}</button>
+        <button class="import-tab danger-tab" id="stab-danger" onclick="switchSettingsTab('danger')">${I18n.t('set_tab_danger')}</button>
       </div>
 
       <!-- SEASONS TAB -->
@@ -16458,6 +16869,36 @@ const Nav = (() => {
 
   async function go(section) {
     if (typeof gdDebugLog === 'function') gdDebugLog(`Nav.go('${section}')`);
+
+    // ── Admin route guard ──
+    // Runs BEFORE any navigation state changes. Previously this check lived
+    // inside refresh('admin'), but by the time refresh ran, go() had already
+    // activated sec-admin, marked the Admin nav button active, set
+    // current/State.currentSection to 'admin' and written 'admin' into
+    // sessionStorage — so a denied user briefly saw any previously rendered
+    // Admin markup and left stale 'admin' navigation state behind. Guarding
+    // here means a denied Nav.go('admin') mutates nothing at all.
+    //
+    // isAdmin() returns false on any error (network, lookup failure), so a
+    // failed profile request denies access rather than granting it.
+    //
+    // Recursion safety: the guard only fires for section === 'admin', so the
+    // go('home') redirect below can never re-enter this branch. If Home is
+    // already the current section, we simply return and leave it active —
+    // no redirect, no loop, and exactly one access-denied toast either way.
+    if (section === 'admin') {
+      const allowed = await isAdmin();
+      if (!allowed) {
+        document.getElementById('adminNavBtn')?.style.setProperty('display','none');
+        document.getElementById('adminNavBtnMobile')?.style.setProperty('display','none');
+        Toast.error(I18n.t('adm_err_not_authorised'));
+        if (current !== 'home') {
+          return go('home');
+        }
+        return;
+      }
+    }
+
     // close game detail if open
     document.getElementById('gamesListView').style.display = 'block';
     document.getElementById('gameDetailView').style.display = 'none';
@@ -16516,6 +16957,10 @@ const Nav = (() => {
       case 'settings':     await Render.settings(); break;
       case 'help':         Render.help(); break;
       case 'admin':
+        // Rendering responsibility only. The permission check lives at the
+        // top of go(), before any navigation state changes — so by the time
+        // this case runs via Nav.go('admin'), access has already been
+        // verified once, with no duplicate profile lookup here.
         switchAdminTab('roadmap');
         break;
       default:
@@ -16530,8 +16975,34 @@ const Nav = (() => {
   // ── PLAYER PORTAL NAVIGATION — fully separate from the guardian app's
   // go(), so there is no shared code path that could accidentally expose a
   // guardian-only section to the portal.
+  // ── PLAYER PORTAL SECURITY PASS — section allowlist ──────────────────────
+  // The complete set of sections the portal may ever show. Anything else
+  // (including any guardian section name) is forced back to 'home'.
+  const PORTAL_SECTIONS = ['home','dashboard','stats','training','games','clubs','achievements','events','teamsummary'];
+
   async function goPortal(section) {
     gdDebugLog(`goPortal('${section}') called`);
+
+    // ── IDENTITY GUARD — runs before anything else ───────────────────────
+    // No active portal identity means no portal navigation at all: hide
+    // the portal and drop back to the auth gate instead of rendering any
+    // page against a null player.
+    if (!State.portalPlayerId) {
+      gdDebugLog('goPortal blocked — no active portal session');
+      const portalEl = document.getElementById('playerPortal');
+      if (portalEl) portalEl.style.display = 'none';
+      renderAuthGate();
+      applyAuthGateBackground();
+      const gateEl = document.getElementById('authGate');
+      if (gateEl) gateEl.style.display = 'flex';
+      return;
+    }
+
+    // ── SECTION ALLOWLIST ────────────────────────────────────────────────
+    if (!PORTAL_SECTIONS.includes(section)) {
+      gdDebugLog(`goPortal — section '${section}' not in portal allowlist, forcing 'home'`);
+      section = 'home';
+    }
 
     const allSections = document.querySelectorAll('#playerPortal .section');
     gdDebugLog(`found ${allSections.length} .section elements inside #playerPortal`);
@@ -16579,17 +17050,17 @@ const Nav = (() => {
       if (navLabel) navLabel.textContent = navBtn ? navBtn.textContent.trim() : '';
       setupPageNameOnScroll();
     } catch(err) {
-      // Show the real error directly on the page instead of leaving it
-      // silently blank — async errors here would otherwise only appear in
-      // the browser console, invisible on a phone with no way to check it.
+      // Show a generic, translated message on the page instead of leaving
+      // it silently blank — the real error goes to the debug log and the
+      // console only, never rendered to the person using the portal.
       gdDebugLog(`ERROR in ${section}: ${err.message}`);
       const el = document.getElementById(`pp-sec-${section}`);
-      if (el) el.innerHTML = `<div class="empty"><strong>Something went wrong loading this page.</strong><p style="font-family:monospace;font-size:11px;color:#b03030;margin-top:8px">${esc(err.message)}</p></div>`;
+      if (el) el.innerHTML = `<div class="empty"><strong>${I18n.t('pp_err_page_generic')}</strong></div>`;
       console.error('[goPortal] render error for section', section, err);
     }
   }
 
-  return { go, refresh, current: () => current, goPortal };
+  return { go, refresh, current: () => current, goPortal, isPortalSection: (s) => PORTAL_SECTIONS.includes(s) };
 })();
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -17393,6 +17864,244 @@ const Sync = (() => {
     return minimalPlayer;
   }
 
+  // ── PLAYER PORTAL SECURITY PASS — full remote bootstrap ──────────────────
+  // Calls the portal_bootstrap RPC (anon key only — no user session exists),
+  // which server-side re-validates Account Code + PIN together, issues an
+  // expiring portal session token, and returns a PLAYER-SCOPED dataset in
+  // the same {id, payload} shape pull() consumes. goalEvents is deliberately
+  // excluded — confirmed dead store, zero reads.
+  //
+  // Stores holding records private to one player. Every row in these must
+  // belong to the matched player (or a season-sibling sharing their
+  // careerPlayerId) or the whole bootstrap is rejected client-side.
+  const PORTAL_PRIVATE_STORES = {
+    playerGameStats:  'playerId',
+    trainingSessions: 'playerId',
+    achievements:     'playerId',
+    events:           'playerId',
+    injuries:         'playerId',
+    clubHistory:      'playerId',   // careerPlayerId also accepted, see below
+    drillFavourites:  null,         // {userType,userId} shape, checked separately
+  };
+  // Team-level stores: no single-player ownership, safe for the whole squad.
+  const PORTAL_TEAM_STORES = [
+    'seasons','games','gamePlayers','opponents','tournaments',
+    'temporaryPlayers','clubTeams','externalResources','globalPlayers',
+  ];
+  // Drill-support stores, ownership expressed as {ownerType, ownerId}.
+  const PORTAL_DRILL_STORES = ['customDrills','trainingPacks'];
+
+  const PORTAL_BOOTSTRAP_STORES = [
+    ...PORTAL_TEAM_STORES, 'players', ...Object.keys(PORTAL_PRIVATE_STORES), ...PORTAL_DRILL_STORES,
+  ];
+
+  // Fields that must never reach a portal device on a teammate's record.
+  const TEAMMATE_FORBIDDEN_FIELDS = [
+    'viewerPin','developmentNotes','relationship','trackingStatus','trackingLabel',
+    'dateOfBirth','nationality','dominantFoot','height','weight','medicalNotes',
+    'medicalInfo','notes','cloudId','syncStatus','remoteOwnerUserId',
+  ];
+
+  async function portalBootstrapRemote(accountCode, pin) {
+    if (!isConfigured()) throw new Error('Sync not configured on this device.');
+    const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
+    const res = await fetch(base + 'rpc/portal_bootstrap', {
+      method: 'POST',
+      headers: {
+        'apikey':       _cfg.anonKey,
+        'Authorization':'Bearer ' + _cfg.anonKey, // anon key doubles as bearer — no user session exists yet
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_account_code: accountCode, p_pin: pin }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error('Bootstrap failed: ' + res.status + ' ' + err.slice(0,200));
+    }
+    const result = await res.json();
+    return result || null; // null = invalid code/PIN, indistinguishable by design
+  }
+
+  // ── STEP 1 — VALIDATE, then PREPARE, then WRITE ATOMICALLY ───────────────
+  // The server response is never trusted blindly. Every row is checked
+  // against the matched player's identity; a single unauthorised private
+  // record rejects the ENTIRE bootstrap. Nothing touches IndexedDB until
+  // the whole payload has passed and every record has been prepared.
+  function validatePortalBootstrap(result) {
+    if (!result || !result.data) throw new Error('Bootstrap response is empty.');
+    const matchedId = parseInt(result.player_local_id);
+    if (!matchedId) throw new Error('Bootstrap response has no matched player.');
+
+    const rowsFor = (store) => (result.data[storeToTable(store)] || []);
+
+    // Which local player ids are legitimately "this person": the matched
+    // row plus any season siblings carrying the same careerPlayerId.
+    const playerRows = rowsFor('players').map(r => r && r.payload).filter(Boolean);
+    const matched = playerRows.find(p => parseInt(p.playerId) === matchedId);
+    if (!matched) throw new Error('Bootstrap response does not contain the matched player.');
+    const career = matched.careerPlayerId || result.career_player_id || null;
+    if (!career) throw new Error('Matched player has no careerPlayerId.');
+    const ownIds = new Set(
+      playerRows.filter(p => p.careerPlayerId && p.careerPlayerId === career)
+                .map(p => parseInt(p.playerId))
+    );
+    ownIds.add(matchedId);
+
+    // No player payload may carry a PIN, own or teammate's.
+    for (const p of playerRows) {
+      if (Object.prototype.hasOwnProperty.call(p, 'viewerPin') && p.viewerPin) {
+        throw new Error('Rejected: a player record still contains viewerPin.');
+      }
+    }
+    // Teammate rows must be reduced — no private fields at all.
+    for (const p of playerRows) {
+      if (ownIds.has(parseInt(p.playerId))) continue;
+      const leaked = TEAMMATE_FORBIDDEN_FIELDS.filter(f => p[f] !== undefined && p[f] !== null);
+      if (leaked.length) {
+        throw new Error(`Rejected: teammate record exposes ${leaked.join(', ')}.`);
+      }
+    }
+
+    // Private stores — every row must belong to this person.
+    for (const [store, idField] of Object.entries(PORTAL_PRIVATE_STORES)) {
+      for (const r of rowsFor(store)) {
+        const rec = r && r.payload;
+        if (!rec) throw new Error(`Rejected: malformed row in ${store}.`);
+        if (store === 'drillFavourites') {
+          if (rec.userType !== 'player' || !ownIds.has(parseInt(rec.userId))) {
+            throw new Error('Rejected: bootstrap contains another user\'s drill favourites.');
+          }
+          continue;
+        }
+        if (store === 'clubHistory' && rec.careerPlayerId && rec.careerPlayerId === career) continue;
+        if (!ownIds.has(parseInt(rec[idField]))) {
+          throw new Error(`Rejected: bootstrap contains another player's ${store} record.`);
+        }
+      }
+    }
+
+    // Drill-support stores — official/guardian drills are shared context;
+    // another PLAYER's personal drills or packs are not.
+    for (const store of PORTAL_DRILL_STORES) {
+      for (const r of rowsFor(store)) {
+        const rec = r && r.payload;
+        if (!rec) throw new Error(`Rejected: malformed row in ${store}.`);
+        if (rec.ownerType === 'player' && !ownIds.has(parseInt(rec.ownerId))) {
+          throw new Error(`Rejected: bootstrap contains another player's ${store}.`);
+        }
+      }
+    }
+
+    return { matchedId, career, ownIds };
+  }
+
+  // Builds the complete, ready-to-write record set. No IndexedDB mutation
+  // happens here — that is deliberately a separate, atomic step.
+  function preparePortalBootstrapRecords(result, ownerUserId) {
+    const prepared = {};
+    for (const store of PORTAL_BOOTSTRAP_STORES) {
+      const rows = result.data[storeToTable(store)] || [];
+      if (!rows.length) continue;
+      prepared[store] = rows.map(r => {
+        const payload = { ...r.payload };
+        payload.cloudId = r.id;
+        payload.syncStatus = 'synced';
+        // Defence in depth: strip any PIN the server should already have
+        // removed, before it can ever reach local storage.
+        delete payload.viewerPin;
+        // Local-only provenance markers — used by the portal cache cleanup
+        // to delete exactly what it imported and nothing else. Stripped
+        // again on push so they never reach Supabase.
+        payload.portalBootstrapRecord = true;
+        payload.portalOwnerUserId = ownerUserId;
+        return payload;
+      });
+    }
+    return prepared;
+  }
+
+  // Validate → prepare → single atomic write. Throws on any failure; the
+  // caller must not create a portal session unless this resolves.
+  async function applyPortalBootstrap(result) {
+    validatePortalBootstrap(result);
+    const prepared = preparePortalBootstrapRecords(result, result.parent_user_id);
+    const written = await DB.putManyAtomic(prepared); // throws and aborts on any row failure
+    log(`Portal bootstrap imported ${written} records atomically.`);
+    return written;
+  }
+
+  // ── PORTAL CACHE CLEANUP — never touches guardian data ───────────────────
+  // Deletes ONLY records this device imported for a portal owner, identified
+  // by the local-only markers stamped in preparePortalBootstrapRecords.
+  // Guardian-created and guardian-synced records carry no such marker, so
+  // they can never match here — this replaces the previous
+  // DB.clearAllRealStores() call, which erased everything indiscriminately.
+  async function clearPortalCachedData(ownerUserId) {
+    let removed = 0;
+    for (const store of PORTAL_BOOTSTRAP_STORES) {
+      let rows;
+      try { rows = await DB.getAll(store); } catch(e) { continue; }
+      const keyField = getKey(store);
+      for (const rec of rows) {
+        if (rec.portalBootstrapRecord !== true) continue;              // guardian data — never touched
+        if (ownerUserId && rec.portalOwnerUserId !== ownerUserId) continue; // a different portal owner
+        try { await DB.del(store, rec[keyField]); removed++; }
+        catch(e) { console.error('[portal cleanup] delete failed', store, e); }
+      }
+    }
+    log(`Portal cache cleanup removed ${removed} imported records.`);
+    return removed;
+  }
+
+  // ── PLAYER PORTAL SECURITY PASS — server-side training writes ────────────
+  // Standalone portal devices have no Supabase user session, so training
+  // writes go through SECURITY DEFINER RPCs authenticated by the portal
+  // session token issued at bootstrap. The server re-verifies ownership
+  // (session player only, createdBy 'player' only) on every call — the
+  // client-side checks are UX, the RPC is the enforcement.
+  async function portalTrainingSaveRemote(sessionToken, cloudId, localId, payloadObj) {
+    if (!isConfigured()) throw new Error('Sync not configured on this device.');
+    const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
+    const res = await fetch(base + 'rpc/portal_save_training_session', {
+      method: 'POST',
+      headers: {
+        'apikey':       _cfg.anonKey,
+        'Authorization':'Bearer ' + _cfg.anonKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        p_session_token: sessionToken,
+        p_cloud_id:      cloudId || null,
+        p_local_id:      String(localId),
+        p_device_id:     _cfg.deviceId || 'portal-device',
+        p_payload:       payloadObj,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error('Remote training save failed: ' + res.status + ' ' + err.slice(0,200));
+    }
+    return await res.json(); // { id: <cloud uuid> }
+  }
+
+  async function portalTrainingDeleteRemote(sessionToken, cloudId) {
+    if (!isConfigured()) throw new Error('Sync not configured on this device.');
+    const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
+    const res = await fetch(base + 'rpc/portal_delete_training_session', {
+      method: 'POST',
+      headers: {
+        'apikey':       _cfg.anonKey,
+        'Authorization':'Bearer ' + _cfg.anonKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_session_token: sessionToken, p_cloud_id: cloudId }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error('Remote training delete failed: ' + res.status + ' ' + err.slice(0,200));
+    }
+  }
+
   async function testConnection() {
     if (!isConfigured()) return { ok: false, msg: 'Missing URL or key.' };
     if (!Auth.isLoggedIn()) return { ok: false, msg: 'Not logged in.' };
@@ -17436,6 +18145,9 @@ const Sync = (() => {
         const payloadClean = { ...record };
         delete payloadClean.cloudId;
         delete payloadClean.syncStatus;
+        // Local-only portal provenance markers — never uploaded to Supabase.
+        delete payloadClean.portalBootstrapRecord;
+        delete payloadClean.portalOwnerUserId;
 
         // family_id is retired — user_id is the sole ownership boundary
         // (confirmed via direct schema/RLS investigation: zero policies,
@@ -17910,7 +18622,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
 })();
 
 function attachEvents() {
@@ -18254,6 +18966,11 @@ function injuryTypeLabel(value) {
 async function openPortalPinModal(playerId) {
   const p = await DB.get('players', playerId);
   if (!p) return;
+  // The PIN belongs to the person, so read it from ANY of their season rows —
+  // opening the modal on a season that predates the PIN must not look "unset".
+  const careerRows = await getCareerPlayerRows(p);
+  const existingPin = (careerRows.find(r => r.viewerPin) || {}).viewerPin || '';
+  const seasonCount = careerRows.length;
 
   const overlay = document.createElement('div');
   overlay.className = 'rm-form-overlay open';
@@ -18263,13 +18980,14 @@ async function openPortalPinModal(playerId) {
       <h2>${I18n.t('acc_pin_modal_title')} — ${esc(shortName(p.fullName))}</h2>
       <p style="font-size:12px;color:var(--muted);margin:8px 0 16px">${I18n.t('acc_pin_modal_desc')}</p>
       <div class="form-grid">
-        <div class="form-group full"><label>${I18n.t('acc_lbl_pin')}</label><input id="pin-value" type="text" inputmode="numeric" maxlength="8" value="${esc(p.viewerPin||'')}" placeholder="e.g. 4821" style="text-align:center;font-size:20px;letter-spacing:3px"></div>
+        <div class="form-group full"><label>${I18n.t('acc_lbl_pin')}</label><input id="pin-value" type="text" inputmode="numeric" maxlength="8" value="${esc(existingPin)}" placeholder="e.g. 4821" style="text-align:center;font-size:20px;letter-spacing:3px"></div>
       </div>
+      ${seasonCount > 1 ? `<p style="font-size:11px;color:var(--muted);margin:8px 0 0">${I18n.t('acc_pin_career_note', {count: seasonCount})}</p>` : ''}
       <div id="pinModalAccountCode" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:11px;color:var(--muted)">${I18n.t('acc_loading_code')}</div>
       </div>
       <div class="form-actions" style="margin-top:16px;justify-content:flex-end">
-        ${p.viewerPin ? `<button class="btn btn-danger" onclick="removePortalPin(${playerId})">${I18n.t('acc_btn_remove_pin')}</button>` : ''}
+        ${existingPin ? `<button class="btn btn-danger" onclick="removePortalPin(${playerId})">${I18n.t('acc_btn_remove_pin')}</button>` : ''}
         <button class="btn btn-secondary" onclick="document.getElementById('pinModalOverlay').remove()">${I18n.t('common_cancel')}</button>
         <button class="btn btn-primary" onclick="savePortalPin(${playerId})">${I18n.t('common_save')}</button>
       </div>
@@ -18303,6 +19021,26 @@ async function renderPinModalAccountCode() {
   }
 }
 
+// ── PORTAL PIN IS CAREER-SCOPED, NOT SEASON-SCOPED ──────────────────────────
+// The PIN identifies the PERSON, not one season's roster row. A tracked player
+// has one `players` record per season, all sharing a careerPlayerId, and the
+// season-rollover copies viewerPin forward — so one person ends up holding the
+// same PIN on several rows.
+//
+// Writing to a single row was a real security defect, not just untidy:
+// portal_bootstrap accepts ANY row carrying a matching PIN, so removing the
+// PIN from the current season left the previous seasons' copies live and the
+// old PIN still worked. Revocation silently did nothing.
+//
+// Every set/remove now covers the whole career.
+async function getCareerPlayerRows(player) {
+  if (!player) return [];
+  if (!player.careerPlayerId) return [player]; // legacy row with no career link
+  const all = await DB.getAll('players');
+  const rows = all.filter(r => r.careerPlayerId === player.careerPlayerId);
+  return rows.length ? rows : [player];
+}
+
 async function savePortalPin(playerId) {
   const pin = document.getElementById('pin-value')?.value.trim();
   if (!pin || pin.length < 4) {
@@ -18311,20 +19049,31 @@ async function savePortalPin(playerId) {
   }
   const p = await DB.get('players', playerId);
   if (!p) return;
-  p.viewerPin = pin;
-  await DB.put('players', p);
+  const rows = await getCareerPlayerRows(p);
+  for (const row of rows) {
+    row.viewerPin = pin;
+    await DB.put('players', row);
+  }
   document.getElementById('pinModalOverlay')?.remove();
-  Toast.show(I18n.t('acc_pin_saved'));
+  Toast.show(rows.length > 1
+    ? I18n.t('acc_pin_saved_career', {count: rows.length})
+    : I18n.t('acc_pin_saved'));
   await Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||'');
 }
 
 async function removePortalPin(playerId) {
   const p = await DB.get('players', playerId);
   if (!p) return;
-  p.viewerPin = null;
-  await DB.put('players', p);
+  const rows = await getCareerPlayerRows(p);
+  // Clearing every row is what actually revokes access — see the note above.
+  for (const row of rows) {
+    row.viewerPin = null;
+    await DB.put('players', row);
+  }
   document.getElementById('pinModalOverlay')?.remove();
-  Toast.show(I18n.t('acc_pin_removed'));
+  Toast.show(rows.length > 1
+    ? I18n.t('acc_pin_removed_career', {count: rows.length})
+    : I18n.t('acc_pin_removed'));
   await Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||'');
 }
 
@@ -20232,8 +20981,40 @@ async function init() {
     // the guardian gate just because the page reloaded.
     const portalMeta = await DB.get('appMeta', 'portalPlayerId');
     if (portalMeta && portalMeta.value) {
-      const portalPlayer = await DB.get('players', portalMeta.value);
-      if (portalPlayer) {
+      // ── HARDENED RESTORE ──────────────────────────────────────────────────
+      // Every one of these must hold or the saved session is discarded:
+      //   1. portalPlayerId exists            5. current season resolves
+      //   2. portalOwnerUserId exists         6. standalone token exists
+      //   3. player belongs to that owner        and is unexpired
+      //   4. careerPlayerId exists            7. saved section is allowlisted
+      const portalPlayer   = await DB.get('players', portalMeta.value);
+      const portalOwner    = (await DB.get('appMeta', 'portalOwnerUserId'))?.value || null;
+      const isStandalone   = !!((await DB.get('appMeta', 'portalStandalone'))?.value);
+      await loadMeta(); // needed before the season check below can mean anything
+
+      let restoreOk = true;
+      let restoreFailReason = '';
+      if (!portalPlayer)                       { restoreOk = false; restoreFailReason = 'player record missing'; }
+      else if (!portalOwner)                   { restoreOk = false; restoreFailReason = 'no portal owner recorded'; }
+      else if (!portalPlayer.careerPlayerId)   { restoreOk = false; restoreFailReason = 'player has no careerPlayerId'; }
+      else if (Auth.isLoggedIn() && portalOwner !== Auth.getUserId()) {
+        restoreOk = false; restoreFailReason = 'portal owner does not match the logged-in account';
+      }
+      // The player must belong to the recorded owner. Bootstrapped records
+      // carry the marker; a guardian's own local records legitimately do not.
+      else if (portalPlayer.portalBootstrapRecord === true && portalPlayer.portalOwnerUserId !== portalOwner) {
+        restoreOk = false; restoreFailReason = 'player does not belong to the recorded portal owner';
+      }
+      else if (!State.currentSeasonId)         { restoreOk = false; restoreFailReason = 'no current season could be resolved'; }
+
+      // Standalone mode needs a live server token — an expired one means no
+      // writes are possible, so a fresh Account Code + PIN login is required.
+      if (restoreOk && isStandalone) {
+        const token = await getValidPortalToken(); // clears the credentials if expired
+        if (!token) { restoreOk = false; restoreFailReason = 'portal session token missing or expired'; }
+      }
+
+      if (restoreOk) {
         State.portalPlayerId = portalPlayer.playerId;
         document.getElementById('loading').style.display = 'none';
         document.getElementById('playerPortal').style.display = 'flex';
@@ -20244,16 +21025,25 @@ async function init() {
         let restoredPortalSection = 'home';
         try {
           const savedPortalSection = sessionStorage.getItem('squadTracker_lastPortalSection');
-          if (savedPortalSection && document.getElementById(`pp-sec-${savedPortalSection}`)) {
+          // Allowlist membership, not "does an element with this id exist" —
+          // a constructed-id check would accept any section that happens to
+          // have markup, including one the portal must never open.
+          if (savedPortalSection && Nav.isPortalSection(savedPortalSection)) {
             restoredPortalSection = savedPortalSection;
           }
         } catch(e) {}
         await Nav.goPortal(restoredPortalSection);
         return; // stop here — never fall through to the guardian gate or app
       } else {
-        // The player record this PIN pointed to no longer exists — clear
-        // the stale session rather than getting stuck.
-        await DB.del('appMeta', 'portalPlayerId').catch(()=>{});
+        // Stale, incomplete, foreign, or expired portal session — clear every
+        // piece of portal session state rather than restoring wrongly.
+        // Cached read-only data is deliberately preserved.
+        console.warn('[portal restore] refused —', restoreFailReason);
+        for (const k of ['portalPlayerId','portalOwnerUserId','portalAccountCode','portalSessionToken','portalSessionExpiresAt','portalStandalone']) {
+          await DB.del('appMeta', k).catch(()=>{});
+        }
+        try { sessionStorage.removeItem('squadTracker_lastPortalSection'); } catch(e) {}
+        State.portalPlayerId = null;
       }
     }
 
