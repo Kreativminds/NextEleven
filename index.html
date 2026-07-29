@@ -6098,6 +6098,9 @@ const TR = {
     tr_err_series_archived:'This recurring plan is archived and cannot be edited.',
     tr_err_already_paused:'This plan is already paused.',
     tr_err_already_completed:'That session is already completed.',
+    tr_packs_title:'Training packs', tr_next_up:'Next up', tr_next_none:'Nothing scheduled.',
+    tr_group_sessions:'Individual sessions', tr_group_occurrences:'occurrences',
+    tr_btn_new_session:'New session',
     tr_rec_title:'Recurring plans', tr_rec_new:'New recurring plan', tr_rec_none:'No recurring plans yet.',
     tr_rec_edit:'Edit', tr_rec_stop:'Stop', tr_rec_pause:'Pause', tr_rec_resume:'Resume', tr_rec_delete:'Delete',
     tr_rec_stopped:'Stopped {date}', tr_rec_paused:'Paused', tr_rec_next:'Next: {date}',
@@ -7369,6 +7372,9 @@ const TR = {
     tr_err_series_archived:'Este plano recorrente está arquivado e não pode ser editado.',
     tr_err_already_paused:'Este plano já está em pausa.',
     tr_err_already_completed:'Essa sessão já foi concluída.',
+    tr_packs_title:'Packs de treino', tr_next_up:'A seguir', tr_next_none:'Nada agendado.',
+    tr_group_sessions:'Sessões individuais', tr_group_occurrences:'ocorrências',
+    tr_btn_new_session:'Nova sessão',
     tr_rec_title:'Planos recorrentes', tr_rec_new:'Novo plano recorrente', tr_rec_none:'Ainda não há planos recorrentes.',
     tr_rec_edit:'Editar', tr_rec_stop:'Terminar', tr_rec_pause:'Pausar', tr_rec_resume:'Retomar', tr_rec_delete:'Eliminar',
     tr_rec_stopped:'Terminado a {date}', tr_rec_paused:'Em pausa', tr_rec_next:'Próxima: {date}',
@@ -14499,92 +14505,54 @@ async function handleUnskipOccurrence(seriesId, dateISO, playerId, viewAs) {
 
 // Renders the recurring-plan list plus upcoming occurrences. Shared by both
 // sides: the guardian gets management controls, the player does not.
-async function renderSeriesSection(playerId, viewAs) {
-  const seriesList = await getSeriesForPlayer(playerId, State.currentSeasonId);
-  // Pause state is derived from the pause-period history, never stored as a
-  // flag — several pauses can exist and all stay auditable.
-  for (const s of seriesList) {
-    const ctx = await getSeriesContext(s);
-    s.__ctx = ctx;
-    s.__paused = ctx.pauses.some(p => !p.endDate);
-  }
-  const isGuardian = viewAs === 'guardian' && isGuardianContext();
-  const today = dToday();
-  // A 60-day window: enough to be useful, small enough to stay well inside
-  // the 365-candidate evaluation limit even for a daily series.
-  const occ = await getPlayerOccurrences(playerId, State.currentSeasonId, dAddDays(today,-30), dAddDays(today,30));
-  const visible = occ.filter(o => o.state !== 'paused' || isGuardian);
-
-  const stateLabel = {
-    upcoming:  I18n.t('tr_occ_upcoming'), dueToday: I18n.t('tr_occ_due'),
-    missed:    I18n.t('tr_occ_missed'),   skipped:  I18n.t('tr_rec_skipped'),
-    paused:    I18n.t('tr_occ_paused'),   completed: I18n.t('tr_status_completed'),
-  };
-  const stateColour = {
-    upcoming:'#5a6a7a', dueToday:'#1a7f37', missed:'#b03030',
-    skipped:'#8a6d3b', paused:'#5a6a7a', completed:'#1a7f37',
-  };
-
-  const listHtml = !seriesList.length
-    ? `<p style="font-size:12px;color:var(--muted)">${I18n.t('tr_rec_none')}</p>`
-    : seriesList.map(s => {
-        const ctx = s.__ctx;
-        const paused = (s.__paused === true);
-        const next = occ.find(o => o.series.seriesId === s.seriesId && (o.state==='upcoming'||o.state==='dueToday'));
-        return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
-            <div style="flex:1;min-width:180px">
-              <div style="font-size:13px;font-weight:700">${esc(s.titleOverride || I18n.t('tr_rec_title'))}
-                ${s.status==='stopped' ? `<span style="font-size:10px;color:#b03030;font-weight:400"> · ${I18n.t('tr_rec_stopped',{date:fmtDate(s.stoppedAt)})}</span>` : ''}
-                ${paused ? `<span style="font-size:10px;color:#8a6d3b;font-weight:400"> · ${I18n.t('tr_rec_paused')}</span>` : ''}
-              </div>
-              <div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(describeRecurrence(s))}</div>
-              ${next ? `<div style="font-size:11px;color:var(--muted)">${I18n.t('tr_rec_next',{date:fmtDate(next.date)})}</div>` : ''}
-            </div>
-            ${isGuardian ? `<div style="display:flex;gap:4px;flex-wrap:wrap">
-              ${s.status==='active' ? `<button class="btn btn-secondary btn-sm" onclick="openSeriesForm(${playerId},${s.seriesId})">${I18n.t('tr_rec_edit')}</button>
-              ${paused ? `<button class="btn btn-secondary btn-sm" onclick="handleResumeSeries(${s.seriesId},${playerId})">${I18n.t('tr_rec_resume')}</button>`
-                       : `<button class="btn btn-secondary btn-sm" onclick="handlePauseSeries(${s.seriesId},${playerId})">${I18n.t('tr_rec_pause')}</button>`}
-              <button class="btn btn-secondary btn-sm" onclick="handleStopSeries(${s.seriesId},${playerId})">${I18n.t('tr_rec_stop')}</button>` : ''}
-              <button class="btn btn-danger btn-sm" onclick="handleDeleteSeries(${s.seriesId},${playerId})">${I18n.t('tr_rec_delete')}</button>
-            </div>` : ''}
+// Shared row renderer so a recurring occurrence and a one-off session look
+// identical in the list — the person should not have to learn two visual
+// languages for the same thing.
+function occurrenceRowHtml(o, playerId, viewAs, isGuardian) {
+  // Occurrences are grouped UNDER their plan, collapsed by default. A daily
+  // plan produces dozens of dates; dumping them flat buried everything else
+  // on the page. The header carries the summary so the group rarely needs
+  // opening at all.
+  const adhAll = computeAdherence(occ);
+  const groupsHtml = seriesList.map((sr, gi) => {
+    const mine = visible.filter(o => o.series.seriesId === sr.seriesId);
+    const adh = computeAdherence(occ.filter(o => o.series.seriesId === sr.seriesId));
+    const next = occ.find(o => o.series.seriesId === sr.seriesId && (o.state==='upcoming'||o.state==='dueToday'));
+    const gid = `trGroup-${playerId}-${sr.seriesId}`;
+    return `<div style="border:1px solid var(--border);border-radius:6px;margin-bottom:8px">
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:9px 10px;flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" style="padding:2px 7px;min-width:26px" onclick="toggleTrainingGroup('${gid}',this)">&#9656;</button>
+        <div style="flex:1;min-width:160px">
+          <div style="font-size:13px;font-weight:700">${esc(sr.titleOverride || I18n.t('tr_rec_title'))}
+            ${sr.status==='stopped' ? `<span style="font-size:10px;color:#b03030;font-weight:400"> · ${I18n.t('tr_rec_stopped',{date:fmtDate(sr.stoppedAt)})}</span>` : ''}
+            ${sr.__paused ? `<span style="font-size:10px;color:#8a6d3b;font-weight:400"> · ${I18n.t('tr_rec_paused')}</span>` : ''}
           </div>
-        </div>`;
-      }).join('');
-
-  const adh = computeAdherence(occ);
-  const occHtml = !visible.length ? '' : `
-    <div class="card" style="margin-bottom:14px">
-      <div class="card-title">${I18n.t('tr_rec_title')}${adh.adherencePct!==null?` — ${I18n.t('tr_adherence')} ${adh.adherencePct}%`:''}</div>
-      ${adh.adherencePct!==null?`<div style="font-size:11px;color:var(--muted);margin-bottom:8px">${I18n.t('tr_adherence_detail',{done:adh.completed,total:adh.completed+adh.missed})}${adh.completedLate?` · ${adh.completedLate} ${I18n.t('tr_occ_late').toLowerCase()}`:''}</div>`:''}
-      <div class="who-played-list">
-        ${visible.map(o => {
-          const clickable = (o.state === 'dueToday' || o.state === 'missed' || o.state === 'upcoming');
-          const onclick = o.state === 'completed' && o.session
-            ? `openTrainingViewer(${o.session.trainingSessionId},'${viewAs}')`
-            : (clickable ? `openOccurrenceCompletion(${o.series.seriesId},'${o.date}','${viewAs}')` : '');
-          return `<div class="wp-row" ${onclick?`onclick="${onclick}" style="cursor:pointer"`:''}>
-            <div class="wp-info">
-              <span class="wp-num">${o.state==='completed'?'&#10003;':o.state==='skipped'?'&#8212;':'&#128197;'}</span>
-              <span class="wp-name">${esc(o.series.titleOverride || I18n.t('tr_rec_title'))}</span>
-              <span class="pos-pill" style="margin-left:auto">${fmtDate(o.date)}</span>
-              <span class="wp-role-pill" style="margin-left:6px;background:${stateColour[o.state]}22;color:${stateColour[o.state]}">${stateLabel[o.state]||o.state}</span>
-              ${o.state==='completed' && o.session?.completedLate?`<span style="font-size:10px;color:#8a6d3b;margin-left:4px">${I18n.t('tr_occ_late')}</span>`:''}
-            </div>
-            ${isGuardian && (o.state==='upcoming'||o.state==='dueToday'||o.state==='missed') ? `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();handleSkipOccurrence(${o.series.seriesId},'${o.date}',${playerId},'${viewAs}')">${I18n.t('tr_rec_skip')}</button>` : ''}
-            ${isGuardian && o.state==='skipped' ? `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();handleUnskipOccurrence(${o.series.seriesId},'${o.date}',${playerId},'${viewAs}')">${I18n.t('tr_rec_unskip')}</button>` : ''}
-          </div>`;
-        }).join('')}
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(describeRecurrence(sr))}</div>
+          <div style="font-size:11px;color:var(--muted)">${mine.length} ${I18n.t('tr_group_occurrences')}${next?` · ${I18n.t('tr_rec_next',{date:fmtDate(next.date)})}`:''}${adh.adherencePct!==null?` · ${I18n.t('tr_adherence')} ${adh.adherencePct}%`:''}</div>
+        </div>
+        ${isGuardian ? `<div style="display:flex;gap:4px;flex-wrap:wrap">
+          ${sr.status==='active' ? `<button class="btn btn-secondary btn-sm" onclick="openSeriesForm(${playerId},${sr.seriesId})">${I18n.t('tr_rec_edit')}</button>
+          ${sr.__paused ? `<button class="btn btn-secondary btn-sm" onclick="handleResumeSeries(${sr.seriesId},${playerId})">${I18n.t('tr_rec_resume')}</button>`
+                        : `<button class="btn btn-secondary btn-sm" onclick="handlePauseSeries(${sr.seriesId},${playerId})">${I18n.t('tr_rec_pause')}</button>`}
+          <button class="btn btn-secondary btn-sm" onclick="handleStopSeries(${sr.seriesId},${playerId})">${I18n.t('tr_rec_stop')}</button>` : ''}
+          <button class="btn btn-danger btn-sm" onclick="handleDeleteSeries(${sr.seriesId},${playerId})">${I18n.t('tr_rec_delete')}</button>
+        </div>` : ''}
+      </div>
+      <div id="${gid}" style="display:none;border-top:1px solid var(--border)">
+        <div class="who-played-list" style="padding:4px 10px 8px">
+          ${mine.length ? mine.map(o => occurrenceRowHtml(o, playerId, viewAs, isGuardian)).join('')
+                        : `<p style="font-size:12px;color:var(--muted);padding:6px 0;margin:0">${I18n.t('tr_next_none')}</p>`}
+        </div>
       </div>
     </div>`;
+  }).join('');
 
-  return `${occHtml}
-    <div class="card" style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
-        <div class="card-title" style="margin:0">${I18n.t('tr_rec_title')}</div>
+  return `<div class="card" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+        <div class="card-title" style="margin:0">${I18n.t('tr_rec_title')}${adhAll.adherencePct!==null?` — ${I18n.t('tr_adherence')} ${adhAll.adherencePct}%`:''}</div>
         ${isGuardian ? `<button class="btn btn-primary btn-sm" onclick="openSeriesForm(${playerId})">+ ${I18n.t('tr_rec_new')}</button>` : ''}
       </div>
-      ${listHtml}
+      ${seriesList.length ? groupsHtml : `<p style="font-size:12px;color:var(--muted);margin:0">${I18n.t('tr_rec_none')}</p>`}
     </div>`;
 }
 
@@ -14604,25 +14572,62 @@ async function renderPlayerTraining(playerId, viewAs) {
   // Recurring plans and their generated occurrences. Failure here must not
   // take down the whole training page — one-off sessions still render.
   let seriesSectionHtml = '';
+  let upcomingOcc = [];
   try {
     seriesSectionHtml = await renderSeriesSection(playerId, viewAs);
+    const today = dToday();
+    upcomingOcc = await getPlayerOccurrences(playerId, State.currentSeasonId, today, dAddDays(today, 60));
   } catch(err) {
     console.error('[series section] render failed:', err);
   }
+  const isGuardianView = viewAs === 'guardian' && isGuardianContext();
 
   el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <h3 style="font-size:14px;font-weight:700">${I18n.t('tr_title')} — ${esc(shortName(player.fullName))}</h3>
-      <button class="btn btn-primary btn-sm" onclick="openTrainingForm(${playerId},'${viewAs}')">+ ${viewAs==='guardian' ? I18n.t('tr_btn_create_for_player', {name: shortName(player.fullName)}) : I18n.t('tr_form_title')}</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="openTrainingForm(${playerId},'${viewAs}')">+ ${I18n.t('tr_btn_new_session')}</button>
+        ${isGuardianView ? `<button class="btn btn-primary btn-sm" onclick="openSeriesForm(${playerId})">+ ${I18n.t('tr_rec_new')}</button>` : ''}
+      </div>
     </div>
+
+    ${nextUpHtml(upcomingOcc, sessions)}
 
     <div id="trainingFormPanel-${playerId}" class="form-panel panel-hidden" style="margin-bottom:16px"></div>
 
     ${seriesSectionHtml}
 
-    <div class="card" style="margin-bottom:14px">
-      <div id="packsListPanel"></div>
-    </div>
+    <!-- One-off sessions, grouped and collapsible like the recurring plans.
+         Occurrences already appear under their own plan above, so anything
+         belonging to a series is excluded here to avoid showing it twice. -->
+    ${(() => {
+      const oneOff = sessions.filter(x => !x.seriesCloudId);
+      const gid = `trGroupSessions-${playerId}`;
+      if (!oneOff.length) return `<div class="empty"><strong>${I18n.t('tr_empty_title')}</strong><p>${viewAs==='guardian' ? I18n.t('tr_empty_desc_guardian',{name:shortName(player.fullName)}) : ''}</p></div>`;
+      const done = oneOff.filter(x => x.status === 'Completed').length;
+      return `<div class="card" style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-secondary btn-sm" style="padding:2px 7px;min-width:26px" onclick="toggleTrainingGroup('${gid}',this)">&#9656;</button>
+          <div style="flex:1">
+            <div class="card-title" style="margin:0">${I18n.t('tr_group_sessions')}</div>
+            <div style="font-size:11px;color:var(--muted)">${oneOff.length} ${I18n.t('tr_progress_sessions_suffix')} · ${done} ${I18n.t('tr_status_completed').toLowerCase()}</div>
+          </div>
+        </div>
+        <div id="${gid}" style="display:none;margin-top:8px">
+          <div class="who-played-list">
+            ${oneOff.map(s => `
+              <div class="wp-row" onclick="openTrainingViewer(${s.trainingSessionId},'${viewAs}')" style="cursor:pointer">
+                <div class="wp-info">
+                  <span class="wp-num">${s.status==='Completed'?'&#10003;':'&#128197;'}</span>
+                  <span class="wp-name">${esc(s.title)}</span>
+                  <span class="pos-pill" style="margin-left:auto">${s.scheduledDate?fmtDate(s.scheduledDate):'—'}</span>
+                  <span class="wp-role-pill ${s.status==='Completed'?'wp-role-starter':'wp-role-sub'}" style="margin-left:6px">${s.status==='Completed'?I18n.t('tr_status_completed'):I18n.t('tr_status_scheduled')}</span>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>`;
+    })()}
 
     ${progressKeys.length ? `
     <div class="card" style="margin-bottom:14px">
@@ -14649,20 +14654,10 @@ async function renderPlayerTraining(playerId, viewAs) {
       }).join('')}
     </div>` : `<p style="font-size:12px;color:var(--muted);margin-bottom:14px">${I18n.t('tr_progress_empty')}</p>`}
 
-    ${!sessions.length ? `<div class="empty"><strong>${I18n.t('tr_empty_title')}</strong><p>${viewAs==='guardian' ? I18n.t('tr_empty_desc_guardian',{name:shortName(player.fullName)}) : ''}</p></div>` : `
-    <div class="who-played-list">
-      ${sessions.map(s => `
-        <div class="wp-row" onclick="gdDebugLog('training row clicked: session '+${s.trainingSessionId});openTrainingViewer(${s.trainingSessionId},'${viewAs}')" style="cursor:pointer">
-          <div class="wp-info">
-            <span class="wp-num">${s.status==='Completed'?'&#10003;':'&#128197;'}</span>
-            <span class="wp-name">${esc(s.title)}</span>
-            <span class="pos-pill" style="margin-left:auto">${s.scheduledDate?fmtDate(s.scheduledDate):'—'}</span>
-            <span class="wp-role-pill ${s.status==='Completed'?'wp-role-starter':'wp-role-sub'}" style="margin-left:6px">${s.status==='Completed'?I18n.t('tr_status_completed'):I18n.t('tr_status_scheduled')}</span>
-          </div>
-        </div>`).join('')}
-    </div>`}
   `;
-  await renderPacksList(viewAs);
+  // Packs are rendered inside the create-session form now, not on this page.
+  // renderPacksList() is called by openTrainingForm() when that form opens.
+  _lastPacksViewAs = viewAs;
 }
 
 // ── CREATE / EDIT FORM — dynamic drill rows ──────────────────────────────────
@@ -14722,6 +14717,14 @@ async function openTrainingForm(playerId, viewAs, existingSessionId) {
       <div class="form-group full"><label>${I18n.t('tr_lbl_title')}</label><input id="tr-title" type="text" value="${esc(autoTitle||'')}"></div>
       <div class="form-group"><label>${I18n.t('tr_lbl_date')}</label><input id="tr-date" type="date" value="${existing?.scheduledDate||new Date().toISOString().split('T')[0]}" onchange="refreshAutoSessionName(${playerId})"></div>
     </div>
+    <!-- Training packs live HERE, inside the create flow, rather than on the
+         main training page. They are a starting point for building a session,
+         not something to browse on the overview. -->
+    <details style="margin:12px 0;border:1px solid var(--border);border-radius:6px">
+      <summary style="padding:8px 10px;cursor:pointer;font-size:12px;font-weight:700">${I18n.t('tr_packs_title')}</summary>
+      <div id="packsListPanel" style="padding:0 10px 10px"></div>
+    </details>
+
     <div style="margin:12px 0">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">${I18n.t('tr_lbl_drills')}</label>
@@ -14737,6 +14740,7 @@ async function openTrainingForm(playerId, viewAs, existingSessionId) {
   `;
   panel.classList.remove('panel-hidden');
   renderTrainingDrillRows(playerId, 'plan');
+  renderPacksList(viewAs);
   panel.scrollIntoView({behavior:'smooth'});
 }
 
