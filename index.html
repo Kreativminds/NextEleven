@@ -1046,7 +1046,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 // ══════════════════════════════════════════════════════════════════════════════
 const CONFIG = {
   APP_VERSION: '1.2.1', // human-readable label only — staleness detection no longer depends on this matching anything
-  SCHEMA_VERSION: 16,
+  SCHEMA_VERSION: 18,   // 17 = trainingPackVersions (Phase 2); 18 = recurrence stores (Phase 3)
   DB_NAME: 'footballSquadTrackerDB',
   MAX_BACKUPS: 30,
   FULL_GAME_MINS: 80,
@@ -6090,6 +6090,36 @@ const TR = {
     acc_lbl_account_code:'Account Code', acc_err_pin_network:'Could not check that Account Code — {msg}',
     acc_err_portal_login_failed:'Login is not available right now. Please check your details and try again.',
     acc_err_portal_session_expired:'Your session has expired. Please sign in again with your Account Code and PIN.',
+    tr_err_guardian_only:'Only a guardian can manage recurring sessions.',
+    tr_err_end_date_required:'Choose an end date.', tr_err_end_count_required:'Enter how many sessions.',
+    tr_err_end_before_start:'The end date cannot be before the start date.',
+    tr_err_series_season_locked:'A recurring plan cannot be moved to another season.',
+    tr_err_series_player_locked:'A recurring plan cannot be reassigned to another player.',
+    tr_err_series_archived:'This recurring plan is archived and cannot be edited.',
+    tr_err_already_paused:'This plan is already paused.',
+    tr_err_already_completed:'That session is already completed.',
+    tr_rec_title:'Recurring plans', tr_rec_new:'New recurring plan', tr_rec_none:'No recurring plans yet.',
+    tr_rec_edit:'Edit', tr_rec_stop:'Stop', tr_rec_pause:'Pause', tr_rec_resume:'Resume', tr_rec_delete:'Delete',
+    tr_rec_stopped:'Stopped {date}', tr_rec_paused:'Paused', tr_rec_next:'Next: {date}',
+    tr_rec_confirm_stop:'Stop this recurring plan? Completed sessions and history are kept.',
+    tr_rec_confirm_delete:'Delete this recurring plan? Completed sessions are kept.',
+    tr_rec_saved:'Recurring plan saved.', tr_rec_stopped_ok:'Recurring plan stopped.',
+    tr_rec_lbl_template:'Training pack', tr_rec_lbl_freq:'Repeats', tr_rec_lbl_interval:'Every',
+    tr_rec_lbl_days:'On days', tr_rec_lbl_start:'Starts', tr_rec_lbl_end:'Ends',
+    tr_rec_lbl_title:'Custom title (optional)', tr_rec_lbl_notes:'Notes (optional)',
+    tr_rec_end_ondate:'On a date', tr_rec_end_count:'After a number of sessions', tr_rec_end_never:'Never',
+    tr_rec_freq_daily:'Daily', tr_rec_freq_weekly:'Weekly', tr_rec_freq_monthly:'Monthly', tr_rec_freq_yearly:'Yearly',
+    tr_rec_skip:'Skip this one', tr_rec_unskip:'Undo skip', tr_rec_skipped:'Skipped',
+    tr_rec_pause_until:'Pause until (leave empty for indefinite)',
+    tr_occ_upcoming:'Upcoming', tr_occ_due:'Due today', tr_occ_missed:'Missed',
+    tr_occ_paused:'Paused', tr_occ_late:'Completed late',
+    tr_adherence:'Adherence', tr_adherence_detail:'{done} of {total} completed',
+    day_mon:'Mon', day_tue:'Tue', day_wed:'Wed', day_thu:'Thu', day_fri:'Fri', day_sat:'Sat', day_sun:'Sun',
+    rec_every_day:'Every day', rec_every_n_days:'Every {n} days',
+    rec_weekly_on:'Every week on {days}', rec_every_n_weeks_on:'Every {n} weeks on {days}',
+    rec_every_month:'Every month', rec_every_n_months:'Every {n} months',
+    rec_every_year:'Every year', rec_every_n_years:'Every {n} years',
+    rec_from:'from {date}', rec_until:'until {date}', rec_after_n:'{n} sessions', rec_no_end:'no end date',
     pp_refresh:'Refresh', pp_refreshing:'Checking for updates…',
     pp_refresh_ok:'Up to date', pp_refresh_new:'{n} update(s) applied',
     pp_refresh_err:'Could not check for updates. Tap to retry.',
@@ -7331,6 +7361,36 @@ const TR = {
     acc_lbl_account_code:'Código da Conta', acc_err_pin_network:'Não foi possível verificar esse Código da Conta — {msg}',
     acc_err_portal_login_failed:'Não é possível iniciar sessão neste momento. Verifique os dados e tente novamente.',
     acc_err_portal_session_expired:'A sua sessão expirou. Inicie sessão novamente com o Código da Conta e o PIN.',
+    tr_err_guardian_only:'Só um encarregado de educação pode gerir planos recorrentes.',
+    tr_err_end_date_required:'Escolha uma data de fim.', tr_err_end_count_required:'Indique quantas sessões.',
+    tr_err_end_before_start:'A data de fim não pode ser anterior à data de início.',
+    tr_err_series_season_locked:'Um plano recorrente não pode mudar de época.',
+    tr_err_series_player_locked:'Um plano recorrente não pode mudar de jogador.',
+    tr_err_series_archived:'Este plano recorrente está arquivado e não pode ser editado.',
+    tr_err_already_paused:'Este plano já está em pausa.',
+    tr_err_already_completed:'Essa sessão já foi concluída.',
+    tr_rec_title:'Planos recorrentes', tr_rec_new:'Novo plano recorrente', tr_rec_none:'Ainda não há planos recorrentes.',
+    tr_rec_edit:'Editar', tr_rec_stop:'Terminar', tr_rec_pause:'Pausar', tr_rec_resume:'Retomar', tr_rec_delete:'Eliminar',
+    tr_rec_stopped:'Terminado a {date}', tr_rec_paused:'Em pausa', tr_rec_next:'Próxima: {date}',
+    tr_rec_confirm_stop:'Terminar este plano recorrente? As sessões concluídas e o histórico são mantidos.',
+    tr_rec_confirm_delete:'Eliminar este plano recorrente? As sessões concluídas são mantidas.',
+    tr_rec_saved:'Plano recorrente guardado.', tr_rec_stopped_ok:'Plano recorrente terminado.',
+    tr_rec_lbl_template:'Pack de treino', tr_rec_lbl_freq:'Repete', tr_rec_lbl_interval:'A cada',
+    tr_rec_lbl_days:'Nos dias', tr_rec_lbl_start:'Começa', tr_rec_lbl_end:'Termina',
+    tr_rec_lbl_title:'Título personalizado (opcional)', tr_rec_lbl_notes:'Notas (opcional)',
+    tr_rec_end_ondate:'Numa data', tr_rec_end_count:'Após um número de sessões', tr_rec_end_never:'Nunca',
+    tr_rec_freq_daily:'Diariamente', tr_rec_freq_weekly:'Semanalmente', tr_rec_freq_monthly:'Mensalmente', tr_rec_freq_yearly:'Anualmente',
+    tr_rec_skip:'Saltar esta', tr_rec_unskip:'Anular salto', tr_rec_skipped:'Saltada',
+    tr_rec_pause_until:'Pausar até (deixe vazio para indefinido)',
+    tr_occ_upcoming:'Agendada', tr_occ_due:'Hoje', tr_occ_missed:'Falhada',
+    tr_occ_paused:'Em pausa', tr_occ_late:'Concluída em atraso',
+    tr_adherence:'Assiduidade', tr_adherence_detail:'{done} de {total} concluídas',
+    day_mon:'Seg', day_tue:'Ter', day_wed:'Qua', day_thu:'Qui', day_fri:'Sex', day_sat:'Sáb', day_sun:'Dom',
+    rec_every_day:'Todos os dias', rec_every_n_days:'A cada {n} dias',
+    rec_weekly_on:'Todas as semanas a {days}', rec_every_n_weeks_on:'A cada {n} semanas a {days}',
+    rec_every_month:'Todos os meses', rec_every_n_months:'A cada {n} meses',
+    rec_every_year:'Todos os anos', rec_every_n_years:'A cada {n} anos',
+    rec_from:'a partir de {date}', rec_until:'até {date}', rec_after_n:'{n} sessões', rec_no_end:'sem data de fim',
     pp_refresh:'Atualizar', pp_refreshing:'A procurar atualizações…',
     pp_refresh_ok:'Atualizado', pp_refresh_new:'{n} atualização(ões) aplicada(s)',
     pp_refresh_err:'Não foi possível procurar atualizações. Toque para tentar novamente.',
@@ -7861,6 +7921,15 @@ const DB = (() => {
   function open() {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(CONFIG.DB_NAME, CONFIG.SCHEMA_VERSION);
+      // A bundle older than the stored schema version cannot open the
+      // database at all — IndexedDB raises VersionError rather than
+      // downgrading. This happens when a device has a cached older build
+      // after someone else on the same device ran a newer one. The honest
+      // response is "reload to get the current version", never "clear your
+      // data": everything here is on the server and is re-pulled on login.
+      req.onblocked = () => {
+        console.warn('[DB] upgrade blocked — another tab holds an older connection open.');
+      };
       req.onupgradeneeded = e => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('appMeta')) {
@@ -7953,6 +8022,40 @@ const DB = (() => {
           fv.createIndex('userId', 'userId', { unique: false });
           fv.createIndex('drillKey', 'drillKey', { unique: false });
         }
+        // Phase 3 — recurrence. A series holds only the RULE; occurrences are
+        // generated in memory for whatever range is on screen, and a real
+        // trainingSessions row is written only when one is completed.
+        if (!db.objectStoreNames.contains('trainingSeries')) {
+          const tse = db.createObjectStore('trainingSeries', { keyPath: 'seriesId', autoIncrement: true });
+          tse.createIndex('cloudId', 'cloudId', { unique: false });
+          tse.createIndex('playerId', 'playerId', { unique: false });
+          tse.createIndex('seasonId', 'seasonId', { unique: false });
+          tse.createIndex('careerPlayerId', 'careerPlayerId', { unique: false });
+          tse.createIndex('status', 'status', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('trainingSeriesExceptions')) {
+          const tex = db.createObjectStore('trainingSeriesExceptions', { keyPath: 'exceptionId', autoIncrement: true });
+          tex.createIndex('cloudId', 'cloudId', { unique: false });
+          tex.createIndex('seriesCloudId', 'seriesCloudId', { unique: false });
+          tex.createIndex('scheduledDate', 'scheduledDate', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('trainingSeriesPauses')) {
+          const tpa = db.createObjectStore('trainingSeriesPauses', { keyPath: 'pauseId', autoIncrement: true });
+          tpa.createIndex('cloudId', 'cloudId', { unique: false });
+          tpa.createIndex('seriesCloudId', 'seriesCloudId', { unique: false });
+          tpa.createIndex('startDate', 'startDate', { unique: false });
+        }
+        // Phase 2 — immutable content versions of custom packs. Editing a
+        // pack writes a NEW version row instead of overwriting, so a series
+        // pinned to an older version and any completed session that
+        // snapshotted it both keep resolving. Additive: the upgrade creates
+        // this store and touches nothing else.
+        if (!db.objectStoreNames.contains('trainingPackVersions')) {
+          const tpv = db.createObjectStore('trainingPackVersions', { keyPath: 'packVersionId', autoIncrement: true });
+          tpv.createIndex('packLocalId', 'packLocalId', { unique: false });
+          tpv.createIndex('version', 'version', { unique: false });
+          tpv.createIndex('cloudId', 'cloudId', { unique: false });
+        }
         if (!db.objectStoreNames.contains('trainingPacks')) {
           // Pass 4 — a pack stores lightweight drillRefs (kind + key), NOT
           // full drill copies. This is what a pack itself owns and what
@@ -7995,7 +8098,25 @@ const DB = (() => {
         }
       };
       req.onsuccess = e => { _db = e.target.result; resolve(_db); };
-      req.onerror = e => reject(e.target.error);
+      req.onerror = e => {
+        const err = e.target.error;
+        // A bundle older than the stored schema cannot open the database at
+        // all — IndexedDB raises VersionError rather than downgrading. The
+        // honest response is "reload to get the current version", never
+        // "clear your data": everything here is on the server and is
+        // re-pulled on next login.
+        if (err && err.name === 'VersionError') {
+          console.error('[DB] VersionError — this build is older than the stored database.');
+          try {
+            document.body.innerHTML = '<div style="max-width:420px;margin:20vh auto;padding:24px;font-family:system-ui;text-align:center">'
+              + '<h2 style="margin:0 0 8px">Update required</h2>'
+              + '<p style="color:#666;font-size:14px;line-height:1.5">A newer version of NextEleven has been used on this device. Reload to continue — your data is safe and stored in the cloud.</p>'
+              + '<button onclick="location.reload(true)" style="margin-top:16px;padding:10px 20px;font-size:14px;border:0;border-radius:6px;background:#0b1f3a;color:#fff;cursor:pointer">Reload</button>'
+              + '</div>';
+          } catch(_) {}
+        }
+        reject(err);
+      };
     });
   }
 
@@ -8161,7 +8282,8 @@ const DB = (() => {
     'appMeta','seasons','players','games','gamePlayers','achievements',
     'clubHistory','opponents','playerGameStats','events','goalEvents',
     'injuries','trainingSessions','customDrills','drillFavourites',
-    'trainingPacks','tournaments','temporaryPlayers','clubTeams',
+    'trainingPacks','trainingPackVersions','trainingSeries','trainingSeriesExceptions',
+    'trainingSeriesPauses','tournaments','temporaryPlayers','clubTeams',
     'externalResources',
   ];
 
@@ -11948,6 +12070,363 @@ async function renderTournamentTempPlayersList(tournament) {
     </div>`;
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// PHASE 3 — RECURRENCE ENGINE
+//
+// Every schedule date is a plain 'YYYY-MM-DD' string and every calculation
+// below works on (year, month, day) integers. No Date object is ever used for
+// schedule maths. That is deliberate: a Date carries a time and a timezone,
+// and converting through one is how a Tuesday session silently becomes Monday
+// for a user east of UTC, or shifts across a daylight-saving boundary.
+// ════════════════════════════════════════════════════════════════════════════
+
+function dParts(iso) {
+  const [y,m,d] = String(iso).split('-').map(Number);
+  return { y, m, d };
+}
+function dISO(p) {
+  return String(p.y).padStart(4,'0') + '-' + String(p.m).padStart(2,'0') + '-' + String(p.d).padStart(2,'0');
+}
+function dDaysInMonth(y, m) {
+  return [31, (y%4===0 && y%100!==0) || y%400===0 ? 29 : 28, 31,30,31,30,31,31,30,31,30,31][m-1];
+}
+// Days since 1970-01-01 — used only for differences and day stepping, never
+// for display, and never routed through Date.
+function dToEpochDay(p) {
+  let y = p.y, m = p.m;
+  if (m <= 2) { y -= 1; m += 12; }
+  const era = Math.floor(y / 400);
+  const yoe = y - era * 400;
+  const doy = Math.floor((153 * (m - 3) + 2) / 5) + p.d - 1;
+  const doe = yoe * 365 + Math.floor(yoe/4) - Math.floor(yoe/100) + doy;
+  return era * 146097 + doe - 719468;
+}
+function dFromEpochDay(z) {
+  z += 719468;
+  const era = Math.floor(z / 146097);
+  const doe = z - era * 146097;
+  const yoe = Math.floor((doe - Math.floor(doe/1460) + Math.floor(doe/36524) - Math.floor(doe/146096)) / 365);
+  const y = yoe + era * 400;
+  const doy = doe - (365*yoe + Math.floor(yoe/4) - Math.floor(yoe/100));
+  const mp = Math.floor((5*doy + 2) / 153);
+  const d = doy - Math.floor((153*mp + 2)/5) + 1;
+  const m = mp < 10 ? mp + 3 : mp - 9;
+  return { y: m <= 2 ? y + 1 : y, m, d };
+}
+function dAddDays(iso, n)  { return dISO(dFromEpochDay(dToEpochDay(dParts(iso)) + n)); }
+function dDiffDays(a, b)   { return dToEpochDay(dParts(b)) - dToEpochDay(dParts(a)); }
+function dCompare(a, b)    { return a < b ? -1 : a > b ? 1 : 0; }
+// ISO weekday: Monday = 1 … Sunday = 7.
+function dIsoWeekday(iso)  { return ((dToEpochDay(dParts(iso)) + 3) % 7 + 7) % 7 + 1; }
+function dStartOfWeek(iso) { return dAddDays(iso, -(dIsoWeekday(iso) - 1)); }
+// Month arithmetic with the day CLAMPED to the target month's last valid day.
+function dAddMonthsClamped(iso, n, anchorDay) {
+  const p = dParts(iso);
+  const total = (p.y * 12 + (p.m - 1)) + n;
+  const y = Math.floor(total / 12);
+  const m = (total % 12 + 12) % 12 + 1;
+  const day = Math.min(anchorDay || p.d, dDaysInMonth(y, m));
+  return dISO({ y, m, d: day });
+}
+function dMonthsBetween(a, b) {
+  const pa = dParts(a), pb = dParts(b);
+  return (pb.y * 12 + pb.m) - (pa.y * 12 + pa.m);
+}
+function dToday() {
+  // The only place a Date is permitted, and only to read the LOCAL calendar
+  // day — never to derive a schedule date from a UTC timestamp.
+  const n = new Date();
+  return dISO({ y: n.getFullYear(), m: n.getMonth() + 1, d: n.getDate() });
+}
+
+// ── PAUSE PERIODS ───────────────────────────────────────────────────────────
+// A pause is a date range, not a flag, so several pauses coexist and remain
+// auditable. An open period (no endDate) means paused indefinitely.
+function isPausedOn(pauses, iso) {
+  if (!pauses || !pauses.length) return false;
+  for (const p of pauses) {
+    if (p.isDeleted) continue;
+    if (!p.startDate) continue;
+    if (dCompare(iso, p.startDate) < 0) continue;
+    if (!p.endDate) return true;                 // open pause
+    if (dCompare(iso, p.endDate) <= 0) return true;
+  }
+  return false;
+}
+
+// ── SEEK ────────────────────────────────────────────────────────────────────
+// O(1) jump to the first candidate at or before rangeStart. Without this a
+// three-year daily series would evaluate ~1,100 dates just to draw one month.
+function seekToRange(series, rangeStart) {
+  const start = series.startDate;
+  const iv = Math.max(1, series.interval || 1);
+  // Weekly callers expect a WEEK START, because weeklyDatesInWeek() offsets
+  // from Monday. Returning the raw startDate here shifted every weekday by
+  // (isoWeekday(startDate) - 1) days — a Tuesday series silently generated
+  // Wednesdays. Caught by the engine test suite.
+  if (dCompare(rangeStart, start) <= 0) {
+    return series.frequency === 'weekly' ? dStartOfWeek(start) : start;
+  }
+
+  if (series.frequency === 'daily') {
+    const n = Math.floor(dDiffDays(start, rangeStart) / iv);
+    return dAddDays(start, n * iv);
+  }
+  if (series.frequency === 'weekly') {
+    const w = Math.floor(dDiffDays(dStartOfWeek(start), dStartOfWeek(rangeStart)) / 7 / iv);
+    return dAddDays(dStartOfWeek(start), w * iv * 7);   // start of an active week
+  }
+  if (series.frequency === 'monthly') {
+    const m = Math.floor(dMonthsBetween(start, rangeStart) / iv);
+    return dAddMonthsClamped(start, m * iv, dParts(start).d);
+  }
+  if (series.frequency === 'yearly') {
+    const yrs = Math.floor((dParts(rangeStart).y - dParts(start).y) / iv);
+    return dAddMonthsClamped(start, yrs * iv * 12, dParts(start).d);
+  }
+  return start;
+}
+
+// Ordered candidate dates for one weekly "active week".
+function weeklyDatesInWeek(series, weekStart) {
+  const days = (series.daysOfWeek && series.daysOfWeek.length)
+    ? series.daysOfWeek.slice().sort((a,b) => a-b)
+    : [dIsoWeekday(series.startDate)];
+  return days.map(dw => dAddDays(weekStart, dw - 1));
+}
+
+// ── OCCURRENCE GENERATION ───────────────────────────────────────────────────
+// Returns [{date, state}] where state is one of:
+//   paused | skipped | completed | missed | dueToday | upcoming
+// Only `completed` corresponds to a stored row; everything else is computed.
+const RECURRENCE_EVAL_LIMIT = 365;
+
+function generateOccurrences(series, exceptions, pauses, sessions, rangeStart, rangeEnd, todayISO) {
+  const out = [];
+  if (!series || !series.startDate) return out;
+  if (series.status !== 'active' && series.status !== 'stopped') return out;
+
+  const today = todayISO || dToday();
+  const iv = Math.max(1, series.interval || 1);
+
+  // Hard end: whichever bound bites first.
+  let hardEnd = rangeEnd;
+  if (series.endMode === 'onDate' && series.endDate && dCompare(series.endDate, hardEnd) < 0) hardEnd = series.endDate;
+  if (series.status === 'stopped' && series.stoppedAt && dCompare(series.stoppedAt, hardEnd) < 0) hardEnd = series.stoppedAt;
+  if (series.endMode === 'afterCount') {
+    const finalDate = finalDateForCount(series, pauses, today);
+    if (finalDate && dCompare(finalDate, hardEnd) < 0) hardEnd = finalDate;
+    // The whole requested range sits past the end — nothing to generate.
+    if (finalDate && dCompare(rangeStart, finalDate) > 0) return out;
+  }
+  if (dCompare(hardEnd, rangeStart) < 0) return out;
+
+  const skipIndex = {};
+  (exceptions || []).forEach(e => {
+    if (!e.isDeleted && e.scheduledDate) skipIndex[e.scheduledDate] = e;
+  });
+  const doneIndex = {};
+  (sessions || []).forEach(s => {
+    if (!s.isDeleted && s.scheduledDate) doneIndex[s.scheduledDate] = s;
+  });
+
+  let evaluated = 0;
+  const push = (iso) => {
+    if (dCompare(iso, series.startDate) < 0) return;
+    if (dCompare(iso, rangeStart) < 0 || dCompare(iso, hardEnd) > 0) return;
+    let state;
+    if (isPausedOn(pauses, iso))      state = 'paused';
+    else if (doneIndex[iso])          state = 'completed';
+    else if (skipIndex[iso])          state = 'skipped';
+    else if (dCompare(iso, today) < 0) state = 'missed';
+    else if (dCompare(iso, today) === 0) state = 'dueToday';
+    else                              state = 'upcoming';
+    out.push({
+      date: iso,
+      state,
+      session: doneIndex[iso] || null,
+      exception: skipIndex[iso] || null,
+    });
+  };
+
+  if (series.frequency === 'weekly') {
+    let weekStart = seekToRange(series, rangeStart);
+    while (dCompare(weekStart, hardEnd) <= 0) {
+      if (++evaluated > RECURRENCE_EVAL_LIMIT) throw new Error('RANGE_LIMIT_EXCEEDED');
+      for (const d of weeklyDatesInWeek(series, weekStart)) push(d);
+      weekStart = dAddDays(weekStart, iv * 7);
+    }
+    return out.sort((a,b) => dCompare(a.date, b.date));
+  }
+
+  let cursor = seekToRange(series, rangeStart);
+  const anchorDay = dParts(series.startDate).d;
+  while (dCompare(cursor, hardEnd) <= 0) {
+    if (++evaluated > RECURRENCE_EVAL_LIMIT) throw new Error('RANGE_LIMIT_EXCEEDED');
+    push(cursor);
+    if (series.frequency === 'daily')        cursor = dAddDays(cursor, iv);
+    else if (series.frequency === 'monthly') cursor = dAddMonthsClamped(cursor, iv, anchorDay);
+    else if (series.frequency === 'yearly')  cursor = dAddMonthsClamped(cursor, iv * 12, anchorDay);
+    else break;
+  }
+  return out;
+}
+
+// ── endCount WITHOUT AN UNBOUNDED SCAN ──────────────────────────────────────
+// Skipped dates COUNT toward endCount; paused dates DO NOT. Pauses therefore
+// push the final date later. Rather than walking the series, count how many
+// pattern dates fall inside each pause window — closed form per frequency —
+// and jump straight to the nth occurrence.
+function patternDatesInRange(series, fromISO, toISO) {
+  if (dCompare(toISO, fromISO) < 0) return 0;
+  const iv = Math.max(1, series.interval || 1);
+  const start = series.startDate;
+  const from = dCompare(fromISO, start) < 0 ? start : fromISO;
+  if (dCompare(toISO, start) < 0) return 0;
+
+  if (series.frequency === 'daily') {
+    const a = Math.ceil(dDiffDays(start, from) / iv);
+    const b = Math.floor(dDiffDays(start, toISO) / iv);
+    return Math.max(0, b - a + 1);
+  }
+  if (series.frequency === 'weekly') {
+    const perWeek = (series.daysOfWeek && series.daysOfWeek.length) ? series.daysOfWeek.length : 1;
+    const wa = Math.ceil(dDiffDays(dStartOfWeek(start), dStartOfWeek(from)) / 7 / iv);
+    const wb = Math.floor(dDiffDays(dStartOfWeek(start), dStartOfWeek(toISO)) / 7 / iv);
+    // Whole active weeks, then trim the partial weeks at each edge.
+    let n = Math.max(0, wb - wa + 1) * perWeek;
+    if (n > 0) {
+      for (const d of weeklyDatesInWeek(series, dAddDays(dStartOfWeek(start), wa * iv * 7))) {
+        if (dCompare(d, from) < 0) n--;
+      }
+      for (const d of weeklyDatesInWeek(series, dAddDays(dStartOfWeek(start), wb * iv * 7))) {
+        if (dCompare(d, toISO) > 0) n--;
+      }
+    }
+    return Math.max(0, n);
+  }
+  if (series.frequency === 'monthly') {
+    const a = Math.ceil(dMonthsBetween(start, from) / iv);
+    const b = Math.floor(dMonthsBetween(start, toISO) / iv);
+    return Math.max(0, b - a + 1);
+  }
+  if (series.frequency === 'yearly') {
+    const a = Math.ceil((dParts(from).y - dParts(start).y) / iv);
+    const b = Math.floor((dParts(toISO).y - dParts(start).y) / iv);
+    return Math.max(0, b - a + 1);
+  }
+  return 0;
+}
+
+// The nth scheduled date (1-based), ignoring pauses — O(1) per frequency.
+function nthOccurrence(series, n) {
+  const iv = Math.max(1, series.interval || 1);
+  const idx = Math.max(1, n) - 1;
+  if (series.frequency === 'daily')   return dAddDays(series.startDate, idx * iv);
+  if (series.frequency === 'monthly') return dAddMonthsClamped(series.startDate, idx * iv, dParts(series.startDate).d);
+  if (series.frequency === 'yearly')  return dAddMonthsClamped(series.startDate, idx * iv * 12, dParts(series.startDate).d);
+  if (series.frequency === 'weekly') {
+    const days = (series.daysOfWeek && series.daysOfWeek.length)
+      ? series.daysOfWeek.slice().sort((a,b)=>a-b)
+      : [dIsoWeekday(series.startDate)];
+    // Discard dates in the first active week that precede startDate.
+    const firstWeek = weeklyDatesInWeek(series, dStartOfWeek(series.startDate))
+      .filter(d => dCompare(d, series.startDate) >= 0);
+    if (idx < firstWeek.length) return firstWeek[idx];
+    const remaining = idx - firstWeek.length;
+    const week = Math.floor(remaining / days.length) + 1;
+    const within = remaining % days.length;
+    return weeklyDatesInWeek(series, dAddDays(dStartOfWeek(series.startDate), week * iv * 7))[within];
+  }
+  return series.startDate;
+}
+
+function finalDateForCount(series, pauses, todayISO) {
+  if (series.endMode !== 'afterCount' || !series.endCount) return null;
+  const today = todayISO || dToday();
+  let extra = 0;
+  for (const p of (pauses || [])) {
+    if (p.isDeleted || !p.startDate) continue;
+    // An open pause is bounded at today: no date beyond it is actionable yet.
+    const end = p.endDate || today;
+    extra += patternDatesInRange(series, p.startDate, end);
+  }
+  return nthOccurrence(series, series.endCount + extra);
+}
+
+// ── ADHERENCE (client preview) ──────────────────────────────────────────────
+// The server calculation is authoritative. This exists so the portal can show
+// a figure immediately and offline. Both implement the SAME documented
+// algorithm and are checked against shared test vectors — they are two
+// implementations, not shared code, and the server value wins after sync.
+function computeAdherence(occurrences) {
+  const t = { expected:0, completed:0, missed:0, skipped:0, paused:0, completedLate:0, adherencePct:null };
+  for (const o of occurrences) {
+    if (o.state === 'completed') {
+      t.completed++; t.expected++;
+      if (o.session && o.session.completedLate) t.completedLate++;
+    } else if (o.state === 'missed') {
+      t.missed++; t.expected++;
+    } else if (o.state === 'skipped') {
+      t.skipped++;
+    } else if (o.state === 'paused') {
+      t.paused++;
+    }
+  }
+  const denom = t.completed + t.missed;
+  t.adherencePct = denom > 0 ? Math.round((t.completed / denom) * 1000) / 10 : null;
+  return t;
+}
+
+// ── PHASE 2 — IMMUTABLE TEMPLATE VERSIONING ─────────────────────────────────
+// Editing a pack used to overwrite it in place. Once a recurring series can
+// pin a template version, and once a completed session records which version
+// it used, overwriting would silently rewrite history. Every save now appends
+// an immutable version row and advances the header's currentVersion.
+function packContentHash(content) {
+  // Small, stable, order-independent enough for change detection. Not a
+  // security hash — it only answers "did the content actually change?".
+  const json = JSON.stringify(content, Object.keys(content).sort());
+  let h = 0;
+  for (let i = 0; i < json.length; i++) { h = ((h << 5) - h + json.charCodeAt(i)) | 0; }
+  return (h >>> 0).toString(16).padStart(8, '0') + ':' + json.length;
+}
+
+// The content that actually defines a pack — deliberately excludes
+// bookkeeping fields, so re-saving without a real edit creates no version.
+function extractPackContent(pack) {
+  return {
+    name: pack.name,
+    description: pack.description || '',
+    difficulty: pack.difficulty || 'Easy',
+    skillsTrained: pack.skillsTrained || [],
+    drillRefs: pack.drillRefs || [],
+    estimatedDurationMin: pack.estimatedDurationMin || null,
+  };
+}
+
+async function recordPackVersion(pack) {
+  const content = extractPackContent(pack);
+  const hash = packContentHash(content);
+  const existing = (await DB.getAll('trainingPackVersions'))
+    .filter(v => String(v.packLocalId) === String(pack.packId) && !v.isDeleted)
+    .sort((a,b) => (b.version||0) - (a.version||0));
+
+  // Unchanged content creates no new version — avoids version churn from
+  // opening and re-saving a pack without editing it.
+  if (existing.length && existing[0].contentHash === hash) return existing[0].version;
+
+  const nextVersion = existing.length ? (existing[0].version || 0) + 1 : 1;
+  await DB.put('trainingPackVersions', {
+    packLocalId: String(pack.packId),
+    version: nextVersion,
+    content,
+    contentHash: hash,
+    createdAt: new Date().toISOString(),
+  });
+  return nextVersion;
+}
+
 async function saveTrainingPack(pack) {
   if (!pack.ownerType || pack.ownerType === 'official') {
     throw new Error('Custom packs must have ownerType "guardian" or "player", never "official".');
@@ -11963,6 +12442,20 @@ async function saveTrainingPack(pack) {
   }
   if (!pack.status) pack.status = 'active';
   const res = await DB.put('trainingPacks', pack);
+  // The header now needs its own packId before a version can reference it,
+  // which is why versioning happens after the put, not before.
+  if (!pack.packId) pack.packId = res;
+  try {
+    const v = await recordPackVersion(pack);
+    if (pack.currentVersion !== v) {
+      pack.currentVersion = v;
+      await DB.put('trainingPacks', pack);
+    }
+  } catch(err) {
+    // Versioning must never block a save the person just made. The header
+    // is already stored; a missing version row is recoverable on next edit.
+    console.error('[pack versioning] failed:', err);
+  }
   Sync.scheduleAutoSync(); // was missing — packs never uploaded
   return res;
 }
@@ -13515,6 +14008,586 @@ const EVENT_TYPE_ICONS = {
 // Player: can see everything, create/edit/delete only their OWN sessions,
 // can mark a guardian-assigned session as completed (filling in results)
 // but cannot delete or reassign it.
+// ════════════════════════════════════════════════════════════════════════════
+// PHASE 4 — RECURRING SERIES: DATA OPERATIONS
+//
+// V1 is guardian-only. A player may VIEW and COMPLETE occurrences of a series
+// assigned to them, but may not create, edit, pause, stop, skip or delete one.
+// Enforced here as well as server-side; the UI merely mirrors these rules.
+// ════════════════════════════════════════════════════════════════════════════
+
+function isGuardianContext() {
+  return !State.portalPlayerId && Auth.isLoggedIn();
+}
+
+async function getSeriesForPlayer(playerId, seasonId) {
+  const all = await DB.getAll('trainingSeries');
+  return all.filter(s =>
+    !s.isDeleted &&
+    String(s.playerId) === String(playerId) &&
+    (!seasonId || String(s.seasonId) === String(seasonId))
+  );
+}
+
+async function getSeriesContext(series) {
+  const [allExc, allPause, allSess] = await Promise.all([
+    DB.getAll('trainingSeriesExceptions'),
+    DB.getAll('trainingSeriesPauses'),
+    DB.getAll('trainingSessions'),
+  ]);
+  const sid = series.cloudId || ('local:' + series.seriesId);
+  const match = (r) => String(r.seriesCloudId) === String(sid);
+  return {
+    exceptions: allExc.filter(r => !r.isDeleted && match(r)),
+    pauses:     allPause.filter(r => !r.isDeleted && match(r)),
+    sessions:   allSess.filter(r => !r.isDeleted && match(r)),
+  };
+}
+
+// A series is identified by its cloud UUID wherever possible. Before the
+// first sync there is no UUID, so a stable local alias is used and swapped
+// for the real one on upload — see the note in saveTrainingSeries().
+function seriesRef(series) {
+  return series.cloudId || ('local:' + series.seriesId);
+}
+
+async function saveTrainingSeries(series) {
+  if (!isGuardianContext()) throw new Error(I18n.t('tr_err_guardian_only'));
+  if (!series.playerId)   throw new Error('Series must have a playerId.');
+  if (!series.seasonId)   throw new Error('Series must have a seasonId.');
+  if (!series.startDate)  throw new Error('Series must have a startDate.');
+  if (!series.frequency)  throw new Error('Series must have a frequency.');
+
+  series.interval = Math.min(30, Math.max(1, parseInt(series.interval) || 1));
+  if (series.frequency !== 'weekly') {
+    series.daysOfWeek = null;                    // only weekly carries weekdays
+  } else if (!series.daysOfWeek || !series.daysOfWeek.length) {
+    series.daysOfWeek = [dIsoWeekday(series.startDate)];
+  }
+  if (series.endMode === 'onDate') {
+    if (!series.endDate) throw new Error(I18n.t('tr_err_end_date_required'));
+    if (dCompare(series.endDate, series.startDate) < 0) throw new Error(I18n.t('tr_err_end_before_start'));
+    series.endCount = null;
+  } else if (series.endMode === 'afterCount') {
+    if (!series.endCount || series.endCount < 1) throw new Error(I18n.t('tr_err_end_count_required'));
+    series.endDate = null;
+  } else {
+    series.endDate = null; series.endCount = null;
+  }
+
+  const existing = series.seriesId ? await DB.get('trainingSeries', series.seriesId) : null;
+  if (existing) {
+    // Season and player are immutable — changing either would silently move
+    // the history this series owns. The database enforces this too.
+    if (String(existing.seasonId) !== String(series.seasonId)) throw new Error(I18n.t('tr_err_series_season_locked'));
+    if (String(existing.playerId) !== String(series.playerId)) throw new Error(I18n.t('tr_err_series_player_locked'));
+    if (existing.status === 'archived') throw new Error(I18n.t('tr_err_series_archived'));
+  }
+
+  series.createdBy = 'guardian';                 // V1: always
+  series.status = series.status || 'active';
+  series.version = (series.version || 0) + 1;
+  series.updatedAt = new Date().toISOString();
+  if (!series.createdAt) series.createdAt = series.updatedAt;
+
+  const id = await DB.put('trainingSeries', series);
+  Sync.scheduleAutoSync();
+  return id;
+}
+
+async function stopTrainingSeries(seriesId) {
+  if (!isGuardianContext()) throw new Error(I18n.t('tr_err_guardian_only'));
+  const s = await DB.get('trainingSeries', seriesId);
+  if (!s) return;
+  // Stopping is a lifecycle change, never a deletion: completed sessions,
+  // adherence and audit history all survive untouched.
+  s.status = 'stopped';
+  s.stoppedAt = dToday();
+  s.version = (s.version || 1) + 1;
+  s.updatedAt = new Date().toISOString();
+  await DB.put('trainingSeries', s);
+  Sync.scheduleAutoSync();
+}
+
+async function pauseTrainingSeries(seriesId, untilISO, reason) {
+  if (!isGuardianContext()) throw new Error(I18n.t('tr_err_guardian_only'));
+  const s = await DB.get('trainingSeries', seriesId);
+  if (!s) return;
+  const ctx = await getSeriesContext(s);
+  // At most one open pause. Overlaps are rejected by the database too.
+  if (ctx.pauses.some(p => !p.endDate)) throw new Error(I18n.t('tr_err_already_paused'));
+  await DB.put('trainingSeriesPauses', {
+    seriesCloudId: seriesRef(s),
+    playerId: s.playerId,
+    startDate: dToday(),
+    endDate: untilISO || null,        // null = indefinite
+    reason: reason || 'other',
+    createdBy: 'guardian',
+    createdAt: new Date().toISOString(),
+    version: 1,
+  });
+  Sync.scheduleAutoSync();
+}
+
+async function resumeTrainingSeries(seriesId) {
+  if (!isGuardianContext()) throw new Error(I18n.t('tr_err_guardian_only'));
+  const s = await DB.get('trainingSeries', seriesId);
+  if (!s) return;
+  const ctx = await getSeriesContext(s);
+  const open = ctx.pauses.find(p => !p.endDate);
+  if (!open) return;
+  // Close the period rather than deleting it — the pause stays auditable and
+  // those dates remain correctly excluded from adherence.
+  open.endDate = dToday();
+  open.version = (open.version || 1) + 1;
+  open.updatedAt = new Date().toISOString();
+  await DB.put('trainingSeriesPauses', open);
+  Sync.scheduleAutoSync();
+}
+
+async function skipOccurrence(seriesId, dateISO, reason) {
+  if (!isGuardianContext()) throw new Error(I18n.t('tr_err_guardian_only'));
+  const s = await DB.get('trainingSeries', seriesId);
+  if (!s) return;
+  const ctx = await getSeriesContext(s);
+  // A completed occurrence outranks a skip submitted afterwards.
+  if (ctx.sessions.some(x => x.scheduledDate === dateISO)) {
+    throw new Error(I18n.t('tr_err_already_completed'));
+  }
+  if (ctx.exceptions.some(x => x.scheduledDate === dateISO)) return; // already skipped
+  await DB.put('trainingSeriesExceptions', {
+    seriesCloudId: seriesRef(s),
+    playerId: s.playerId,
+    scheduledDate: dateISO,
+    type: 'skip',
+    reason: reason || 'other',
+    createdBy: 'guardian',
+    createdAt: new Date().toISOString(),
+    version: 1,
+  });
+  Sync.scheduleAutoSync();
+}
+
+async function unskipOccurrence(seriesId, dateISO) {
+  if (!isGuardianContext()) throw new Error(I18n.t('tr_err_guardian_only'));
+  const s = await DB.get('trainingSeries', seriesId);
+  if (!s) return;
+  const ctx = await getSeriesContext(s);
+  const exc = ctx.exceptions.find(x => x.scheduledDate === dateISO);
+  if (exc) { await DB.softDelete('trainingSeriesExceptions', exc.exceptionId); Sync.scheduleAutoSync(); }
+}
+
+async function deleteTrainingSeries(seriesId) {
+  if (!isGuardianContext()) throw new Error(I18n.t('tr_err_guardian_only'));
+  const s = await DB.get('trainingSeries', seriesId);
+  if (!s) return;
+  // Soft delete only. Completed sessions keep their series reference and
+  // their full template snapshot, so history renders exactly as before.
+  await DB.softDelete('trainingSeries', seriesId);
+  Sync.scheduleAutoSync();
+}
+
+// ── OCCURRENCES ACROSS ALL OF A PLAYER'S SERIES ─────────────────────────────
+// One call assembles everything the training list needs for a date window.
+async function getPlayerOccurrences(playerId, seasonId, rangeStart, rangeEnd) {
+  const seriesList = await getSeriesForPlayer(playerId, seasonId);
+  const out = [];
+  for (const s of seriesList) {
+    if (s.status === 'archived') continue;
+    const ctx = await getSeriesContext(s);
+    let occ = [];
+    try {
+      occ = generateOccurrences(s, ctx.exceptions, ctx.pauses, ctx.sessions, rangeStart, rangeEnd, dToday());
+    } catch(err) {
+      // RANGE_LIMIT_EXCEEDED — narrow rather than silently truncating.
+      console.error('[occurrences] range too large for series', s.seriesId, err.message);
+      continue;
+    }
+    occ.forEach(o => out.push({ ...o, series: s }));
+  }
+  return out.sort((a,b) => dCompare(a.date, b.date));
+}
+
+function describeRecurrence(s) {
+  const iv = s.interval || 1;
+  const dayNames = [I18n.t('day_mon'),I18n.t('day_tue'),I18n.t('day_wed'),
+                    I18n.t('day_thu'),I18n.t('day_fri'),I18n.t('day_sat'),I18n.t('day_sun')];
+  let rule;
+  if (s.frequency === 'daily') {
+    rule = iv === 1 ? I18n.t('rec_every_day') : I18n.t('rec_every_n_days', {n: iv});
+  } else if (s.frequency === 'weekly') {
+    const days = (s.daysOfWeek || []).map(d => dayNames[d-1]).join(', ');
+    rule = iv === 1 ? I18n.t('rec_weekly_on', {days}) : I18n.t('rec_every_n_weeks_on', {n: iv, days});
+  } else if (s.frequency === 'monthly') {
+    rule = iv === 1 ? I18n.t('rec_every_month') : I18n.t('rec_every_n_months', {n: iv});
+  } else {
+    rule = iv === 1 ? I18n.t('rec_every_year') : I18n.t('rec_every_n_years', {n: iv});
+  }
+  let ending;
+  if (s.endMode === 'onDate')          ending = I18n.t('rec_until', {date: fmtDate(s.endDate)});
+  else if (s.endMode === 'afterCount') ending = I18n.t('rec_after_n', {n: s.endCount});
+  else                                 ending = I18n.t('rec_no_end');
+  return `${rule} ${I18n.t('rec_from', {date: fmtDate(s.startDate)})} — ${ending}`;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PHASE 4 — GUARDIAN UI: recurring plan form and list
+// ════════════════════════════════════════════════════════════════════════════
+let _seriesFormPlayerId = null;
+let _seriesFormEditingId = null;
+
+// ════════════════════════════════════════════════════════════════════════════
+// PHASE 5 — COMPLETING AN OCCURRENCE
+//
+// Completing generates a REAL trainingSessions row carrying a full snapshot
+// of the template as it stood at that moment. From then on the record is
+// independent: editing or deleting the template later cannot rewrite what
+// was actually done. Guardian ownership is copied from the SERIES, never
+// from whoever is completing, so a player completing a guardian-assigned
+// occurrence never converts it into a player-created session.
+// ════════════════════════════════════════════════════════════════════════════
+async function openOccurrenceCompletion(seriesId, dateISO, viewAs) {
+  const series = await DB.get('trainingSeries', seriesId);
+  if (!series) return;
+  if (!isTrainingOwnershipAllowed(series.playerId)) {
+    Toast.error(I18n.t('tr_err_not_your_session'));
+    return;
+  }
+  const ctx = await getSeriesContext(series);
+  if (ctx.sessions.some(x => x.scheduledDate === dateISO)) {
+    Toast.error(I18n.t('tr_err_already_completed'));
+    return;
+  }
+  if (ctx.exceptions.some(x => x.scheduledDate === dateISO)) {
+    Toast.error(I18n.t('tr_rec_skipped'));
+    return;
+  }
+  if (isPausedOn(ctx.pauses, dateISO)) {
+    Toast.error(I18n.t('tr_occ_paused'));
+    return;
+  }
+
+  // Materialise the occurrence as a real session, then hand straight over to
+  // the existing completion form — no parallel completion UI to maintain.
+  try {
+    const sessionId = await materialiseOccurrence(series, dateISO);
+    await renderPlayerTraining(series.playerId, viewAs);
+    await openTrainingCompletionForm(sessionId, viewAs);
+  } catch(err) {
+    console.error('[occurrence completion]', err);
+    Toast.error(err.message || I18n.t('tr_err_save_failed'));
+  }
+}
+
+async function materialiseOccurrence(series, dateISO) {
+  const pack = (await getAllPacks()).find(p => String(p.packId) === String(series.templateId));
+  const drills = [];
+  if (pack && pack.drillRefs) {
+    for (const ref of pack.drillRefs) {
+      if (ref.kind === 'library') {
+        const d = getLibraryDrill(ref.key);
+        if (d) drills.push({ drillKey: ref.key, kind: 'library', skipped: false, values: {} });
+      } else {
+        drills.push({ drillKey: String(ref.drillId), kind: 'custom', skipped: false, values: {} });
+      }
+    }
+  }
+  const session = {
+    playerId: series.playerId,
+    seasonId: series.seasonId,
+    title: series.titleOverride || pack?.name || I18n.t('tr_rec_title'),
+    notes: series.notesOverride || '',
+    scheduledDate: dateISO,
+    status: 'Scheduled',
+    // Ownership always comes from the series — this is the rule that stops a
+    // guardian-assigned occurrence turning into a player-created session.
+    createdBy: series.createdBy || 'guardian',
+    drills,
+    // Provenance + the immutable snapshot.
+    seriesCloudId: seriesRef(series),
+    templateId: series.templateId,
+    templateVersion: pack?.currentVersion || 1,
+    templateSnapshot: pack ? {
+      name: pack.name, description: pack.description || '',
+      difficulty: pack.difficulty || null, skillsTrained: pack.skillsTrained || [],
+      drillRefs: pack.drillRefs || [], estimatedDurationMin: pack.estimatedDurationMin || null,
+    } : null,
+    version: 1,
+  };
+  const id = await saveTrainingSession(session);
+  Sync.scheduleAutoSync();
+  return session.trainingSessionId || id;
+}
+
+async function openSeriesForm(playerId, seriesId) {
+  if (!isGuardianContext()) { Toast.error(I18n.t('tr_err_guardian_only')); return; }
+  const player = await DB.get('players', playerId);
+  if (!player) return;
+  const s = seriesId ? await DB.get('trainingSeries', seriesId) : null;
+  _seriesFormPlayerId = playerId;
+  _seriesFormEditingId = seriesId || null;
+
+  const packs = (await getAllPacks()).filter(p => p.status !== 'archived');
+  const today = dToday();
+  const cur = {
+    templateId: s?.templateId || (packs[0] ? String(packs[0].packId) : ''),
+    frequency: s?.frequency || 'weekly',
+    interval:  s?.interval  || 1,
+    daysOfWeek: s?.daysOfWeek || [dIsoWeekday(today)],
+    startDate: s?.startDate || today,
+    endMode:   s?.endMode   || 'onDate',
+    endDate:   s?.endDate   || '',
+    endCount:  s?.endCount  || 10,
+    titleOverride: s?.titleOverride || '',
+    notesOverride: s?.notesOverride || '',
+  };
+  const dayNames = ['day_mon','day_tue','day_wed','day_thu','day_fri','day_sat','day_sun'];
+
+  const overlay = document.createElement('div');
+  overlay.className = 'rm-form-overlay open';
+  overlay.id = 'seriesFormOverlay';
+  overlay.innerHTML = `
+    <div class="rm-form" style="max-width:460px">
+      <h2>${I18n.t('tr_rec_new')} — ${esc(shortName(player.fullName))}</h2>
+      <div class="form-grid">
+        <div class="form-group full"><label>${I18n.t('tr_rec_lbl_template')}</label>
+          <select id="sf-template">${packs.map(p => `<option value="${esc(String(p.packId))}" ${String(p.packId)===String(cur.templateId)?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
+
+        <div class="form-group"><label>${I18n.t('tr_rec_lbl_freq')}</label>
+          <select id="sf-freq" onchange="onSeriesFormChange()">
+            <option value="daily"   ${cur.frequency==='daily'?'selected':''}>${I18n.t('tr_rec_freq_daily')}</option>
+            <option value="weekly"  ${cur.frequency==='weekly'?'selected':''}>${I18n.t('tr_rec_freq_weekly')}</option>
+            <option value="monthly" ${cur.frequency==='monthly'?'selected':''}>${I18n.t('tr_rec_freq_monthly')}</option>
+            <option value="yearly"  ${cur.frequency==='yearly'?'selected':''}>${I18n.t('tr_rec_freq_yearly')}</option>
+          </select></div>
+        <div class="form-group"><label>${I18n.t('tr_rec_lbl_interval')}</label>
+          <input id="sf-interval" type="number" min="1" max="30" value="${cur.interval}" onchange="onSeriesFormChange()"></div>
+
+        <div class="form-group full" id="sf-days-wrap"><label>${I18n.t('tr_rec_lbl_days')}</label>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            ${dayNames.map((k,i) => `<label style="display:flex;align-items:center;gap:3px;font-size:11px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;cursor:pointer">
+              <input type="checkbox" class="sf-day" value="${i+1}" ${cur.daysOfWeek.includes(i+1)?'checked':''} onchange="onSeriesFormChange()">${I18n.t(k)}</label>`).join('')}
+          </div></div>
+
+        <div class="form-group"><label>${I18n.t('tr_rec_lbl_start')}</label>
+          <input id="sf-start" type="date" value="${esc(cur.startDate)}" onchange="onSeriesFormChange()"></div>
+        <div class="form-group"><label>${I18n.t('tr_rec_lbl_end')}</label>
+          <select id="sf-endmode" onchange="onSeriesFormChange()">
+            <option value="onDate"     ${cur.endMode==='onDate'?'selected':''}>${I18n.t('tr_rec_end_ondate')}</option>
+            <option value="afterCount" ${cur.endMode==='afterCount'?'selected':''}>${I18n.t('tr_rec_end_count')}</option>
+            <option value="never"      ${cur.endMode==='never'?'selected':''}>${I18n.t('tr_rec_end_never')}</option>
+          </select></div>
+
+        <div class="form-group full" id="sf-enddate-wrap">
+          <input id="sf-enddate" type="date" value="${esc(cur.endDate)}" onchange="onSeriesFormChange()"></div>
+        <div class="form-group full" id="sf-endcount-wrap">
+          <input id="sf-endcount" type="number" min="1" value="${cur.endCount}" onchange="onSeriesFormChange()"></div>
+
+        <div class="form-group full"><label>${I18n.t('tr_rec_lbl_title')}</label>
+          <input id="sf-title" type="text" value="${esc(cur.titleOverride)}"></div>
+        <div class="form-group full"><label>${I18n.t('tr_rec_lbl_notes')}</label>
+          <textarea id="sf-notes" rows="2">${esc(cur.notesOverride)}</textarea></div>
+      </div>
+
+      <div id="sf-summary" style="margin-top:12px;padding:10px;background:var(--light);border-radius:6px;font-size:12px;line-height:1.5"></div>
+
+      <div class="form-actions" style="margin-top:16px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="document.getElementById('seriesFormOverlay').remove()">${I18n.t('common_cancel')}</button>
+        <button class="btn btn-primary" onclick="saveSeriesForm()">${I18n.t('common_save')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  onSeriesFormChange();
+}
+
+// Shows only the fields that apply, and previews the rule in plain language
+// with a real occurrence count — so the guardian sees exactly what they are
+// about to create before saving it.
+function onSeriesFormChange() {
+  const freq = document.getElementById('sf-freq')?.value;
+  const endMode = document.getElementById('sf-endmode')?.value;
+  const daysWrap = document.getElementById('sf-days-wrap');
+  const edWrap = document.getElementById('sf-enddate-wrap');
+  const ecWrap = document.getElementById('sf-endcount-wrap');
+  if (daysWrap) daysWrap.style.display = freq === 'weekly' ? '' : 'none';
+  if (edWrap)   edWrap.style.display   = endMode === 'onDate' ? '' : 'none';
+  if (ecWrap)   ecWrap.style.display   = endMode === 'afterCount' ? '' : 'none';
+
+  const draft = readSeriesForm();
+  const sum = document.getElementById('sf-summary');
+  if (!sum || !draft.startDate) return;
+  try {
+    const horizon = draft.endMode === 'onDate' && draft.endDate
+      ? draft.endDate
+      : dAddDays(draft.startDate, 364);
+    const occ = generateOccurrences({...draft, status:'active'}, [], [], [], draft.startDate, horizon, dToday());
+    sum.innerHTML = `<strong>${esc(describeRecurrence(draft))}</strong>`
+      + (occ.length ? `<br><span style="color:var(--muted)">${occ.length}${occ.length>=365?'+':''} ${I18n.t('tr_progress_sessions_suffix')}</span>` : '');
+  } catch(err) {
+    sum.innerHTML = `<strong>${esc(describeRecurrence(draft))}</strong>`;
+  }
+}
+
+function readSeriesForm() {
+  const days = Array.from(document.querySelectorAll('.sf-day:checked')).map(c => parseInt(c.value));
+  return {
+    templateId: document.getElementById('sf-template')?.value || '',
+    frequency:  document.getElementById('sf-freq')?.value || 'weekly',
+    interval:   parseInt(document.getElementById('sf-interval')?.value) || 1,
+    daysOfWeek: days,
+    startDate:  document.getElementById('sf-start')?.value || '',
+    endMode:    document.getElementById('sf-endmode')?.value || 'onDate',
+    endDate:    document.getElementById('sf-enddate')?.value || '',
+    endCount:   parseInt(document.getElementById('sf-endcount')?.value) || null,
+    titleOverride: document.getElementById('sf-title')?.value.trim() || '',
+    notesOverride: document.getElementById('sf-notes')?.value.trim() || '',
+  };
+}
+
+async function saveSeriesForm() {
+  const draft = readSeriesForm();
+  const existing = _seriesFormEditingId ? await DB.get('trainingSeries', _seriesFormEditingId) : null;
+  const player = await DB.get('players', _seriesFormPlayerId);
+  const series = {
+    ...(existing || {}),
+    ...draft,
+    playerId: _seriesFormPlayerId,
+    careerPlayerId: player?.careerPlayerId || null,
+    seasonId: existing ? existing.seasonId : State.currentSeasonId,
+  };
+  try {
+    await saveTrainingSeries(series);
+    document.getElementById('seriesFormOverlay')?.remove();
+    Toast.show(I18n.t('tr_rec_saved'));
+    await renderPlayerTraining(_seriesFormPlayerId, 'guardian');
+  } catch(err) {
+    Toast.error(err.message);
+  }
+}
+
+async function handleStopSeries(seriesId, playerId) {
+  if (!window.confirm(I18n.t('tr_rec_confirm_stop'))) return;
+  try { await stopTrainingSeries(seriesId); Toast.show(I18n.t('tr_rec_stopped_ok'));
+        await renderPlayerTraining(playerId,'guardian'); }
+  catch(err) { Toast.error(err.message); }
+}
+async function handleDeleteSeries(seriesId, playerId) {
+  if (!window.confirm(I18n.t('tr_rec_confirm_delete'))) return;
+  try { await deleteTrainingSeries(seriesId); Toast.show(I18n.t('ch_deleted'));
+        await renderPlayerTraining(playerId,'guardian'); }
+  catch(err) { Toast.error(err.message); }
+}
+async function handlePauseSeries(seriesId, playerId) {
+  const until = window.prompt(I18n.t('tr_rec_pause_until') + ' (YYYY-MM-DD)', '');
+  if (until === null) return;
+  try { await pauseTrainingSeries(seriesId, until.trim() || null, 'other');
+        await renderPlayerTraining(playerId,'guardian'); }
+  catch(err) { Toast.error(err.message); }
+}
+async function handleResumeSeries(seriesId, playerId) {
+  try { await resumeTrainingSeries(seriesId); await renderPlayerTraining(playerId,'guardian'); }
+  catch(err) { Toast.error(err.message); }
+}
+async function handleSkipOccurrence(seriesId, dateISO, playerId, viewAs) {
+  try { await skipOccurrence(seriesId, dateISO, 'other'); await renderPlayerTraining(playerId, viewAs); }
+  catch(err) { Toast.error(err.message); }
+}
+async function handleUnskipOccurrence(seriesId, dateISO, playerId, viewAs) {
+  try { await unskipOccurrence(seriesId, dateISO); await renderPlayerTraining(playerId, viewAs); }
+  catch(err) { Toast.error(err.message); }
+}
+
+// Renders the recurring-plan list plus upcoming occurrences. Shared by both
+// sides: the guardian gets management controls, the player does not.
+async function renderSeriesSection(playerId, viewAs) {
+  const seriesList = await getSeriesForPlayer(playerId, State.currentSeasonId);
+  // Pause state is derived from the pause-period history, never stored as a
+  // flag — several pauses can exist and all stay auditable.
+  for (const s of seriesList) {
+    const ctx = await getSeriesContext(s);
+    s.__ctx = ctx;
+    s.__paused = ctx.pauses.some(p => !p.endDate);
+  }
+  const isGuardian = viewAs === 'guardian' && isGuardianContext();
+  const today = dToday();
+  // A 60-day window: enough to be useful, small enough to stay well inside
+  // the 365-candidate evaluation limit even for a daily series.
+  const occ = await getPlayerOccurrences(playerId, State.currentSeasonId, dAddDays(today,-30), dAddDays(today,30));
+  const visible = occ.filter(o => o.state !== 'paused' || isGuardian);
+
+  const stateLabel = {
+    upcoming:  I18n.t('tr_occ_upcoming'), dueToday: I18n.t('tr_occ_due'),
+    missed:    I18n.t('tr_occ_missed'),   skipped:  I18n.t('tr_rec_skipped'),
+    paused:    I18n.t('tr_occ_paused'),   completed: I18n.t('tr_status_completed'),
+  };
+  const stateColour = {
+    upcoming:'#5a6a7a', dueToday:'#1a7f37', missed:'#b03030',
+    skipped:'#8a6d3b', paused:'#5a6a7a', completed:'#1a7f37',
+  };
+
+  const listHtml = !seriesList.length
+    ? `<p style="font-size:12px;color:var(--muted)">${I18n.t('tr_rec_none')}</p>`
+    : seriesList.map(s => {
+        const ctx = s.__ctx;
+        const paused = (s.__paused === true);
+        const next = occ.find(o => o.series.seriesId === s.seriesId && (o.state==='upcoming'||o.state==='dueToday'));
+        return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+            <div style="flex:1;min-width:180px">
+              <div style="font-size:13px;font-weight:700">${esc(s.titleOverride || I18n.t('tr_rec_title'))}
+                ${s.status==='stopped' ? `<span style="font-size:10px;color:#b03030;font-weight:400"> · ${I18n.t('tr_rec_stopped',{date:fmtDate(s.stoppedAt)})}</span>` : ''}
+                ${paused ? `<span style="font-size:10px;color:#8a6d3b;font-weight:400"> · ${I18n.t('tr_rec_paused')}</span>` : ''}
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(describeRecurrence(s))}</div>
+              ${next ? `<div style="font-size:11px;color:var(--muted)">${I18n.t('tr_rec_next',{date:fmtDate(next.date)})}</div>` : ''}
+            </div>
+            ${isGuardian ? `<div style="display:flex;gap:4px;flex-wrap:wrap">
+              ${s.status==='active' ? `<button class="btn btn-secondary btn-sm" onclick="openSeriesForm(${playerId},${s.seriesId})">${I18n.t('tr_rec_edit')}</button>
+              ${paused ? `<button class="btn btn-secondary btn-sm" onclick="handleResumeSeries(${s.seriesId},${playerId})">${I18n.t('tr_rec_resume')}</button>`
+                       : `<button class="btn btn-secondary btn-sm" onclick="handlePauseSeries(${s.seriesId},${playerId})">${I18n.t('tr_rec_pause')}</button>`}
+              <button class="btn btn-secondary btn-sm" onclick="handleStopSeries(${s.seriesId},${playerId})">${I18n.t('tr_rec_stop')}</button>` : ''}
+              <button class="btn btn-danger btn-sm" onclick="handleDeleteSeries(${s.seriesId},${playerId})">${I18n.t('tr_rec_delete')}</button>
+            </div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+
+  const adh = computeAdherence(occ);
+  const occHtml = !visible.length ? '' : `
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${I18n.t('tr_rec_title')}${adh.adherencePct!==null?` — ${I18n.t('tr_adherence')} ${adh.adherencePct}%`:''}</div>
+      ${adh.adherencePct!==null?`<div style="font-size:11px;color:var(--muted);margin-bottom:8px">${I18n.t('tr_adherence_detail',{done:adh.completed,total:adh.completed+adh.missed})}${adh.completedLate?` · ${adh.completedLate} ${I18n.t('tr_occ_late').toLowerCase()}`:''}</div>`:''}
+      <div class="who-played-list">
+        ${visible.map(o => {
+          const clickable = (o.state === 'dueToday' || o.state === 'missed' || o.state === 'upcoming');
+          const onclick = o.state === 'completed' && o.session
+            ? `openTrainingViewer(${o.session.trainingSessionId},'${viewAs}')`
+            : (clickable ? `openOccurrenceCompletion(${o.series.seriesId},'${o.date}','${viewAs}')` : '');
+          return `<div class="wp-row" ${onclick?`onclick="${onclick}" style="cursor:pointer"`:''}>
+            <div class="wp-info">
+              <span class="wp-num">${o.state==='completed'?'&#10003;':o.state==='skipped'?'&#8212;':'&#128197;'}</span>
+              <span class="wp-name">${esc(o.series.titleOverride || I18n.t('tr_rec_title'))}</span>
+              <span class="pos-pill" style="margin-left:auto">${fmtDate(o.date)}</span>
+              <span class="wp-role-pill" style="margin-left:6px;background:${stateColour[o.state]}22;color:${stateColour[o.state]}">${stateLabel[o.state]||o.state}</span>
+              ${o.state==='completed' && o.session?.completedLate?`<span style="font-size:10px;color:#8a6d3b;margin-left:4px">${I18n.t('tr_occ_late')}</span>`:''}
+            </div>
+            ${isGuardian && (o.state==='upcoming'||o.state==='dueToday'||o.state==='missed') ? `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();handleSkipOccurrence(${o.series.seriesId},'${o.date}',${playerId},'${viewAs}')">${I18n.t('tr_rec_skip')}</button>` : ''}
+            ${isGuardian && o.state==='skipped' ? `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();handleUnskipOccurrence(${o.series.seriesId},'${o.date}',${playerId},'${viewAs}')">${I18n.t('tr_rec_unskip')}</button>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+
+  return `${occHtml}
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+        <div class="card-title" style="margin:0">${I18n.t('tr_rec_title')}</div>
+        ${isGuardian ? `<button class="btn btn-primary btn-sm" onclick="openSeriesForm(${playerId})">+ ${I18n.t('tr_rec_new')}</button>` : ''}
+      </div>
+      ${listHtml}
+    </div>`;
+}
+
 async function renderPlayerTraining(playerId, viewAs) {
   const el = document.getElementById(viewAs === 'player' ? 'pp-training-content' : `tracked-training-${playerId}`);
   if (!el) return;
@@ -13528,6 +14601,15 @@ async function renderPlayerTraining(playerId, viewAs) {
   const progressKeys = Object.keys(totals);
   const progressCustomDrillsList = await getAllCustomDrills();
 
+  // Recurring plans and their generated occurrences. Failure here must not
+  // take down the whole training page — one-off sessions still render.
+  let seriesSectionHtml = '';
+  try {
+    seriesSectionHtml = await renderSeriesSection(playerId, viewAs);
+  } catch(err) {
+    console.error('[series section] render failed:', err);
+  }
+
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
       <h3 style="font-size:14px;font-weight:700">${I18n.t('tr_title')} — ${esc(shortName(player.fullName))}</h3>
@@ -13535,6 +14617,8 @@ async function renderPlayerTraining(playerId, viewAs) {
     </div>
 
     <div id="trainingFormPanel-${playerId}" class="form-panel panel-hidden" style="margin-bottom:16px"></div>
+
+    ${seriesSectionHtml}
 
     <div class="card" style="margin-bottom:14px">
       <div id="packsListPanel"></div>
@@ -14081,6 +15165,15 @@ function handleCompletionStatusChange(index, newStatus) {
 async function saveTrainingCompletion() {
   const session = await DB.get('trainingSessions', _trainingCompletionSessionId);
   if (!session) return;
+  // Recurring occurrences record WHEN they were actually done, and whether
+  // that was after the scheduled day. Comparison is date-only against the
+  // local calendar day — never a UTC timestamp, which would flip the verdict
+  // either side of midnight depending on where the device happens to be.
+  if (session.seriesCloudId && session.scheduledDate) {
+    session.completedAt = new Date().toISOString();
+    session.completionLocalDate = dToday();
+    session.completedLate = dCompare(session.completionLocalDate, session.scheduledDate) > 0;
+  }
   // Central authorization — re-checked at save time against the portal
   // state, in case it changed while the completion overlay was open.
   _trainingCompletionViewAs = resolveTrainingActor(_trainingCompletionViewAs).as;
@@ -15031,7 +16124,7 @@ async function handleSyncDownload() {
 // DB PUT WRAPPER — marks records as modified for sync
 // ══════════════════════════════════════════════════════════════════════════════
 const _origPut = DB.put.bind(DB);
-const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','tournaments','temporaryPlayers','clubTeams','externalResources']);
+const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','trainingPackVersions','trainingSeries','trainingSeriesExceptions','trainingSeriesPauses','tournaments','temporaryPlayers','clubTeams','externalResources']);
 
 DB.put = async function(store, obj) {
   if (SYNC_STORES_SET.has(store) && obj) {
@@ -17791,6 +18884,10 @@ const Sync = (() => {
       customDrills: 'custom_drills',
       drillFavourites: 'drill_favourites',
       trainingPacks: 'training_packs',
+      trainingPackVersions: 'training_pack_versions',
+      trainingSeries: 'training_series',
+      trainingSeriesExceptions: 'training_series_exceptions',
+      trainingSeriesPauses: 'training_series_pauses',
       tournaments: 'tournaments',
       temporaryPlayers: 'temporary_players',
       clubTeams: 'club_teams',
@@ -18175,7 +19272,7 @@ const Sync = (() => {
     'temporaryPlayers','clubTeams','externalResources','globalPlayers',
   ];
   // Drill-support stores, ownership expressed as {ownerType, ownerId}.
-  const PORTAL_DRILL_STORES = ['customDrills','trainingPacks'];
+  const PORTAL_DRILL_STORES = ['customDrills','trainingPacks','trainingPackVersions'];
 
   const PORTAL_BOOTSTRAP_STORES = [
     ...PORTAL_TEAM_STORES, 'players', ...Object.keys(PORTAL_PRIVATE_STORES), ...PORTAL_DRILL_STORES,
@@ -18881,7 +19978,8 @@ const Sync = (() => {
       achievements:'achievementId', clubHistory:'clubHistoryId', globalPlayers:'globalPlayerId', opponents:'opponentId',
       playerGameStats:'pgsId', events:'eventId', goalEvents:'goalEventId', injuries:'injuryId',
       trainingSessions:'trainingSessionId', customDrills:'drillId', drillFavourites:'favouriteId',
-      trainingPacks:'packId',
+      trainingPacks:'packId', trainingPackVersions:'packVersionId',
+      trainingSeries:'seriesId', trainingSeriesExceptions:'exceptionId', trainingSeriesPauses:'pauseId',
       tournaments:'tournamentId', temporaryPlayers:'tempPlayerId', clubTeams:'clubTeamId',
     };
     return keys[store] || 'id';
