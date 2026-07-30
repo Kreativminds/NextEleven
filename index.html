@@ -43,6 +43,11 @@ a{color:#111;text-decoration:none}
 
 /* ── NAV ──────────────────────────────────────────────────────────────────── */
 nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--navy);z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 16px;max-width:100vw;overflow:hidden}
+.breadcrumb{font-size:11px;color:var(--muted);padding:2px 0 10px;display:flex;align-items:center;flex-wrap:wrap;gap:0;line-height:1.4;min-width:0}
+.breadcrumb a{color:var(--muted);text-decoration:none}
+.breadcrumb a:hover{text-decoration:underline}
+.breadcrumb .bc-sep{margin:0 6px;opacity:.5}
+.breadcrumb .bc-current{color:var(--dark);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .nav-brand{display:flex;align-items:center;gap:8px;white-space:nowrap;min-width:0;overflow:hidden;flex:1}
 .nav-wordmark,.nav-season{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .nav-logo-mark{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#0F1E2E,#1a2f45);border:1.5px solid #B23333;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
@@ -382,7 +387,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .rm-form h2{font-size:16px;font-weight:700;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid #ddd}
 /* ── PRINT ────────────────────────────────────────────────────────────────── */
 @media print{
-  nav,.hamburger,.mobile-menu,.btn,.back-btn,.search-bar,.form-panel,.page-header .btn-group,#toast,.dialog-overlay{display:none!important}
+  nav,.breadcrumb,.hamburger,.mobile-menu,.btn,.back-btn,.search-bar,.form-panel,.page-header .btn-group,#toast,.dialog-overlay{display:none!important}
   .main-content{margin-top:0;padding:0}
   .section{display:block!important}
   body{background:#fff}
@@ -593,7 +598,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
     </div>
   </div>
   <div class="main-content">
-    <nav id="portalBreadcrumb" aria-label="Breadcrumb" style="font-size:11px;color:var(--muted);padding:2px 0 8px"></nav>
+    <div id="portalBreadcrumb" role="navigation" aria-label="Breadcrumb" class="breadcrumb"></div>
     <!-- PHASE 1 — sync status bar. Four required states: loading, success,
          error, and last successfully updated. Present on every portal page
          so the person never has to wonder whether they are seeing current
@@ -664,7 +669,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 
 <!-- MAIN -->
 <div class="main-content">
-  <nav id="guardianBreadcrumb" aria-label="Breadcrumb" style="font-size:11px;color:var(--muted);padding:2px 0 10px"></nav>
+  <div id="guardianBreadcrumb" role="navigation" aria-label="Breadcrumb" class="breadcrumb"></div>
 
   <!-- DASHBOARD -->
   <!-- HOME — match-day focused -->
@@ -4698,11 +4703,11 @@ function renderBreadcrumb() {
 
   el.innerHTML = crumbs.map((c, i) => {
     const last = i === crumbs.length - 1;
-    const sep = i > 0 ? '<span style="margin:0 6px;opacity:.5">&rsaquo;</span>' : '';
+    const sep = i > 0 ? '<span class="bc-sep">&rsaquo;</span>' : '';
     if (last || !c.onclick) {
-      return `${sep}<span style="color:var(--dark);font-weight:600">${esc(c.label)}</span>`;
+      return `${sep}<span class="bc-current">${esc(c.label)}</span>`;
     }
-    return `${sep}<a href="javascript:void(0)" onclick="${c.onclick}" style="color:var(--muted);text-decoration:none">${esc(c.label)}</a>`;
+    return `${sep}<a href="javascript:void(0)" onclick="${c.onclick}">${esc(c.label)}</a>`;
   }).join('');
 }
 
