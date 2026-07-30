@@ -593,6 +593,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
     </div>
   </div>
   <div class="main-content">
+    <nav id="portalBreadcrumb" aria-label="Breadcrumb" style="font-size:11px;color:var(--muted);padding:2px 0 8px"></nav>
     <!-- PHASE 1 — sync status bar. Four required states: loading, success,
          error, and last successfully updated. Present on every portal page
          so the person never has to wonder whether they are seeing current
@@ -663,6 +664,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 
 <!-- MAIN -->
 <div class="main-content">
+  <nav id="guardianBreadcrumb" aria-label="Breadcrumb" style="font-size:11px;color:var(--muted);padding:2px 0 10px"></nav>
 
   <!-- DASHBOARD -->
   <!-- HOME — match-day focused -->
@@ -3863,6 +3865,19 @@ async function handlePlayerPinSubmit() {
       // and no replay of changes the snapshot already contains.
       await DB.put('appMeta', { metaKey: 'portalSyncCursor', value: remoteResult.current_sequence || 0 });
       await DB.put('appMeta', { metaKey: 'portalLastSyncedAt', value: new Date().toISOString() });
+      // appMeta does not sync, so a freshly bootstrapped device has no
+      // current season. Seed it from the matched player's own season, or the
+      // newest one available — otherwise every season-scoped view is empty.
+      if (!(await DB.get('appMeta', 'currentSeason'))?.value) {
+        const bootPlayer = await DB.get('players', parseInt(remoteResult.player_local_id));
+        let seedSeason = bootPlayer?.seasonId || null;
+        if (!seedSeason) {
+          const seasons = (await DB.getAll('seasons')).filter(x => !x.isDeleted);
+          seasons.sort((a,b) => (Number(b.seasonId)||0) - (Number(a.seasonId)||0));
+          seedSeason = seasons.length ? seasons[0].seasonId : null;
+        }
+        if (seedSeason) await DB.put('appMeta', { metaKey: 'currentSeason', value: seedSeason });
+      }
       if (!Auth.isLoggedIn()) {
         await DB.put('appMeta', { metaKey: 'portalStandalone', value: true });
       }
@@ -4626,6 +4641,69 @@ async function handlePortalManualRefresh() {
     _portalRefreshBusy = false;
     if (btn) btn.disabled = false;
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BREADCRUMBS — guardian and portal
+//
+// Shows where you are and lets you step back up. Deliberately simple: a Home
+// root, the current section, and a third level only when you have drilled
+// into something specific (a game, a tracked player's tab). Every level
+// except the last is clickable.
+// ════════════════════════════════════════════════════════════════════════════
+let _breadcrumbExtra = null;   // {label, onclick} for a drill-down level
+
+function setBreadcrumbExtra(label, onclick) {
+  _breadcrumbExtra = label ? { label, onclick: onclick || '' } : null;
+  renderBreadcrumb();
+}
+
+function breadcrumbSectionLabel(section, portal) {
+  const map = portal ? {
+    home:'pp_nav_home', dashboard:'pp_nav_dashboard', stats:'pp_nav_stats',
+    training:'pp_nav_training', games:'pp_nav_games', clubs:'pp_nav_clubs',
+    achievements:'pp_nav_achievements', events:'pp_nav_events', teamsummary:'pp_nav_teamsummary',
+  } : {
+    home:'nav_home', dashboard:'nav_dashboard', squad:'nav_squad', games:'nav_games',
+    lorenzo:'nav_lorenzo', team:'nav_team', achievements:'nav_achievements',
+    history:'nav_history', settings:'nav_settings', admin:'nav_admin', import:'nav_import',
+  };
+  const key = map[section];
+  const label = key ? I18n.t(key) : '';
+  // Fall back to the section name rather than showing a raw i18n key.
+  return (label && label !== key) ? label : (section ? section.charAt(0).toUpperCase() + section.slice(1) : '');
+}
+
+function renderBreadcrumb() {
+  const portal = !!State.portalPlayerId;
+  const el = document.getElementById(portal ? 'portalBreadcrumb' : 'guardianBreadcrumb');
+  if (!el) return;
+  const section = portal ? (State.currentPortalSection || 'home') : (State.currentSection || 'home');
+  const go = portal ? 'goPortal' : 'go';
+
+  const crumbs = [];
+  const homeLabel = breadcrumbSectionLabel('home', portal) || 'Home';
+  if (section !== 'home') {
+    crumbs.push({ label: homeLabel, onclick: `Nav.${go}('home')` });
+    crumbs.push({ label: breadcrumbSectionLabel(section, portal), onclick: _breadcrumbExtra ? `Nav.${go}('${section}')` : '' });
+  } else {
+    crumbs.push({ label: homeLabel, onclick: '' });
+  }
+  if (_breadcrumbExtra) crumbs.push({ label: _breadcrumbExtra.label, onclick: '' });
+
+  // A single "Home" crumb with nothing after it tells the person nothing, so
+  // the bar hides itself rather than taking up space on the landing page.
+  if (crumbs.length < 2) { el.innerHTML = ''; el.style.display = 'none'; return; }
+  el.style.display = '';
+
+  el.innerHTML = crumbs.map((c, i) => {
+    const last = i === crumbs.length - 1;
+    const sep = i > 0 ? '<span style="margin:0 6px;opacity:.5">&rsaquo;</span>' : '';
+    if (last || !c.onclick) {
+      return `${sep}<span style="color:var(--dark);font-weight:600">${esc(c.label)}</span>`;
+    }
+    return `${sep}<a href="javascript:void(0)" onclick="${c.onclick}" style="color:var(--muted);text-decoration:none">${esc(c.label)}</a>`;
+  }).join('');
 }
 
 async function handlePlayerPortalExit(skipConfirm) {
@@ -18147,6 +18225,8 @@ const Nav = (() => {
     });
     current = section;
     State.currentSection = section;
+    _breadcrumbExtra = null;      // leaving a drill-down clears its crumb
+    renderBreadcrumb();
     try { sessionStorage.setItem('squadTracker_lastSection', section); } catch(e) {}
 
     // close mobile menu
@@ -18261,6 +18341,8 @@ const Nav = (() => {
       l.classList.toggle('active', l.dataset.portalSection === section);
     });
     State.currentPortalSection = section;
+    _breadcrumbExtra = null;
+    renderBreadcrumb();
     try { sessionStorage.setItem('squadTracker_lastPortalSection', section); } catch(e) {}
 
     gdDebugLog(`State.portalPlayerId = ${State.portalPlayerId}, State.currentSeasonId = ${State.currentSeasonId}`);
@@ -21110,6 +21192,12 @@ async function deleteGame(id) {
 }
 
 async function goToGameDetail(gameId) {
+  // Third breadcrumb level, so the person can step back to the games list
+  // without hunting for the back button.
+  try {
+    const g = await DB.get('games', gameId);
+    if (g) setBreadcrumbExtra(g.opponentName || I18n.t('nav_games'), '');
+  } catch(e) {}
   // Navigate to Games section first, then open the specific game detail
   await Nav.go('games');
   await openGameDetail(gameId);
@@ -21129,6 +21217,7 @@ function closeGameDetail() {
   document.getElementById('gameDetailView').style.display = 'none';
   try { sessionStorage.removeItem('squadTracker_openGameId'); } catch(e) {}
   Render.gamesList();
+  setBreadcrumbExtra(null);
 }
 
 // ── SIMPLE GAME TABLE HANDLERS — every change re-renders the whole table ────
@@ -22388,29 +22477,65 @@ async function init() {
       //   3. player belongs to that owner        and is unexpired
       //   4. careerPlayerId exists            7. saved section is allowlisted
       const portalPlayer   = await DB.get('players', portalMeta.value);
-      const portalOwner    = (await DB.get('appMeta', 'portalOwnerUserId'))?.value || null;
+      let   portalOwner    = (await DB.get('appMeta', 'portalOwnerUserId'))?.value || null;
       const isStandalone   = !!((await DB.get('appMeta', 'portalStandalone'))?.value);
-      await loadMeta(); // needed before the season check below can mean anything
+      await loadMeta();
+
+      // ── SELF-HEALING ─────────────────────────────────────────────────────
+      // A refresh must NOT log the player out. Earlier versions treated any
+      // missing bookkeeping as a failed restore, which meant a session
+      // created before that bookkeeping existed — or on a device where
+      // appMeta simply never carried it — was thrown back to the PIN screen
+      // on every reload. Missing values are repaired here; only a genuine
+      // security mismatch or an expired token ends the session.
+      if (!portalOwner) {
+        portalOwner = Auth.isLoggedIn()
+          ? Auth.getUserId()
+          : (portalPlayer && portalPlayer.portalOwnerUserId) || null;
+        if (portalOwner) {
+          await DB.put('appMeta', { metaKey: 'portalOwnerUserId', value: portalOwner });
+          console.warn('[portal restore] repaired missing portalOwnerUserId');
+        }
+      }
+
+      // appMeta is not a synced store, so a device bootstrapped through the
+      // portal has no 'currentSeason' record and loadMeta() leaves
+      // currentSeasonId null. That is a rendering concern, never a reason to
+      // sign someone out — derive a season instead.
+      if (!State.currentSeasonId && portalPlayer) {
+        let seasonId = portalPlayer.seasonId || null;
+        if (!seasonId) {
+          const seasons = (await DB.getAll('seasons')).filter(x => !x.isDeleted);
+          seasons.sort((a,b) => (Number(b.seasonId)||0) - (Number(a.seasonId)||0));
+          seasonId = seasons.length ? seasons[0].seasonId : null;
+        }
+        if (seasonId) {
+          State.currentSeasonId = seasonId;
+          State.currentSeason = await DB.get('seasons', seasonId) || null;
+          await DB.put('appMeta', { metaKey: 'currentSeason', value: seasonId });
+          console.warn('[portal restore] derived current season', seasonId);
+        }
+      }
 
       let restoreOk = true;
       let restoreFailReason = '';
-      if (!portalPlayer)                       { restoreOk = false; restoreFailReason = 'player record missing'; }
-      else if (!portalOwner)                   { restoreOk = false; restoreFailReason = 'no portal owner recorded'; }
-      else if (!portalPlayer.careerPlayerId)   { restoreOk = false; restoreFailReason = 'player has no careerPlayerId'; }
-      else if (Auth.isLoggedIn() && portalOwner !== Auth.getUserId()) {
+      if (!portalPlayer) {
+        restoreOk = false; restoreFailReason = 'player record missing';
+      }
+      // A genuine MISMATCH is a security problem. An ABSENT owner is not —
+      // it was repaired above.
+      else if (portalOwner && Auth.isLoggedIn() && portalOwner !== Auth.getUserId()) {
         restoreOk = false; restoreFailReason = 'portal owner does not match the logged-in account';
       }
-      // The player must belong to the recorded owner. Bootstrapped records
-      // carry the marker; a guardian's own local records legitimately do not.
-      else if (portalPlayer.portalBootstrapRecord === true && portalPlayer.portalOwnerUserId !== portalOwner) {
+      else if (portalPlayer.portalBootstrapRecord === true && portalOwner
+               && portalPlayer.portalOwnerUserId !== portalOwner) {
         restoreOk = false; restoreFailReason = 'player does not belong to the recorded portal owner';
       }
-      else if (!State.currentSeasonId)         { restoreOk = false; restoreFailReason = 'no current season could be resolved'; }
 
-      // Standalone mode needs a live server token — an expired one means no
-      // writes are possible, so a fresh Account Code + PIN login is required.
+      // Standalone mode needs a live server token for WRITES. An expired one
+      // ends the session, since nothing the player does could be saved.
       if (restoreOk && isStandalone) {
-        const token = await getValidPortalToken(); // clears the credentials if expired
+        const token = await getValidPortalToken(); // clears credentials if expired
         if (!token) { restoreOk = false; restoreFailReason = 'portal session token missing or expired'; }
       }
 
