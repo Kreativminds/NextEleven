@@ -5849,6 +5849,9 @@ const TR = {
     squad_deleted_toast:'Player deleted.', squad_err_delete_has_history:'This player has game history and cannot be deleted — use Archive instead.',
     squad_btn_add_injury:'+ Injury',
     squad_more:'More', squad_more_aria:'More actions for {name}',
+    tptab_more:'More',
+    ch_unknown_club:'Club not recorded', ch_from_season:'From season',
+    ch_derived_hint:'Taken automatically from the season this player was registered in.',
     squad_act_edit:'Edit Player', squad_act_profile:'Player Profile',
     squad_act_injury:'Record Injury', squad_act_injury_manage:'Manage Injury',
     squad_act_injury_history:'Injury History',
@@ -7150,6 +7153,9 @@ const TR = {
     squad_deleted_toast:'Jogador eliminado.', squad_err_delete_has_history:'Este jogador tem histórico de jogos e não pode ser eliminado — use Arquivar.',
     squad_btn_add_injury:'+ Lesão',
     squad_more:'Mais', squad_more_aria:'Mais ações para {name}',
+    tptab_more:'Mais',
+    ch_unknown_club:'Clube não registado', ch_from_season:'Da época',
+    ch_derived_hint:'Obtido automaticamente da época em que o jogador estava inscrito.',
     squad_act_edit:'Editar Jogador', squad_act_profile:'Perfil do Jogador',
     squad_act_injury:'Registar Lesão', squad_act_injury_manage:'Gerir Lesão',
     squad_act_injury_history:'Histórico de Lesões',
@@ -9920,14 +9926,20 @@ async function buildTrackedNav() {
         </div>
       </div>
       <!-- Sub-tabs -->
-      <div class="tab-bar-row tracked-player-tabs">
+      <!-- Three most-used sections stay visible; the rest live behind More,
+           so a phone never has to scroll sideways to reach a tab. The hidden
+           buttons below keep every existing id alive, so switchTrackedTab()'s
+           highlighting logic needs no special-casing. -->
+      <div class="tab-bar-row tracked-player-tabs" style="flex-wrap:nowrap">
         <button class="import-tab active-tab" id="tab-overview-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'overview')">${I18n.t('tptab_overview')}</button>
         <button class="import-tab" id="tab-stats-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'stats')">${I18n.t('tptab_stats')}</button>
         <button class="import-tab" id="tab-log-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'log')">${I18n.t('tptab_log')}</button>
-        <button class="import-tab" id="tab-training-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'training')">${I18n.t('tptab_training')}</button>
-        <button class="import-tab" id="tab-clubs-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'clubs')">${I18n.t('tptab_clubs')}</button>
-        <button class="import-tab" id="tab-ach-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'ach')">${I18n.t('tptab_ach')}</button>
-        <button class="import-tab" id="tab-events-${p.playerId}" onclick="switchTrackedTab(${p.playerId},'events')">${I18n.t('tptab_events')}</button>
+        <button class="import-tab" id="tab-more-${p.playerId}" aria-haspopup="menu" aria-expanded="false"
+                onclick="event.stopPropagation();openTrackedMoreMenu(${p.playerId}, this)">${I18n.t('tptab_more')} &#9662;</button>
+        <button class="import-tab" id="tab-training-${p.playerId}" style="display:none" onclick="switchTrackedTab(${p.playerId},'training')">${I18n.t('tptab_training')}</button>
+        <button class="import-tab" id="tab-clubs-${p.playerId}" style="display:none" onclick="switchTrackedTab(${p.playerId},'clubs')">${I18n.t('tptab_clubs')}</button>
+        <button class="import-tab" id="tab-ach-${p.playerId}" style="display:none" onclick="switchTrackedTab(${p.playerId},'ach')">${I18n.t('tptab_ach')}</button>
+        <button class="import-tab" id="tab-events-${p.playerId}" style="display:none" onclick="switchTrackedTab(${p.playerId},'events')">${I18n.t('tptab_events')}</button>
       </div>
       <div id="tracked-content-${p.playerId}"></div>
       <div id="tracked-stats-${p.playerId}" style="display:none"></div>
@@ -9940,6 +9952,91 @@ async function buildTrackedNav() {
 
   await updateProgressiveNavVisibility();
 }
+
+// ── PLAYER PROFILE "MORE" MENU ───────────────────────────────────────────────
+// Reuses the same dropdown-on-desktop / bottom-sheet-on-mobile pattern as the
+// squad player actions, so the two behave identically.
+const TRACKED_MORE_TABS = [
+  { tab:'training', icon:'&#127939;', key:'tptab_training' },
+  { tab:'clubs',    icon:'&#127967;', key:'tptab_clubs' },
+  { tab:'ach',      icon:'&#127942;', key:'tptab_ach' },
+  { tab:'events',   icon:'&#128197;', key:'tptab_events' },
+];
+
+function closeTrackedMoreMenu() {
+  document.getElementById('trackedMoreMenu')?.remove();
+  document.getElementById('trackedMoreBackdrop')?.remove();
+  document.removeEventListener('keydown', _trackedMoreKeyHandler, true);
+  document.querySelectorAll('[id^="tab-more-"]').forEach(b => b.setAttribute('aria-expanded','false'));
+}
+
+function _trackedMoreKeyHandler(e) {
+  const menu = document.getElementById('trackedMoreMenu');
+  if (!menu) return;
+  const items = [...menu.querySelectorAll('button[data-menu-item]')];
+  if (!items.length) return;
+  const i = items.indexOf(document.activeElement);
+  if (e.key === 'Escape')         { e.preventDefault(); closeTrackedMoreMenu(); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1 + items.length) % items.length].focus(); }
+  else if (e.key === 'ArrowUp')   { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+}
+
+function openTrackedMoreMenu(playerId, btn) {
+  closeTrackedMoreMenu();
+  const isMobile = window.matchMedia('(max-width:768px)').matches;
+  if (btn) btn.setAttribute('aria-expanded','true');
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'trackedMoreBackdrop';
+  backdrop.style.cssText = `position:fixed;inset:0;z-index:998;${isMobile?'background:rgba(0,0,0,.35)':''}`;
+  backdrop.onclick = closeTrackedMoreMenu;
+  document.body.appendChild(backdrop);
+
+  const menu = document.createElement('div');
+  menu.id = 'trackedMoreMenu';
+  menu.setAttribute('role','menu');
+  menu.setAttribute('aria-label', I18n.t('tptab_more'));
+  menu.innerHTML = TRACKED_MORE_TABS.map(t => {
+    const isCurrent = State.currentTrackedTab === t.tab;
+    const pad  = isMobile ? '15px 18px' : '9px 12px';
+    const size = isMobile ? '15px' : '13px';
+    return `<button type="button" role="menuitem" data-menu-item ${isCurrent?'aria-current="page"':''}
+              onclick="closeTrackedMoreMenu();switchTrackedTab(${playerId},'${t.tab}')"
+              style="display:flex;align-items:center;gap:11px;width:100%;padding:${pad};background:${isCurrent?'var(--light)':'none'};
+                     border:0;font-size:${size};font-weight:${isCurrent?'700':'500'};text-align:left;
+                     color:${isCurrent?'var(--navy)':'var(--dark)'};cursor:pointer"
+              onmouseover="this.style.background='var(--light)'"
+              onmouseout="this.style.background='${isCurrent?'var(--light)':'none'}'">
+              <span aria-hidden="true" style="font-size:15px;width:20px;text-align:center;flex-shrink:0">${t.icon}</span>
+              <span>${esc(I18n.t(t.key))}</span>
+            </button>`;
+  }).join('');
+
+  if (isMobile) {
+    menu.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:999;background:#fff;'
+      + 'border-radius:14px 14px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.18);'
+      + 'padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));max-height:80vh;overflow-y:auto';
+  } else {
+    menu.style.cssText = 'position:fixed;z-index:999;background:#fff;border:1px solid var(--border);'
+      + 'border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.14);min-width:190px;padding:5px 0';
+  }
+  document.body.appendChild(menu);
+
+  if (!isMobile && btn) {
+    const r = btn.getBoundingClientRect();
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    let left = Math.min(r.left, window.innerWidth - mw - 8);
+    let top  = r.bottom + 4;
+    if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 4);
+    menu.style.left = Math.max(8, left) + 'px';
+    menu.style.top  = top + 'px';
+  }
+
+  document.addEventListener('keydown', _trackedMoreKeyHandler, true);
+  menu.querySelector('button[data-menu-item]')?.focus();
+}
+
+window.addEventListener('resize', () => closeTrackedMoreMenu());
 
 function switchTrackedTab(playerId, tab) {
   State.currentTrackedPlayer = playerId;
@@ -9969,6 +10066,16 @@ function switchTrackedTab(playerId, tab) {
     if (el)  el.style.display  = t === tab ? '' : 'none';
     if (btn) btn.classList.toggle('active-tab', t === tab);
   });
+  // A section reached through More has no visible tab of its own, so the More
+  // button itself carries the highlight — the current section is never left
+  // looking unselected.
+  const inMore = TRACKED_MORE_TABS.some(t => t.tab === tab);
+  const moreBtn = document.getElementById(`tab-more-${playerId}`);
+  if (moreBtn) {
+    moreBtn.classList.toggle('active-tab', inMore);
+    const label = inMore ? I18n.t(TRACKED_MORE_TABS.find(t => t.tab === tab).key) : I18n.t('tptab_more');
+    moreBtn.innerHTML = `${esc(label)} &#9662;`;
+  }
   if (tab === 'stats')    renderExtendedStats(playerId);
   if (tab === 'log')      renderMatchLog(playerId);
   if (tab === 'training') renderPlayerTraining(playerId, 'guardian');
@@ -13978,31 +14085,102 @@ function matchLogSort(playerId, key) {
   renderMatchLog(playerId);
 }
 
+// ── CLUB HISTORY — THE PLAYER'S COMPLETE CAREER ──────────────────────────────
+// This answers "where has this player played throughout his football
+// journey?", not "which clubs belong to the current season?".
+//
+// Two root causes fixed here:
+//
+//  1. The player was looked up ONLY within State.currentSeasonId. Opening the
+//     profile from any other season found no player row and returned early,
+//     rendering nothing at all.
+//
+//  2. Far more significantly, the page listed ONLY manually-created
+//     clubHistory rows. A season renewal creates a new `players` row for the
+//     same person but no clubHistory entry, so every renewed season was
+//     invisible — exactly the reported symptom of "recent seasons missing".
+//     Seasons the player actually participated in are now DERIVED from their
+//     season rows and merged with any explicit entries.
+//
+// Nothing is written to the database: derived entries are computed at render
+// time, so no schema change and no migration is involved.
+async function buildPlayerCareerHistory(playerId) {
+  // Resolve the person across every season, never just the current one.
+  const allPlayers = (await DB.getAll('players')).filter(p => !p.isDeleted);
+  const player = allPlayers.find(p => p.playerId === playerId);
+  if (!player) return { player: null, entries: [] };
+
+  const career = player.careerPlayerId || null;
+  const myRows = career
+    ? allPlayers.filter(p => p.careerPlayerId === career)
+    : [player];
+
+  const allSeasons = (await DB.getAll('seasons')).filter(s => !s.isDeleted);
+  const seasonById = new Map(allSeasons.map(s => [s.seasonId, s]));
+
+  // 1. Explicit, manually-entered or imported entries — always authoritative.
+  const explicit = (await DB.getAll('clubHistory')).filter(c => {
+    if (c.isDeleted) return false;
+    if (!c.playerId) return true;                                   // legacy, no owner recorded
+    if (c.careerPlayerId && career) return c.careerPlayerId === career;
+    return myRows.some(r => r.playerId === c.playerId);             // any of this person's season rows
+  }).map(c => ({ ...c, source: 'entry' }));
+
+  // 2. Derived from actual season participation. A season already covered by
+  //    an explicit entry is skipped, so a manual record always wins.
+  const covered = new Set(explicit.map(c => (c.season || '').trim().toLowerCase()).filter(Boolean));
+  const derived = [];
+  for (const row of myRows) {
+    const season = seasonById.get(row.seasonId);
+    if (!season) continue;
+    const key = (season.seasonName || '').trim().toLowerCase();
+    if (key && covered.has(key)) continue;
+    derived.push({
+      clubHistoryId: null,
+      playerId: row.playerId,
+      careerPlayerId: career,
+      clubName: season.clubName || I18n.t('ch_unknown_club'),
+      ageGroup: row.ageGroup || season.ageGroup || null,
+      season: season.seasonName || null,
+      startDate: season.startDate || null,
+      endDate: season.endDate || null,
+      coachName: null,
+      level: null,
+      logoUrl: null,
+      notes: null,
+      source: 'derived',
+      _sortYear: getSeasonStartYear(season),
+    });
+  }
+
+  // 3. Newest first. Start year is the reliable key; the start date and the
+  //    season label are fallbacks for entries that carry neither.
+  const yearOf = (c) => {
+    if (c._sortYear != null) return c._sortYear;
+    const m = /(\d{4})/.exec(c.season || '');
+    if (m) return parseInt(m[1]);
+    if (c.startDate) return parseInt(String(c.startDate).slice(0, 4));
+    return -1;
+  };
+  const entries = [...explicit, ...derived].sort((a, b) => {
+    const d = yearOf(b) - yearOf(a);
+    if (d !== 0) return d;
+    return String(b.startDate || '').localeCompare(String(a.startDate || ''));
+  });
+
+  return { player, entries };
+}
+
 async function renderPlayerClubHistory(playerId) {
   const el = document.getElementById(`tracked-clubs-${playerId}`);
   if (!el) return;
-  const players = await DB.getAll('players','seasonId',State.currentSeasonId);
-  const player = players.find(p => p.playerId === playerId);
+  const { player, entries } = await buildPlayerCareerHistory(playerId);
   if (!player) return;
-
-  // Club History must follow the real person across every season, not
-  // just the one season-row it happened to be created under — a real
-  // gap found tonight, since clubHistory.playerId previously only ever
-  // matched one specific season's local player ID. Resolve the actual
-  // career identity first, then match on that; still falls back to a
-  // direct playerId match for any entry created before this fix, so
-  // nothing existing silently disappears.
-  const allClubHistory = await DB.getAll('clubHistory');
+  const all = entries;
   if (typeof gdDebugLog === 'function') {
-    gdDebugLog(`[ClubHistory] playerId=${playerId}, player.careerPlayerId=${player.careerPlayerId}, total clubHistory rows fetched=${allClubHistory.length}`);
-    allClubHistory.forEach(c => gdDebugLog(`[ClubHistory] row: clubHistoryId=${c.clubHistoryId}, playerId=${c.playerId}, careerPlayerId=${c.careerPlayerId}, isDeleted=${c.isDeleted}`));
+    gdDebugLog(`[ClubHistory] career=${player.careerPlayerId} → ${all.length} entries `
+      + `(${all.filter(c=>c.source==='entry').length} recorded, ${all.filter(c=>c.source==='derived').length} derived)`);
   }
-  const all = allClubHistory.filter(c => {
-    if (!c.playerId) return true; // legacy entries with no playerId at all
-    if (c.careerPlayerId && player.careerPlayerId) return c.careerPlayerId === player.careerPlayerId;
-    return c.playerId === playerId; // fallback for entries never migrated
-  });
-  if (typeof gdDebugLog === 'function') gdDebugLog(`[ClubHistory] matched ${all.length} row(s) after filtering`);
   all.sort((a,b) => new Date(b.startDate||0) - new Date(a.startDate||0));
 
   el.innerHTML = `
@@ -14054,9 +14232,11 @@ async function renderPlayerClubHistory(playerId) {
                 ${c.notes?`<div class="ti-desc">${esc(c.notes)}</div>`:''}
               </div>
             </div>
-            <div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">
-              <button class="btn btn-secondary btn-sm" onclick="editClubHistoryEntry(${playerId},${c.clubHistoryId})">${I18n.t('common_edit')}</button>
-              <button class="btn btn-danger btn-sm" onclick="deleteClubHistoryEntry(${playerId},${c.clubHistoryId})">${I18n.t('common_delete')}</button>
+            <div style="display:flex;gap:6px;flex-shrink:0;align-items:center" onclick="event.stopPropagation()">
+              ${c.source === 'derived'
+                ? `<span class="pos-pill" style="background:#eef3f8;color:#4a6a8a" title="${esc(I18n.t('ch_derived_hint'))}">${I18n.t('ch_from_season')}</span>`
+                : `<button class="btn btn-secondary btn-sm" onclick="editClubHistoryEntry(${playerId},${c.clubHistoryId})">${I18n.t('common_edit')}</button>
+                   <button class="btn btn-danger btn-sm" onclick="deleteClubHistoryEntry(${playerId},${c.clubHistoryId})">${I18n.t('common_delete')}</button>`}
             </div>
           </div>
         </div>`).join('')}
@@ -14927,6 +15107,52 @@ async function handleUnskipOccurrence(seriesId, dateISO, playerId, viewAs) {
 // Shared row renderer so a recurring occurrence and a one-off session look
 // identical in the list — the person should not have to learn two visual
 // languages for the same thing.
+// "Next up" — the next three things due, across recurring plans AND one-off
+// sessions. Answers the question most people open this page to ask.
+//
+// REGRESSION NOTE: this function and toggleTrainingGroup() below were lost
+// during an earlier layout restructure, while the template that calls them
+// survived. renderPlayerTraining() therefore threw ReferenceError on the
+// very line that builds its HTML, so el.innerHTML was never assigned and the
+// Training tab rendered completely blank.
+function nextUpHtml(occurrences, sessions) {
+  const today = dToday();
+  const items = [];
+  (occurrences || []).forEach(o => {
+    if (o.state === 'dueToday' || o.state === 'upcoming') {
+      items.push({ date: o.date, title: o.series.titleOverride || I18n.t('tr_rec_title'),
+                   recurring: true, due: o.state === 'dueToday' });
+    }
+  });
+  (sessions || []).forEach(x => {
+    if (x.status !== 'Completed' && x.scheduledDate && dCompare(x.scheduledDate, today) >= 0) {
+      items.push({ date: x.scheduledDate, title: x.title, recurring: false, due: x.scheduledDate === today });
+    }
+  });
+  items.sort((a,b) => dCompare(a.date, b.date));
+  const top = items.slice(0, 3);
+  return `<div class="card" style="margin-bottom:14px">
+    <div class="card-title">${I18n.t('tr_next_up')}</div>
+    ${!top.length ? `<p style="font-size:12px;color:var(--muted);margin:0">${I18n.t('tr_next_none')}</p>`
+      : top.map(i => `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px">
+          <span style="color:${i.due?'#1a7f37':'var(--muted)'}">${i.due?'&#9679;':'&#9675;'}</span>
+          <span style="font-weight:${i.due?'700':'400'}">${esc(i.title)}</span>
+          ${i.recurring?`<span style="font-size:10px;color:var(--muted)">&#8635;</span>`:''}
+          <span style="margin-left:auto;color:var(--muted)">${i.due?I18n.t('tr_occ_due'):fmtDate(i.date)}</span>
+        </div>`).join('')}
+  </div>`;
+}
+
+// Collapse/expand without re-rendering, so scroll position and any open form
+// are preserved.
+function toggleTrainingGroup(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : '';
+  if (btn) btn.innerHTML = open ? '&#9656;' : '&#9662;';
+}
+
 function occurrenceRowHtml(o, playerId, viewAs, isGuardian) {
   // Occurrences are grouped UNDER their plan, collapsed by default. A daily
   // plan produces dozens of dates; dumping them flat buried everything else
