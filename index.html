@@ -1053,7 +1053,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 // ══════════════════════════════════════════════════════════════════════════════
 const CONFIG = {
   APP_VERSION: '1.2.1', // human-readable label only — staleness detection no longer depends on this matching anything
-  SCHEMA_VERSION: 18,   // 17 = trainingPackVersions (Phase 2); 18 = recurrence stores (Phase 3)
+  SCHEMA_VERSION: 19,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index
   DB_NAME: 'footballSquadTrackerDB',
   MAX_BACKUPS: 30,
   FULL_GAME_MINS: 80,
@@ -1144,32 +1144,56 @@ function gameSortKey(game) {
 // Match Log/Team Summary/tracked player stats must treat it as not yet played,
 // even if the user is actively entering data on the Game Detail screen itself
 // (that screen is exempt — it always shows live data while you're working on it).
-function isGameResultVisible(game) {
+//
+// CRITICAL DISTINCTION: this governs COMPLETED statistics only. The live match
+// header score (refreshGameHeaderScore) and the shared parent live-score view
+// deliberately do NOT consult this function — a parent following a match must
+// see 1-0 the moment it is entered. Only aggregate statistics wait for the
+// match to genuinely finish.
+//
+// A season lookup map may be passed in so that render loops resolve the
+// season's default duration without touching IndexedDB per game. Callers with
+// no map still work correctly; they fall back to the global default.
+function isGameResultVisible(game, seasonMap) {
   if (!game || !game.date) return false;
   const now = new Date();
   const gameDateTime = new Date(`${game.date}T${game.gameTime || '00:00'}`);
   if (isNaN(gameDateTime)) return false;
   // If no kick-off time was set, fall back to end-of-day for that date —
   // i.e. once the calendar day has passed, treat it as playable/visible.
+  // Unchanged behaviour, deliberately preserved.
   if (!game.gameTime) {
     const endOfDay = new Date(`${game.date}T23:59:59`);
     return now > endOfDay;
   }
-  // If the game's scheduled kickoff has already passed — whether today or
-  // an earlier day — treat it as visible immediately, without waiting for
-  // the 90+15 minute buffer below. That buffer exists to avoid showing a
-  // live match as "finished" while it might still genuinely be in
-  // progress on the day itself, but it has no useful purpose once the
-  // game's own scheduled kickoff time has already fully elapsed — e.g. a
-  // shorter tournament match (many tournaments use reduced match lengths,
-  // not a full 90 minutes), or a result entered well after the match
-  // actually happened.
-  if (now.getTime() > gameDateTime.getTime()) {
-    return true;
-  }
-  const cutoff = new Date(gameDateTime.getTime() + (CONFIG.MATCH_DURATION_MINS + CONFIG.RESULT_VISIBILITY_BUFFER_MINS) * 60000);
+  // The completion cutoff. A previous version returned true as soon as the
+  // scheduled kick-off had passed, which meant a match counted as finished
+  // one minute after it started: goals, wins and losses all entered the
+  // season statistics mid-game. The duration hierarchy
+  // (game override → season default → global default) is resolved by the
+  // existing resolveMatchDuration(), never duplicated here.
+  const season = seasonMap ? seasonMap.get(game.seasonId) : null;
+  const durationMins = resolveMatchDuration(game, season);
+  const cutoff = new Date(gameDateTime.getTime() + (durationMins + CONFIG.RESULT_VISIBILITY_BUFFER_MINS) * 60000);
   return now >= cutoff;
 }
+
+// Season lookup map for render paths that evaluate many games at once.
+// Loading seasons once and reusing the map keeps isGameResultVisible() a
+// pure synchronous call inside loops — no awaited DB read per game.
+let _seasonMapCache = null;
+let _seasonMapCacheAt = 0;
+async function getSeasonMap(force) {
+  const now = Date.now();
+  if (!force && _seasonMapCache && (now - _seasonMapCacheAt) < 30000) return _seasonMapCache;
+  const seasons = (await DB.getAll('seasons')).filter(s => !s.isDeleted);
+  const map = new Map();
+  seasons.forEach(s => map.set(s.seasonId, s));
+  _seasonMapCache = map;
+  _seasonMapCacheAt = now;
+  return map;
+}
+function invalidateSeasonMap() { _seasonMapCache = null; }
 
 // Single source of truth for tournament squad locking — given a game and
 // its full active season roster, returns the correctly-locked list. If
@@ -1365,6 +1389,20 @@ const AFL_SUB14_II_DIVISAO_SEED = [
 // being duplicated (and risking drifting apart) across multiple call sites.
 function generateCareerPlayerId() {
   return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('career-' + Date.now() + '-' + Math.random().toString(36).slice(2,10));
+}
+
+// ── CANONICAL GAME IDENTITY ─────────────────────────────────────────────────
+// A permanent, immutable identifier for a match, generated once at creation
+// and never changed by editing, sync, backup, restore or import.
+//
+// It exists because descriptive fields cannot establish identity. Two records
+// sharing season + date + opponent + competition + home/away are very often
+// two GENUINELY DIFFERENT matches: a tournament rematch, a morning and an
+// afternoon fixture at a festival, a replay after abandonment, two teams from
+// the same academy, different stages of the same competition. Merging on
+// descriptive similarity destroys real match history.
+function generateGameUuid() {
+  return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('game-' + Date.now() + '-' + Math.random().toString(36).slice(2,10));
 }
 
 // ── SEASON RENEWAL WIZARD ────────────────────────────────────────────────────
@@ -2777,22 +2815,68 @@ function groupDuplicates(records, keyFn) {
   return Object.values(groups).filter(g => g.length > 1);
 }
 
+// ── GAME UUID BACKFILL ───────────────────────────────────────────────────────
+// Runs once after the database opens. Every existing game receives its OWN
+// fresh UUID. It deliberately makes no attempt to work out that two existing
+// games are "really" the same match — guessing that from descriptive fields is
+// precisely the unsafe behaviour this whole change removes. Nothing is merged
+// here, ever.
+async function backfillGameUuids() {
+  const done = (await DB.get('appMeta', 'gameUuidBackfillDone'))?.value;
+  if (done) return 0;
+  const games = await DB.getAll('games');
+  let n = 0;
+  for (const g of games) {
+    if (g.gameUuid) continue;
+    g.gameUuid = generateGameUuid();
+    await DB.put('games', g);
+    n++;
+  }
+  await DB.put('appMeta', { metaKey: 'gameUuidBackfillDone', value: true });
+  if (n) console.info(`[migration] assigned canonical UUIDs to ${n} existing games`);
+  return n;
+}
+
+// ── DUPLICATE GAME DETECTION ─────────────────────────────────────────────────
+// Returns { confirmed, possible } — two genuinely different things.
+//
+// CONFIRMED: same canonical identity (gameUuid, or cloudId for rows that
+//   predate the backfill). These are literally the same record stored twice —
+//   the classic cause being a stale unlinked local copy surviving alongside
+//   the correctly-synced one. Safe to repair automatically.
+//
+// POSSIBLE: merely similar descriptive fields. NEVER repaired automatically.
+//   A team absolutely can play the same opponent twice in one day: tournament
+//   rematches, morning and afternoon festival fixtures, a replay after an
+//   abandonment, two sides from one academy, different stages of a cup. The
+//   previous implementation treated these as duplicates and deleted one — the
+//   defect this fixes.
 async function scanDuplicateGames() {
   const all = (await DB.getAll('games')).filter(g => !g.isDeleted);
-  // Deliberately excludes score from the natural key. A team cannot
-  // legitimately play the same opponent twice, in the same competition,
-  // home/away, on the exact same date — that combination alone is
-  // already a real, sufficient signature for "this is the same match."
-  // Including score in the key (the original version) actively hid the
-  // real problem: two local copies of the same game with a mismatched
-  // or corrupted score were never recognized as duplicates, when a
-  // score DISAGREEMENT between copies of the same match is exactly the
-  // kind of corruption this scan needs to catch, not protect against
-  // detecting.
-  return groupDuplicates(all, g => {
-    if (!g.date || !g.opponent) return null;
-    return [g.seasonId, g.date, g.opponent, g.competitionType, g.homeAway].join('|');
+
+  const confirmed = groupDuplicates(all, g => {
+    if (g.gameUuid) return 'uuid|' + g.gameUuid;
+    if (g.cloudId)  return 'cloud|' + g.cloudId;
+    return null;   // no canonical identity — cannot be a confirmed duplicate
   });
+
+  // Descriptive grouping, for REPORTING ONLY.
+  const confirmedIds = new Set();
+  confirmed.forEach(grp => grp.forEach(g => confirmedIds.add(g.gameId)));
+  const possible = groupDuplicates(
+    all.filter(g => !confirmedIds.has(g.gameId)),
+    g => {
+      if (!g.date || !g.opponent) return null;
+      return [g.seasonId, g.date, g.opponent, g.competitionType, g.homeAway].join('|');
+    }
+  ).filter(grp => {
+    // A different kick-off time is positive evidence of two real fixtures
+    // (morning and afternoon), so it is not even worth flagging for review.
+    const times = new Set(grp.map(g => g.gameTime || ''));
+    return times.size <= 1;
+  });
+
+  return { confirmed, possible };
 }
 
 async function scanDuplicatePlayers() {
@@ -2919,13 +3003,29 @@ async function pickMasterRecord(group, childCountFn) {
   return best;
 }
 
+// Repairs CONFIRMED duplicates only — records sharing a canonical identity,
+// meaning the same match stored twice. The caller must never pass descriptive
+// "possible" groups here; the assertion below enforces that even if it tried.
 async function repairDuplicateGames(groups, log) {
+  if (!groups || !groups.length) return;
+  // A backup before any destructive integrity work, so a bad repair is always
+  // recoverable.
+  try { await Backup.create('before-duplicate-game-repair'); }
+  catch(e) { console.error('[integrity] backup failed, aborting repair', e); throw e; }
+
   for (const group of groups) {
-    // Prefer whichever copy still has a genuine cloudId — meaning it's
-    // actually linked to Supabase, the real source of truth — over an
-    // orphaned local copy that lost its link (exactly the scenario that
-    // caused tonight's real duplicates with mismatched scores: a stale,
-    // unlinked local row surviving alongside the correctly-synced one).
+    // Safety assertion: every record in the group MUST share one canonical
+    // identity. If this ever fails, the caller passed a descriptive grouping
+    // and the correct action is to refuse rather than delete a real match.
+    const ids = new Set(group.map(g => g.gameUuid ? 'uuid|'+g.gameUuid : (g.cloudId ? 'cloud|'+g.cloudId : 'none|'+g.gameId)));
+    if (ids.size !== 1 || [...ids][0].startsWith('none|')) {
+      log.push({ type: 'duplicate_game_repair_refused', gameIds: group.map(g => g.gameId),
+                 detail: 'group does not share a single canonical identity — not repaired' });
+      continue;
+    }
+
+    // Deterministic master: prefer the copy genuinely linked to Supabase,
+    // then the one with the most child records, via the existing helper.
     const withCloudId = group.filter(g => g.cloudId);
     let master;
     if (withCloudId.length === 1) {
@@ -2934,15 +3034,41 @@ async function repairDuplicateGames(groups, log) {
       master = await pickMasterRecord(group, async g => (await DB.getAll('gamePlayers','gameId',g.gameId)).length);
     }
     const extras = group.filter(g => g.gameId !== master.gameId);
+
     for (const extra of extras) {
-      // Re-point every gamePlayers row referencing the extra onto the master
+      // Conflicting values across copies of the same match are logged, never
+      // silently overwritten — the master's values stand, and the discrepancy
+      // stays visible for review.
+      const conflicts = [];
+      ['date','gameTime','opponent','competitionType','homeAway','opponentScore','seasonId'].forEach(f => {
+        if (extra[f] !== undefined && master[f] !== undefined && extra[f] !== master[f]) {
+          conflicts.push({ field: f, kept: master[f], discarded: extra[f] });
+        }
+      });
+      if (conflicts.length) {
+        log.push({ type: 'duplicate_game_conflict', kept: master.gameId, removed: extra.gameId, conflicts });
+      }
+
+      // Re-point child rows, skipping any that would duplicate a row the
+      // master already has — otherwise a player could be counted twice.
       const gps = await DB.getAll('gamePlayers','gameId',extra.gameId);
+      const masterGps = await DB.getAll('gamePlayers','gameId',master.gameId);
+      const masterPlayerIds = new Set(masterGps.map(r => r.playerId));
+      let moved = 0, dropped = 0;
       for (const gp of gps) {
+        if (masterPlayerIds.has(gp.playerId)) {
+          await DB.softDelete('gamePlayers', gp.gamePlayerId);
+          dropped++;
+          continue;
+        }
         gp.gameId = master.gameId;
         await DB.put('gamePlayers', gp);
+        masterPlayerIds.add(gp.playerId);
+        moved++;
       }
       await DB.softDelete('games', extra.gameId);
-      log.push({ type: 'duplicate_game_repaired', kept: master.gameId, removed: extra.gameId, childrenMoved: gps.length });
+      log.push({ type: 'duplicate_game_repaired', kept: master.gameId, removed: extra.gameId,
+                 childrenMoved: moved, childrenDropped: dropped });
     }
   }
 }
@@ -3058,7 +3184,17 @@ async function runIntegrityRepair() {
   const log = [];
   const before = await scanDatabaseIntegrity();
 
+  // CONFIRMED duplicates only — same canonical identity. Games that merely
+  // look similar (before.dupGamesPossible) are never touched automatically.
   if (before.dupGames.length) await repairDuplicateGames(before.dupGames, log);
+  if (before.dupGamesPossible && before.dupGamesPossible.length) {
+    before.dupGamesPossible.forEach(grp => log.push({
+      type: 'possible_duplicate_game_flagged',
+      count: grp.length,
+      gameIds: grp.map(g => g.gameId),
+      detail: `${grp[0].opponent} · ${grp[0].date} — left untouched, needs manual review`,
+    }));
+  }
   if (before.dupPlayers.length) await repairDuplicatePlayers(before.dupPlayers, log);
   if (before.dupOpponents.length) await repairDuplicateOpponents(before.dupOpponents, log);
   if (before.dupSeasons.length) await repairDuplicateSeasons(before.dupSeasons, log);
@@ -3168,7 +3304,13 @@ async function scanDatabaseIntegrity() {
     scanDuplicateGames(), scanDuplicatePlayers(), scanDuplicateOpponents(),
     scanDuplicateSeasons(), scanDuplicateClubTeams(), scanDuplicateClubHistory(), scanBrokenReferences(),
   ]);
-  return { dupGames, dupPlayers, dupOpponents, dupSeasons, dupClubTeams, dupClubHistory, brokenRefs };
+  // dupGames is now {confirmed, possible}. Only `confirmed` is ever repaired;
+  // `possible` is reported for human review and left completely untouched.
+  return {
+    dupGames: dupGames.confirmed,
+    dupGamesPossible: dupGames.possible,
+    dupPlayers, dupOpponents, dupSeasons, dupClubTeams, dupClubHistory, brokenRefs,
+  };
 }
 
 async function scanSeasonAssignmentIssues() {
@@ -6388,7 +6530,7 @@ const TR = {
     integ_title:'Database Integrity', integ_intro:'Scans for duplicate records and broken references caused by sync issues, and repairs them safely without losing any data.',
     integ_btn_scan:'Scan Database', integ_scanning:'Scanning…', integ_all_clean:'No issues found. Everything looks clean.',
     integ_found_count:'{n} issue(s) found.', integ_btn_repair:'Repair Automatically', integ_btn_export:'Export Diagnostic Report',
-    integ_problem_dup_game:'Duplicate Game', integ_problem_dup_player:'Duplicate Player', integ_problem_dup_opponent:'Duplicate Opponent',
+    integ_problem_dup_game:'Duplicate Game', integ_problem_possible_dup_game:'Possible Duplicate Game (review needed)', integ_problem_dup_player:'Duplicate Player', integ_problem_dup_opponent:'Duplicate Opponent',
     integ_problem_dup_season:'Duplicate Season', integ_problem_dup_clubteam:'Duplicate Club/Team', integ_problem_broken_ref:'Broken Reference',
     integ_fix_merge:'Merge {n} copies into one, preserving all linked records', integ_status_pending:'Pending Repair',
     integ_confirm_title:'Repair database issues?', integ_confirm_body:'This safely merges duplicate records and fixes broken references. A backup will be created first. No data is lost.',
@@ -7662,7 +7804,9 @@ const TR = {
     integ_title:'Integridade da Base de Dados', integ_intro:'Procura registos duplicados e referências quebradas causadas por problemas de sincronização, e corrige-os em segurança sem perder dados.',
     integ_btn_scan:'Analisar Base de Dados', integ_scanning:'A analisar…', integ_all_clean:'Nenhum problema encontrado. Está tudo limpo.',
     integ_found_count:'{n} problema(s) encontrado(s).', integ_btn_repair:'Reparar Automaticamente', integ_btn_export:'Exportar Relatório de Diagnóstico',
-    integ_problem_dup_game:'Jogo Duplicado', integ_problem_dup_player:'Jogador Duplicado', integ_problem_dup_opponent:'Adversário Duplicado',
+    integ_problem_dup_game:'Jogo Duplicado', integ_problem_possible_dup_game:'Possível Jogo Duplicado (requer revisão)',
+    integ_fix_review:'{n} jogos semelhantes — NÃO unidos. Verifique se são realmente o mesmo jogo.',
+    integ_problem_dup_player:'Jogador Duplicado', integ_problem_dup_opponent:'Adversário Duplicado',
     integ_problem_dup_season:'Época Duplicada', integ_problem_dup_clubteam:'Clube/Equipa Duplicado', integ_problem_broken_ref:'Referência Quebrada',
     integ_fix_merge:'Fundir {n} cópias numa só, preservando todos os registos associados', integ_status_pending:'Reparação Pendente',
     integ_confirm_title:'Reparar problemas da base de dados?', integ_confirm_body:'Isto funde registos duplicados e corrige referências quebradas em segurança. Será criada uma cópia de segurança primeiro. Nenhum dado é perdido.',
@@ -8110,6 +8254,15 @@ const DB = (() => {
           fv.createIndex('userType', 'userType', { unique: false });
           fv.createIndex('userId', 'userId', { unique: false });
           fv.createIndex('drillKey', 'drillKey', { unique: false });
+        }
+        // Canonical game identity (schema 19). The index is added here; the
+        // VALUES are backfilled after open() completes, in backfillGameUuids().
+        // Deliberately non-unique: two legacy rows could in principle share a
+        // UUID after a botched restore, and a unique index would then make the
+        // database unopenable rather than merely reporting the problem.
+        if (db.objectStoreNames.contains('games')) {
+          const gs = e.target.transaction.objectStore('games');
+          if (!gs.indexNames.contains('gameUuid')) gs.createIndex('gameUuid', 'gameUuid', { unique: false });
         }
         // Phase 3 — recurrence. A series holds only the RULE; occurrences are
         // generated in memory for whatever range is on screen, and a real
@@ -8915,6 +9068,10 @@ async function renderIntegrityTab() {
 function integrityIssueRows(scan) {
   const rows = [];
   scan.dupGames.forEach(g => rows.push({ problem: I18n.t('integ_problem_dup_game'), record: g[0].opponent + ' · ' + fmtDate(g[0].date), fix: I18n.t('integ_fix_merge', {n: g.length}), category: 'dupGames' }));
+  // Reported separately and never auto-repaired: these may well be two real
+  // matches (a rematch, a second festival fixture), so the "fix" is a human
+  // decision, not something the integrity checker should make.
+  (scan.dupGamesPossible || []).forEach(g => rows.push({ problem: I18n.t('integ_problem_possible_dup_game'), record: g[0].opponent + ' · ' + fmtDate(g[0].date), fix: I18n.t('integ_fix_review', {n: g.length}), category: 'dupGamesPossible' }));
   scan.dupPlayers.forEach(g => rows.push({ problem: I18n.t('integ_problem_dup_player'), record: g[0].fullName, fix: I18n.t('integ_fix_merge', {n: g.length}), category: 'dupPlayers' }));
   scan.dupOpponents.forEach(g => rows.push({ problem: I18n.t('integ_problem_dup_opponent'), record: g[0].opponentName, fix: I18n.t('integ_fix_merge', {n: g.length}), category: 'dupOpponents' }));
   scan.dupSeasons.forEach(g => rows.push({ problem: I18n.t('integ_problem_dup_season'), record: g[0].seasonName + ' · ' + g[0].clubName, fix: I18n.t('integ_fix_merge', {n: g.length}), category: 'dupSeasons' }));
@@ -11345,9 +11502,10 @@ async function handleReopenSeason() {
 
 // ── COMPLETED SEASON VIEW ────────────────────────────────────────────────
 async function renderHomeCompletedView(season) {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
   const games = await DB.getAll('games','seasonId',season.seasonId);
   const allGP = await DB.getAll('gamePlayers','seasonId',season.seasonId);
-  const finishedGames = games.filter(g => isGameResultVisible(g));
+  const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
   const players = await DB.getAll('players','seasonId',season.seasonId);
   const activePlayers = players.filter(p => p.isActive);
 
@@ -11534,6 +11692,7 @@ function switchGamesMainTab(tab) {
 // listed underneath — genuinely separated from the main League/Cup/
 // Friendly/Trial list, not just filtered within one shared table.
 async function renderTournamentGamesTab() {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
   const el = document.getElementById('gamesTournamentsContent');
   if (!el) return;
   const tournaments = await getTournamentsForSeason(State.currentSeasonId);
@@ -11555,7 +11714,7 @@ async function renderTournamentGamesTab() {
         const our = Calc.teamGoals(gps, g);
         const their = parseInt(g.opponentScore)||0;
         const res = Calc.result(our, their, g);
-        const visible = isGameResultVisible(g);
+        const visible = isGameResultVisible(g, _seasonMap);
         const logoUrl = opponentLogoByName[(g.opponent||'').toLowerCase()];
         const hasPens = g.ourPenaltyGoals!==undefined && g.ourPenaltyGoals!==null && g.penaltiesForThem!==undefined && g.penaltiesForThem!==null;
         return `<div style="cursor:pointer;border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:6px" onclick="event.stopPropagation();openGameDetail(${g.gameId})">
@@ -11967,6 +12126,7 @@ async function tournSummary() {
 }
 
 async function renderTournamentSummaryPage(tournamentIdRaw) {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
   const el = document.getElementById('tournSummaryContent');
   if (!el) return;
   const tournamentId = parseInt(tournamentIdRaw);
@@ -11996,7 +12156,7 @@ async function renderTournamentSummaryPage(tournamentIdRaw) {
   // Only finished games count toward the stats — matches the same rule
   // season Team Summary already uses, so the two pages stay consistent
   // in how they define "counts yet."
-  const finishedGames = tGames.filter(g => isGameResultVisible(g));
+  const finishedGames = tGames.filter(g => isGameResultVisible(g, _seasonMap));
   const ts = Calc.tournamentStats(finishedGames, allGP);
 
   // Player stats scoped to this tournament only — reuses the same
@@ -12077,7 +12237,7 @@ async function renderTournamentSummaryPage(tournamentIdRaw) {
           const our = Calc.teamGoals(gps, g);
           const their = parseInt(g.opponentScore)||0;
           const res = Calc.result(our, their, g);
-          const visible = isGameResultVisible(g);
+          const visible = isGameResultVisible(g, _seasonMap);
           const logoUrl = opponentLogoByName[(g.opponent||'').toLowerCase()];
           const hasPens = g.ourPenaltyGoals!==undefined && g.ourPenaltyGoals!==null && g.penaltiesForThem!==undefined && g.penaltiesForThem!==null;
           return `<div class="wp-row" style="cursor:pointer" onclick="openGameDetail(${g.gameId})">
@@ -13276,6 +13436,7 @@ async function toggleEntireSection(sectionName, makeVisible) {
 }
 
 async function renderExtendedStats(playerId) {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
   const el = document.getElementById(`tracked-stats-${playerId}`);
   if (!el) return;
 
@@ -13297,7 +13458,7 @@ async function renderExtendedStats(playerId) {
   // real gamePlayers participation records — no new completion rule.
   const allGPForStats = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
   const hasCompletedParticipation = games.some(g =>
-    isGameResultVisible(g) &&
+    isGameResultVisible(g, _seasonMap) &&
     allGPForStats.some(gp => gp.gameId === g.gameId && gp.playerId === playerId && gp.calledUp)
   );
   if (!hasCompletedParticipation) {
@@ -13513,6 +13674,7 @@ async function saveExtStats(playerId, gameId) {
 }
 
 async function renderMatchLog(playerId) {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
   const el = document.getElementById(`tracked-log-${playerId}`);
   if (!el) return;
 
@@ -13534,7 +13696,7 @@ async function renderMatchLog(playerId) {
     return;
   }
   const completedRelevantCount = games.filter(g => {
-    if (!isGameResultVisible(g)) return false;
+    if (!isGameResultVisible(g, _seasonMap)) return false;
     const gp = lorGP.find(r => r.gameId === g.gameId);
     return !!(gp && gp.calledUp);
   }).length;
@@ -13595,7 +13757,7 @@ async function renderMatchLog(playerId) {
           </tr></thead>
           <tbody>
           ${enriched.map(({game:g, gp, _our:our, _their:their, _res:res}) => {
-            const resultVisible = isGameResultVisible(g);
+            const resultVisible = isGameResultVisible(g, _seasonMap);
             if (!gp||!gp.calledUp) return `<tr>
               <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
               <td class="col-sticky-name">${esc(g.opponent)}</td>
@@ -15400,6 +15562,7 @@ function confirmDeleteTrainingSession(sessionId, viewAs) {
 // Mirrors the guardian Home page's spirit (next game, recent results) but
 // built fresh and read-only: no edit buttons, no admin, no settings link.
 async function renderPlayerPortalHome() {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
   const el = document.getElementById('pp-sec-home');
   if (!el) return;
   const playerId = State.portalPlayerId;
@@ -15421,11 +15584,11 @@ async function renderPlayerPortalHome() {
   // Uses the real kickoff+duration cutoff (isGameResultVisible), same as the
   // guardian Home page — not end-of-calendar-day, which would leave a
   // finished game still showing as "next" for hours after it ended.
-  const upcoming = games.filter(g => !isGameResultVisible(g))
+  const upcoming = games.filter(g => !isGameResultVisible(g, _seasonMap))
     .sort((a,b) => new Date(a.date+'T'+(a.gameTime||'00:00')) - new Date(b.date+'T'+(b.gameTime||'00:00')));
   const nextGame = upcoming[0] || null;
 
-  const played = games.filter(g => isGameResultVisible(g))
+  const played = games.filter(g => isGameResultVisible(g, _seasonMap))
     .sort((a,b) => new Date(b.date+'T'+(b.gameTime||'00:00')) - new Date(a.date+'T'+(a.gameTime||'00:00')));
 
   // Next scheduled training session for this player
@@ -15469,7 +15632,7 @@ async function renderPlayerPortalHome() {
         const gOurs = Calc.teamGoals(gGP, g);
         const gTheirs = parseInt(g.opponentScore)||0;
         const gRes = Calc.result(gOurs, gTheirs, g);
-        const gVisible = isGameResultVisible(g);
+        const gVisible = isGameResultVisible(g, _seasonMap);
         const gHasPens = g.ourPenaltyGoals!==undefined && g.ourPenaltyGoals!==null && g.penaltiesForThem!==undefined && g.penaltiesForThem!==null;
         return `<div onclick="openPortalGameViewer(${g.gameId})" style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer">
           <div>
@@ -15489,6 +15652,7 @@ async function renderPlayerPortalHome() {
 // Read-only season summary, reusing the same calculation helpers as the
 // guardian-side Overview tab so the numbers are always identical.
 async function renderPlayerPortalStats() {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
   const el = document.getElementById('pp-sec-dashboard');
   if (!el) return;
   const playerId = State.portalPlayerId;
@@ -15497,7 +15661,7 @@ async function renderPlayerPortalStats() {
 
   const games = (await DB.getAll('games','seasonId', State.currentSeasonId)).filter(g => g.date);
   const allGP = await DB.getAll('gamePlayers','seasonId', State.currentSeasonId);
-  const finishedGames = games.filter(g => isGameResultVisible(g));
+  const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
   const playerGP = allGP.filter(r => r.playerId === playerId);
   const s = Calc.lorenzoStats(finishedGames, playerGP);
 
@@ -15555,7 +15719,7 @@ async function renderPlayerPortalStats() {
           const our = Calc.teamGoals(gps, g);
           const their = parseInt(g.opponentScore)||0;
           const res = Calc.result(our, their, g);
-          const visible = isGameResultVisible(g);
+          const visible = isGameResultVisible(g, _seasonMap);
           if (!visible) return `<div class="form-badge" onclick="openPortalGameViewer(${g.gameId})" style="cursor:pointer"><div class="fb-result badge" style="background:#f0f0f0;color:#999">···</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">${I18n.t('tp_form_upcoming')}</div></div>`;
           if (!gp||!gp.calledUp) return `<div class="form-badge" onclick="openPortalGameViewer(${g.gameId})" style="cursor:pointer"><div class="fb-result badge badge-${res}">${res}</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">${I18n.t('tp_form_dnp')}</div></div>`;
           const fbs = Calc.homeAwayScore(g.homeAway, our, their, g.neutralSide);
@@ -15602,6 +15766,7 @@ function switchPortalTrainingSubTab(tab) {
 
 // ── PORTAL — ALL GAMES (read-only) ───────────────────────────────────────────
 async function renderPlayerPortalGames() {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
   const el = document.getElementById('pp-sec-games');
   if (!el) return;
   const games = (await DB.getAll('games','seasonId', State.currentSeasonId)).filter(g => g.date);
@@ -15624,7 +15789,7 @@ async function renderPlayerPortalGames() {
         const gOurs = Calc.teamGoals(gGP, g);
         const gTheirs = parseInt(g.opponentScore)||0;
         const gRes = Calc.result(gOurs, gTheirs, g);
-        const gVisible = isGameResultVisible(g);
+        const gVisible = isGameResultVisible(g, _seasonMap);
         return `<div class="wp-row" onclick="openPortalGameViewer(${g.gameId})" style="cursor:pointer">
           <div class="wp-info">
             <span class="wp-num">${gVisible?gRes:'—'}</span>
@@ -15645,6 +15810,7 @@ async function renderPlayerPortalGames() {
 // the guardian sees in Game Detail, but presented as a plain list with
 // zero edit, save, or delete controls anywhere.
 async function openPortalGameViewer(gameId) {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
   const game = await DB.get('games', gameId);
   if (!game) return;
   const gp = await DB.getAll('gamePlayers', 'gameId', gameId);
@@ -15659,7 +15825,7 @@ async function openPortalGameViewer(gameId) {
   const ourScore = Calc.teamGoals(gp, game);
   const theirScore = parseInt(game.opponentScore) || 0;
   const res = Calc.result(ourScore, theirScore, game);
-  const visible = isGameResultVisible(game);
+  const visible = isGameResultVisible(game, _seasonMap);
   const scoreDisplay = Calc.homeAwayScore(game.homeAway, ourScore, theirScore, game.neutralSide);
 
   const calledUp = gp.filter(r => r.calledUp).sort((a,b) => (a.role==='Starter'?0:1) - (b.role==='Starter'?0:1));
@@ -15837,6 +16003,7 @@ async function renderPlayerPortalEvents() {
 // medical information, not something appropriate to surface in a portal a
 // child can access themselves.
 async function renderPlayerPortalTeamSummary() {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
   const el = document.getElementById('pp-sec-teamsummary');
   if (!el) return;
 
@@ -15851,7 +16018,7 @@ async function renderPlayerPortalTeamSummary() {
     return;
   }
 
-  const finishedGames = games.filter(g => isGameResultVisible(g));
+  const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
   const ts = Calc.teamSeasonStats(finishedGames, allGP);
 
   const pStats = players.filter(p=>p.isActive).map(p => ({
@@ -16356,6 +16523,7 @@ const Render = (() => {
   // ── DASHBOARD ─────────────────────────────────────────────────────────────
   // ── HOME — match-day focused ────────────────────────────────────────────────
   async function home() {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
     const el  = document.getElementById('homeContent');
     const sub = document.getElementById('homeSubtitle');
     const seasonSel = document.getElementById('homeSeasonSelect');
@@ -16426,11 +16594,11 @@ const Render = (() => {
     // calendar day has ended. The previous version used end-of-day as the
     // cutoff, which left a finished lunchtime game still showing as "next"
     // for the rest of that entire day.
-    const upcoming = games.filter(g => g.date && !isGameResultVisible(g))
+    const upcoming = games.filter(g => g.date && !isGameResultVisible(g, _seasonMap))
       .sort((a,b) => new Date(a.date+'T'+(a.gameTime||'00:00')) - new Date(b.date+'T'+(b.gameTime||'00:00')));
     const nextGame = upcoming[0] || null;
 
-    const played = games.filter(g => g.date && isGameResultVisible(g))
+    const played = games.filter(g => g.date && isGameResultVisible(g, _seasonMap))
       .sort((a,b) => new Date(b.date+'T'+(b.gameTime||'00:00')) - new Date(a.date+'T'+(a.gameTime||'00:00')));
     const lastGame = played[0] || null;
 
@@ -16528,7 +16696,7 @@ const Render = (() => {
           const gOurs = Calc.teamGoals(gGP, g);
           const gTheirs = parseInt(g.opponentScore)||0;
           const gRes = Calc.result(gOurs, gTheirs, g);
-          const gVisible = isGameResultVisible(g);
+          const gVisible = isGameResultVisible(g, _seasonMap);
           const gHasPens = g.ourPenaltyGoals!==undefined && g.ourPenaltyGoals!==null && g.penaltiesForThem!==undefined && g.penaltiesForThem!==null;
           return `
           <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="goToGameDetail(${g.gameId})">
@@ -16588,6 +16756,7 @@ const Render = (() => {
   let _dashRenderSeq = 0;
 
   async function dashboard() {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
     const el  = document.getElementById('dashContent');
     const sub = document.getElementById('dashSubtitle');
 
@@ -16613,7 +16782,7 @@ const Render = (() => {
     if (mySeq !== _dashRenderSeq) return; // a newer render started while we awaited
 
     // Only finished games count towards season totals shown here.
-    const finishedGames = games.filter(g => isGameResultVisible(g));
+    const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
 
     // Two genuinely distinct empty states, decided from the unfiltered
     // season data. Previously a season with no games — or nothing but
@@ -16683,7 +16852,7 @@ const Render = (() => {
           const gps = allGP.filter(r=>r.gameId===g.gameId);
           const res = Calc.result(Calc.teamGoals(gps, g), g.opponentScore||0, g);
           if (!gp||!gp.calledUp) return `<span style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:2px;font-size:10px;font-weight:700;background:#f0f0f0;color:#999">—</span>`;
-          if (!isGameResultVisible(g)) return `<span style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:2px;font-size:10px;font-weight:700;background:#f0f0f0;color:#999" title="In progress">···</span>`;
+          if (!isGameResultVisible(g, _seasonMap)) return `<span style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:2px;font-size:10px;font-weight:700;background:#f0f0f0;color:#999" title="In progress">···</span>`;
           const col = res==='W'?'#e6f4ea':res==='D'?'#fff8e1':'#fde8e8';
           const tc = res==='W'?'#2a7a3b':res==='D'?'#b07a00':'#b03030';
           return `<span style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:2px;font-size:10px;font-weight:700;background:${col};color:${tc}">${res}</span>`;
@@ -16971,6 +17140,7 @@ const Render = (() => {
   let _gamesRenderSeq = 0;
 
   async function gamesList(search='', compFilter='') {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
     const el = document.getElementById('gamesContent');
     const sub = document.getElementById('gamesSubtitle');
 
@@ -17053,7 +17223,7 @@ const Render = (() => {
       const our = Calc.teamGoals(gps, g);
       const their = parseInt(g.opponentScore)||0;
       const res = Calc.result(our, their, g);
-      const gVisible = isGameResultVisible(g);
+      const gVisible = isGameResultVisible(g, _seasonMap);
       const logoUrl = opponentLogoByName[(g.opponent||'').toLowerCase()];
       const hasPens = g.ourPenaltyGoals!==undefined && g.ourPenaltyGoals!==null && g.penaltiesForThem!==undefined && g.penaltiesForThem!==null;
       return `<div class="card" style="margin-bottom:10px;cursor:pointer" onclick="openGameDetail(${g.gameId})">
@@ -17198,6 +17368,7 @@ const Render = (() => {
 
   // ── LORENZO ────────────────────────────────────────────────────────────────
   async function trackedPlayer(playerId) {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
     const el = document.getElementById(`tracked-content-${playerId}`);
     const sub = document.getElementById(`tracked-subtitle-${playerId}`);
     if (!el) return;
@@ -17236,7 +17407,7 @@ const Render = (() => {
     const lorGP = allGP.filter(r=>r.playerId===lor.playerId);
     // Only count games whose result is actually visible (i.e. likely finished)
     // towards season totals — an in-progress game shouldn't inflate stats yet.
-    const finishedGames = games.filter(g => isGameResultVisible(g));
+    const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
     const s = Calc.lorenzoStats(finishedGames, lorGP);
 
     // Sorting for the Match by Match table on this Overview tab
@@ -17330,7 +17501,7 @@ const Render = (() => {
             const our = Calc.teamGoals(gps, g);
             const their = parseInt(g.opponentScore)||0;
             const res = Calc.result(our,their,g);
-            const visible = isGameResultVisible(g);
+            const visible = isGameResultVisible(g, _seasonMap);
             if (!visible) return `<div class="form-badge"><div class="fb-result badge" style="background:#f0f0f0;color:#999">···</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">${I18n.t('tp_form_upcoming')}</div></div>`;
             if (!gp||!gp.calledUp) return `<div class="form-badge"><div class="fb-result badge badge-${res}">${res}</div><div class="fb-stat">${esc(g.opponent.substring(0,8))}</div><div class="fb-stat">${I18n.t('tp_form_dnp')}</div></div>`;
             const fbs = Calc.homeAwayScore(g.homeAway, our, their, g.neutralSide);
@@ -17357,7 +17528,7 @@ const Render = (() => {
             </tr></thead>
             <tbody>
             ${ovEnriched.map(({game:g, gp, _our:our, _their:their, _res:res})=>{
-              const resultVisible = isGameResultVisible(g);
+              const resultVisible = isGameResultVisible(g, _seasonMap);
               if (!resultVisible) return `<tr><td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td><td class="col-sticky-name">${esc(g.opponent)}</td><td><span class="td-muted" style="font-size:11px">${I18n.t('tp_form_upcoming')}</span></td><td colspan="9" class="td-muted">—</td></tr>`;
               if (!gp||!gp.calledUp) return `<tr><td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td><td class="col-sticky-name">${esc(g.opponent)}</td><td><span class="badge badge-${res}">${res}</span></td><td colspan="9" class="td-muted">${I18n.t('tp_not_called_up')}</td></tr>`;
               return `<tr>
@@ -17384,6 +17555,7 @@ const Render = (() => {
 
   // ── TEAM SUMMARY ───────────────────────────────────────────────────────────
   async function teamSummary() {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
     const el = document.getElementById('teamSummaryContent');
     const sub = document.getElementById('teamSubtitle');
 
@@ -17403,7 +17575,7 @@ const Render = (() => {
 
     // Only finished games count towards team and player season totals —
     // a game still in progress shouldn't affect the table yet.
-    const finishedGames = games.filter(g => isGameResultVisible(g));
+    const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
 
     // Games are scheduled, but none have been played yet. Previously this
     // fell through and rendered a full page of zeros plus an empty pitch,
@@ -20294,6 +20466,7 @@ async function savePlayer() {
 }
 
 async function openPlayerCardPopup(playerId) {
+  const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
   const p = await DB.get('players', playerId);
   if (!p) return;
   const el = document.getElementById('playerCardContent');
@@ -20395,7 +20568,7 @@ async function openPlayerCardPopup(playerId) {
       DB.getAll('games','seasonId',State.currentSeasonId),
       DB.getAll('gamePlayers','seasonId',State.currentSeasonId),
     ]);
-    const finishedGames = games.filter(g => isGameResultVisible(g));
+    const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
     const stats = Calc.playerSeasonStats(playerId, finishedGames, allGP);
     const statsEl = document.getElementById(`pcQuickStats-${playerId}`);
     if (statsEl && stats.calledUp > 0) {
@@ -21106,6 +21279,9 @@ async function saveGame() {
       // Reuses the record already fetched here — no extra read. Falls back
       // to now only for a legacy game that genuinely has no stored value.
       game.createdAt = (existingGame && existingGame.createdAt) || new Date().toISOString();
+      // The canonical identity NEVER changes on edit. A legacy game with no
+      // UUID is backfilled here rather than left permanently unidentifiable.
+      game.gameUuid = (existingGame && existingGame.gameUuid) || generateGameUuid();
       // If this game's own gamePlayers rows exist and the season is being
       // corrected, move them along too, same reasoning as the tournament
       // fix — a game and its player records must stay in the same season.
@@ -21117,6 +21293,7 @@ async function saveGame() {
         }
       }
     } else {
+      game.gameUuid = generateGameUuid();   // assigned once, at creation
       game.opponentScore = 0;
       game.createdAt = new Date().toISOString();
     }
@@ -22425,6 +22602,13 @@ async function init() {
     // If a store is missing, the IndexedDB upgrade didn't run (version mismatch
     // or interrupted upgrade). Force a clean reopen rather than running silently
     // broken for the rest of the session.
+    // Canonical game identity backfill (schema 19). Runs once, assigns each
+    // existing game its OWN fresh UUID, and merges nothing. Failure here must
+    // not block startup — the app is fully usable without it, and the next
+    // launch retries.
+    try { await backfillGameUuids(); }
+    catch(e) { console.error('[migration] game UUID backfill failed:', e); }
+
     const requiredStores = ['appMeta','seasons','players','games','gamePlayers','goalEvents','events','playerGameStats','achievements','clubHistory','injuries','opponents','trainingSessions','customDrills','drillFavourites','trainingPacks','tournaments','temporaryPlayers'];
     const missing = requiredStores.filter(s => !DB.hasStore(s));
     if (missing.length) {
