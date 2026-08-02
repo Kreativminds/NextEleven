@@ -713,7 +713,8 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <strong style="white-space:nowrap">&#127918; <span data-i18n="demo_banner_title">Demo Mode</span></strong>
       <span style="opacity:.9;flex:1;min-width:180px" data-i18n="demo_banner_body">You are exploring a sample football season.</span>
-      <button class="btn btn-sm" style="background:#fff;color:#1B4D8F;font-weight:700" onclick="Demo.exit()" data-i18n="demo_banner_cta">Create Your Own Club</button>
+      <button class="btn btn-sm" style="background:#fff;color:#1B4D8F;font-weight:700;white-space:nowrap" onclick="Demo.exitDemoToLogin({signup:true})" data-i18n="demo_banner_cta">Create Your Own Club</button>
+      <button class="btn btn-sm" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.55);white-space:nowrap" onclick="Demo.exitDemoToLogin()" data-i18n="demo_exit">Exit Demo</button>
     </div>
   </div>
   <div id="guardianBreadcrumb" role="navigation" aria-label="Breadcrumb" class="breadcrumb"></div>
@@ -4895,6 +4896,15 @@ async function claimLocalDataForAccount() {
 }
 
 async function handleLogout() {
+  // Demo and production logout are genuinely different operations and must
+  // not share a path. resetAppStateForNewUser(null) returns immediately when
+  // the previous user is also null — which is always true in a demo, since
+  // no production login ever happened. That is why Log Out did nothing.
+  if (Demo.isActive()) {
+    if (!window.confirm(I18n.t('demo_confirm_exit'))) return;
+    await Demo.exitDemoToLogin();
+    return;
+  }
   if (!window.confirm(I18n.t('acc_confirm_logout_body'))) return;
   await Auth.logout();
   await resetAppStateForNewUser(null);
@@ -5910,6 +5920,7 @@ const TR = {
     demo_try:'&#127918; Try the Demo', demo_loading:'Loading demo…',
     demo_err_start:'Could not start the demo. Please try again.',
     demo_err_locked:'Close any other NextEleven demo tabs, then try again.',
+    demo_confirm_exit:'Leave the demo? Your sample data will be discarded.',
     demo_banner_title:'Demo Mode',
     demo_banner_body:'You are exploring a sample football season. Changes here are temporary and reset when a new demo session begins.',
     demo_banner_cta:'Create Your Own Club', demo_exit:'Exit demo',
@@ -7220,6 +7231,7 @@ const TR = {
     demo_try:'&#127918; Experimentar a Demo', demo_loading:'A carregar a demo…',
     demo_err_start:'Não foi possível iniciar a demo. Tente novamente.',
     demo_err_locked:'Feche outros separadores da demo NextEleven e tente novamente.',
+    demo_confirm_exit:'Sair da demo? Os dados de exemplo serão descartados.',
     demo_banner_title:'Modo Demo',
     demo_banner_body:'Está a explorar uma época de exemplo. As alterações são temporárias e são repostas numa nova sessão.',
     demo_banner_cta:'Criar o Seu Clube', demo_exit:'Sair da demo',
@@ -20646,6 +20658,13 @@ const Sync = (() => {
   // every keystroke or minor UI interaction, per the approved behaviour.
   // Each call resets the timer, so several quick saves in a row collapse
   // into a single sync 4 seconds after the LAST one, not the first.
+  // Cancels every scheduled sync. Needed when leaving demo mode: the demo
+  // module cannot reach _autoSyncTimer, which is private to this closure.
+  function stopTimers() {
+    if (_autoSyncTimer) { clearTimeout(_autoSyncTimer); _autoSyncTimer = null; }
+    if (_periodicTimer) { clearTimeout(_periodicTimer); _periodicTimer = null; }  // setTimeout, not setInterval
+  }
+
   function scheduleAutoSync() {
     if (isDemoMode()) return;
     if (!isConfigured() || !Auth.isLoggedIn()) return; // never sync logged out
@@ -20830,7 +20849,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, stopTimers, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
 })();
 
 function attachEvents() {
@@ -21811,21 +21830,66 @@ const Demo = (() => {
     return true;
   }
 
-  // Exit Demo. The flag is cleared BEFORE the reload, so the page comes back
-  // up reading the production database and showing the normal login screen.
-  // The demo database is left on disk untouched and is deleted at the start
-  // of the next demo, which is also what makes that next demo identical.
   function isActive() { return isDemoMode(); }
 
-  function exit() {
+  // ── THE SINGLE AUTHORITATIVE DEMO EXIT ─────────────────────────────────────
+  // Used by Log Out, Exit Demo, Back to Login and Create Your Own Club, so the
+  // cleanup can never diverge between buttons.
+  //
+  // ROOT CAUSE THIS REPLACES: Log Out called resetAppStateForNewUser(null).
+  // In a demo there was never a production login, so lastAuthenticatedUserId
+  // was null too — and that function returns immediately when the old and new
+  // user match. Nothing was reset, no auth gate appeared, and the app sat in
+  // the half-exited state described. The demo flag was never even cleared.
+  //
+  // The cleanup ends in a reload BY DESIGN. Unwinding every module by hand
+  // (timers, caches, overlays, portal state, season maps) is exactly the kind
+  // of list that rots as features are added; a reload guarantees a genuinely
+  // clean process with no stale state, and is instant from cache.
+  async function exitDemoToLogin(options = {}) {
     try {
+      // 1. Stop background activity before anything else, so nothing can
+      //    write or fetch while we are tearing down.
+      try { Sync.stopTimers(); } catch(e) {}
+      try { ActionMenu.close(); } catch(e) {}
+      try { closePlayerActionMenu(); } catch(e) {}
+      document.querySelectorAll('.rm-form-overlay, .dialog-overlay').forEach(el => el.remove());
+
+      // 2. Clear in-memory state that would otherwise flash on the way out.
+      State.currentSeasonId = null;
+      State.currentSeason = null;
+      State.portalPlayerId = null;
+      State.currentTrackedTab = null;
+      try { invalidateSeasonMap(); } catch(e) {}
+
+      // 3. Release the demo database handle so the next demo can delete it.
+      try { DB.closeConnection(); } catch(e) {}
+
+      // 4. Clear ONLY demo-scoped session keys. Production auth tokens live in
+      //    localStorage under Supabase's own keys and are deliberately left
+      //    untouched — a demo visitor may also have a real account signed in
+      //    on this browser, and exiting a demo must not log them out of it.
       sessionStorage.removeItem(DEMO_FLAG);
       sessionStorage.removeItem('nexteleven_demo_seed_pending');
-    } catch(e) {}
-    window.location.reload();
+      sessionStorage.removeItem('squadTracker_lastSection');
+      sessionStorage.removeItem('squadTracker_lastPortalSection');
+      sessionStorage.removeItem('squadTracker_openGameId');
+
+      // 5. Remember whether to emphasise registration after the reload.
+      if (options.signup) sessionStorage.setItem('nexteleven_show_signup', '1');
+    } catch(err) {
+      console.error('[demo] exit cleanup error (continuing to reload):', err);
+    }
+    // 6. Replace rather than assign, so browser Back cannot return to the
+    //    demo UI with stale state behind it.
+    window.location.replace(window.location.pathname + window.location.search);
   }
 
-  return { start, seed, seedIfPending, exit, isActive, CLUB };
+  // Kept as the public name used by the banner; delegates to the one
+  // authoritative implementation rather than duplicating its cleanup.
+  function exit(options) { return exitDemoToLogin(options || {}); }
+
+  return { start, seed, seedIfPending, exit, exitDemoToLogin, isActive, CLUB };
 })();
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -24044,6 +24108,15 @@ async function init() {
       renderAuthGate();
       applyAuthGateBackground();
       document.getElementById('authGate').style.display = 'flex';
+      // Arriving from "Create Your Own Club": open the registration screen
+      // directly rather than making the visitor find it again. Consumed once,
+      // so a later refresh returns to the normal welcome screen.
+      try {
+        if (sessionStorage.getItem('nexteleven_show_signup') === '1') {
+          sessionStorage.removeItem('nexteleven_show_signup');
+          showAuthScreen('signup');
+        }
+      } catch(e) {}
       return; // stop here — do not load or show any app data
     }
 
