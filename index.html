@@ -5848,6 +5848,13 @@ const TR = {
     squad_confirm_delete_title:'Delete this player?', squad_confirm_delete_body:'This permanently removes the player. This cannot be undone. Only available because they have no game history.',
     squad_deleted_toast:'Player deleted.', squad_err_delete_has_history:'This player has game history and cannot be deleted — use Archive instead.',
     squad_btn_add_injury:'+ Injury',
+    squad_more:'More', squad_more_aria:'More actions for {name}',
+    squad_act_edit:'Edit Player', squad_act_profile:'Player Profile',
+    squad_act_injury:'Record Injury', squad_act_injury_manage:'Manage Injury',
+    squad_act_injury_history:'Injury History',
+    squad_act_archive:'Archive Player', squad_act_restore:'Restore Player',
+    squad_act_delete:'Delete Player',
+    squad_act_delete_blocked:'Has match history — archive instead',
     squad_archived_badge:'Archived',
     squad_btn_show_archived:'Show Archived ({n})', squad_btn_hide_archived:'Hide Archived',
     squad_total_count:'{n} player(s) total', squad_archived_hidden_count:'{n} archived (hidden)',
@@ -7142,6 +7149,13 @@ const TR = {
     squad_confirm_delete_title:'Eliminar este jogador?', squad_confirm_delete_body:'Isto remove permanentemente o jogador. Não pode ser desfeito. Só disponível porque não tem histórico de jogos.',
     squad_deleted_toast:'Jogador eliminado.', squad_err_delete_has_history:'Este jogador tem histórico de jogos e não pode ser eliminado — use Arquivar.',
     squad_btn_add_injury:'+ Lesão',
+    squad_more:'Mais', squad_more_aria:'Mais ações para {name}',
+    squad_act_edit:'Editar Jogador', squad_act_profile:'Perfil do Jogador',
+    squad_act_injury:'Registar Lesão', squad_act_injury_manage:'Gerir Lesão',
+    squad_act_injury_history:'Histórico de Lesões',
+    squad_act_archive:'Arquivar Jogador', squad_act_restore:'Restaurar Jogador',
+    squad_act_delete:'Eliminar Jogador',
+    squad_act_delete_blocked:'Tem histórico de jogos — arquive em vez disso',
     squad_archived_badge:'Arquivado',
     squad_btn_show_archived:'Mostrar Arquivados ({n})', squad_btn_hide_archived:'Ocultar Arquivados',
     squad_total_count:'{n} jogador(es) no total', squad_archived_hidden_count:'{n} arquivado(s) (ocultos)',
@@ -17273,12 +17287,11 @@ const Render = (() => {
         <td>${p.dominantFoot||'—'}</td>
         <td>${p.dateOfBirth?fmtDate(p.dateOfBirth):'—'}</td>
         <td>${injury?`<span class="badge" style="background:#fde8e8;color:#b03030" title="${esc(injuryTypeLabel(injury.injuryType)||'')} ${esc(injury.notes||'')}">&#129460; ${I18n.t('squad_status_injured')}</span>`:`<span style="color:#2a7a3b;font-size:11px">&#10003; ${I18n.t('squad_status_fit')}</span>`}</td>
-        <td>
-          <button class="btn btn-secondary btn-sm" onclick="editPlayer(${p.playerId})">${I18n.t('common_edit')}</button>
-          <button class="btn btn-secondary btn-sm" onclick="archivePlayer(${p.playerId},${!p.isActive})" style="margin-left:4px">${p.isActive?I18n.t('common_archive'):I18n.t('common_restore')}</button>
-          ${!hasHistory ? `<button class="btn btn-danger btn-sm" onclick="deletePlayer(${p.playerId})" style="margin-left:4px" title="${I18n.t('squad_btn_delete_hint')}">${I18n.t('common_delete')}</button>` : ''}
-          <button class="btn ${injury?'btn-danger':'btn-secondary'} btn-sm" onclick="openInjuryModal(${p.playerId})" style="margin-left:4px">${injury?I18n.t('squad_btn_manage_injury'):I18n.t('squad_btn_add_injury')}</button>
-          <button class="btn btn-secondary btn-sm" onclick="openInjuryHistoryModal(${p.playerId})" style="margin-left:4px">${I18n.t('inj_btn_history')}</button>
+        <td style="white-space:nowrap">
+          <button class="btn btn-secondary btn-sm" onclick="editPlayer(${p.playerId})" aria-label="${I18n.t('squad_act_edit')}">&#9998; <span>${I18n.t('common_edit')}</span></button>
+          <button class="btn btn-secondary btn-sm" style="margin-left:4px" aria-haspopup="menu" aria-expanded="false"
+                  aria-label="${esc(I18n.t('squad_more_aria', {name: shortName(p.fullName)}))}"
+                  onclick="event.stopPropagation();openPlayerActionMenu(${p.playerId}, this)">&#8942; <span>${I18n.t('squad_more')}</span></button>
         </td>
       </tr>`;
     }).join('');
@@ -21033,6 +21046,136 @@ async function editPlayer(id) {
   document.getElementById('playerFormTitle').textContent = I18n.t('squad_form_edit_title');
   document.getElementById('addPlayerPanel').classList.remove('panel-hidden');
   document.getElementById('addPlayerPanel').scrollIntoView({behavior:'smooth'});
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SQUAD — PLAYER ACTIONS MENU
+//
+// The Actions column previously carried up to five buttons per row, which on a
+// phone meant a wall of controls and horizontal scrolling. Each row now shows
+// Edit and More; everything else lives in one menu.
+//
+// Desktop: a dropdown anchored to the More button.
+// Mobile:  a bottom sheet with large touch targets.
+// Both render the SAME action list from one definition, so they can never
+// drift apart. Every item carries an icon AND a text label — icons never
+// stand alone, and the menu is fully keyboard and screen-reader navigable.
+// ════════════════════════════════════════════════════════════════════════════
+window.addEventListener('resize', () => closePlayerActionMenu());
+window.addEventListener('scroll', () => closePlayerActionMenu(), true);
+
+function closePlayerActionMenu() {
+  document.getElementById('playerActionMenu')?.remove();
+  document.getElementById('playerActionBackdrop')?.remove();
+  document.removeEventListener('keydown', _playerMenuKeyHandler, true);
+}
+
+function _playerMenuKeyHandler(e) {
+  const menu = document.getElementById('playerActionMenu');
+  if (!menu) return;
+  const items = [...menu.querySelectorAll('button[data-menu-item]:not([disabled])')];
+  if (!items.length) return;
+  const i = items.indexOf(document.activeElement);
+  if (e.key === 'Escape')      { e.preventDefault(); closePlayerActionMenu(); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1 + items.length) % items.length].focus(); }
+  else if (e.key === 'ArrowUp')   { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+  else if (e.key === 'Tab' && !e.shiftKey && i === items.length - 1) { e.preventDefault(); items[0].focus(); }
+  else if (e.key === 'Tab' && e.shiftKey && i === 0) { e.preventDefault(); items[items.length - 1].focus(); }
+}
+
+// One definition, both presentations. `tone` drives colour: only Archive
+// (amber) and Delete (red) are coloured — colour signals importance here
+// rather than decorating every row.
+function buildPlayerActions(p, injury, hasHistory) {
+  return [
+    { icon:'&#9998;',  label:I18n.t('squad_act_edit'),    fn:`editPlayer(${p.playerId})`,             tone:'normal' },
+    { icon:'&#128100;',label:I18n.t('squad_act_profile'), fn:`openPlayerCardPopup(${p.playerId})`,    tone:'normal' },
+    { icon:'&#10010;', label:injury ? I18n.t('squad_act_injury_manage') : I18n.t('squad_act_injury'),
+      fn:`openInjuryModal(${p.playerId})`, tone:'normal' },
+    // Injury history stays reachable: the Player Profile page does not carry
+    // it yet, so folding it away here would genuinely remove functionality.
+    { icon:'&#128203;',label:I18n.t('squad_act_injury_history'), fn:`openInjuryHistoryModal(${p.playerId})`, tone:'normal' },
+    { divider:true },
+    { icon:'&#128230;',label:p.isActive ? I18n.t('squad_act_archive') : I18n.t('squad_act_restore'),
+      fn:`archivePlayer(${p.playerId},${!p.isActive})`, tone:'warn' },
+    { icon:'&#128465;',label:I18n.t('squad_act_delete'), fn:`deletePlayer(${p.playerId})`, tone:'danger',
+      disabled: hasHistory, disabledHint: I18n.t('squad_act_delete_blocked') },
+  ];
+}
+
+function playerActionItemHtml(a, isSheet) {
+  if (a.divider) return `<div role="separator" style="height:1px;background:var(--border);margin:6px 0"></div>`;
+  const colour = a.tone === 'danger' ? '#b03030' : a.tone === 'warn' ? '#a06a00' : 'var(--dark)';
+  const pad    = isSheet ? '15px 18px' : '9px 12px';
+  const size   = isSheet ? '15px' : '13px';
+  const dis    = a.disabled ? 'disabled aria-disabled="true"' : '';
+  const style  = `display:flex;align-items:center;gap:11px;width:100%;padding:${pad};background:none;border:0;`
+               + `font-size:${size};font-weight:500;text-align:left;color:${colour};`
+               + `cursor:${a.disabled?'not-allowed':'pointer'};opacity:${a.disabled?'.45':'1'}`;
+  const click  = a.disabled ? '' : `onclick="closePlayerActionMenu();${a.fn}"`;
+  return `<button type="button" role="menuitem" data-menu-item ${dis} ${click} style="${style}"
+            ${a.disabled && a.disabledHint ? `title="${esc(a.disabledHint)}"` : ''}
+            onmouseover="if(!this.disabled)this.style.background='var(--light)'" onmouseout="this.style.background='none'">
+            <span aria-hidden="true" style="font-size:15px;width:20px;text-align:center;flex-shrink:0">${a.icon}</span>
+            <span>${esc(a.label)}</span>
+          </button>`;
+}
+
+async function openPlayerActionMenu(playerId, btn) {
+  closePlayerActionMenu();
+  const p = await DB.get('players', playerId);
+  if (!p) return;
+  // Reuse the app's own definitions rather than reimplementing them: an
+  // active injury is status === 'Injured' (matching the squad row's own
+  // highlighting), and match history is decided by hasAnyGameHistory(),
+  // the same function deletePlayer() itself guards on.
+  const injuries = await DB.getAll('injuries', 'playerId', playerId);
+  const injury = injuries.find(i => !i.isDeleted && i.status === 'Injured') || null;
+  const hasHistory = await hasAnyGameHistory(playerId);
+
+  const actions = buildPlayerActions(p, injury, hasHistory);
+  const isMobile = window.matchMedia('(max-width:768px)').matches;
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'playerActionBackdrop';
+  backdrop.style.cssText = `position:fixed;inset:0;z-index:998;${isMobile?'background:rgba(0,0,0,.35)':''}`;
+  backdrop.onclick = closePlayerActionMenu;
+  document.body.appendChild(backdrop);
+
+  const menu = document.createElement('div');
+  menu.id = 'playerActionMenu';
+  menu.setAttribute('role','menu');
+  menu.setAttribute('aria-label', I18n.t('squad_more_aria', { name: shortName(p.fullName) }));
+  menu.innerHTML =
+    (isMobile ? `<div style="padding:14px 18px 8px;font-size:13px;font-weight:700;color:var(--navy);border-bottom:1px solid var(--border)">${esc(shortName(p.fullName))}</div>` : '')
+    + actions.map(a => playerActionItemHtml(a, isMobile)).join('');
+
+  if (isMobile) {
+    // Bottom sheet: reachable one-handed, with generous touch targets and a
+    // safe-area inset so the last item is never under the home indicator.
+    menu.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:999;background:#fff;'
+      + 'border-radius:14px 14px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.18);'
+      + 'padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));max-height:80vh;overflow-y:auto';
+  } else {
+    menu.style.cssText = 'position:fixed;z-index:999;background:#fff;border:1px solid var(--border);'
+      + 'border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.14);min-width:210px;padding:5px 0';
+  }
+  document.body.appendChild(menu);
+
+  if (!isMobile && btn) {
+    // Anchored to the button, then nudged back inside the viewport if it
+    // would otherwise overflow the right or bottom edge.
+    const r = btn.getBoundingClientRect();
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    let left = Math.min(r.right - mw, window.innerWidth - mw - 8);
+    let top  = r.bottom + 4;
+    if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 4);
+    menu.style.left = Math.max(8, left) + 'px';
+    menu.style.top  = top + 'px';
+  }
+
+  document.addEventListener('keydown', _playerMenuKeyHandler, true);
+  menu.querySelector('button[data-menu-item]:not([disabled])')?.focus();
 }
 
 async function archivePlayer(id, restore) {
