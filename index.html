@@ -709,6 +709,13 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 
 <!-- MAIN -->
 <div class="main-content">
+  <div id="demoBanner" style="display:none;background:#1B4D8F;color:#fff;padding:9px 14px;margin:-6px -6px 12px;border-radius:6px;font-size:12px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <strong style="white-space:nowrap">&#127918; <span data-i18n="demo_banner_title">Demo Mode</span></strong>
+      <span style="opacity:.9;flex:1;min-width:180px" data-i18n="demo_banner_body">You are exploring a sample football season.</span>
+      <button class="btn btn-sm" style="background:#fff;color:#1B4D8F;font-weight:700" onclick="Demo.exit()" data-i18n="demo_banner_cta">Create Your Own Club</button>
+    </div>
+  </div>
   <div id="guardianBreadcrumb" role="navigation" aria-label="Breadcrumb" class="breadcrumb"></div>
 
   <!-- DASHBOARD -->
@@ -1104,10 +1111,34 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 // ══════════════════════════════════════════════════════════════════════════════
 // CONFIG
 // ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
+// DEMO MODE — SESSION FLAG AND ISOLATION PRIMITIVES
+//
+// Held in sessionStorage, so closing the tab ends the demo and the next visit
+// starts a genuinely fresh session — which is also how "reset on every new
+// session" is implemented, with no scheduled job and no stale state.
+// ════════════════════════════════════════════════════════════════════════════
+const DEMO_FLAG = 'nexteleven_demo_session';
+
+function isDemoMode() {
+  try { return sessionStorage.getItem(DEMO_FLAG) === '1'; } catch(e) { return false; }
+}
+
+// Every database open goes through here, so demo and production can never
+// share a connection.
+function activeDbName() {
+  return isDemoMode() ? CONFIG.DEMO_DB_NAME : CONFIG.DB_NAME;
+}
+
 const CONFIG = {
   APP_VERSION: '1.2.1', // human-readable label only — staleness detection no longer depends on this matching anything
   SCHEMA_VERSION: 19,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index
   DB_NAME: 'footballSquadTrackerDB',
+  // Demo Mode lives in a SEPARATE IndexedDB database. Isolation is physical,
+  // not a flag on shared rows: production data is in another database that the
+  // demo session never opens, so no demo write can reach it even if every
+  // other guard in the app failed.
+  DEMO_DB_NAME: 'footballSquadTrackerDEMO',
   MAX_BACKUPS: 30,
   FULL_GAME_MINS: 80,
   PARTIAL_GAME_MINS: 40,
@@ -3825,6 +3856,8 @@ function renderAuthGate() {
            flex-start — that is why this label sat left while Google's,
            which sets justify-content:center inline, appeared centred. -->
       <button type="button" class="btn btn-secondary" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px" onclick="showAuthScreen('login')">${I18n.t('acc_btn_continue_email')}</button>
+      <button type="button" class="btn btn-secondary" id="demoStartBtn" onclick="Demo.start()"
+              style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px;border:1px dashed var(--border)">${I18n.t('demo_try')}</button>
 
       <div style="text-align:center;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
         <a href="#" onclick="event.preventDefault();showAuthScreen('player')" style="font-size:13px;color:var(--navy);font-weight:600;text-decoration:none">${I18n.t('acc_player_access_link')} &rsaquo;</a>
@@ -5874,6 +5907,12 @@ const TR = {
     squad_btn_add_injury:'+ Injury',
     squad_more:'More', squad_more_aria:'More actions for {name}',
     tptab_more:'More',
+    demo_try:'&#127918; Try the Demo', demo_loading:'Loading demo…',
+    demo_err_start:'Could not start the demo. Please try again.',
+    demo_err_locked:'Close any other NextEleven demo tabs, then try again.',
+    demo_banner_title:'Demo Mode',
+    demo_banner_body:'You are exploring a sample football season. Changes here are temporary and reset when a new demo session begins.',
+    demo_banner_cta:'Create Your Own Club', demo_exit:'Exit demo',
     ch_unknown_club:'Club not recorded', ch_from_season:'From season',
     ch_derived_hint:'Taken automatically from the season this player was registered in.',
     squad_act_edit:'Edit Player', squad_act_profile:'Player Profile',
@@ -7178,6 +7217,12 @@ const TR = {
     squad_btn_add_injury:'+ Lesão',
     squad_more:'Mais', squad_more_aria:'Mais ações para {name}',
     tptab_more:'Mais',
+    demo_try:'&#127918; Experimentar a Demo', demo_loading:'A carregar a demo…',
+    demo_err_start:'Não foi possível iniciar a demo. Tente novamente.',
+    demo_err_locked:'Feche outros separadores da demo NextEleven e tente novamente.',
+    demo_banner_title:'Modo Demo',
+    demo_banner_body:'Está a explorar uma época de exemplo. As alterações são temporárias e são repostas numa nova sessão.',
+    demo_banner_cta:'Criar o Seu Clube', demo_exit:'Sair da demo',
     ch_unknown_club:'Clube não registado', ch_from_season:'Da época',
     ch_derived_hint:'Obtido automaticamente da época em que o jogador estava inscrito.',
     squad_act_edit:'Editar Jogador', squad_act_profile:'Perfil do Jogador',
@@ -8357,7 +8402,7 @@ const DB = (() => {
 
   function open() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(CONFIG.DB_NAME, CONFIG.SCHEMA_VERSION);
+      const req = indexedDB.open(activeDbName(), CONFIG.SCHEMA_VERSION);
       // A bundle older than the stored schema version cannot open the
       // database at all — IndexedDB raises VersionError rather than
       // downgrading. This happens when a device has a cached older build
@@ -8758,7 +8803,15 @@ const DB = (() => {
     }
   }
 
-  return { open, get, getAll, put, del, softDelete, clear, putManyAtomic, getAllFromAllStores, restoreAllStores, hasStore, clearAllRealStores };
+  // Releases the IndexedDB connection so the database can be deleted.
+  // Without this, deleteDatabase() is BLOCKED by our own open handle — which
+  // is exactly what would have happened when restarting a demo from inside a
+  // demo session, silently seeding a second dataset on top of the first.
+  function closeConnection() {
+    try { if (_db) { _db.close(); _db = null; } } catch(e) { console.error('[DB] close failed', e); }
+  }
+
+  return { open, get, getAll, put, del, softDelete, clear, putManyAtomic, getAllFromAllStores, restoreAllStores, hasStore, clearAllRealStores, closeConnection };
 })();
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -9987,80 +10040,23 @@ const TRACKED_MORE_TABS = [
   { tab:'events',   icon:'&#128197;', key:'tptab_events' },
 ];
 
-function closeTrackedMoreMenu() {
-  document.getElementById('trackedMoreMenu')?.remove();
-  document.getElementById('trackedMoreBackdrop')?.remove();
-  document.removeEventListener('keydown', _trackedMoreKeyHandler, true);
-  document.querySelectorAll('[id^="tab-more-"]').forEach(b => b.setAttribute('aria-expanded','false'));
-}
-
-function _trackedMoreKeyHandler(e) {
-  const menu = document.getElementById('trackedMoreMenu');
-  if (!menu) return;
-  const items = [...menu.querySelectorAll('button[data-menu-item]')];
-  if (!items.length) return;
-  const i = items.indexOf(document.activeElement);
-  if (e.key === 'Escape')         { e.preventDefault(); closeTrackedMoreMenu(); }
-  else if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1 + items.length) % items.length].focus(); }
-  else if (e.key === 'ArrowUp')   { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
-}
+function closeTrackedMoreMenu() { ActionMenu.close(); }
 
 function openTrackedMoreMenu(playerId, btn) {
-  closeTrackedMoreMenu();
-  const isMobile = window.matchMedia('(max-width:768px)').matches;
-  if (btn) btn.setAttribute('aria-expanded','true');
-
-  const backdrop = document.createElement('div');
-  backdrop.id = 'trackedMoreBackdrop';
-  backdrop.style.cssText = `position:fixed;inset:0;z-index:998;${isMobile?'background:rgba(0,0,0,.35)':''}`;
-  backdrop.onclick = closeTrackedMoreMenu;
-  document.body.appendChild(backdrop);
-
-  const menu = document.createElement('div');
-  menu.id = 'trackedMoreMenu';
-  menu.setAttribute('role','menu');
-  menu.setAttribute('aria-label', I18n.t('tptab_more'));
-  menu.innerHTML = TRACKED_MORE_TABS.map(t => {
-    const isCurrent = State.currentTrackedTab === t.tab;
-    const pad  = isMobile ? '15px 18px' : '9px 12px';
-    const size = isMobile ? '15px' : '13px';
-    return `<button type="button" role="menuitem" data-menu-item ${isCurrent?'aria-current="page"':''}
-              onclick="closeTrackedMoreMenu();switchTrackedTab(${playerId},'${t.tab}')"
-              style="display:flex;align-items:center;gap:11px;width:100%;padding:${pad};background:${isCurrent?'var(--light)':'none'};
-                     border:0;font-size:${size};font-weight:${isCurrent?'700':'500'};text-align:left;
-                     color:${isCurrent?'var(--navy)':'var(--dark)'};cursor:pointer"
-              onmouseover="this.style.background='var(--light)'"
-              onmouseout="this.style.background='${isCurrent?'var(--light)':'none'}'">
-              <span aria-hidden="true" style="font-size:15px;width:20px;text-align:center;flex-shrink:0">${t.icon}</span>
-              <span>${esc(I18n.t(t.key))}</span>
-            </button>`;
-  }).join('');
-
-  if (isMobile) {
-    menu.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:999;background:#fff;'
-      + 'border-radius:14px 14px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.18);'
-      + 'padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));max-height:80vh;overflow-y:auto';
-  } else {
-    menu.style.cssText = 'position:fixed;z-index:999;background:#fff;border:1px solid var(--border);'
-      + 'border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.14);min-width:190px;padding:5px 0';
-  }
-  document.body.appendChild(menu);
-
-  if (!isMobile && btn) {
-    const r = btn.getBoundingClientRect();
-    const mw = menu.offsetWidth, mh = menu.offsetHeight;
-    let left = Math.min(r.left, window.innerWidth - mw - 8);
-    let top  = r.bottom + 4;
-    if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 4);
-    menu.style.left = Math.max(8, left) + 'px';
-    menu.style.top  = top + 'px';
-  }
-
-  document.addEventListener('keydown', _trackedMoreKeyHandler, true);
-  menu.querySelector('button[data-menu-item]')?.focus();
+  // Same shared component as the squad menu — one implementation, so the two
+  // can never drift apart in behaviour.
+  ActionMenu.open(
+    TRACKED_MORE_TABS.map(t => ({
+      icon: t.icon,
+      label: I18n.t(t.key),
+      fn: `switchTrackedTab(${playerId},'${t.tab}')`,
+      tone: 'normal',
+      current: State.currentTrackedTab === t.tab,
+    })),
+    btn,
+    { title: I18n.t('tptab_more'), ariaLabel: I18n.t('tptab_more') }
+  );
 }
-
-window.addEventListener('resize', () => closeTrackedMoreMenu());
 
 function switchTrackedTab(playerId, tab) {
   State.currentTrackedPlayer = playerId;
@@ -16968,7 +16964,7 @@ const Render = (() => {
     // shouldTriggerFirstTimeWizard() returns null when it cannot determine
     // the answer (e.g. the cloud check failed); `=== true` means only a
     // positive, confident verdict ever opens the wizard.
-    if (Auth.isLoggedIn() && !_startupBootstrapInFlight && (await shouldTriggerFirstTimeWizard()) === true) {
+    if (Auth.isLoggedIn() && !isDemoMode() && !_startupBootstrapInFlight && (await shouldTriggerFirstTimeWizard()) === true) {
       const existingDraft = await loadFirstTimeWizardDraft();
       if (existingDraft) {
         _firstTimeWizardState = existingDraft;
@@ -19067,6 +19063,70 @@ const NATIONALITY_FLAGS = {
   'american':'&#127482;&#127480;','usa':'&#127482;&#127480;',
 };
 
+// ── FLAG EMOJI SUPPORT DETECTION ─────────────────────────────────────────────
+// Windows ships NO country-flag emoji font. Chrome, Edge and Firefox on
+// Windows therefore render a regional-indicator pair as the two bare letters
+// — which is why the card showed "PT" next to "Portugal" even though the
+// codepoints (U+1F1F5 U+1F1F9) were entirely correct. Android, iOS and macOS
+// all render the flag properly, so this is a platform gap, not a data bug.
+//
+// Detected by measuring: where flags are supported the pair ligates into ONE
+// glyph, so it is narrower than the two indicators drawn separately. Measured
+// once and cached; falls back to "unsupported" if canvas is unavailable, which
+// yields the badge below — never broken-looking letters.
+let _flagEmojiSupported = null;
+function supportsFlagEmoji() {
+  if (_flagEmojiSupported !== null) return _flagEmojiSupported;
+  try {
+    const ctx = document.createElement('canvas').getContext('2d');
+    if (!ctx) { _flagEmojiSupported = false; return false; }
+    ctx.font = '32px sans-serif';
+    const pair   = ctx.measureText('\u{1F1F5}\u{1F1F9}').width;   // 🇵🇹
+    const single = ctx.measureText('\u{1F1F5}').width;
+    // Ligated → roughly one glyph wide. Not ligated → about twice as wide.
+    _flagEmojiSupported = pair < single * 1.6;
+  } catch(e) {
+    _flagEmojiSupported = false;
+  }
+  return _flagEmojiSupported;
+}
+
+// What actually gets rendered beside the nationality. A real flag where the
+// platform can draw one; otherwise a small styled code badge that reads as an
+// intentional design element rather than stray letters.
+function flagMarkup(nat) {
+  const flags = getFlagsForNationality(nat);
+  if (!flags) return '';
+  if (supportsFlagEmoji()) return flags;
+  const codes = String(nat || '').split('/').map(x => x.trim()).filter(Boolean)
+    .map(x => (/^[A-Za-z]{2}$/.test(x) ? x.toUpperCase() : isoCodeFromName(x)))
+    .filter(Boolean);
+  if (!codes.length) return '&#127760;'; // globe — nothing resolvable
+  return codes.map(c => `<span style="display:inline-block;padding:1px 5px;border-radius:3px;`
+    + `background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.35);`
+    + `font-size:9.5px;font-weight:800;letter-spacing:.5px;line-height:1.5;vertical-align:middle">`
+    + `${esc(c)}</span>`).join(' ');
+}
+
+// Reverse lookup so a nationality stored as a NAME still yields a badge on
+// Windows. Built once from the existing NATIONALITY_FLAGS table by decoding
+// each entry's regional indicators back into letters — no second list to
+// maintain, so the two can never disagree.
+let _nameToIso = null;
+function isoCodeFromName(name) {
+  if (!_nameToIso) {
+    _nameToIso = {};
+    for (const [key, html] of Object.entries(NATIONALITY_FLAGS)) {
+      const nums = (html.match(/&#(\d+);/g) || []).map(m => parseInt(m.replace(/\D/g, '')));
+      if (nums.length === 2) {
+        const A = 0x1F1E6, base = 'A'.charCodeAt(0);
+        _nameToIso[key] = String.fromCharCode(base + (nums[0] - A), base + (nums[1] - A));
+      }
+    }
+  }
+  return _nameToIso[String(name || '').trim().toLowerCase()] || '';
+}
+
 // Turns any valid ISO 3166-1 alpha-2 code into its Unicode flag by offsetting
 // each letter into the regional-indicator block. Pure arithmetic, so it covers
 // every country without a lookup entry — the NATIONALITY_FLAGS map only ever
@@ -19633,6 +19693,11 @@ const Sync = (() => {
   }
 
   async function supabaseRequest(method, table, body, params) {
+    // HARD ISOLATION. Every REST call in the app funnels through here, so one
+    // guard covers push, pull, portal RPCs, integrity checks and everything
+    // else. Demo data must never reach Supabase and no production record may
+    // ever be read into a demo session.
+    if (isDemoMode()) throw new Error('Demo Mode: cloud sync is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured.');
     if (!Auth.isLoggedIn()) throw new Error('Not logged in — sign in to sync your data to the cloud.');
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
@@ -19695,6 +19760,7 @@ const Sync = (() => {
   // entirely server-side inside generate_team_share_token — this call
   // never invents or sends a token itself, only requests one.
   async function generateTeamShareLink(seasonId) {
+    if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured.');
     if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
@@ -19715,6 +19781,7 @@ const Sync = (() => {
   }
 
   async function updateTeamSharePrivacy(seasonId, showNameMode, showPlayerStats) {
+    if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured.');
     if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
@@ -19734,6 +19801,7 @@ const Sync = (() => {
   }
 
   async function setTeamShareEnabled(seasonId, enabled) {
+    if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured.');
     if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
@@ -19753,6 +19821,7 @@ const Sync = (() => {
   }
 
   async function getTeamShareLink(seasonId) {
+    if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured() || !Auth.isLoggedIn()) return null;
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
     const res = await fetch(base + `team_share_links?season_id=eq.${seasonId}&select=share_token,enabled`, {
@@ -19767,6 +19836,7 @@ const Sync = (() => {
   }
 
   async function claimAccountCode(newCode) {
+    if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured.');
     if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
@@ -19794,6 +19864,7 @@ const Sync = (() => {
   // (validate_player_pin), which does the real lookup safely; the client
   // never gets direct read access to the players table.
   async function validatePlayerPinRemote(accountCode, pin) {
+    if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured on this device.');
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
     const res = await fetch(base + 'rpc/validate_player_pin', {
@@ -19833,6 +19904,7 @@ const Sync = (() => {
   let _lastPortalPullAt   = 0;
 
   async function portalPullRemote(sessionToken, afterSequence, limit) {
+    if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured on this device.');
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
     const res = await fetch(base + 'rpc/portal_pull', {
@@ -20022,6 +20094,7 @@ const Sync = (() => {
   ];
 
   async function portalBootstrapRemote(accountCode, pin) {
+    if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured on this device.');
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
     const res = await fetch(base + 'rpc/portal_bootstrap_v2', {
@@ -20179,6 +20252,7 @@ const Sync = (() => {
   // (session player only, createdBy 'player' only) on every call — the
   // client-side checks are UX, the RPC is the enforcement.
   async function portalTrainingSaveRemote(sessionToken, cloudId, localId, payloadObj) {
+    if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured on this device.');
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
     const res = await fetch(base + 'rpc/portal_save_training_session', {
@@ -20204,6 +20278,7 @@ const Sync = (() => {
   }
 
   async function portalTrainingDeleteRemote(sessionToken, cloudId) {
+    if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured on this device.');
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
     const res = await fetch(base + 'rpc/portal_delete_training_session', {
@@ -20505,6 +20580,7 @@ const Sync = (() => {
   // and the 5-minute periodic safety sync. The existing online-reconnect
   // listener (elsewhere in the file) is left exactly as it was.
   function startPeriodicSync() {
+    if (isDemoMode()) return;
     if (_periodicTimer) return; // already started, never start twice
     // App-open sync, shortly after this is called (not instantly, to let
     // the rest of app startup settle first).
@@ -20571,6 +20647,7 @@ const Sync = (() => {
   // Each call resets the timer, so several quick saves in a row collapse
   // into a single sync 4 seconds after the LAST one, not the first.
   function scheduleAutoSync() {
+    if (isDemoMode()) return;
     if (!isConfigured() || !Auth.isLoggedIn()) return; // never sync logged out
     if (_autoSyncTimer) clearTimeout(_autoSyncTimer);
     _autoSyncTimer = setTimeout(() => {
@@ -20580,6 +20657,7 @@ const Sync = (() => {
   }
 
   async function run(silent=false) {
+    if (isDemoMode()) return false;   // never sync a demo session
     if (!isConfigured()) { if (!silent) Toast.error(I18n.t('sync_err_not_configured')); return false; }
     if (!Auth.isLoggedIn()) { if (!silent) Toast.error(I18n.t('acc_err_login_required')); return false; }
     if (!isOnline()) { if (!silent) Toast.error(I18n.t('sync_err_no_internet')); return false; }
@@ -20944,7 +21022,7 @@ async function openPlayerCardPopup(playerId) {
   if (!p) return;
   const el = document.getElementById('playerCardContent');
   const age = calcAge(p.dateOfBirth);
-  const flags = getFlagsForNationality(p.nationality);
+  const flags = flagMarkup(p.nationality);   // real flag, or a code badge on Windows
   const cvBg = await getBrandingAsset('playerCvBackground');
 
   // Latest real achievement — most recent Trophy-category entry for
@@ -21339,6 +21417,561 @@ async function editPlayer(id) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// DEMO MODE — DATASET
+//
+// One realistic, internally consistent 2026/27 season for a fictional club.
+// Everything is derived, never random: match results are generated first, then
+// every goal, assist, card and appearance is allocated from those results, so
+// the totals shown on the dashboard, the player profile and the match log all
+// reconcile with each other. Re-running produces byte-identical data.
+//
+// ISOLATION: this writes only to CONFIG.DEMO_DB_NAME, a physically separate
+// IndexedDB database. Sync is blocked at every network path (see the
+// isDemoMode() guards in the Sync module), so nothing here can reach Supabase.
+// ════════════════════════════════════════════════════════════════════════════
+const Demo = (() => {
+
+  const CLUB = 'Clube Atlético Lisboa';
+  const GROUND = 'Campo Municipal de Alvalade';
+
+  // A tiny seeded PRNG so the "random" details are identical on every run —
+  // two visitors comparing screens must see the same club.
+  function rng(seed) {
+    let x = seed;
+    return () => { x = (x * 1103515245 + 12345) & 0x7fffffff; return x / 0x7fffffff; };
+  }
+  const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
+
+  const SQUAD = [
+    { n:'João Costa',       s:10, p:'Attacking Midfielder', s2:'Striker',              f:'Right', dob:'2013-03-14', h:158, w:46 },
+    { n:'Miguel Silva',     s:1,  p:'Goalkeeper',           s2:null,                   f:'Right', dob:'2013-01-22', h:165, w:52 },
+    { n:'Tiago Martins',    s:2,  p:'Right Back',           s2:'Centre Back',          f:'Right', dob:'2013-05-09', h:152, w:44 },
+    { n:'Pedro Almeida',    s:4,  p:'Centre Back',          s2:null,                   f:'Right', dob:'2012-11-30', h:162, w:50 },
+    { n:'Bruno Ferreira',   s:5,  p:'Centre Back',          s2:'Defensive Midfielder', f:'Left',  dob:'2013-02-17', h:160, w:49 },
+    { n:'Diogo Sousa',      s:3,  p:'Left Back',            s2:'Left Winger',          f:'Left',  dob:'2013-07-03', h:151, w:43 },
+    { n:'André Lopes',      s:6,  p:'Defensive Midfielder', s2:'Central Midfielder',   f:'Right', dob:'2013-04-25', h:155, w:47 },
+    { n:'Rafael Gomes',     s:8,  p:'Central Midfielder',   s2:null,                   f:'Right', dob:'2013-06-11', h:154, w:45 },
+    { n:'Tomás Correia',    s:7,  p:'Right Winger',         s2:'Attacking Midfielder', f:'Left',  dob:'2013-09-19', h:149, w:42 },
+    { n:'Gonçalo Pinto',    s:11, p:'Left Winger',          s2:'Striker',              f:'Right', dob:'2013-08-07', h:150, w:43 },
+    { n:'Hugo Santos',      s:9,  p:'Striker',              s2:null,                   f:'Right', dob:'2012-12-28', h:159, w:48 },
+    { n:'Ricardo Neves',    s:14, p:'Central Midfielder',   s2:'Right Back',           f:'Right', dob:'2013-10-05', h:147, w:41 },
+    { n:'Lucas Carvalho',   s:12, p:'Goalkeeper',           s2:null,                   f:'Right', dob:'2013-03-31', h:157, w:47 },
+  ];
+
+  const FRIENDLY_OPPONENTS = ['Académica do Restelo','GD Alvalade','Sporting Clube da Ajuda','CF Benfica do Sul',
+    'União Belenense','AD Campolide','Grupo Recreativo Lumiar','CD Areeiro','SC Marvila','Clube Olivais Norte',
+    'AC Telheiras','FC Chelas','GD Penha','SU Carnide'];
+  const LEAGUE_OPPONENTS = ['CD Alcântara','SC Estrela do Norte','FC Ribeira Nova','AD Parque das Nações',
+    'GS Alfama','CF Graça','União Sintrense','CD Amadora Sul','SC Odivelas','FC Loures Jovem',
+    'AD Cascais Mar','GD Oeiras','CF Almada Oriental','SC Barreiro Jovem'];
+  const CUP_OPPONENTS = ['FC Nordstjärnan','Real Vallecas Juvenil','AS Monti Verdi','FK Modra Zvezda','SV Grünwald'];
+
+  // Declared once and used both to suppress appearances and to write the
+  // injury row, so the two can never drift apart.
+  const INJURY_FROM = '2026-11-09';
+  const INJURY_TO   = '2026-11-22';
+
+  const iso = (d) => d.toISOString().slice(0,10);
+  const addDays = (dateStr, n) => { const d = new Date(dateStr + 'T12:00:00'); d.setDate(d.getDate() + n); return iso(d); };
+
+  // ── SCHEDULE ──────────────────────────────────────────────────────────────
+  // Pre-season friendlies every Sat/Sun from early September to mid-October,
+  // the league across the autumn, then a five-day winter cup in late December.
+  function buildFixtures() {
+    const r = rng(20262027);
+    const fixtures = [];
+
+    // 14 friendlies: 5 Sep 2026 is a Saturday.
+    let d = '2026-09-05';
+    for (let i = 0; i < 14; i++) {
+      // Mixed results, weighted to a developing side.
+      const res = [[3,1],[2,2],[1,2],[4,0],[2,1],[0,1],[3,2],[1,1],[2,0],[3,3],[5,1],[1,0],[2,3],[4,2]][i];
+      fixtures.push({ kind:'Friendly', date:d, time:'10:00', opponent:FRIENDLY_OPPONENTS[i],
+                      gf:res[0], ga:res[1], home:(i % 2 === 0) });
+      d = addDays(d, (i % 2 === 0) ? 1 : 6);   // Sat → Sun → next Sat
+    }
+
+    // 14 league matches, Saturdays from 24 Oct. Record: 9W 3D 2L.
+    const leagueResults = [[3,1],[2,0],[1,1],[4,2],[0,2],[2,1],[3,0],[1,1],[2,3],[5,2],[1,0],[2,2],[3,1],[4,1]];
+    d = '2026-10-24';
+    for (let i = 0; i < 14; i++) {
+      fixtures.push({ kind:'League', date:d, time:'11:00', opponent:LEAGUE_OPPONENTS[i],
+                      gf:leagueResults[i][0], ga:leagueResults[i][1], home:(i % 2 === 0),
+                      competitionName:'Liga Distrital Sub-14' });
+      d = addDays(d, 7);
+    }
+
+    // Winter Youth Cup: 26–30 December, group stage → quarter-final →
+    // semi-final, eliminated at the semi.
+    const cup = [
+      { date:'2026-12-26', time:'09:30', opponent:CUP_OPPONENTS[0], gf:2, ga:0, stage:'Group Stage' },
+      { date:'2026-12-27', time:'11:00', opponent:CUP_OPPONENTS[1], gf:1, ga:1, stage:'Group Stage' },
+      { date:'2026-12-28', time:'09:30', opponent:CUP_OPPONENTS[2], gf:3, ga:1, stage:'Group Stage' },
+      { date:'2026-12-29', time:'14:00', opponent:CUP_OPPONENTS[3], gf:2, ga:1, stage:'Quarter-Final' },
+      { date:'2026-12-30', time:'16:00', opponent:CUP_OPPONENTS[4], gf:1, ga:2, stage:'Semi-Final' },
+    ];
+    cup.forEach(c => fixtures.push({ kind:'Tournament', ...c, home:false, competitionName:'Winter Youth Cup' }));
+
+    // One upcoming fixture so Home has something to look forward to.
+    fixtures.push({ kind:'League', date:'2027-01-16', time:'11:00', opponent:'CD Alcântara',
+                    home:true, competitionName:'Liga Distrital Sub-14', upcoming:true });
+    return fixtures;
+  }
+
+  // ── GOAL / ASSIST ALLOCATION ──────────────────────────────────────────────
+  // Distributes each match's goals across attacking players by weight, so
+  // player totals always add up to the team totals. Nothing is concentrated
+  // in one player, and defenders occasionally score.
+  function allocate(fixtures, playerIds) {
+    const byName = {};
+    SQUAD.forEach((p, i) => byName[p.n] = playerIds[i]);
+    const scorerWeights = [
+      ['Hugo Santos', 26], ['João Costa', 22], ['Gonçalo Pinto', 16], ['Tomás Correia', 13],
+      ['Rafael Gomes', 8], ['Ricardo Neves', 5], ['André Lopes', 4], ['Bruno Ferreira', 3],
+      ['Pedro Almeida', 2], ['Diogo Sousa', 1],
+    ];
+    const assistWeights = [
+      ['João Costa', 24], ['Tomás Correia', 18], ['Gonçalo Pinto', 15], ['Rafael Gomes', 14],
+      ['Ricardo Neves', 10], ['André Lopes', 8], ['Diogo Sousa', 6], ['Hugo Santos', 5],
+    ];
+    const wpick = (r, weights) => {
+      const total = weights.reduce((a, w) => a + w[1], 0);
+      let x = r() * total;
+      for (const w of weights) { x -= w[1]; if (x <= 0) return w[0]; }
+      return weights[0][0];
+    };
+
+    const r = rng(777);
+    fixtures.filter(f => !f.upcoming).forEach(f => {
+      f.scorers = [];
+      f.assisters = [];
+      const trackedOut = (f.date >= INJURY_FROM && f.date <= INJURY_TO);
+      for (let g = 0; g < f.gf; g++) {
+        // While the tracked player is injured his goals go to team-mates, so
+        // the team total still equals the sum of individual totals.
+        let scorer = wpick(r, scorerWeights);
+        if (trackedOut && scorer === 'João Costa') {
+          scorer = wpick(r, scorerWeights.filter(w => w[0] !== 'João Costa'));
+        }
+        f.scorers.push(scorer);
+        // Roughly two goals in three are assisted, never by the scorer.
+        if (r() < 0.66) {
+          let excluded = assistWeights.filter(w => w[0] !== scorer && (!trackedOut || w[0] !== 'João Costa'));
+          let a = wpick(r, excluded.length ? excluded : assistWeights.filter(w => w[0] !== scorer));
+          if (a) f.assisters.push(a);
+        }
+      }
+      // Sparse, realistic cards.
+      f.yellows = r() < 0.28 ? [wpick(r, [['Pedro Almeida',3],['Bruno Ferreira',3],['André Lopes',2],['Tiago Martins',2]])] : [];
+      f.motm = f.gf > f.ga ? (f.scorers[0] || (trackedOut ? 'Hugo Santos' : 'João Costa')) : (r() < 0.5 ? 'Miguel Silva' : 'Pedro Almeida');
+    });
+    return byName;
+  }
+
+  // ── BUILD ─────────────────────────────────────────────────────────────────
+  async function seed() {
+    const now = new Date().toISOString();
+    const careerIds = SQUAD.map(() => generateCareerPlayerId());
+
+    const clubTeamId = await DB.put('clubTeams', {
+      name: CLUB, shortName: 'CAL', homeGround: GROUND,
+      shirtColor: '#1B4D8F', location: 'Lisboa', createdAt: now,
+    });
+
+    // Four seasons, so Club History shows a continuous career.
+    const seasonIds = {};
+    for (const [name, year, age] of [['2023/24',2023,'Sub-11'],['2024/25',2024,'Sub-12'],
+                                     ['2025/26',2025,'Sub-13'],['2026/27',2026,'Sub-14']]) {
+      seasonIds[name] = await DB.put('seasons', {
+        seasonName: name, startYear: year, clubTeamId, clubName: CLUB,
+        homeGround: GROUND, ageGroup: age, defaultMatchDurationMins: 70,
+        startDate: `${year}-09-01`, endDate: `${year+1}-06-30`,
+        shirtColor: '#1B4D8F', createdAt: now,
+      });
+    }
+    const seasonId = seasonIds['2026/27'];
+
+    // The tracked player exists in all four seasons under one careerPlayerId,
+    // so Club History has a real career to aggregate.
+    const playerIds = [];
+    for (let i = 0; i < SQUAD.length; i++) {
+      const p = SQUAD[i];
+      playerIds.push(await DB.put('players', {
+        seasonId, fullName: p.n, shirtNumber: p.s, primaryPosition: p.p,
+        secondaryPosition: p.s2, dominantFoot: p.f, dateOfBirth: p.dob,
+        nationality: 'PT', heightCm: p.h, weightKg: p.w,
+        isActive: true, careerPlayerId: careerIds[i],
+        trackingStatus: i === 0 ? 'tracked' : null,
+        createdAt: now,
+      }));
+    }
+    const trackedId = playerIds[0];
+    await DB.put('appMeta', { metaKey: 'trackedPlayerIds', value: [trackedId] });
+
+    for (const [name, age] of [['2023/24','Sub-11'],['2024/25','Sub-12'],['2025/26','Sub-13']]) {
+      await DB.put('players', {
+        seasonId: seasonIds[name], fullName: SQUAD[0].n, shirtNumber: 10,
+        primaryPosition: 'Attacking Midfielder', dominantFoot: 'Right',
+        dateOfBirth: SQUAD[0].dob, nationality: 'PT', isActive: true,
+        careerPlayerId: careerIds[0], createdAt: now,
+      });
+    }
+
+    // ── Fixtures ──
+    const fixtures = buildFixtures();
+    const byName = allocate(fixtures, playerIds);
+    const gkIds = [playerIds[1], playerIds[12]];
+
+    for (const f of fixtures) {
+      const gameId = await DB.put('games', {
+        seasonId, date: f.date, gameTime: f.time, opponent: f.opponent,
+        homeAway: f.home ? 'Home' : 'Away',
+        competitionType: f.kind, competitionName: f.competitionName || null,
+        stage: f.stage || null,
+        ground: f.home ? GROUND : `Campo de ${f.opponent.split(' ').slice(-1)[0]}`,
+        teamScore: f.upcoming ? null : f.gf,
+        opponentScore: f.upcoming ? null : f.ga,
+        matchDurationMins: 70,
+        gameUuid: generateGameUuid(),
+        notes: f.stage === 'Semi-Final' ? 'Narrow defeat after a strong tournament run.' : null,
+        createdAt: now,
+      });
+      if (f.upcoming) continue;
+
+      // Eleven starters plus two substitutes, rotated so appearances vary.
+      const gkIndex = fixtures.indexOf(f) % 5 === 4 ? 1 : 0;
+      const outfield = playerIds.filter((id, i) => i !== 1 && i !== 12);
+      const rotation = fixtures.indexOf(f) % outfield.length;
+      const starters = [gkIds[gkIndex], ...outfield.slice(rotation).concat(outfield.slice(0, rotation)).slice(0, 9)];
+
+      for (let i = 0; i < playerIds.length; i++) {
+        const pid = playerIds[i];
+        const isGk = (i === 1 || i === 12);
+        if (isGk && pid !== gkIds[gkIndex]) continue;   // only one keeper per match
+        // The tracked player was injured 9-22 November, so he cannot appear in
+        // matches inside that window. Without this his appearance count would
+        // contradict his own injury record on the very page that shows both.
+        if (i === 0 && f.date >= INJURY_FROM && f.date <= INJURY_TO) continue;
+        const starter = starters.includes(pid);
+        const name = SQUAD[i].n;
+        const goals = f.scorers.filter(x => x === name).length;
+        const assists = f.assisters.filter(x => x === name).length;
+        await DB.put('gamePlayers', {
+          gameId, seasonId, playerId: pid,
+          calledUp: true,
+          role: starter ? 'Starter' : 'Substitute',
+          playedFullGame: starter,
+          positionPlayed: SQUAD[i].p,
+          goals: goals, assists: assists,
+          yellowCards: f.yellows.includes(name) ? 1 : 0,
+          redCards: 0,
+          playerOfTheMatch: f.motm === name,
+          captain: name === 'Pedro Almeida',
+        });
+      }
+    }
+
+    // ── Training ──
+    const focuses = ['Technical','Physical','Tactical','Match Preparation','Recovery'];
+    let tDate = '2026-09-08';
+    for (let i = 0; i < 24; i++) {
+      await DB.put('trainingSessions', {
+        playerId: trackedId, seasonId,
+        title: `${focuses[i % focuses.length]} Session`,
+        scheduledDate: tDate,
+        status: 'Completed',
+        completedAt: tDate + 'T18:30:00.000Z',
+        createdBy: 'guardian',
+        notes: i % 5 === 0 ? 'Good intensity throughout.' : null,
+        drills: [
+          { drillKey:'warmUp', kind:'library', skipped:false, values:{ durationMin: 12 } },
+          { drillKey: i % 2 ? 'wallPassing100' : 'coneSlalomDribble', kind:'library', skipped:false,
+            values: i % 2 ? { totalPasses: 90 + (i % 10), mistakes: 4 } : { bestTimeSec: 22 - (i % 4), coneTouches: 2 } },
+        ],
+        createdAt: now,
+      });
+      tDate = addDays(tDate, 5);
+    }
+
+    // ── Injury: a real two-week absence that no played match falls inside ──
+    await DB.put('injuries', {
+      playerId: trackedId, seasonId,
+      injuryType: 'Ankle sprain', bodyPart: 'Right ankle', severity: 'Minor',
+      injuryDate: INJURY_FROM, expectedReturnDate: '2026-11-23',
+      actualReturnDate: INJURY_TO, status: 'Recovered',
+      notes: 'Rolled the ankle in training. Full recovery, no complications.',
+      createdAt: now,
+    });
+
+    // ── Events ──
+    const events = [
+      ['2026-09-05','Milestone','First appearance of the season'],
+      ['2026-10-24','Goal','First league goal of the season'],
+      ['2026-11-22','Milestone','Returned from injury'],
+      ['2026-12-05','Award','Player of the Match'],
+      ['2026-12-19','Milestone','Captained the team for the first time'],
+      ['2026-12-28','Goal','Scored twice in the group stage'],
+    ];
+    for (const [date, type, desc] of events) {
+      await DB.put('events', { playerId: trackedId, seasonId, eventDate: date,
+                               eventType: type, description: desc, createdAt: now });
+    }
+
+    // ── Achievements ──
+    const achievements = [
+      ['Top Scorer of the Month','2026-11-30','Most goals in the squad during November.'],
+      ['Five Consecutive Starts','2026-12-12','Started five league matches in a row.'],
+      ['First Captaincy','2026-12-19','Wore the armband for the first time.'],
+      ['Training Attendance','2027-01-05','Attended every scheduled session this season.'],
+    ];
+    for (const [title, date, desc] of achievements) {
+      await DB.put('achievements', { playerId: trackedId, seasonId, title,
+                                     dateAwarded: date, description: desc, createdAt: now });
+    }
+
+    // ── Club history: explicit entries for the earlier seasons ──
+    for (const [season, age, club] of [['2023/24','Sub-11','Escola de Futebol Belém'],
+                                       ['2024/25','Sub-12','Escola de Futebol Belém'],
+                                       ['2025/26','Sub-13',CLUB]]) {
+      await DB.put('clubHistory', {
+        playerId: trackedId, careerPlayerId: careerIds[0],
+        clubName: club, ageGroup: age, season,
+        startDate: `${season.slice(0,4)}-09-01`, endDate: `20${season.slice(5)}-06-30`,
+        createdAt: now,
+      });
+    }
+
+    // ── Opponents catalogue ──
+    for (const o of [...FRIENDLY_OPPONENTS, ...LEAGUE_OPPONENTS, ...CUP_OPPONENTS]) {
+      await DB.put('opponents', { name: o, createdAt: now });
+    }
+
+    await DB.put('appMeta', { metaKey: 'currentSeason', value: seasonId });
+    await DB.put('appMeta', { metaKey: 'demoSeeded', value: new Date().toISOString() });
+    return { seasonId, trackedId, players: playerIds.length, games: fixtures.length };
+  }
+
+  // ── ENTRY POINT ───────────────────────────────────────────────────────────
+  async function start() {
+    const btn = document.getElementById('demoStartBtn');
+    if (btn) { btn.disabled = true; btn.textContent = I18n.t('demo_loading'); }
+    try {
+      // Reset first. Deleting the whole demo database is what guarantees every
+      // visitor gets an identical starting state, and it can never touch
+      // production because the name is different.
+      // Release our own handle first, or the delete below blocks on it.
+      try { DB.closeConnection(); } catch(e) {}
+
+      const deleted = await new Promise((resolve) => {
+        const req = indexedDB.deleteDatabase(CONFIG.DEMO_DB_NAME);
+        req.onsuccess = () => resolve(true);
+        req.onerror   = () => resolve(false);
+        // Blocked means another tab still holds the demo database open.
+        // Seeding anyway would write a SECOND dataset over the first, so we
+        // stop and say so rather than silently producing duplicates.
+        req.onblocked = () => resolve(false);
+        setTimeout(() => resolve(false), 4000);
+      });
+      if (!deleted) {
+        console.warn('[demo] could not reset the demo database — another tab may have it open');
+        if (btn) { btn.disabled = false; btn.innerHTML = I18n.t('demo_try'); }
+        Toast.error(I18n.t('demo_err_locked'));
+        return;
+      }
+
+      sessionStorage.setItem(DEMO_FLAG, '1');
+      // Reload so every module re-initialises against the demo database. The
+      // flag is in sessionStorage, so the seed runs once on the way back up.
+      sessionStorage.setItem('nexteleven_demo_seed_pending', '1');
+      window.location.reload();
+    } catch(err) {
+      console.error('[demo] start failed', err);
+      if (btn) { btn.disabled = false; btn.textContent = I18n.t('demo_try'); }
+      Toast.error(I18n.t('demo_err_start'));
+    }
+  }
+
+  async function seedIfPending() {
+    if (!isDemoMode()) return false;
+    if (sessionStorage.getItem('nexteleven_demo_seed_pending') !== '1') return false;
+    sessionStorage.removeItem('nexteleven_demo_seed_pending');
+    // Last line of defence against duplicates. If the reset was blocked and
+    // slipped through, this refuses to lay a second season on top of the
+    // first — a half-doubled demo is worse than a stale one.
+    const already = (await DB.get('appMeta', 'demoSeeded'))?.value;
+    if (already) {
+      console.warn('[demo] dataset already present — skipping seed to avoid duplicates');
+      return false;
+    }
+    await seed();
+    return true;
+  }
+
+  // Exit Demo. The flag is cleared BEFORE the reload, so the page comes back
+  // up reading the production database and showing the normal login screen.
+  // The demo database is left on disk untouched and is deleted at the start
+  // of the next demo, which is also what makes that next demo identical.
+  function isActive() { return isDemoMode(); }
+
+  function exit() {
+    try {
+      sessionStorage.removeItem(DEMO_FLAG);
+      sessionStorage.removeItem('nexteleven_demo_seed_pending');
+    } catch(e) {}
+    window.location.reload();
+  }
+
+  return { start, seed, seedIfPending, exit, isActive, CLUB };
+})();
+
+// ════════════════════════════════════════════════════════════════════════════
+// SHARED ACTION MENU — one component, two presentations
+//
+// ROOT CAUSE OF THE MOBILE FAILURE
+// Both More menus registered `window.addEventListener('resize', close)` and
+// the squad one also registered a capturing `scroll` listener. On desktop
+// neither fires from a click, so the menus worked.
+//
+// On a phone they fire constantly and immediately: tapping anything causes
+// Chrome for Android and Safari on iOS to show or hide the URL bar, which
+// changes the visual viewport height and dispatches `resize`. Any tap that
+// scrolled the page even a pixel dispatched `scroll`. So the menu opened and
+// was destroyed within the same frame — which is exactly why nothing appeared,
+// no bottom sheet showed, and no error was logged. It was not a rendering,
+// z-index, clipping or breakpoint problem at all.
+//
+// Three fixes, all here:
+//  1. Mobile never auto-closes on resize or scroll. A bottom sheet is anchored
+//     to the viewport edge, so it has no reason to.
+//  2. Desktop repositions on resize/scroll instead of closing, so an anchored
+//     dropdown follows its button rather than vanishing.
+//  3. An opening guard ignores any dismissal for the first 350ms, which also
+//     absorbs the synthetic "ghost click" a touchend produces after tapping.
+// ════════════════════════════════════════════════════════════════════════════
+const ActionMenu = (() => {
+  let _openedAt = 0;
+  let _anchor = null;
+
+  function isMobile() { return window.matchMedia('(max-width:768px)').matches; }
+
+  function close() {
+    document.getElementById('sharedActionMenu')?.remove();
+    document.getElementById('sharedActionBackdrop')?.remove();
+    document.removeEventListener('keydown', _onKey, true);
+    window.removeEventListener('resize', _onViewportChange);
+    window.removeEventListener('scroll', _onViewportChange, true);
+    document.querySelectorAll('[aria-haspopup="menu"][aria-expanded="true"]')
+            .forEach(b => b.setAttribute('aria-expanded','false'));
+    _anchor = null;
+  }
+
+  // Desktop follows its button; mobile is viewport-anchored and stays put.
+  function _onViewportChange() {
+    const menu = document.getElementById('sharedActionMenu');
+    if (!menu) return;
+    if (isMobile()) return;               // never dismiss a bottom sheet
+    if (!_anchor || !document.body.contains(_anchor)) { close(); return; }
+    _position(menu, _anchor);
+  }
+
+  function _position(menu, anchor) {
+    const r = anchor.getBoundingClientRect();
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    let left = Math.min(r.left, window.innerWidth - mw - 8);
+    let top  = r.bottom + 4;
+    if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 4);
+    menu.style.left = Math.max(8, left) + 'px';
+    menu.style.top  = top + 'px';
+  }
+
+  function _onKey(e) {
+    const menu = document.getElementById('sharedActionMenu');
+    if (!menu) return;
+    const items = [...menu.querySelectorAll('button[data-menu-item]:not([disabled])')];
+    if (!items.length) return;
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'Escape')         { e.preventDefault(); close(); _anchor?.focus?.(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1 + items.length) % items.length].focus(); }
+    else if (e.key === 'ArrowUp')   { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    else if (e.key === 'Tab' && !e.shiftKey && i === items.length - 1) { e.preventDefault(); items[0].focus(); }
+    else if (e.key === 'Tab' && e.shiftKey && i === 0) { e.preventDefault(); items[items.length - 1].focus(); }
+  }
+
+  function _itemHtml(a, mobile) {
+    if (a.divider) return `<div role="separator" style="height:1px;background:var(--border);margin:6px 0"></div>`;
+    const colour = a.tone === 'danger' ? '#b03030' : a.tone === 'warn' ? '#a06a00'
+                 : a.current ? 'var(--navy)' : 'var(--dark)';
+    const pad  = mobile ? '15px 18px' : '9px 12px';
+    const size = mobile ? '15px' : '13px';
+    const bg   = a.current ? 'var(--light)' : 'none';
+    const dis  = a.disabled ? 'disabled aria-disabled="true"' : '';
+    return `<button type="button" role="menuitem" data-menu-item ${dis}
+              ${a.current ? 'aria-current="page"' : ''}
+              ${a.disabled ? '' : `onclick="ActionMenu.close();${a.fn}"`}
+              ${a.disabled && a.disabledHint ? `title="${esc(a.disabledHint)}"` : ''}
+              style="display:flex;align-items:center;gap:11px;width:100%;padding:${pad};background:${bg};
+                     border:0;font-size:${size};font-weight:${a.current?'700':'500'};text-align:left;color:${colour};
+                     cursor:${a.disabled?'not-allowed':'pointer'};opacity:${a.disabled?'.45':'1'};
+                     -webkit-tap-highlight-color:transparent"
+              onmouseover="if(!this.disabled)this.style.background='var(--light)'"
+              onmouseout="this.style.background='${bg}'">
+              <span aria-hidden="true" style="font-size:15px;width:20px;text-align:center;flex-shrink:0">${a.icon||''}</span>
+              <span>${esc(a.label)}</span>
+            </button>`;
+  }
+
+  // actions: [{icon,label,fn,tone,current,disabled,disabledHint} | {divider:true}]
+  function open(actions, anchor, opts) {
+    close();
+    const mobile = isMobile();
+    _openedAt = Date.now();
+    _anchor = anchor || null;
+    if (anchor) anchor.setAttribute('aria-expanded','true');
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'sharedActionBackdrop';
+    backdrop.style.cssText = `position:fixed;inset:0;z-index:2147483000;${mobile?'background:rgba(0,0,0,.35)':''}`;
+    // Guarded: a tap produces touchend then a synthetic click, and without
+    // this the second event would land on the freshly-inserted backdrop and
+    // close the menu instantly.
+    const guarded = (e) => { if (Date.now() - _openedAt < 350) { e.preventDefault(); e.stopPropagation(); return; } close(); };
+    backdrop.addEventListener('click', guarded);
+    backdrop.addEventListener('touchstart', guarded, { passive: false });
+    document.body.appendChild(backdrop);
+
+    const menu = document.createElement('div');
+    menu.id = 'sharedActionMenu';
+    menu.setAttribute('role','menu');
+    if (opts?.ariaLabel) menu.setAttribute('aria-label', opts.ariaLabel);
+    menu.innerHTML = (mobile && opts?.title
+        ? `<div style="padding:14px 18px 8px;font-size:13px;font-weight:700;color:var(--navy);border-bottom:1px solid var(--border)">${esc(opts.title)}</div>`
+        : '')
+      + actions.map(a => _itemHtml(a, mobile)).join('');
+
+    // z-index sits above every overlay in the app so the sheet can never be
+    // covered, and the menu is appended to <body> so no ancestor can clip it.
+    if (mobile) {
+      menu.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483001;background:#fff;'
+        + 'border-radius:14px 14px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.18);'
+        + 'padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));max-height:80vh;overflow-y:auto';
+    } else {
+      menu.style.cssText = 'position:fixed;z-index:2147483001;background:#fff;border:1px solid var(--border);'
+        + 'border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.14);min-width:200px;padding:5px 0';
+    }
+    document.body.appendChild(menu);
+    if (!mobile && anchor) _position(menu, anchor);
+
+    document.addEventListener('keydown', _onKey, true);
+    // Desktop repositions rather than closing; mobile ignores both entirely.
+    window.addEventListener('resize', _onViewportChange);
+    window.addEventListener('scroll', _onViewportChange, true);
+    menu.querySelector('button[data-menu-item]:not([disabled])')?.focus();
+  }
+
+  return { open, close, isMobile };
+})();
+
+// ════════════════════════════════════════════════════════════════════════════
 // SQUAD — PLAYER ACTIONS MENU
 //
 // The Actions column previously carried up to five buttons per row, which on a
@@ -21351,31 +21984,14 @@ async function editPlayer(id) {
 // drift apart. Every item carries an icon AND a text label — icons never
 // stand alone, and the menu is fully keyboard and screen-reader navigable.
 // ════════════════════════════════════════════════════════════════════════════
-window.addEventListener('resize', () => closePlayerActionMenu());
-window.addEventListener('scroll', () => closePlayerActionMenu(), true);
+// THE BUG WAS HERE. Two listeners closed the menu on any resize or scroll.
+// On a phone, tapping a button makes the browser show or hide its URL bar,
+// which fires `resize` immediately — so the menu was destroyed in the same
+// frame it opened, silently and with no error. ActionMenu now repositions on
+// desktop and ignores both events on mobile, so the listeners are gone.
 
-function closePlayerActionMenu() {
-  document.getElementById('playerActionMenu')?.remove();
-  document.getElementById('playerActionBackdrop')?.remove();
-  document.removeEventListener('keydown', _playerMenuKeyHandler, true);
-}
+function closePlayerActionMenu() { ActionMenu.close(); }
 
-function _playerMenuKeyHandler(e) {
-  const menu = document.getElementById('playerActionMenu');
-  if (!menu) return;
-  const items = [...menu.querySelectorAll('button[data-menu-item]:not([disabled])')];
-  if (!items.length) return;
-  const i = items.indexOf(document.activeElement);
-  if (e.key === 'Escape')      { e.preventDefault(); closePlayerActionMenu(); }
-  else if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1 + items.length) % items.length].focus(); }
-  else if (e.key === 'ArrowUp')   { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
-  else if (e.key === 'Tab' && !e.shiftKey && i === items.length - 1) { e.preventDefault(); items[0].focus(); }
-  else if (e.key === 'Tab' && e.shiftKey && i === 0) { e.preventDefault(); items[items.length - 1].focus(); }
-}
-
-// One definition, both presentations. `tone` drives colour: only Archive
-// (amber) and Delete (red) are coloured — colour signals importance here
-// rather than decorating every row.
 function buildPlayerActions(p, injury, hasHistory) {
   return [
     { icon:'&#9998;',  label:I18n.t('squad_act_edit'),    fn:`editPlayer(${p.playerId})`,             tone:'normal' },
@@ -21393,26 +22009,7 @@ function buildPlayerActions(p, injury, hasHistory) {
   ];
 }
 
-function playerActionItemHtml(a, isSheet) {
-  if (a.divider) return `<div role="separator" style="height:1px;background:var(--border);margin:6px 0"></div>`;
-  const colour = a.tone === 'danger' ? '#b03030' : a.tone === 'warn' ? '#a06a00' : 'var(--dark)';
-  const pad    = isSheet ? '15px 18px' : '9px 12px';
-  const size   = isSheet ? '15px' : '13px';
-  const dis    = a.disabled ? 'disabled aria-disabled="true"' : '';
-  const style  = `display:flex;align-items:center;gap:11px;width:100%;padding:${pad};background:none;border:0;`
-               + `font-size:${size};font-weight:500;text-align:left;color:${colour};`
-               + `cursor:${a.disabled?'not-allowed':'pointer'};opacity:${a.disabled?'.45':'1'}`;
-  const click  = a.disabled ? '' : `onclick="closePlayerActionMenu();${a.fn}"`;
-  return `<button type="button" role="menuitem" data-menu-item ${dis} ${click} style="${style}"
-            ${a.disabled && a.disabledHint ? `title="${esc(a.disabledHint)}"` : ''}
-            onmouseover="if(!this.disabled)this.style.background='var(--light)'" onmouseout="this.style.background='none'">
-            <span aria-hidden="true" style="font-size:15px;width:20px;text-align:center;flex-shrink:0">${a.icon}</span>
-            <span>${esc(a.label)}</span>
-          </button>`;
-}
-
 async function openPlayerActionMenu(playerId, btn) {
-  closePlayerActionMenu();
   const p = await DB.get('players', playerId);
   if (!p) return;
   // Reuse the app's own definitions rather than reimplementing them: an
@@ -21423,49 +22020,10 @@ async function openPlayerActionMenu(playerId, btn) {
   const injury = injuries.find(i => !i.isDeleted && i.status === 'Injured') || null;
   const hasHistory = await hasAnyGameHistory(playerId);
 
-  const actions = buildPlayerActions(p, injury, hasHistory);
-  const isMobile = window.matchMedia('(max-width:768px)').matches;
-
-  const backdrop = document.createElement('div');
-  backdrop.id = 'playerActionBackdrop';
-  backdrop.style.cssText = `position:fixed;inset:0;z-index:998;${isMobile?'background:rgba(0,0,0,.35)':''}`;
-  backdrop.onclick = closePlayerActionMenu;
-  document.body.appendChild(backdrop);
-
-  const menu = document.createElement('div');
-  menu.id = 'playerActionMenu';
-  menu.setAttribute('role','menu');
-  menu.setAttribute('aria-label', I18n.t('squad_more_aria', { name: shortName(p.fullName) }));
-  menu.innerHTML =
-    (isMobile ? `<div style="padding:14px 18px 8px;font-size:13px;font-weight:700;color:var(--navy);border-bottom:1px solid var(--border)">${esc(shortName(p.fullName))}</div>` : '')
-    + actions.map(a => playerActionItemHtml(a, isMobile)).join('');
-
-  if (isMobile) {
-    // Bottom sheet: reachable one-handed, with generous touch targets and a
-    // safe-area inset so the last item is never under the home indicator.
-    menu.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:999;background:#fff;'
-      + 'border-radius:14px 14px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.18);'
-      + 'padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));max-height:80vh;overflow-y:auto';
-  } else {
-    menu.style.cssText = 'position:fixed;z-index:999;background:#fff;border:1px solid var(--border);'
-      + 'border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.14);min-width:210px;padding:5px 0';
-  }
-  document.body.appendChild(menu);
-
-  if (!isMobile && btn) {
-    // Anchored to the button, then nudged back inside the viewport if it
-    // would otherwise overflow the right or bottom edge.
-    const r = btn.getBoundingClientRect();
-    const mw = menu.offsetWidth, mh = menu.offsetHeight;
-    let left = Math.min(r.right - mw, window.innerWidth - mw - 8);
-    let top  = r.bottom + 4;
-    if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 4);
-    menu.style.left = Math.max(8, left) + 'px';
-    menu.style.top  = top + 'px';
-  }
-
-  document.addEventListener('keydown', _playerMenuKeyHandler, true);
-  menu.querySelector('button[data-menu-item]:not([disabled])')?.focus();
+  ActionMenu.open(buildPlayerActions(p, injury, hasHistory), btn, {
+    title: shortName(p.fullName),
+    ariaLabel: I18n.t('squad_more_aria', { name: shortName(p.fullName) }),
+  });
 }
 
 async function archivePlayer(id, restore) {
@@ -23291,6 +23849,20 @@ async function init() {
     // If a store is missing, the IndexedDB upgrade didn't run (version mismatch
     // or interrupted upgrade). Force a clean reopen rather than running silently
     // broken for the rest of the session.
+    // Demo Mode: seed the sample season on the first load of a demo session.
+    // Runs against the demo database only — the production one is not open.
+    try {
+      if (await Demo.seedIfPending()) {
+        console.info('[demo] sample season created');
+      }
+      if (isDemoMode()) {
+        const banner = document.getElementById('demoBanner');
+        if (banner) banner.style.display = '';
+      }
+    } catch(err) {
+      console.error('[demo] seeding failed:', err);
+    }
+
     // Canonical game identity backfill (schema 19). Runs once, assigns each
     // existing game its OWN fresh UUID, and merges nothing. Failure here must
     // not block startup — the app is fully usable without it, and the next
@@ -23460,7 +24032,10 @@ async function init() {
     // Once logged in here (requires internet, just this first time), the
     // session is saved locally and every later visit skips straight past
     // this gate, online or offline, until the person explicitly logs out.
-    if (!Auth.isLoggedIn()) {
+    // A demo session deliberately has no account: it is reading a separate
+    // local database with no cloud link, so there is nothing to authenticate
+    // against and nothing of anyone's to protect.
+    if (!Auth.isLoggedIn() && !isDemoMode()) {
       document.getElementById('loading').style.display = 'none';
       renderAuthGate();
       applyAuthGateBackground();
