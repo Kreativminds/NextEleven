@@ -370,15 +370,39 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 /* ── PLAYER CARD POPUP ── */
 .pc-photo{width:56px;height:56px;border-radius:6px;object-fit:cover;background:#fff;flex-shrink:0;border:2px solid rgba(255,255,255,.4)}
 .pc-photo-fallback{width:56px;height:56px;border-radius:6px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0;border:2px solid rgba(255,255,255,.4)}
-.pc-header-v2{background-size:cover;background-position:center;padding:20px;color:#fff;position:relative}
-.pc-header-v2-top{display:flex;align-items:center;gap:14px;margin-left:108px;justify-content:flex-end;text-align:right}
+/* The silhouette lives in the header BACKGROUND IMAGE on the left, so the
+   content is inset past it with a single variable. Previously each block set
+   its own margin-left:108px, which on a 380px card left ~230px for three
+   facts — hence the overlap and the sideways scroll. */
+.pc-header-v2{--pc-silhouette:150px;background-size:cover;background-position:center;padding:20px;color:#fff;position:relative}
+.pc-header-v2-top{display:flex;align-items:center;gap:14px;margin-left:var(--pc-silhouette);justify-content:flex-end;text-align:right}
 .pc-shirt-badge{width:52px;height:52px;border:2px solid #B23333;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;flex-shrink:0;background:rgba(15,30,46,.5)}
-.pc-header-v2-divider{height:1px;background:rgba(255,255,255,.25);margin:16px 0}
-.pc-achievement{margin-top:10px;font-size:11px;color:#fff;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right;margin-left:108px}
-.pc-header-v2-facts{display:flex;gap:10px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;justify-content:flex-end;margin-left:108px}
-.pc-fact{display:flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;text-align:right;flex-direction:row-reverse}
-.pc-fact-main{font-size:11px;font-weight:700;white-space:nowrap}
-.pc-fact-sub{font-size:8.5px;opacity:.75;white-space:nowrap}
+.pc-header-v2-divider{height:1px;background:rgba(255,255,255,.25);margin:16px 0;margin-left:var(--pc-silhouette)}
+.pc-achievement{margin-top:10px;font-size:11px;color:#fff;opacity:.9;overflow:hidden;text-overflow:ellipsis;text-align:right;margin-left:var(--pc-silhouette)}
+/* A grid, never a scroller: every fact stays visible and nothing sits behind
+   the silhouette. One row on desktop, two columns on mobile. */
+.pc-header-v2-facts{display:grid;grid-template-columns:repeat(3,auto);gap:10px 14px;justify-content:end;margin-left:var(--pc-silhouette)}
+.pc-fact{display:flex;align-items:center;gap:6px;min-width:0;text-align:right;flex-direction:row-reverse;justify-content:flex-start}
+.pc-fact-main{font-size:11.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-fact-sub{font-size:9px;opacity:.75;white-space:nowrap}
+.pc-name{overflow:hidden;text-overflow:ellipsis}
+
+@media(max-width:600px){
+  /* Same card, adapted — never a reduced or different one. The silhouette
+     stays; it simply takes less horizontal space so the facts can breathe. */
+  .pc-header-v2{--pc-silhouette:96px;padding:16px 14px}
+  .pc-header-v2-facts{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .pc-fact{flex-direction:row;text-align:left;justify-content:flex-start}
+  .pc-fact-main{font-size:12px}
+  .pc-fact-sub{font-size:9.5px}
+  .pc-shirt-badge{width:44px;height:44px;font-size:19px}
+  .pc-header-v2-top{gap:10px}
+}
+@media(max-width:380px){
+  /* Smallest phones: one column rather than squeezing two, so nothing clips. */
+  .pc-header-v2{--pc-silhouette:76px}
+  .pc-header-v2-facts{grid-template-columns:minmax(0,1fr)}
+}
 .pc-name{font-weight:700;line-height:1.2;white-space:nowrap;display:inline-block}
 .pc-shirt{font-size:12px;opacity:.85;margin-top:2px}
 .pc-close{position:absolute;top:14px;right:16px;background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;opacity:.8}
@@ -1060,7 +1084,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 
 <!-- PLAYER CARD POPUP — tracked players only -->
 <div class="rm-form-overlay" id="playerCardOverlay" onclick="if(event.target===this) closePlayerCardPopup()">
-  <div class="rm-form" id="playerCardContent" style="max-width:380px;padding:0;overflow:hidden">
+  <div class="rm-form" id="playerCardContent" style="width:min(560px, calc(100vw - 28px));max-width:560px;padding:0;overflow:hidden">
     <!-- content injected by openPlayerCardPopup -->
   </div>
 </div>
@@ -19043,11 +19067,51 @@ const NATIONALITY_FLAGS = {
   'american':'&#127482;&#127480;','usa':'&#127482;&#127480;',
 };
 
+// Turns any valid ISO 3166-1 alpha-2 code into its Unicode flag by offsetting
+// each letter into the regional-indicator block. Pure arithmetic, so it covers
+// every country without a lookup entry — the NATIONALITY_FLAGS map only ever
+// held country NAMES, which is why a value stored as "PT" fell through to the
+// globe and the card showed the bare code.
+function isoCodeToFlag(code) {
+  if (!code) return '';
+  const c = String(code).trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(c)) return '';
+  const A = 0x1F1E6, base = 'A'.charCodeAt(0);
+  return String.fromCodePoint(A + (c.charCodeAt(0) - base), A + (c.charCodeAt(1) - base));
+}
+
+// Best-effort country NAME for a code, so the card can show "Portugal"
+// rather than "PT". Falls back to the code itself when unknown, never blank.
+function countryNameFromCode(code) {
+  const c = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(c)) return '';
+  try {
+    if (typeof Intl !== 'undefined' && Intl.DisplayNames) {
+      const lang = I18n.get() === 'PT' ? 'pt' : 'en';
+      const name = new Intl.DisplayNames([lang], { type: 'region' }).of(c);
+      if (name && name !== c) return name;
+    }
+  } catch(e) { /* older engines: fall through to the code */ }
+  return c;
+}
+
 function getFlagsForNationality(nat) {
   if (!nat) return '';
-  const parts = nat.split('/').map(s => s.trim().toLowerCase());
-  const flags = parts.map(p => NATIONALITY_FLAGS[p] || '').filter(Boolean);
+  const parts = String(nat).split('/').map(s => s.trim()).filter(Boolean);
+  const flags = parts.map(p => {
+    const byName = NATIONALITY_FLAGS[p.toLowerCase()];
+    if (byName) return byName;
+    return isoCodeToFlag(p);   // handles PT, IT, GB, FR, ES and every other code
+  }).filter(Boolean);
   return flags.length ? flags.join(' ') : '&#127760;'; // globe fallback
+}
+
+// The label shown beside the flag. A stored ISO code is expanded to the full
+// country name; anything else is shown exactly as the user entered it.
+function nationalityLabel(nat) {
+  if (!nat) return '—';
+  const parts = String(nat).split('/').map(s => s.trim()).filter(Boolean);
+  return parts.map(p => (/^[A-Za-z]{2}$/.test(p) ? (countryNameFromCode(p) || p) : p)).join(' / ');
 }
 
 function calcAge(dob) {
@@ -20924,15 +20988,15 @@ async function openPlayerCardPopup(playerId) {
       <div class="pc-header-v2-facts">
         <div class="pc-fact">
           ${navIcon('calendar',18)}
-          <div><div class="pc-fact-main">${p.dateOfBirth?fmtDate(p.dateOfBirth):'—'}</div><div class="pc-fact-sub">${age!==null?`${age} ${I18n.t('pc_years_suffix')}`:I18n.t('pc_lbl_dob')}</div></div>
+          <div style="min-width:0"><div class="pc-fact-main">${p.dateOfBirth?fmtDate(p.dateOfBirth):'—'}</div><div class="pc-fact-sub">${age!==null?`${age} ${I18n.t('pc_years_suffix')}`:I18n.t('pc_lbl_dob')}</div></div>
         </div>
         <div class="pc-fact">
           <span style="font-size:18px">${flags||'&#127988;'}</span>
-          <div><div class="pc-fact-main">${esc(p.nationality||'—')}</div><div class="pc-fact-sub">${I18n.t('pc_lbl_nationality')}</div></div>
+          <div style="min-width:0"><div class="pc-fact-main" title="${esc(nationalityLabel(p.nationality))}">${esc(nationalityLabel(p.nationality))}</div><div class="pc-fact-sub">${I18n.t('pc_lbl_nationality')}</div></div>
         </div>
         <div class="pc-fact">
           ${navIcon('boot',18)}
-          <div><div class="pc-fact-main">${esc(p.dominantFoot||'—')}</div><div class="pc-fact-sub">${I18n.t('pc_lbl_foot')}</div></div>
+          <div style="min-width:0"><div class="pc-fact-main">${esc(p.dominantFoot||'—')}</div><div class="pc-fact-sub">${I18n.t('pc_lbl_foot')}</div></div>
         </div>
       </div>
       ${latestAchievement ? `<div class="pc-achievement">&#127942; <strong>${esc(latestAchievement.title)}</strong> · ${esc(latestAchievement.tournamentName)}</div>` : ''}
