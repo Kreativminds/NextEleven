@@ -43,6 +43,22 @@ a{color:#111;text-decoration:none}
 
 /* ── NAV ──────────────────────────────────────────────────────────────────── */
 nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--navy);z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 16px;max-width:100vw;overflow:hidden}
+/* Add Game form — sentence-case labels, calmer spacing, consistent control
+   widths, and touch targets that stay comfortable on a phone. Scoped to the
+   game panel so no other form is affected. */
+#addGamePanel label{text-transform:none;letter-spacing:0;font-size:12px;font-weight:600;color:var(--dark);margin-bottom:5px;display:block}
+#addGamePanel .form-group{margin-bottom:14px;min-width:0}
+#addGamePanel input,#addGamePanel select,#addGamePanel textarea{width:100%;max-width:100%;box-sizing:border-box;font-size:14px;padding:9px 10px;min-height:40px}
+#addGamePanel textarea{min-height:72px}
+#addGamePanel details>summary::-webkit-details-marker{display:none}
+#addGamePanel details>summary::after{content:'\25be';float:right;opacity:.6;transition:transform .15s}
+#addGamePanel details[open]>summary::after{transform:rotate(180deg)}
+#addGamePanel details>summary:hover{background:var(--light)}
+@media(max-width:768px){
+  #addGamePanel .form-grid{grid-template-columns:1fr;gap:0}
+  #addGamePanel input,#addGamePanel select,#addGamePanel textarea{font-size:16px}
+  #addGamePanel details>summary{padding:12px}
+}
 .breadcrumb{font-size:11px;color:var(--muted);padding:2px 0 10px;display:flex;align-items:center;flex-wrap:wrap;gap:0;line-height:1.4;min-width:0}
 .breadcrumb a{color:var(--muted);text-decoration:none}
 .breadcrumb a:hover{text-decoration:underline}
@@ -756,17 +772,21 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
       </div>
       <div id="addGamePanel" class="form-panel panel-hidden">
         <h3 id="gameFormTitle" data-i18n="games_form_add_title">Add Game</h3>
+        <!-- ESSENTIALS ONLY. Everything a normal league fixture needs, and
+             nothing else. Competition-specific fields appear only when the
+             chosen competition actually uses them; the rest live under
+             "Additional match details", collapsed by default. -->
         <div class="form-grid">
-          <div class="form-group"><label data-i18n="games_lbl_date">Date *</label><input id="gf-date" type="date"></div>
-          <div class="form-group"><label data-i18n="games_lbl_time">Game Time</label><input id="gf-time" type="time"></div>
+          <div class="form-group"><label data-i18n="games_lbl_date">Match date</label><input id="gf-date" type="date"></div>
+          <div class="form-group"><label data-i18n="games_lbl_time">Kick-off time</label><input id="gf-time" type="time"></div>
           <div class="form-group">
-            <label data-i18n="games_lbl_opponent">Opponent *</label>
+            <label data-i18n="games_lbl_opponent">Opponent club</label>
             <input id="gf-opp" type="text" list="gf-opp-list" placeholder="Opponent club name" autocomplete="off" oninput="onOpponentInputChange(this.value)">
             <datalist id="gf-opp-list"></datalist>
             <div id="gf-opp-newhint" style="display:none;font-size:11px;color:var(--muted);margin-top:4px"></div>
           </div>
-          <div class="form-group"><label data-i18n="games_lbl_homeaway">Home / Away</label>
-            <select id="gf-venue" onchange="toggleNeutralSideField()"><option value="Home" data-i18n="venue_home">Home</option><option value="Away" data-i18n="venue_away">Away</option><option value="Neutral" data-i18n="venue_neutral">Neutral</option></select>
+          <div class="form-group"><label data-i18n="games_lbl_homeaway">Match location</label>
+            <select id="gf-venue" onchange="toggleNeutralSideField();autoFillHomeGround()"><option value="Home" data-i18n="venue_home">Home</option><option value="Away" data-i18n="venue_away">Away</option><option value="Neutral" data-i18n="venue_neutral">Neutral</option></select>
           </div>
           <div class="form-group" id="gf-neutral-side-group" style="display:none">
             <label data-i18n="games_lbl_neutral_side">Neutral — treat us as</label>
@@ -775,33 +795,18 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
               <option value="Away" data-i18n="venue_away">Away</option>
             </select>
           </div>
-          <div class="form-group"><label data-i18n="games_lbl_duration">Match Duration (optional — uses season default)</label>
-            <select id="gf-duration-select" onchange="toggleGameDurationCustom()">
-              <option value="">${I18n.t('duration_use_season_default')}</option>
-              <option value="50">50 min</option>
-              <option value="60">60 min</option>
-              <option value="70">70 min</option>
-              <option value="80">80 min</option>
-              <option value="90">90 min</option>
-              <option value="custom">${I18n.t('duration_custom')}</option>
-            </select>
-            <input id="gf-duration-custom" type="number" min="10" max="150" placeholder="e.g. 65" style="display:none;margin-top:6px">
+          <div class="form-group"><label data-i18n="games_lbl_comptype">Competition</label>
+            <select id="gf-compType" onchange="onCompetitionTypeChange()"><option value="League" data-i18n="comp_league">League</option><option value="Cup" data-i18n="comp_cup">Cup</option><option value="Friendly" data-i18n="comp_friendly">Friendly</option><option value="Tournament" data-i18n="comp_tournament">Tournament</option><option value="Trial" data-i18n="comp_trial">Trial</option></select>
           </div>
-          <div class="form-group">
-            <label><span data-i18n="games_lbl_arrival">Arrival Time</span> <span style="font-size:10px;font-weight:400;color:#999" data-i18n="games_arrival_hint">(optional — defaults to 1h before kick-off)</span></label>
-            <div style="display:flex;gap:6px;align-items:center">
-              <input id="gf-arrivalTime" type="time" style="flex:1">
-              <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('gf-arrivalTime').value=''" data-i18n-title="games_arrival_clear_title" title="Clear — use default">&times;</button>
-            </div>
-          </div>
-          <div class="form-group"><label data-i18n="games_lbl_comptype">Competition Type</label>
-            <select id="gf-compType"><option value="League" data-i18n="comp_league">League</option><option value="Cup" data-i18n="comp_cup">Cup</option><option value="Friendly" data-i18n="comp_friendly">Friendly</option><option value="Tournament" data-i18n="comp_tournament">Tournament</option><option value="Trial" data-i18n="comp_trial">Trial</option></select>
-          </div>
-          <div class="form-group"><label data-i18n="games_lbl_compname">Competition Name</label><input id="gf-compName" type="text" placeholder="e.g. Liga Revelação"></div>
-          <div class="form-group"><label data-i18n="games_lbl_tournament">Tournament (optional)</label>
+
+          <!-- League / Cup only -->
+          <div class="form-group" id="gf-compName-group"><label id="gf-compName-label" data-i18n="games_lbl_league_name">League name</label><input id="gf-compName" type="text" data-i18n-placeholder="games_ph_league" placeholder="e.g. Liga Revelação"></div>
+
+          <!-- Tournament only -->
+          <div class="form-group" id="gf-tournament-group" style="display:none"><label data-i18n="games_lbl_tournament_new">Tournament</label>
             <select id="gf-tournament"><option value="">—</option></select>
           </div>
-          <div class="form-group"><label data-i18n="games_lbl_stage">Stage (optional)</label>
+          <div class="form-group" id="gf-stage-group" style="display:none"><label data-i18n="games_lbl_stage_new">Tournament stage</label>
             <select id="gf-stage">
               <option value="">—</option>
               <option value="Group Stage" data-i18n="stage_group">Group Stage</option>
@@ -814,12 +819,36 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
               <option value="Bronze Final" data-i18n="stage_bronze_final">Bronze Final</option>
             </select>
           </div>
-          <div class="form-group"><label data-i18n="games_lbl_ground">Venue / Ground</label>
-            <input id="gf-ground" type="text" placeholder="e.g. Estádio Municipal">
-            <div id="gf-ground-hint" style="display:none;font-size:11px;color:var(--muted);margin-top:4px"></div>
-          </div>
-          <div class="form-group full"><label data-i18n="games_lbl_notes">Team Notes</label><textarea id="gf-notes" placeholder="General notes about this game..."></textarea></div>
         </div>
+
+        <!-- Collapsed by default. A normal league match never needs opening. -->
+        <details id="gf-more-details" style="margin:4px 0 14px;border:1px solid var(--border);border-radius:var(--radius)">
+          <summary style="padding:10px 12px;cursor:pointer;font-size:13px;font-weight:600;color:var(--navy);list-style:none">
+            <span data-i18n="games_more_details">Additional match details</span>
+          </summary>
+          <div style="padding:0 12px 12px">
+            <p style="font-size:11px;color:var(--muted);margin:0 0 10px" data-i18n="games_more_hint">Arrival time, venue, duration and notes — most matches need none of these.</p>
+            <div class="form-grid">
+              <div class="form-group">
+                <label><span data-i18n="games_lbl_arrival">Arrival time</span> <span style="font-size:10px;font-weight:400;color:#999" data-i18n="games_arrival_hint">(optional — defaults to 1h before kick-off)</span></label>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <input id="gf-arrivalTime" type="time" style="flex:1;min-width:0">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('gf-arrivalTime').value=''" data-i18n-title="games_arrival_clear_title" title="Clear — use default">&times;</button>
+                </div>
+              </div>
+              <div class="form-group"><label data-i18n="games_lbl_venue_new">Venue</label>
+                <input id="gf-ground" type="text" data-i18n-placeholder="games_ph_venue" placeholder="e.g. Estádio Municipal">
+                <div id="gf-ground-hint" style="display:none;font-size:11px;color:var(--muted);margin-top:4px"></div>
+              </div>
+              <div class="form-group"><label data-i18n="games_lbl_duration_new">Match duration</label>
+                <select id="gf-duration-select" onchange="toggleGameDurationCustom()"></select>
+                <input id="gf-duration-custom" type="number" min="10" max="150" placeholder="e.g. 65" style="display:none;margin-top:6px">
+              </div>
+              <div class="form-group full"><label data-i18n="games_lbl_notes_new">Match notes</label><textarea id="gf-notes" data-i18n-placeholder="games_ph_notes" placeholder="Anything worth remembering about this match…"></textarea></div>
+            </div>
+          </div>
+        </details>
+
         <div class="form-actions">
           <button class="btn btn-primary" id="btnSaveGame" data-i18n="common_save">Save Game</button>
           <button class="btn btn-secondary" id="btnCancelGame" data-i18n="common_cancel">Cancel</button>
@@ -5832,8 +5861,28 @@ const TR = {
     games_form_edit_title:'Edit Game',
     games_lbl_date:'Date *',
     games_lbl_time:'Game Time',
-    games_lbl_opponent:'Opponent *',
-    games_lbl_homeaway:'Home / Away',
+    games_lbl_opponent:'Opponent club',
+    games_lbl_homeaway:'Match location',
+    games_more_details:'Additional match details',
+    games_more_hint:'Arrival time, venue, duration and notes — most matches need none of these.',
+    games_lbl_league_name:'League name',
+    games_lbl_tournament_new:'Tournament',
+    games_lbl_stage_new:'Tournament stage',
+    games_lbl_venue_new:'Venue',
+    games_lbl_notes_new:'Match notes',
+    games_lbl_duration_new:'Match duration',
+    games_ph_league:'e.g. Liga Revelação',
+    games_ph_venue:'e.g. Estádio Municipal',
+    games_ph_notes:'Anything worth remembering about this match…',
+    games_err_league_name:'Please enter the league name.',
+    games_err_tournament_name:'Please enter the tournament name.',
+    games_err_opponent_friendly:'Please enter the name of the opposing club.',
+    games_err_date_friendly:'Please choose the match date.',
+    duration_season_default_mins:'Season default ({n} minutes)',
+    duration_default_mins:'Default ({n} minutes)',
+    duration_mins:'{n} minutes',
+    duration_custom_new:'Custom…',
+    games_age_group_auto:'Age group is taken from the season automatically.',
     games_lbl_neutral_side:'Neutral — treat us as',
     games_lbl_duration:'Match Duration (optional — uses season default)',
     set_lbl_match_duration:'Default Match Duration',
@@ -7106,8 +7155,28 @@ const TR = {
     games_form_edit_title:'Editar Jogo',
     games_lbl_date:'Data *',
     games_lbl_time:'Hora do Jogo',
-    games_lbl_opponent:'Adversário *',
-    games_lbl_homeaway:'Casa / Fora',
+    games_lbl_opponent:'Clube adversário',
+    games_lbl_homeaway:'Local do jogo',
+    games_more_details:'Detalhes adicionais do jogo',
+    games_more_hint:'Hora de chegada, local, duração e notas — a maioria dos jogos não precisa de nenhum destes.',
+    games_lbl_league_name:'Nome da liga',
+    games_lbl_tournament_new:'Torneio',
+    games_lbl_stage_new:'Fase do torneio',
+    games_lbl_venue_new:'Local',
+    games_lbl_notes_new:'Notas do jogo',
+    games_lbl_duration_new:'Duração do jogo',
+    games_ph_league:'ex. Liga Revelação',
+    games_ph_venue:'ex. Estádio Municipal',
+    games_ph_notes:'Algo que valha a pena recordar sobre este jogo…',
+    games_err_league_name:'Introduza o nome da liga.',
+    games_err_tournament_name:'Introduza o nome do torneio.',
+    games_err_opponent_friendly:'Introduza o nome do clube adversário.',
+    games_err_date_friendly:'Escolha a data do jogo.',
+    duration_season_default_mins:'Predefinição da época ({n} minutos)',
+    duration_default_mins:'Predefinição ({n} minutos)',
+    duration_mins:'{n} minutos',
+    duration_custom_new:'Personalizado…',
+    games_age_group_auto:'O escalão é obtido automaticamente da época.',
     games_lbl_neutral_side:'Neutro — tratar-nos como',
     games_lbl_duration:'Duração do Jogo (opcional — usa o padrão da época)',
     set_lbl_match_duration:'Duração Padrão do Jogo',
@@ -20447,8 +20516,8 @@ function attachEvents() {
   });
 
   // ── GAMES ──────────────────────────────────────────────────────────────────
-  document.getElementById('btnAddGame')?.addEventListener('click', () => {
-    resetGameForm();
+  document.getElementById('btnAddGame')?.addEventListener('click', async () => {
+    await resetGameForm();   // async now: builds duration options + remembered defaults
     document.getElementById('gameFormTitle').textContent = I18n.t('games_form_add_title');
     document.getElementById('gf-date').value = new Date().toISOString().split('T')[0];
     document.getElementById('addGamePanel').classList.remove('panel-hidden');
@@ -21184,16 +21253,38 @@ function clearSquadFilters() {
 // ══════════════════════════════════════════════════════════════════════════════
 // GAME HANDLERS
 // ══════════════════════════════════════════════════════════════════════════════
-function resetGameForm() {
+async function resetGameForm() {
   ['gf-time','gf-arrivalTime','gf-opp','gf-compName','gf-ground','gf-notes','gf-id'].forEach(id=>{
     const el=document.getElementById(id);if(el)el.value='';
   });
   document.getElementById('gf-venue').value='Home';
   document.getElementById('gf-neutral-side').value='Home';
   toggleNeutralSideField();
+  // Duration options are built here so their labels are translated and name
+  // the real season default, rather than being static HTML.
+  await buildDurationOptions('gf-duration-select');
   populateDurationField('gf-duration-select', 'gf-duration-custom', null);
   document.getElementById('gf-compType').value='League';
   document.getElementById('gf-stage').value='';
+
+  // Reapply the choices used for the last fixture in this season — adding a
+  // run of league games shouldn't mean re-picking the same three answers
+  // every time. Only ever applied to a NEW game, never when editing.
+  try {
+    const last = await loadGameFormDefaults();
+    if (last && last.seasonId === State.currentSeasonId) {
+      if (last.competitionType) document.getElementById('gf-compType').value = last.competitionType;
+      if (last.homeAway)        document.getElementById('gf-venue').value    = last.homeAway;
+      if (last.competitionName && (last.competitionType === 'League' || last.competitionType === 'Cup')) {
+        document.getElementById('gf-compName').value = last.competitionName;
+      }
+    }
+  } catch(e) { /* remembered values are a convenience, never a blocker */ }
+
+  onCompetitionTypeChange();
+  // Collapsed every time the form opens — a normal league match needs nothing in it.
+  const more = document.getElementById('gf-more-details');
+  if (more) more.open = false;
   autoFillHomeGround();
   populateTournamentDropdown();
 }
@@ -21274,6 +21365,67 @@ function readDurationFromForm(selectId, customId) {
 // Populates a duration select+custom pair from a stored minute value —
 // selects the matching standard option if one matches exactly, otherwise
 // falls back to Custom with the real value shown in the free-text field.
+// ── MATCH DURATION OPTIONS ───────────────────────────────────────────────────
+// Built in JavaScript so the labels can be translated AND can name the real
+// configured season default. The previous markup was static HTML containing
+// ${I18n.t(...)}, which is only interpolated inside a template literal — in
+// plain HTML it rendered as that literal text on screen.
+async function buildDurationOptions(selectId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const season = State.currentSeason || (State.currentSeasonId ? await DB.get('seasons', State.currentSeasonId) : null);
+  const seasonDefault = season?.defaultMatchDurationMins || null;
+  const defaultLabel = seasonDefault
+    ? I18n.t('duration_season_default_mins', { n: seasonDefault })
+    : I18n.t('duration_default_mins', { n: CONFIG.MATCH_DURATION_MINS });
+  const opts = [`<option value="">${esc(defaultLabel)}</option>`];
+  [60,70,80,90,100,120].forEach(m => {
+    opts.push(`<option value="${m}">${esc(I18n.t('duration_mins', { n: m }))}</option>`);
+  });
+  opts.push(`<option value="custom">${esc(I18n.t('duration_custom_new'))}</option>`);
+  const keep = sel.value;
+  sel.innerHTML = opts.join('');
+  if (keep) sel.value = keep;
+}
+
+// ── COMPETITION-DRIVEN FIELD VISIBILITY ──────────────────────────────────────
+// The form only ever asks for fields the chosen competition actually uses.
+//   League / Cup → league name only
+//   Friendly / Trial → neither
+//   Tournament → tournament + stage, no league name
+function onCompetitionTypeChange() {
+  const type = document.getElementById('gf-compType')?.value || 'League';
+  const nameGroup  = document.getElementById('gf-compName-group');
+  const nameLabel  = document.getElementById('gf-compName-label');
+  const tourGroup  = document.getElementById('gf-tournament-group');
+  const stageGroup = document.getElementById('gf-stage-group');
+  const isTournament = (type === 'Tournament');
+  const usesName = (type === 'League' || type === 'Cup');
+  if (nameGroup)  nameGroup.style.display  = usesName ? '' : 'none';
+  if (tourGroup)  tourGroup.style.display  = isTournament ? '' : 'none';
+  if (stageGroup) stageGroup.style.display = isTournament ? '' : 'none';
+  if (nameLabel && usesName) {
+    nameLabel.textContent = I18n.t('games_lbl_league_name');
+  }
+}
+
+// ── REMEMBERED CHOICES ───────────────────────────────────────────────────────
+// Adding a run of fixtures usually means repeating the same competition,
+// location and league. Remembered per season, never applied when editing an
+// existing game.
+async function loadGameFormDefaults() {
+  const rec = await DB.get('appMeta', 'lastGameFormChoices');
+  try { return rec?.value ? JSON.parse(rec.value) : null; } catch(e) { return null; }
+}
+async function saveGameFormDefaults(game) {
+  await DB.put('appMeta', { metaKey: 'lastGameFormChoices', value: JSON.stringify({
+    seasonId: game.seasonId,
+    competitionType: game.competitionType || null,
+    homeAway: game.homeAway || null,
+    competitionName: game.competitionName || null,
+  })});
+}
+
 function populateDurationField(selectId, customId, minutes) {
   const sel = document.getElementById(selectId);
   const custom = document.getElementById(customId);
@@ -21283,7 +21435,7 @@ function populateDurationField(selectId, customId, minutes) {
     custom.style.display = 'none';
     return;
   }
-  const standardValues = ['50','60','70','80','90'];
+  const standardValues = ['60','70','80','90','100','120'];
   const asStr = String(minutes);
   if (standardValues.includes(asStr)) {
     sel.value = asStr;
@@ -21330,8 +21482,8 @@ async function saveGame() {
   const gameTime = document.getElementById('gf-time')?.value || null;
   const manualArrival = document.getElementById('gf-arrivalTime')?.value || null;
   const arrivalTime = manualArrival || (gameTime ? Calc.arrivalTime(gameTime, document.getElementById('gf-venue').value) : null);
-  if (!opp) { Toast.error(I18n.t('game_err_opponent')); return; }
-  if (!date) { Toast.error(I18n.t('game_err_date')); return; }
+  if (!opp) { Toast.error(I18n.t('games_err_opponent_friendly')); return; }
+  if (!date) { Toast.error(I18n.t('games_err_date_friendly')); return; }
   if (!State.currentSeasonId) { Toast.error(I18n.t('pf_err_no_season')); return; }
 
   // Same universal check used for tournaments — do not silently trust
@@ -21400,9 +21552,10 @@ async function saveGame() {
     }
     await Backup.create('before-save');
     await DB.put('games', game);
+    try { await saveGameFormDefaults(game); } catch(e) {}
     Toast.show(existingId ? I18n.t('game_updated') : I18n.t('game_added'));
     document.getElementById('addGamePanel').classList.add('panel-hidden');
-    resetGameForm();
+    await resetGameForm();
     // Return to the list using the filters that are currently active,
     // rather than the previous no-argument call which silently reset the
     // user's search and competition filter on every save.
@@ -21438,7 +21591,9 @@ async function editGame(id) {
   document.getElementById('gf-venue').value = g.homeAway||'Home';
   document.getElementById('gf-neutral-side').value = g.neutralSide || 'Home';
   toggleNeutralSideField();
+  await buildDurationOptions('gf-duration-select');
   populateDurationField('gf-duration-select', 'gf-duration-custom', g.matchDurationMins);
+  onCompetitionTypeChange();   // show exactly the fields this game's competition uses
   document.getElementById('gf-compType').value = g.competitionType||'League';
   document.getElementById('gf-compName').value = g.competitionName||'';
   populateTournamentDropdown(g.tournamentId);
