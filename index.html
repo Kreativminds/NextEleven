@@ -21419,7 +21419,10 @@ async function editPlayer(id) {
 // ════════════════════════════════════════════════════════════════════════════
 // DEMO MODE — DATASET
 //
-// One realistic, internally consistent 2026/27 season for a fictional club.
+// One realistic, internally consistent 2025/26 season for a fictional club.
+// The season is deliberately in the PAST: isGameResultVisible() only counts a
+// match once kick-off + duration + buffer has elapsed, so a future-dated
+// season produces a completely empty dashboard however many records exist.
 // Everything is derived, never random: match results are generated first, then
 // every goal, assist, card and appearance is allocated from those results, so
 // the totals shown on the dashboard, the player profile and the match log all
@@ -21468,8 +21471,8 @@ const Demo = (() => {
 
   // Declared once and used both to suppress appearances and to write the
   // injury row, so the two can never drift apart.
-  const INJURY_FROM = '2026-11-09';
-  const INJURY_TO   = '2026-11-22';
+  const INJURY_FROM = '2025-11-08';
+  const INJURY_TO   = '2025-11-22';
 
   const iso = (d) => d.toISOString().slice(0,10);
   const addDays = (dateStr, n) => { const d = new Date(dateStr + 'T12:00:00'); d.setDate(d.getDate() + n); return iso(d); };
@@ -21478,11 +21481,11 @@ const Demo = (() => {
   // Pre-season friendlies every Sat/Sun from early September to mid-October,
   // the league across the autumn, then a five-day winter cup in late December.
   function buildFixtures() {
-    const r = rng(20262027);
+    const r = rng(20252026);
     const fixtures = [];
 
     // 14 friendlies: 5 Sep 2026 is a Saturday.
-    let d = '2026-09-05';
+    let d = '2025-09-06';
     for (let i = 0; i < 14; i++) {
       // Mixed results, weighted to a developing side.
       const res = [[3,1],[2,2],[1,2],[4,0],[2,1],[0,1],[3,2],[1,1],[2,0],[3,3],[5,1],[1,0],[2,3],[4,2]][i];
@@ -21493,7 +21496,7 @@ const Demo = (() => {
 
     // 14 league matches, Saturdays from 24 Oct. Record: 9W 3D 2L.
     const leagueResults = [[3,1],[2,0],[1,1],[4,2],[0,2],[2,1],[3,0],[1,1],[2,3],[5,2],[1,0],[2,2],[3,1],[4,1]];
-    d = '2026-10-24';
+    d = '2025-10-25';
     for (let i = 0; i < 14; i++) {
       fixtures.push({ kind:'League', date:d, time:'11:00', opponent:LEAGUE_OPPONENTS[i],
                       gf:leagueResults[i][0], ga:leagueResults[i][1], home:(i % 2 === 0),
@@ -21504,17 +21507,18 @@ const Demo = (() => {
     // Winter Youth Cup: 26–30 December, group stage → quarter-final →
     // semi-final, eliminated at the semi.
     const cup = [
-      { date:'2026-12-26', time:'09:30', opponent:CUP_OPPONENTS[0], gf:2, ga:0, stage:'Group Stage' },
-      { date:'2026-12-27', time:'11:00', opponent:CUP_OPPONENTS[1], gf:1, ga:1, stage:'Group Stage' },
-      { date:'2026-12-28', time:'09:30', opponent:CUP_OPPONENTS[2], gf:3, ga:1, stage:'Group Stage' },
-      { date:'2026-12-29', time:'14:00', opponent:CUP_OPPONENTS[3], gf:2, ga:1, stage:'Quarter-Final' },
-      { date:'2026-12-30', time:'16:00', opponent:CUP_OPPONENTS[4], gf:1, ga:2, stage:'Semi-Final' },
+      { date:'2025-12-26', time:'09:30', opponent:CUP_OPPONENTS[0], gf:2, ga:0, stage:'Group Stage' },
+      { date:'2025-12-27', time:'11:00', opponent:CUP_OPPONENTS[1], gf:1, ga:1, stage:'Group Stage' },
+      { date:'2025-12-28', time:'09:30', opponent:CUP_OPPONENTS[2], gf:3, ga:1, stage:'Group Stage' },
+      { date:'2025-12-29', time:'14:00', opponent:CUP_OPPONENTS[3], gf:2, ga:1, stage:'Quarter-Final' },
+      { date:'2025-12-30', time:'16:00', opponent:CUP_OPPONENTS[4], gf:1, ga:2, stage:'Semi-Final' },
     ];
     cup.forEach(c => fixtures.push({ kind:'Tournament', ...c, home:false, competitionName:'Winter Youth Cup' }));
 
-    // One upcoming fixture so Home has something to look forward to.
-    fixtures.push({ kind:'League', date:'2027-01-16', time:'11:00', opponent:'CD Alcântara',
-                    home:true, competitionName:'Liga Distrital Sub-14', upcoming:true });
+    // NO upcoming fixture. The 2025/26 season is deliberately historical, so
+    // any date inside it is already past — a "future" fixture would render as
+    // a played match with no score, which looks broken rather than helpful.
+    // The spec makes this optional; a completed season is the honest picture.
     return fixtures;
   }
 
@@ -21580,8 +21584,8 @@ const Demo = (() => {
 
     // Four seasons, so Club History shows a continuous career.
     const seasonIds = {};
-    for (const [name, year, age] of [['2023/24',2023,'Sub-11'],['2024/25',2024,'Sub-12'],
-                                     ['2025/26',2025,'Sub-13'],['2026/27',2026,'Sub-14']]) {
+    for (const [name, year, age] of [['2022/23',2022,'Sub-11'],['2023/24',2023,'Sub-12'],
+                                     ['2024/25',2024,'Sub-13'],['2025/26',2025,'Sub-14']]) {
       seasonIds[name] = await DB.put('seasons', {
         seasonName: name, startYear: year, clubTeamId, clubName: CLUB,
         homeGround: GROUND, ageGroup: age, defaultMatchDurationMins: 70,
@@ -21589,7 +21593,7 @@ const Demo = (() => {
         shirtColor: '#1B4D8F', createdAt: now,
       });
     }
-    const seasonId = seasonIds['2026/27'];
+    const seasonId = seasonIds['2025/26'];
 
     // The tracked player exists in all four seasons under one careerPlayerId,
     // so Club History has a real career to aggregate.
@@ -21608,7 +21612,7 @@ const Demo = (() => {
     const trackedId = playerIds[0];
     await DB.put('appMeta', { metaKey: 'trackedPlayerIds', value: [trackedId] });
 
-    for (const [name, age] of [['2023/24','Sub-11'],['2024/25','Sub-12'],['2025/26','Sub-13']]) {
+    for (const [name, age] of [['2022/23','Sub-11'],['2023/24','Sub-12'],['2024/25','Sub-13']]) {
       await DB.put('players', {
         seasonId: seasonIds[name], fullName: SQUAD[0].n, shirtNumber: 10,
         primaryPosition: 'Attacking Midfielder', dominantFoot: 'Right',
@@ -21673,7 +21677,7 @@ const Demo = (() => {
 
     // ── Training ──
     const focuses = ['Technical','Physical','Tactical','Match Preparation','Recovery'];
-    let tDate = '2026-09-08';
+    let tDate = '2025-09-09';
     for (let i = 0; i < 24; i++) {
       await DB.put('trainingSessions', {
         playerId: trackedId, seasonId,
@@ -21697,7 +21701,7 @@ const Demo = (() => {
     await DB.put('injuries', {
       playerId: trackedId, seasonId,
       injuryType: 'Ankle sprain', bodyPart: 'Right ankle', severity: 'Minor',
-      injuryDate: INJURY_FROM, expectedReturnDate: '2026-11-23',
+      injuryDate: INJURY_FROM, expectedReturnDate: '2025-11-23',
       actualReturnDate: INJURY_TO, status: 'Recovered',
       notes: 'Rolled the ankle in training. Full recovery, no complications.',
       createdAt: now,
@@ -21705,12 +21709,12 @@ const Demo = (() => {
 
     // ── Events ──
     const events = [
-      ['2026-09-05','Milestone','First appearance of the season'],
-      ['2026-10-24','Goal','First league goal of the season'],
-      ['2026-11-22','Milestone','Returned from injury'],
-      ['2026-12-05','Award','Player of the Match'],
-      ['2026-12-19','Milestone','Captained the team for the first time'],
-      ['2026-12-28','Goal','Scored twice in the group stage'],
+      ['2025-09-06','Milestone','First appearance of the season'],
+      ['2025-10-25','Goal','First league goal of the season'],
+      ['2025-11-22','Milestone','Returned from injury'],
+      ['2025-12-06','Award','Player of the Match'],
+      ['2025-12-20','Milestone','Captained the team for the first time'],
+      ['2025-12-28','Goal','Scored twice in the group stage'],
     ];
     for (const [date, type, desc] of events) {
       await DB.put('events', { playerId: trackedId, seasonId, eventDate: date,
@@ -21719,10 +21723,10 @@ const Demo = (() => {
 
     // ── Achievements ──
     const achievements = [
-      ['Top Scorer of the Month','2026-11-30','Most goals in the squad during November.'],
-      ['Five Consecutive Starts','2026-12-12','Started five league matches in a row.'],
-      ['First Captaincy','2026-12-19','Wore the armband for the first time.'],
-      ['Training Attendance','2027-01-05','Attended every scheduled session this season.'],
+      ['Top Scorer of the Month','2025-11-30','Most goals in the squad during November.'],
+      ['Five Consecutive Starts','2025-12-13','Started five league matches in a row.'],
+      ['First Captaincy','2025-12-20','Wore the armband for the first time.'],
+      ['Training Attendance','2026-01-06','Attended every scheduled session this season.'],
     ];
     for (const [title, date, desc] of achievements) {
       await DB.put('achievements', { playerId: trackedId, seasonId, title,
@@ -21730,9 +21734,9 @@ const Demo = (() => {
     }
 
     // ── Club history: explicit entries for the earlier seasons ──
-    for (const [season, age, club] of [['2023/24','Sub-11','Escola de Futebol Belém'],
-                                       ['2024/25','Sub-12','Escola de Futebol Belém'],
-                                       ['2025/26','Sub-13',CLUB]]) {
+    for (const [season, age, club] of [['2022/23','Sub-11','Escola de Futebol Belém'],
+                                       ['2023/24','Sub-12','Escola de Futebol Belém'],
+                                       ['2024/25','Sub-13',CLUB]]) {
       await DB.put('clubHistory', {
         playerId: trackedId, careerPlayerId: careerIds[0],
         clubName: club, ageGroup: age, season,
