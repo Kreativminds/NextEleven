@@ -1884,6 +1884,13 @@ async function wizardCreateSeason() {
 const FIRST_TIME_WIZARD_STEPS = 8;
 let _firstTimeWizardState = null;
 
+// ── STARTUP CONCURRENCY GUARD ────────────────────────────────────────────────
+// True while the blocking startup bootstrap is downloading the account. Home,
+// the wizard evaluation and periodic sync all consult this so that none of
+// them can conclude "this account is empty" from a database that is still
+// being filled, and so that two startup sequences can never overlap.
+let _startupBootstrapInFlight = false;
+
 async function saveFirstTimeWizardDraft() {
   if (!_firstTimeWizardState) return;
   await DB.put('appMeta', { metaKey: 'firstTimeWizardDraft', value: JSON.stringify(_firstTimeWizardState) });
@@ -1920,22 +1927,101 @@ async function handleDismissWizardDraft() {
 // cloud directly first — the real, authoritative source of truth —
 // and only falls back to the local-only check when genuinely offline,
 // where the local cache actually is the only truth available.
+// ── FIRST-TIME WIZARD CONDITION ──────────────────────────────────────────────
+// The wizard is exclusively for a genuinely new account. It must open ONLY
+// when there is no Club/Team and no Season, in the cloud AND locally.
+//
+// Three defects fixed here:
+//  1. A successful cloud check used to RETURN immediately, ignoring local
+//     data entirely. An account whose Club was created offline and not yet
+//     pushed looked empty in the cloud, so the wizard opened over real data.
+//  2. The cloud queries did not filter deleted_at, so soft-deleted rows
+//     counted as "existing" and suppressed the wizard for an account whose
+//     data had genuinely been deleted.
+//  3. A cloud failure silently fell through to a local-only verdict. On a
+//     new device that means an empty IndexedDB, which reads as a brand-new
+//     account. Now a failed check returns null, and the caller declines to
+//     open the wizard rather than guessing.
+//
+// Returns true (new account), false (existing data), or null (undetermined —
+// never treat as new).
 async function shouldTriggerFirstTimeWizard() {
+  // Local first: it is cheap, and any local data is decisive on its own.
+  const localClubTeams = (await DB.getAll('clubTeams')).filter(c => !c.isDeleted);
+  const localSeasons   = (await DB.getAll('seasons')).filter(s => !s.isDeleted);
+  if (localClubTeams.length > 0 || localSeasons.length > 0) return false;
+
   if (Auth.isLoggedIn() && navigator.onLine && Sync.isConfigured()) {
     try {
       const [cloudSeasons, cloudClubTeams] = await Promise.all([
-        Sync.supabaseRequest('GET', 'seasons', null, { user_id: 'eq.'+Auth.getUserId(), limit: '1' }),
-        Sync.supabaseRequest('GET', 'club_teams', null, { user_id: 'eq.'+Auth.getUserId(), limit: '1' }),
+        Sync.supabaseRequest('GET', 'seasons',    null, { user_id: 'eq.'+Auth.getUserId(), deleted_at: 'is.null', limit: '1' }),
+        Sync.supabaseRequest('GET', 'club_teams', null, { user_id: 'eq.'+Auth.getUserId(), deleted_at: 'is.null', limit: '1' }),
       ]);
+      // Either one existing is enough to prove this is not a new account.
       return cloudSeasons.length === 0 && cloudClubTeams.length === 0;
     } catch(e) {
-      // A real network hiccup during this specific check — fall back to
-      // the local-only check below rather than block Home from loading.
+      // Undetermined. Misclassifying a returning Parent as new is far worse
+      // than not showing the wizard, so refuse to decide.
+      console.warn('[wizard] cloud check failed — declining to classify account', e);
+      return null;
     }
   }
-  const clubTeams = await DB.getAll('clubTeams');
-  const seasons = await DB.getAll('seasons');
-  return clubTeams.length === 0 && seasons.length === 0;
+
+  // Offline or unconfigured: the local cache is all we have, and it is
+  // genuinely empty. That is a real new-account state.
+  return true;
+}
+
+// ── CURRENT SEASON RESOLUTION ────────────────────────────────────────────────
+// loadMeta() only ever read appMeta.currentSeason and trusted it. appMeta is
+// not a synced store, so on a new device that key does not exist even after
+// every season has downloaded — State.currentSeasonId stayed null and Home
+// rendered its empty state. Switching season manually was the only thing that
+// ever set it, which is exactly why that workaround "fixed" the page.
+//
+// Priority, per spec:
+//   1. saved current season, if it still exists
+//   2. explicit active marker, if present
+//   3. most recent by start year
+//   4. first valid season
+// Persists whatever it resolves, so the next load is correct too.
+async function resolveCurrentSeason() {
+  const seasons = (await DB.getAll('seasons')).filter(s => !s.isDeleted);
+  if (!seasons.length) {
+    State.currentSeasonId = null;
+    State.currentSeason = null;
+    return null;
+  }
+
+  const savedId = (await DB.get('appMeta', 'currentSeason'))?.value ?? null;
+  let chosen = savedId != null ? seasons.find(s => s.seasonId === savedId) : null;
+
+  if (!chosen) chosen = seasons.find(s => s.isActive === true || s.isCurrent === true);
+  if (!chosen) {
+    chosen = seasons.slice().sort((a,b) => (getSeasonStartYear(b) || 0) - (getSeasonStartYear(a) || 0))[0];
+  }
+  if (!chosen) chosen = seasons[0];
+
+  State.currentSeasonId = chosen.seasonId;
+  State.currentSeason = chosen;
+  if (savedId !== chosen.seasonId) {
+    await DB.put('appMeta', { metaKey: 'currentSeason', value: chosen.seasonId });
+    console.info('[startup] resolved current season to', chosen.seasonName,
+                 savedId != null ? '(saved season was invalid)' : '(no saved season)');
+  }
+  return chosen;
+}
+
+// Applies a resolved season to every piece of season-dependent UI. Used at
+// startup so the same code path runs as on a manual switch — no partial,
+// duplicated initialisation.
+async function applyResolvedSeasonToUi() {
+  const seasonSel = document.getElementById('homeSeasonSelect');
+  if (seasonSel && State.currentSeasonId != null) seasonSel.value = String(State.currentSeasonId);
+  const navSeason = document.getElementById('navSeason');
+  if (navSeason) navSeason.textContent = State.currentSeason ? State.currentSeason.seasonName : 'No season';
+  invalidateSeasonMap();
+  await buildTrackedNav();
 }
 
 async function openFirstTimeWizard() {
@@ -16428,6 +16514,7 @@ async function performBlockingStartupSync(isRetry) {
 
   if (!Auth.isLoggedIn() || !Sync.isConfigured()) {
     await loadMeta();
+    await resolveCurrentSeason();
     return 'success'; // genuinely nothing to sync — not a failure
   }
 
@@ -16469,6 +16556,10 @@ async function performBlockingStartupSync(isRetry) {
   }
 
   await loadMeta();
+  // The account's seasons have just arrived. appMeta is NOT a synced store,
+  // so loadMeta() alone cannot resolve a season on a new device — resolve it
+  // explicitly here, before anything renders.
+  await resolveCurrentSeason();
   return 'success';
 }
 
@@ -16539,7 +16630,12 @@ const Render = (() => {
     // opens if both are still genuinely empty (never reopens once either
     // exists, even if a previous attempt was abandoned partway — Settings
     // offers "Resume Setup" for that case instead, a deliberate choice).
-    if (Auth.isLoggedIn() && await shouldTriggerFirstTimeWizard()) {
+    // Never evaluated while the blocking startup bootstrap is still running —
+    // an empty local database mid-bootstrap is not evidence of a new account.
+    // shouldTriggerFirstTimeWizard() returns null when it cannot determine
+    // the answer (e.g. the cloud check failed); `=== true` means only a
+    // positive, confident verdict ever opens the wizard.
+    if (Auth.isLoggedIn() && !_startupBootstrapInFlight && (await shouldTriggerFirstTimeWizard()) === true) {
       const existingDraft = await loadFirstTimeWizardDraft();
       if (existingDraft) {
         _firstTimeWizardState = existingDraft;
@@ -22841,10 +22937,24 @@ async function continueAppLoadAfterLogin() {
     // case.
     const blockingSyncFlag = await DB.get('appMeta', 'requiresBlockingSyncOnNextLoad');
     if (blockingSyncFlag?.value === true) {
-      const outcome = await performBlockingStartupSync();
-      if (outcome === 'failed') return; // real failure screen is now showing; startup stops here until Retry/Continue Offline
+      _startupBootstrapInFlight = true;
+      try {
+        const outcome = await performBlockingStartupSync();
+        if (outcome === 'failed') return; // real failure screen is now showing; startup stops here until Retry/Continue Offline
+      } finally {
+        _startupBootstrapInFlight = false;
+      }
     }
 
+    // Resolve the current season on EVERY startup path, not only after an
+    // account transition. A saved season that no longer exists, or a device
+    // that has never saved one, both previously left State.currentSeasonId
+    // null — Home then rendered its empty state and only a manual season
+    // switch recovered it. This is that fix.
+    await resolveCurrentSeason();
+    await applyResolvedSeasonToUi();
+
+    // Periodic sync starts only once the blocking bootstrap is complete.
     Sync.startPeriodicSync();
     await runSilentIntegrityCheck();
     checkForStaleVersion();
