@@ -1192,6 +1192,14 @@ function resolvePlayerName(gp, players, tempPlayers) {
 // Generic debounce — delays a call until the caller stops firing it for
 // `delay` ms. Added for the Squad search input; kept generic so any
 // future input can reuse it rather than growing a second copy.
+// Accent- and case-insensitive text folding for search inputs, so typing
+// "Jesus" finds "Jesús" and "Alges" finds "Algés". Same folding rule
+// already used locally for club-name matching; this is the shared copy
+// for user-facing search boxes.
+function foldForSearch(s) {
+  return (s || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 function debounce(fn, delay = 250) {
   let timer;
   return function(...args) {
@@ -17454,7 +17462,7 @@ const Render = (() => {
     const showArchived = !!State.squadShowArchived;
     if (!showArchived) players = players.filter(p => p.isActive);
 
-    if (search) players = players.filter(p=>p.fullName.toLowerCase().includes(search.toLowerCase()));
+    if (search) { const q = foldForSearch(search); players = players.filter(p=>foldForSearch(p.fullName).includes(q)); }
     if (posFilter) players = players.filter(p=>p.primaryPosition===posFilter);
 
     const archivedToggle = archivedCount ? `
@@ -17601,7 +17609,7 @@ const Render = (() => {
     const tournamentGamesCount = allSeasonGames.length - mainGames.length;
 
     let games = mainGames;
-    if (search) games = games.filter(g=>g.opponent.toLowerCase().includes(search.toLowerCase()));
+    if (search) { const q = foldForSearch(search); games = games.filter(g=>foldForSearch(g.opponent).includes(q)); }
     if (compFilter) games = games.filter(g=>g.competitionType===compFilter);
 
     // Four genuinely distinct empty states, decided from the UNFILTERED
