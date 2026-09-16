@@ -11733,10 +11733,14 @@ async function renderSeasonHeader(season, status) {
   }
   let bgUrl = season.headerBackgroundUrl || clubTeam?.headerBackgroundUrl || null;
 
-  const [players, games] = await Promise.all([
+  const [players, games, _seasonMap] = await Promise.all([
     DB.getAll('players','seasonId',season.seasonId),
     DB.getAll('games','seasonId',season.seasonId),
+    getSeasonMap(),
   ]);
+  // MATCHES counts played games only — same completion rule as every other
+  // stat (isGameResultVisible). Scheduled fixtures are not matches played.
+  const playedCount = games.filter(g => isGameResultVisible(g, _seasonMap)).length;
 
   return renderClubCard({
     clubName: clubTeam?.name || season.clubName || '',
@@ -11750,7 +11754,7 @@ async function renderSeasonHeader(season, status) {
     status,
     leagueDivision: season.competitionName || null,
     squadCount: players.filter(p => p.isActive).length,
-    matchesCount: games.length,
+    matchesCount: playedCount,
     onViewTeam: `Nav.go('squad')`,
     onViewFixtures: `Nav.go('games')`,
   });
