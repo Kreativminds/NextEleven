@@ -47,6 +47,12 @@
   .badge-D{background:var(--amber-bg);color:var(--amber)}
   .badge-L{background:var(--red-bg);color:var(--red)}
   .score{font-size:13px;font-weight:700;flex-shrink:0}
+  .leader-row{align-items:flex-start}
+  .leader-row .row-name{flex:0 0 auto;white-space:normal}
+  .leader-row .row-meta{flex:1;min-width:0;text-align:right;white-space:normal;overflow-wrap:anywhere}
+  .comp-tag{font-size:10px;color:var(--muted);font-weight:600;flex-shrink:0}
+  .split-note{font-size:12px;color:var(--muted);margin:0 0 8px}
+  .split-line{font-size:11px;color:var(--muted);padding:0 0 9px;margin-top:-4px}
   .outcome-banner{text-align:center;padding:18px 16px}
   .outcome-banner .name{font-weight:700;font-size:14px}
   .outcome-banner .label{font-size:19px;font-weight:800;margin-top:4px}
@@ -140,6 +146,66 @@ function shortName(fullName) {
   const parts = String(fullName).trim().split(/\s+/);
   if (parts.length <= 2) return fullName;
   return parts[0] + ' ' + parts[parts.length - 1];
+}
+
+// ── SAME RULES AS THE MAIN APP ─────────────────────────────────────────
+// Completion: kick-off + match duration + 15 min buffer (the app's
+// isGameResultVisible). No kick-off time: counts once the day has ended.
+function isGameFinished(g, season) {
+  if (!g || !g.date) return false;
+  const now = new Date();
+  if (!g.gameTime) return now > new Date(`${g.date}T23:59:59`);
+  const kickoff = new Date(`${g.date}T${g.gameTime}`);
+  if (isNaN(kickoff)) return false;
+  const mins = (parseInt(g.matchDurationMins) || parseInt(season && season.defaultMatchDurationMins) || 90) + 15;
+  return now >= new Date(kickoff.getTime() + mins * 60000);
+}
+// Competition split: official = League/Cup (and untyped), friendly =
+// Friendly/Trial, tournament = linked to a tournament or typed Tournament.
+function gameCategory(g) {
+  if (!g) return 'official';
+  if (g.tournamentId || g.competitionType === 'Tournament') return 'tournament';
+  if (g.competitionType === 'Friendly' || g.competitionType === 'Trial') return 'friendly';
+  return 'official';
+}
+function splitGames(games) {
+  const out = { official: [], friendly: [], tournament: [] };
+  (games || []).forEach(g => out[gameCategory(g)].push(g));
+  return out;
+}
+const CATEGORY_LABEL = { official: 'League & Cup', friendly: 'Friendlies', tournament: 'Tournaments' };
+const COMP_TYPE_TAG = { Friendly: 'Friendly', Trial: 'Trial', Tournament: 'Tournament', Cup: 'Cup', League: 'League' };
+
+// One row per person: the public data can carry more than one row for
+// the same player, which listed Lorenzo twice in Season Leaders.
+function dedupePlayers(players) {
+  const seen = new Set();
+  return (players || []).filter(p => {
+    const key = p.careerPlayerId || ('pid:' + p.playerId);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+// Leader names: list up to 3, otherwise say how many are tied.
+function leaderNames(names) {
+  return names.length > 3 ? `${names.length} players tied` : names.join(', ');
+}
+
+// Record card for Friendlies / Tournaments; nothing if none played.
+function renderRecordCard(title, list, gamePlayers) {
+  if (!list.length) return '';
+  const t = teamSeasonStats(list, gamePlayers);
+  return `
+  <div class="card">
+    <h2 class="card-title" style="margin-top:0;font-size:11px">${title}</h2>
+    <div class="stat-grid">
+      <div><div class="stat-label">Record</div><div class="stat-value">${t.wins}-${t.draws}-${t.losses}</div></div>
+      <div><div class="stat-label">Goal Diff</div><div class="stat-value">${t.goalDiff>0?'+':''}${t.goalDiff}</div></div>
+      <div><div class="stat-label">Goals For</div><div class="stat-value">${t.goalsFor}</div></div>
+      <div><div class="stat-label">Goals Against</div><div class="stat-value">${t.goalsAgainst}</div></div>
+    </div>
+  </div>`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -264,6 +330,8 @@ function updateFooterRefreshStatus(errorMessage) {
 
 
 function renderSeasonLeaders(players, finishedGames, gamePlayers) {
+  // finishedGames here = official (League & Cup) games only
+  players = dedupePlayers(players);
   if (!players.length || !finishedGames.length) return '';
 
   const withStats = players.map(p => ({
@@ -275,8 +343,8 @@ function renderSeasonLeaders(players, finishedGames, gamePlayers) {
     const maxVal = Math.max(...withStats.map(p => p.stats[statKey] || 0));
     if (maxVal === 0) return ''; // hide categories with no meaningful data
     const leaders = withStats.filter(p => (p.stats[statKey] || 0) === maxVal);
-    const names = leaders.map(p => shortName(p.fullName)).join(', ');
-    return `<div class="row">
+    const names = leaderNames(leaders.map(p => shortName(p.fullName)));
+    return `<div class="row leader-row">
       <span class="row-name">${label}</span>
       <span class="row-meta">${esc(names)} (${maxVal})</span>
     </div>`;
@@ -292,7 +360,7 @@ function renderSeasonLeaders(players, finishedGames, gamePlayers) {
 
   return `
   <div class="card">
-    <h2 class="card-title" style="margin-top:0;font-size:11px">Season Leaders</h2>
+    <h2 class="card-title" style="margin-top:0;font-size:11px">Season Leaders · League &amp; Cup</h2>
     ${rows.join('')}
   </div>`;
 }
@@ -353,18 +421,14 @@ function renderBirthdaySection(birthdays) {
 function renderRecap(el, data) {
   const games = data.games || [];
   const gamePlayers = data.gamePlayers || [];
-  const players = data.players || [];
+  const players = dedupePlayers(data.players || []);
   const tournaments = data.tournaments || [];
   const season = data.season || {};
-  const now = new Date();
-  const finishedGames = games.filter(g => {
-    if (!g.date) return false;
-    const kickoff = new Date(`${g.date}T${g.gameTime || '23:59'}`);
-    return kickoff <= now;
-  });
+  const finishedGames = games.filter(g => isGameFinished(g, season));
+  const split = splitGames(finishedGames);
 
-  const stats = teamSeasonStats(finishedGames, gamePlayers);
-  const withStats = players.map(p => ({ ...p, stats: playerPublicStats(p.playerId, finishedGames, gamePlayers) }));
+  const stats = teamSeasonStats(split.official, gamePlayers);
+  const withStats = dedupePlayers(players).map(p => ({ ...p, stats: playerPublicStats(p.playerId, split.official, gamePlayers) }));
 
   function leader(statKey) {
     const maxVal = Math.max(...withStats.map(p => p.stats[statKey] || 0));
@@ -390,7 +454,7 @@ function renderRecap(el, data) {
     </div>` : ''}
 
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Final Record</h2>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Final Record · League &amp; Cup</h2>
       <div class="stat-grid">
         <div><div class="stat-label">Record</div><div class="stat-value">${stats.wins}-${stats.draws}-${stats.losses}</div></div>
         <div><div class="stat-label">Goal Diff</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
@@ -399,12 +463,15 @@ function renderRecap(el, data) {
       </div>
     </div>
 
+    ${renderRecordCard('Friendlies', split.friendly, gamePlayers)}
+    ${renderRecordCard('Tournament Games', split.tournament, gamePlayers)}
+
     ${(topScorer || topAssists || mostApps) ? `
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Season Leaders</h2>
-      ${topScorer ? `<div class="row"><span class="row-name">Top Scorer</span><span class="row-meta">${esc(topScorer.names.join(', '))} (${topScorer.value})</span></div>` : ''}
-      ${topAssists ? `<div class="row"><span class="row-name">Most Assists</span><span class="row-meta">${esc(topAssists.names.join(', '))} (${topAssists.value})</span></div>` : ''}
-      ${mostApps ? `<div class="row"><span class="row-name">Most Appearances</span><span class="row-meta">${esc(mostApps.names.join(', '))} (${mostApps.value})</span></div>` : ''}
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Season Leaders · League &amp; Cup</h2>
+      ${topScorer ? `<div class="row leader-row"><span class="row-name">Top Scorer</span><span class="row-meta">${esc(leaderNames(topScorer.names))} (${topScorer.value})</span></div>` : ''}
+      ${topAssists ? `<div class="row leader-row"><span class="row-name">Most Assists</span><span class="row-meta">${esc(leaderNames(topAssists.names))} (${topAssists.value})</span></div>` : ''}
+      ${mostApps ? `<div class="row leader-row"><span class="row-name">Most Appearances</span><span class="row-meta">${esc(leaderNames(mostApps.names))} (${mostApps.value})</span></div>` : ''}
     </div>` : ''}
 
     ${tournaments.length ? `
@@ -467,7 +534,7 @@ function render(el, data) {
 
   const games = data.games || [];
   const gamePlayers = data.gamePlayers || [];
-  const players = data.players || [];
+  const players = dedupePlayers(data.players || []);
   const tournaments = data.tournaments || [];
   const season = data.season || {};
 
@@ -476,17 +543,21 @@ function render(el, data) {
   // has passed, a game counts as finished. Games here already exclude
   // deleted rows; visibility just needs "already happened."
   const now = new Date();
-  const finishedGames = games.filter(g => {
-    if (!g.date) return false;
-    const kickoff = new Date(`${g.date}T${g.gameTime || '00:00'}`);
-    return !isNaN(kickoff) && now >= kickoff;
-  });
-  const upcomingGames = games.filter(g => !finishedGames.includes(g))
+  // Same completion rule as the app: kick-off + duration + buffer. The old
+  // rule counted a game as finished at kick-off, so a live 0-0 showed as a
+  // result. "Next Match" still moves on only once the game has finished.
+  const finishedGames = games.filter(g => isGameFinished(g, season));
+  const upcomingGames = games.filter(g => g.date && !finishedGames.includes(g))
     .sort((a,b) => gameSortKey(a) - gameSortKey(b));
+  const split = splitGames(finishedGames);
+  const officialGames = split.official;
 
-  const stats = teamSeasonStats(finishedGames, gamePlayers);
+  const stats = teamSeasonStats(officialGames, gamePlayers);
 
+  // Recent Results lists every finished game (tagged by type); the form
+  // strip in Season Summary is League & Cup only.
   const recent = [...finishedGames].sort((a,b) => gameSortKey(b) - gameSortKey(a)).slice(0, 5);
+  const recentOfficial = [...officialGames].sort((a,b) => gameSortKey(b) - gameSortKey(a)).slice(0, 5);
   const next = upcomingGames[0];
 
   // Live Match banner — only shown when today is genuinely match day,
@@ -505,7 +576,7 @@ function render(el, data) {
 
     ${season.status === 'completed' ? `
     <a class="card" href="${esc(window.location.pathname+window.location.search+'&view=recap')}" style="background:#1a1a2e;color:#fff;text-decoration:none;display:block" aria-label="View full ${esc(season.seasonName)} Season Recap">
-      <h2 class="card-title" style="color:#aab;margin-top:0;font-size:11px">${esc(season.seasonName)} Season Recap</h2>
+      <h2 class="card-title" style="color:#aab;margin-top:0;font-size:11px">${esc(season.seasonName)} Season Recap · League &amp; Cup</h2>
       <div class="stat-grid" style="margin-top:8px">
         <div><div class="stat-value" style="color:#fff">${stats.played}</div><div class="stat-label" style="color:#889">Games</div></div>
         <div><div class="stat-value" style="color:#fff">${stats.wins}</div><div class="stat-label" style="color:#889">Wins</div></div>
@@ -533,18 +604,19 @@ function render(el, data) {
     ${renderBirthdaySection(data.birthdays || [])}
 
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Season Summary</h2>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Season Summary · League &amp; Cup</h2>
+      ${officialGames.length ? '' : '<p class="split-note">No League or Cup games played yet.</p>'}
       <div class="stat-grid">
         <div><div class="stat-label">Record</div><div class="stat-value">${stats.wins}-${stats.draws}-${stats.losses}</div></div>
         <div><div class="stat-label">Goal Diff</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
         <div><div class="stat-label">Goals For</div><div class="stat-value">${stats.goalsFor}</div></div>
         <div><div class="stat-label">Goals Against</div><div class="stat-value">${stats.goalsAgainst}</div></div>
       </div>
-      ${recent.length ? `
+      ${recentOfficial.length ? `
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div class="stat-label" style="margin-bottom:6px">Current Form</div>
         <div style="display:flex;gap:6px">
-          ${[...recent].reverse().map(g => {
+          ${[...recentOfficial].reverse().map(g => {
             const gps = gamePlayers.filter(r => r.gameId === g.gameId);
             const our = teamGoals(gps, g);
             const their = parseInt(g.opponentScore)||0;
@@ -555,7 +627,10 @@ function render(el, data) {
       </div>` : ''}
     </div>
 
-    ${renderSeasonLeaders(players, finishedGames, gamePlayers)}
+    ${renderRecordCard('Friendlies', split.friendly, gamePlayers)}
+    ${renderRecordCard('Tournament Games', split.tournament, gamePlayers)}
+
+    ${renderSeasonLeaders(players, officialGames, gamePlayers)}
 
     ${recent.length ? `
     <div class="card">
@@ -569,7 +644,7 @@ function render(el, data) {
         const hasPens = g.ourPenaltyGoals!=null && g.penaltiesForThem!=null;
         return `<div class="row">
           <span class="row-name">${esc(g.opponent)}</span>
-          <span class="row-meta">${g.competitionName ? esc(g.competitionName) : ''}</span>
+          <span class="comp-tag">${esc(g.competitionName || COMP_TYPE_TAG[g.competitionType] || '')}</span>
           <span class="score">${s.home}-${s.away}</span>
           ${hasPens?`<span class="row-meta">${g.ourPenaltyGoals}-${g.penaltiesForThem}P</span>`:''}
           <span class="badge badge-${res}">${res}</span>
@@ -623,16 +698,22 @@ function render(el, data) {
 
     ${players.length ? `
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Player Statistics</h2>
-      ${players.map(p => {
-        const s = playerPublicStats(p.playerId, finishedGames, gamePlayers);
-        if (s.calledUp === 0) return '';
-        return `<div class="row">
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Player Statistics · League &amp; Cup</h2>
+      ${dedupePlayers(players).map(p => {
+        const all = playerPublicStats(p.playerId, finishedGames, gamePlayers);
+        if (all.calledUp === 0) return '';
+        const s = playerPublicStats(p.playerId, officialGames, gamePlayers);
+        const extra = ['friendly', 'tournament'].map(k => {
+          if (!split[k].length) return '';
+          const x = playerPublicStats(p.playerId, split[k], gamePlayers);
+          return x.calledUp ? `${CATEGORY_LABEL[k]}: ${x.calledUp} GP · ${x.goals} G · ${x.assists} A` : '';
+        }).filter(Boolean).join(' &nbsp;|&nbsp; ');
+        return `<div class="row"${extra ? ' style="border-bottom:none"' : ''}>
           <span class="row-name">${esc(shortName(p.fullName))}</span>
           <span class="pill">${s.calledUp} GP</span>
           <span class="pill">${s.goals} G</span>
           <span class="pill">${s.assists} A</span>
-        </div>`;
+        </div>${extra ? `<div class="split-line" style="border-bottom:1px solid var(--border)">${extra}</div>` : ''}`;
       }).join('')}
     </div>` : ''}
 

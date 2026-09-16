@@ -266,6 +266,10 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .pitch-shirt::before{content:'';position:absolute;top:-3px;left:-4px;width:10px;height:14px;background:inherit;border-radius:3px 0 0 0;box-shadow:-1px -1px 2px rgba(0,0,0,.15)}
 .pitch-shirt::after{content:'';position:absolute;top:-3px;right:-4px;width:10px;height:14px;background:inherit;border-radius:0 3px 0 0;box-shadow:1px -1px 2px rgba(0,0,0,.15)}
 .pitch-name{font-size:9px;font-weight:700;color:#fff;text-align:center;margin-top:4px;text-shadow:0 1px 2px rgba(0,0,0,.4);line-height:1.2;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ── COMPETITION SPLIT (Official / Friendlies / Tournaments) ── */
+.comp-scope-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:0 0 8px}
+.comp-scope-empty{font-size:12px;color:var(--muted);margin:0 0 10px}
+.comp-split-inline{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}
 /* ── LEADER CARD (Top Scorers / Assisters / Most Used) — ZeroZero style ── */
 .leader-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;align-items:start}
 .leader-col{display:flex;flex-direction:column;gap:10px}
@@ -1287,6 +1291,86 @@ async function getSeasonMap(force) {
   return map;
 }
 function invalidateSeasonMap() { _seasonMapCache = null; }
+
+// ── COMPETITION SPLIT ────────────────────────────────────────────────────
+// One rule for every stats page:
+//   tournament — linked to a tournament, or typed Tournament
+//   friendly   — Friendly or Trial (pre-season, trials)
+//   official   — everything else: League, Cup, and legacy games with no type
+// Official totals never include friendlies or tournaments; those get their
+// own cards, so pre-season results can't distort the season record.
+function gameCategory(g) {
+  if (!g) return 'official';
+  if (g.tournamentId || g.competitionType === 'Tournament') return 'tournament';
+  if (g.competitionType === 'Friendly' || g.competitionType === 'Trial') return 'friendly';
+  return 'official';
+}
+function splitGamesByCategory(games) {
+  const out = { official: [], friendly: [], tournament: [] };
+  (games || []).forEach(g => out[gameCategory(g)].push(g));
+  return out;
+}
+const COMP_SPLIT_EXTRA = [['friendly', 'comp_split_friendlies'], ['tournament', 'comp_split_tournaments']];
+
+// Section label for the official block, plus a plain note when no official
+// game has been played yet (so the zeros below aren't misread).
+function renderOfficialScopeLabel(split) {
+  return `<div class="comp-scope-label">${I18n.t('comp_split_official')}</div>` +
+    (split.official.length ? '' : `<div class="comp-scope-empty">${I18n.t('comp_split_official_empty')}</div>`);
+}
+
+// Team record cards for Friendlies and Tournaments. A category with no
+// finished game renders nothing.
+function renderTeamSplitCards(split, allGP) {
+  return COMP_SPLIT_EXTRA.map(([key, labelKey]) => {
+    const list = split[key];
+    if (!list.length) return '';
+    const t = Calc.teamSeasonStats(list, allGP);
+    return `
+    <div class="card">
+      <div class="card-title">${I18n.t(labelKey)}</div>
+      <div class="stat-grid" style="margin-bottom:0">
+        <div class="stat-card"><div class="val">${t.played}</div><div class="lbl">${I18n.t('dash_played')}</div></div>
+        <div class="stat-card"><div class="val">${t.wins}</div><div class="lbl">${I18n.t('dash_won')}</div></div>
+        <div class="stat-card"><div class="val">${t.draws}</div><div class="lbl">${I18n.t('dash_drawn')}</div></div>
+        <div class="stat-card"><div class="val">${t.losses}</div><div class="lbl">${I18n.t('dash_lost')}</div></div>
+        <div class="stat-card"><div class="val">${t.goalsFor}</div><div class="lbl">${I18n.t('dash_goals_for')}</div></div>
+        <div class="stat-card"><div class="val">${t.goalsAgainst}</div><div class="lbl">${I18n.t('dash_goals_against')}</div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Player cards for Friendlies and Tournaments (apps, goals, assists, G+A).
+function renderPlayerSplitCards(split, playerId, allGP) {
+  return COMP_SPLIT_EXTRA.map(([key, labelKey]) => {
+    const list = split[key];
+    if (!list.length) return '';
+    const p = Calc.playerSeasonStats(playerId, list, allGP);
+    return `
+    <div class="card">
+      <div class="card-title">${I18n.t(labelKey)}</div>
+      <div class="stat-grid" style="margin-bottom:0">
+        <div class="stat-card"><div class="val">${p.calledUp}</div><div class="lbl">${I18n.t('dash_apps')}</div></div>
+        <div class="stat-card"><div class="val">${p.goals}</div><div class="lbl">${I18n.t('dash_goals')}</div></div>
+        <div class="stat-card"><div class="val">${p.assists}</div><div class="lbl">${I18n.t('dash_assists')}</div></div>
+        <div class="stat-card"><div class="val">${p.goals + p.assists}</div><div class="lbl">G+A</div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// One compact line per extra category, for small cards (Dashboard tracked
+// player, player card popup).
+function renderPlayerSplitInline(split, playerId, allGP) {
+  const parts = COMP_SPLIT_EXTRA.map(([key, labelKey]) => {
+    const list = split[key];
+    if (!list.length) return '';
+    const p = Calc.playerSeasonStats(playerId, list, allGP);
+    return `<div><strong>${I18n.t(labelKey)}:</strong> ${p.calledUp} ${I18n.t('dash_apps')} · ${p.goals} ${I18n.t('dash_goals')} · ${p.assists} ${I18n.t('dash_assists')}</div>`;
+  }).join('');
+  return parts ? `<div class="comp-split-inline">${parts}</div>` : '';
+}
 
 // Single source of truth for tournament squad locking — given a game and
 // its full active season roster, returns the correctly-locked list. If
@@ -5767,6 +5851,9 @@ const TR = {
 
     // ── DASHBOARD PAGE ──
     dash_card_season_record:'Season Record',
+    comp_split_official:'Official · League & Cup', comp_split_friendlies:'Friendlies · Pre-season & Trials',
+    comp_split_tournaments:'Tournaments', comp_split_official_empty:'No League or Cup games played yet.',
+    cc_official_matches:'Official', cc_friendlies:'Friendlies', cc_tournaments:'Tournaments',
     dash_played:'Played', dash_won:'Won', dash_drawn:'Drawn', dash_lost:'Lost',
     dash_empty_none_title:'No games scheduled', dash_empty_none_desc:'Add your first game to start tracking this season.',
     dash_error_title:'Couldn\u2019t load the dashboard', dash_error_desc:'Something went wrong while loading this page. Please try again.',
@@ -7079,6 +7166,9 @@ const TR = {
     // ── DASHBOARD PAGE ──
     dash_card_season_record:'Registo da Época',
     dash_played:'Jogos', dash_won:'Vitórias', dash_drawn:'Empates', dash_lost:'Derrotas',
+    comp_split_official:'Oficiais · Campeonato e Taça', comp_split_friendlies:'Particulares · Pré-época e Captações',
+    comp_split_tournaments:'Torneios', comp_split_official_empty:'Ainda sem jogos de Campeonato ou Taça.',
+    cc_official_matches:'Oficiais', cc_friendlies:'Particulares', cc_tournaments:'Torneios',
     dash_empty_none_title:'Sem jogos agendados', dash_empty_none_desc:'Adicione o primeiro jogo para começar a acompanhar esta época.',
     dash_error_title:'Não foi possível carregar o painel', dash_error_desc:'Ocorreu um erro ao carregar esta página. Por favor tente novamente.',
     common_retry:'Tentar Novamente',
@@ -11641,7 +11731,11 @@ async function renderClubCard(data) {
   const infoItems = [];
   if (data.leagueDivision) infoItems.push({ icon: '&#128200;', value: esc(data.leagueDivision), label: I18n.t('cc_league_division') });
   if (data.squadCount != null) infoItems.push({ icon: '&#128101;', value: esc(String(data.squadCount)), label: I18n.t('cc_squad_players') });
-  if (data.matchesCount != null) infoItems.push({ icon: '&#128197;', value: esc(String(data.matchesCount)), label: I18n.t('cc_season_matches') });
+  // Played-game counts, split by competition. Friendlies/Tournaments only
+  // appear when at least one has been played.
+  if (data.matchesCount != null) infoItems.push({ icon: '&#128197;', value: esc(String(data.matchesCount)), label: I18n.t('cc_official_matches') });
+  if (data.friendliesCount) infoItems.push({ icon: '&#129309;', value: esc(String(data.friendliesCount)), label: I18n.t('cc_friendlies') });
+  if (data.tournamentsCount) infoItems.push({ icon: '&#127942;', value: esc(String(data.tournamentsCount)), label: I18n.t('cc_tournaments') });
 
   const cardBgStyle = `background-image:${bgUrl ? `url('${esc(bgUrl)}')` : fallbackGradient};background-size:cover;background-position:center;background-repeat:no-repeat`;
 
@@ -11710,12 +11804,17 @@ async function renderClubCard(data) {
 
     <div style="position:relative;height:1px;background:rgba(255,255,255,.18);margin:0 14px"></div>
 
-    <div style="position:relative;padding:10px 14px;display:flex;align-items:center;gap:10px">
+    <div style="position:relative;padding:10px 14px 6px;display:flex;align-items:center;gap:10px">
       <div style="text-align:center;flex:1"><div style="font-weight:800;font-size:15px;color:#fff">${esc(squadVal)}</div><div style="font-size:9px;opacity:.7;color:#fff;text-transform:uppercase">${I18n.t('cc_squad_players')}</div></div>
-      <div style="text-align:center;flex:1"><div style="font-weight:800;font-size:15px;color:#fff">${esc(matchesVal)}</div><div style="font-size:9px;opacity:.7;color:#fff;text-transform:uppercase">${I18n.t('cc_season_matches')}</div></div>
+      <div style="text-align:center;flex:1"><div style="font-weight:800;font-size:15px;color:#fff">${esc(matchesVal)}</div><div style="font-size:9px;opacity:.7;color:#fff;text-transform:uppercase">${I18n.t('cc_official_matches')}</div></div>
+      ${data.friendliesCount ? `<div style="text-align:center;flex:1"><div style="font-weight:800;font-size:15px;color:#fff">${esc(String(data.friendliesCount))}</div><div style="font-size:9px;opacity:.7;color:#fff;text-transform:uppercase">${I18n.t('cc_friendlies')}</div></div>` : ''}
+      ${data.tournamentsCount ? `<div style="text-align:center;flex:1"><div style="font-weight:800;font-size:15px;color:#fff">${esc(String(data.tournamentsCount))}</div><div style="font-size:9px;opacity:.7;color:#fff;text-transform:uppercase">${I18n.t('cc_tournaments')}</div></div>` : ''}
+    </div>
+    ${(data.onViewTeam || data.onViewFixtures) ? `
+    <div style="position:relative;padding:0 14px 10px;display:flex;align-items:center;gap:10px">
       ${data.onViewTeam ? `<button class="btn btn-secondary btn-sm" onclick="${esc(data.onViewTeam)}" style="flex:1;padding:6px 8px;font-size:11px;background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.25)">${I18n.t('cc_btn_view_team')}</button>` : ''}
       ${data.onViewFixtures ? `<button class="btn btn-primary btn-sm" onclick="${esc(data.onViewFixtures)}" style="flex:1;padding:6px 8px;font-size:11px">${I18n.t('cc_btn_view_fixtures')}</button>` : ''}
-    </div>
+    </div>` : ''}
   </div>`;
 
   return desktopHtml + mobileHtml;
@@ -11740,7 +11839,7 @@ async function renderSeasonHeader(season, status) {
   ]);
   // MATCHES counts played games only — same completion rule as every other
   // stat (isGameResultVisible). Scheduled fixtures are not matches played.
-  const playedCount = games.filter(g => isGameResultVisible(g, _seasonMap)).length;
+  const playedSplit = splitGamesByCategory(games.filter(g => isGameResultVisible(g, _seasonMap)));
 
   return renderClubCard({
     clubName: clubTeam?.name || season.clubName || '',
@@ -11754,7 +11853,9 @@ async function renderSeasonHeader(season, status) {
     status,
     leagueDivision: season.competitionName || null,
     squadCount: players.filter(p => p.isActive).length,
-    matchesCount: playedCount,
+    matchesCount: playedSplit.official.length,
+    friendliesCount: playedSplit.friendly.length,
+    tournamentsCount: playedSplit.tournament.length,
     onViewTeam: `Nav.go('squad')`,
     onViewFixtures: `Nav.go('games')`,
   });
@@ -11834,7 +11935,8 @@ async function renderHomeCompletedView(season) {
   const players = await DB.getAll('players','seasonId',season.seasonId);
   const activePlayers = players.filter(p => p.isActive);
 
-  const stats = Calc.teamSeasonStats(finishedGames, allGP);
+  const split = splitGamesByCategory(finishedGames);
+  const stats = Calc.teamSeasonStats(split.official, allGP);
   const sortedByDate = [...finishedGames].sort((a,b) => gameSortKey(a) - gameSortKey(b));
   const firstMatch = sortedByDate[0] || null;
   const lastMatch = sortedByDate[sortedByDate.length - 1] || null;
@@ -11855,7 +11957,7 @@ async function renderHomeCompletedView(season) {
   }
 
   // Player Highlights — hidden entirely if no real stats exist yet
-  const withStats = activePlayers.map(p => ({ ...p, s: Calc.playerSeasonStats(p.playerId, finishedGames, allGP) }));
+  const withStats = activePlayers.map(p => ({ ...p, s: Calc.playerSeasonStats(p.playerId, split.official, allGP) }));
   function leader(key) {
     const max = Math.max(...withStats.map(p => p.s[key]||0));
     if (max === 0) return null;
@@ -11873,6 +11975,7 @@ async function renderHomeCompletedView(season) {
   return `
   <div class="card">
     <div class="card-title">${I18n.t('home_completed_at_a_glance')}</div>
+    ${renderOfficialScopeLabel(split)}
     <div class="stat-grid">
       ${season.seasonSummary?.position ? `<div class="stat-card"><div class="val">${esc(String(season.seasonSummary.position))}</div><div class="lbl">${I18n.t('home_completed_final_position')}</div></div>` : ''}
       <div class="stat-card"><div class="val">${stats.played}</div><div class="lbl">${I18n.t('dash_played')}</div></div>
@@ -11884,6 +11987,8 @@ async function renderHomeCompletedView(season) {
       <div class="stat-card"><div class="val">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div><div class="lbl">${I18n.t('home_completed_goal_diff')}</div></div>
     </div>
   </div>
+
+  ${renderTeamSplitCards(split, allGP)}
 
   ${(firstMatch || lastMatch) ? `
   <div class="card">
@@ -16107,7 +16212,8 @@ async function renderPlayerPortalStats() {
   const allGP = await DB.getAll('gamePlayers','seasonId', State.currentSeasonId);
   const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
   const playerGP = allGP.filter(r => r.playerId === playerId);
-  const s = Calc.lorenzoStats(finishedGames, playerGP);
+  const split = splitGamesByCategory(finishedGames);
+  const s = Calc.lorenzoStats(split.official, playerGP);
 
   const sortedGames = [...games].sort((a,b) => gameSortKey(b) - gameSortKey(a));
   const last5 = sortedGames.slice(0,5);
@@ -16115,6 +16221,7 @@ async function renderPlayerPortalStats() {
 
   el.innerHTML = `
     <div class="page-header"><div><h1>${I18n.t('pp_stats_title')}</h1><div class="page-header-sub">${esc(shortName(player.fullName))}</div></div></div>
+    ${renderOfficialScopeLabel(split)}
     <div class="stat-grid">
       <div class="stat-card"><div class="val">${s.calledUp}</div><div class="lbl">${I18n.t('tp_stat_appearances')}</div></div>
       <div class="stat-card"><div class="val">${s.started}</div><div class="lbl">${I18n.t('tp_stat_starts')}</div><div class="sub">${s.subbed} ${I18n.t('tp_stat_as_sub')}</div></div>
@@ -16129,6 +16236,8 @@ async function renderPlayerPortalStats() {
       <div class="stat-card"><div class="val">${s.red}</div><div class="lbl">${I18n.t('tp_stat_red')}</div></div>
       <div class="stat-card"><div class="val">${s.availabilityPct}%</div><div class="lbl">${I18n.t('tp_stat_availability')}</div></div>
     </div>
+
+    ${renderPlayerSplitCards(split, playerId, allGP)}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
       <div class="card">
@@ -16463,10 +16572,11 @@ async function renderPlayerPortalTeamSummary() {
   }
 
   const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
-  const ts = Calc.teamSeasonStats(finishedGames, allGP);
+  const split = splitGamesByCategory(finishedGames);
+  const ts = Calc.teamSeasonStats(split.official, allGP);
 
   const pStats = players.filter(p=>p.isActive).map(p => ({
-    ...p, ...Calc.playerSeasonStats(p.playerId, finishedGames, allGP)
+    ...p, ...Calc.playerSeasonStats(p.playerId, split.official, allGP)
   }));
   // Zero-value players are filtered out, matching mostApps and mostMoM
   // below and the coach-facing Team Summary. Without this a squad that
@@ -16483,6 +16593,7 @@ async function renderPlayerPortalTeamSummary() {
 
   el.innerHTML = `
     <div class="page-header"><div><h1>${I18n.t('nav_teamSummary')}</h1></div></div>
+    ${renderOfficialScopeLabel(split)}
     <div class="stat-grid">
       <div class="stat-card"><div class="val">${ts.played}</div><div class="lbl">${I18n.t('ts_played')}</div></div>
       <div class="stat-card"><div class="val">${ts.wins}</div><div class="lbl">${I18n.t('ts_wins')}</div></div>
@@ -16493,6 +16604,8 @@ async function renderPlayerPortalTeamSummary() {
       <div class="stat-card"><div class="val">${ts.goalDiff>0?'+':''}${ts.goalDiff}</div><div class="lbl">${I18n.t('ts_goal_diff')}</div></div>
       <div class="stat-card"><div class="val">${ts.cleanSheets}</div><div class="lbl">${I18n.t('ts_clean_sheets')}</div></div>
     </div>
+
+    ${renderTeamSplitCards(split, allGP)}
 
     ${renderLineupPitch(mostUsedLineup, shirtColor)}
 
@@ -17256,7 +17369,9 @@ const Render = (() => {
       return;
     }
 
-    const ts = Calc.teamSeasonStats(finishedGames, allGP);
+    const split = splitGamesByCategory(finishedGames);
+    const officialGames = split.official;
+    const ts = Calc.teamSeasonStats(officialGames, allGP);
     // Archived tracked players are included, matching the Tracked Player
     // page. Previously an isActive requirement here meant archiving a
     // player at season end silently removed them from the Dashboard even
@@ -17268,6 +17383,7 @@ const Render = (() => {
       <!-- SEASON RECORD -->
       <div class="card">
         <div class="card-title">&#9917; ${esc(season.seasonName)}${season.clubName?' · '+esc(season.clubName):''}${season.ageGroup?' · '+esc(season.ageGroup):''}</div>
+        ${renderOfficialScopeLabel(split)}
         <div class="stat-grid" style="margin-bottom:0">
           <div class="stat-card"><div class="val">${ts.played}</div><div class="lbl">${I18n.t('dash_played')}</div></div>
           <div class="stat-card"><div class="val">${ts.wins}</div><div class="lbl">${I18n.t('dash_won')}</div></div>
@@ -17276,11 +17392,11 @@ const Render = (() => {
           <div class="stat-card"><div class="val">${ts.goalsFor}</div><div class="lbl">${I18n.t('dash_goals_for')}</div></div>
           <div class="stat-card"><div class="val">${ts.goalsAgainst}</div><div class="lbl">${I18n.t('dash_goals_against')}</div></div>
         </div>
-        ${finishedGames.length ? `
+        ${officialGames.length ? `
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
           <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">${I18n.t('dash_current_form')}</div>
           <div style="display:flex;gap:6px">
-            ${[...finishedGames].sort((a,b)=>gameSortKey(b)-gameSortKey(a)).slice(0,5).reverse().map(g => {
+            ${[...officialGames].sort((a,b)=>gameSortKey(b)-gameSortKey(a)).slice(0,5).reverse().map(g => {
               const gps = allGP.filter(r=>r.gameId===g.gameId);
               const res = Calc.result(Calc.teamGoals(gps, g), g.opponentScore||0, g);
               const col = res==='W'?'#e6f4ea':res==='D'?'#fff8e1':'#fde8e8';
@@ -17291,6 +17407,8 @@ const Render = (() => {
         </div>` : ''}
       </div>
 
+      ${renderTeamSplitCards(split, allGP)}
+
       <!-- TRACKED PLAYERS -->
       ${!trackedPlayers.length ? `
       <div class="card" style="display:flex;align-items:center;gap:10px;padding:10px 14px">
@@ -17299,7 +17417,7 @@ const Render = (() => {
         <button class="btn btn-secondary btn-sm" onclick="Nav.go('squad')">${I18n.t('home_btn_go_to_squad')}</button>
       </div>` : ''}
       ${trackedPlayers.map(tp => {
-        const tpStats = Calc.playerSeasonStats(tp.playerId, finishedGames, allGP);
+        const tpStats = Calc.playerSeasonStats(tp.playerId, officialGames, allGP);
         const tpGames = [...games].sort((a,b)=>gameSortKey(b)-gameSortKey(a)).slice(0,5);
         const formStrip = tpGames.map(g=>{
           const gp = allGP.find(r=>r.gameId===g.gameId && r.playerId===tp.playerId);
@@ -17330,6 +17448,7 @@ const Render = (() => {
             <span style="font-size:10px;color:var(--muted);margin-right:4px">${I18n.t('dash_form')}</span>
             ${formStrip}
           </div>
+          ${renderPlayerSplitInline(split, tp.playerId, allGP)}
         </div>`;
       }).join('')}
 
@@ -17861,7 +17980,8 @@ const Render = (() => {
     // Only count games whose result is actually visible (i.e. likely finished)
     // towards season totals — an in-progress game shouldn't inflate stats yet.
     const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
-    const s = Calc.lorenzoStats(finishedGames, lorGP);
+    const split = splitGamesByCategory(finishedGames);
+    const s = Calc.lorenzoStats(split.official, lorGP);
 
     // Sorting for the Match by Match table on this Overview tab
     const ovSortKey = el.dataset.sortKey || 'date';
@@ -17906,6 +18026,7 @@ const Render = (() => {
         <p style="color:var(--muted);font-size:13px">${State.currentSeason.seasonName} · ${State.currentSeason.clubName||''}</p>
       </div>
 
+      ${renderOfficialScopeLabel(split)}
       <div class="stat-grid">
         <div class="stat-card"><div class="val">${s.calledUp}</div><div class="lbl">${I18n.t('tp_stat_appearances')}</div></div>
         <div class="stat-card"><div class="val">${s.started}</div><div class="lbl">${I18n.t('tp_stat_starts')}</div><div class="sub">${s.subbed} ${I18n.t('tp_stat_as_sub')}</div></div>
@@ -17920,6 +18041,8 @@ const Render = (() => {
         <div class="stat-card"><div class="val">${s.red}</div><div class="lbl">${I18n.t('tp_stat_red')}</div></div>
         <div class="stat-card"><div class="val">${s.availabilityPct}%</div><div class="lbl">${I18n.t('tp_stat_availability')}</div></div>
       </div>
+
+      ${renderPlayerSplitCards(split, lor.playerId, allGP)}
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
         <div class="card">
@@ -18040,11 +18163,12 @@ const Render = (() => {
       return;
     }
 
-    const ts = Calc.teamSeasonStats(finishedGames, allGP);
+    const split = splitGamesByCategory(finishedGames);
+    const ts = Calc.teamSeasonStats(split.official, allGP);
 
-    // player stats
+    // player stats — official games only
     const pStats = players.filter(p=>p.isActive).map(p => ({
-      ...p, ...Calc.playerSeasonStats(p.playerId, finishedGames, allGP)
+      ...p, ...Calc.playerSeasonStats(p.playerId, split.official, allGP)
     }));
 
     // Zero-value players are filtered out of every board, so a squad that
@@ -18077,6 +18201,7 @@ const Render = (() => {
     const playersWithHistory = allPlayers.filter(p => (injuriesByPlayer[p.playerId]||[]).length > 0);
 
     el.innerHTML = `
+      ${renderOfficialScopeLabel(split)}
       <div class="stat-grid">
         <div class="stat-card"><div class="val">${ts.played}</div><div class="lbl">${I18n.t('ts_played')}</div></div>
         <div class="stat-card"><div class="val">${ts.wins}</div><div class="lbl">${I18n.t('ts_wins')}</div></div>
@@ -18087,6 +18212,8 @@ const Render = (() => {
         <div class="stat-card"><div class="val">${ts.goalDiff>0?'+':''}${ts.goalDiff}</div><div class="lbl">${I18n.t('ts_goal_diff')}</div></div>
         <div class="stat-card"><div class="val">${ts.cleanSheets}</div><div class="lbl">${I18n.t('ts_clean_sheets')}</div></div>
       </div>
+
+      ${renderTeamSplitCards(split, allGP)}
 
       ${renderLineupPitch(mostUsedLineup, shirtColor)}
 
@@ -21151,18 +21278,23 @@ async function openPlayerCardPopup(playerId) {
       DB.getAll('gamePlayers','seasonId',State.currentSeasonId),
     ]);
     const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
-    const stats = Calc.playerSeasonStats(playerId, finishedGames, allGP);
+    const split = splitGamesByCategory(finishedGames);
+    const stats = Calc.playerSeasonStats(playerId, split.official, allGP);
+    const anyApps = Calc.playerSeasonStats(playerId, finishedGames, allGP).calledUp > 0;
     const statsEl = document.getElementById(`pcQuickStats-${playerId}`);
-    if (statsEl && stats.calledUp > 0) {
+    // Shown once the player has any appearance; the grid is official games
+    // only, with friendlies/tournaments on their own lines underneath.
+    if (statsEl && anyApps) {
       statsEl.innerHTML = `
-        <div class="pc-section-title" style="margin-top:18px">${I18n.t('pc_quick_stats_title')}</div>
+        <div class="pc-section-title" style="margin-top:18px">${I18n.t('pc_quick_stats_title')} · ${I18n.t('cc_official_matches')}</div>
         <div class="pc-stats-grid">
           <div class="pc-stat"><div class="pc-stat-icon">${navIcon('team-summary',14)}</div><div class="pc-stat-value">${stats.calledUp}</div><div class="pc-stat-label">${I18n.t('pc_stat_appearances')}</div></div>
           <div class="pc-stat"><div class="pc-stat-icon">&#9917;</div><div class="pc-stat-value">${stats.goals}</div><div class="pc-stat-label">${I18n.t('pc_stat_goals')}</div></div>
           <div class="pc-stat"><div class="pc-stat-icon">${navIcon('boot',14)}</div><div class="pc-stat-value">${stats.assists}</div><div class="pc-stat-label">${I18n.t('pc_stat_assists')}</div></div>
           <div class="pc-stat"><div class="pc-stat-icon">&#128337;</div><div class="pc-stat-value">${stats.minutes}</div><div class="pc-stat-label">${I18n.t('pc_stat_minutes')}</div></div>
           <div class="pc-stat"><div class="pc-stat-icon">&#11088;</div><div class="pc-stat-value">${stats.mom}</div><div class="pc-stat-label">${I18n.t('pc_stat_mom')}</div></div>
-        </div>`;
+        </div>
+        ${renderPlayerSplitInline(split, playerId, allGP)}`;
     }
   }
 }
