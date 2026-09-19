@@ -70,9 +70,10 @@
   .empty{text-align:center;padding:40px 16px;color:var(--muted)}
   .empty .icon{font-size:32px;margin-bottom:10px}
   .loading{text-align:center;padding:60px 16px;color:var(--muted)}
-  .lang-switch{display:flex;justify-content:flex-end;gap:6px;margin:0 0 8px}
-  .lang-btn{min-width:44px;min-height:32px;padding:4px 12px;border:1px solid var(--border);background:var(--surface);border-radius:6px;font-family:inherit;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
-  .lang-btn[aria-pressed="true"]{background:var(--black);border-color:var(--black);color:#fff}
+  .lang-switch{float:right;display:flex;gap:2px;align-items:center;margin:-2px 0 0}
+  .lang-btn{min-width:30px;min-height:30px;padding:0 6px;border:none;background:none;font-family:inherit;font-size:11px;font-weight:600;color:var(--muted);opacity:.55;cursor:pointer}
+  .lang-btn[aria-pressed="true"]{opacity:1;color:var(--black);text-decoration:underline;text-underline-offset:3px}
+  .team-header{overflow:hidden}
   .footer-note{text-align:center;font-size:11px;color:var(--muted);margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
   .skeleton{background:linear-gradient(90deg,#eee 25%,#f5f5f5 50%,#eee 75%);background-size:200% 100%;animation:skeleton-shimmer 1.4s ease-in-out infinite;border-radius:4px}
   @keyframes skeleton-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
@@ -946,6 +947,7 @@ function render(el, data) {
   const html = `
     <div class="team-header">
       <h1>${esc(season.clubName || 'Team')} ${season.ageGroup ? '· ' + esc(season.ageGroup) : ''}</h1>
+      ${langSwitcherHtml()}
       <div class="sub">${esc(season.seasonName || '')} ${season.status === 'completed' ? '<span class="badge" style="background:#e8f0fe;color:#1a56c4;margin-left:6px">' + tr('completed') + '</span>' : ''}</div>
     </div>
 
@@ -1016,8 +1018,6 @@ function render(el, data) {
       ${carouselSlides.map((_, i) => `<button type="button" class="carousel-dot" role="tab" data-slide="${i}" aria-selected="false" aria-label="Card ${i+1}"><span></span></button>`).join('')}
     </div>` : '<div style="height:14px"></div>'}
     ` : ''}
-
-    ${langSwitcherHtml()}
 
     <nav class="tabs" role="tablist" aria-label="Sections">
       ${TABS.map(tab => `<button type="button" class="tab-btn" role="tab" data-tabbtn="${tab.id}" aria-selected="false">${tr(tab.key)}</button>`).join('')}
