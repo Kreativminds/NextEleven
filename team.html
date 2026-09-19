@@ -70,7 +70,10 @@
   .empty{text-align:center;padding:40px 16px;color:var(--muted)}
   .empty .icon{font-size:32px;margin-bottom:10px}
   .loading{text-align:center;padding:60px 16px;color:var(--muted)}
-  .lang-switch{margin-left:auto;display:flex;gap:2px;align-items:center}
+  /* the wrapper is the flex item in .app-header — it carries the auto
+     margin, which is what actually pushes the pair to the far right */
+  #langSwitch{margin-left:auto;flex-shrink:0}
+  .lang-switch{display:flex;gap:2px;align-items:center}
   .lang-btn{min-width:30px;min-height:30px;padding:0 5px;border:none;background:none;font-family:inherit;font-size:11px;font-weight:600;color:#fff;opacity:.45;cursor:pointer}
   .lang-btn[aria-pressed="true"]{opacity:1;text-decoration:underline;text-underline-offset:3px}
   .footer-note{text-align:center;font-size:11px;color:var(--muted);margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
