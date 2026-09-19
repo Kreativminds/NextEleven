@@ -536,7 +536,7 @@ const STRINGS = {
     by_competition:'By Competition', official:'League & Cup', friendlies:'Friendlies', tournaments:'Tournaments',
     no_official:'No League or Cup games played yet.',
     season_leaders:'Season Leaders · League & Cup', top_scorer:'Top Scorer', most_assists:'Most Assists',
-    most_apps:'Most Appearances', players_tied:'{n} players tied',
+    most_apps:'Most Appearances', players_tied:'{n} players tied', most_played:'most played',
     recent_results:'Recent Results', tournament:'Tournament', matches_played:'{n} matches played',
     match_played:'1 match played',
     availability:'Player Availability', available:'Available', unavailable:'Unavailable',
@@ -569,7 +569,7 @@ const STRINGS = {
     by_competition:'Por Competição', official:'Campeonato e Taça', friendlies:'Particulares', tournaments:'Torneios',
     no_official:'Ainda sem jogos de Campeonato ou Taça.',
     season_leaders:'Destaques da Época · Campeonato e Taça', top_scorer:'Melhor Marcador', most_assists:'Mais Assistências',
-    most_apps:'Mais Jogos', players_tied:'{n} jogadores empatados',
+    most_apps:'Mais Jogos', players_tied:'{n} jogadores empatados', most_played:'mais jogada',
     recent_results:'Últimos Resultados', tournament:'Torneio', matches_played:'{n} jogos realizados',
     match_played:'1 jogo realizado',
     availability:'Disponibilidade', available:'Disponíveis', unavailable:'Indisponíveis',
@@ -614,6 +614,58 @@ const MONTHS_BY_LANG = {
   en: ['January','February','March','April','May','June','July','August','September','October','November','December'],
   pt: ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'],
 };
+// Positions are stored in English. Rather than a fixed list of ten, this
+// translates by structure: the last word is the role, the words before it
+// describe it. A position added to the app later — "Attacking Winger",
+// "Deep Midfielder" — therefore translates on its own, with no change
+// needed here. Known phrases that don't follow the pattern are listed
+// first; anything still unrecognised is shown exactly as stored.
+const POSITION_PHRASES_PT = {
+  'goalkeeper':'Guarda-redes',
+  'centre back':'Defesa central',
+  'center back':'Defesa central',
+  'sweeper':'Líbero',
+  'striker':'Avançado',
+  'forward':'Avançado',
+};
+const POSITION_ROLES_PT = {
+  'back':'Lateral',
+  'midfielder':'Médio',
+  'winger':'Extremo',
+  'wingback':'Ala',
+  'striker':'Avançado',
+  'forward':'Avançado',
+  'goalkeeper':'Guarda-redes',
+  'keeper':'Guarda-redes',
+  'defender':'Defesa',
+};
+const POSITION_MODIFIERS_PT = {
+  'left':'esquerdo',
+  'right':'direito',
+  'centre':'central',
+  'center':'central',
+  'central':'centro',
+  'defensive':'defensivo',
+  'attacking':'ofensivo',
+  'deep':'recuado',
+  'wide':'aberto',
+  'false':'falso',
+  'second':'segundo',
+  'inverted':'invertido',
+};
+function posName(v) {
+  if (!v) return '';
+  if (getLang() !== 'pt') return v;
+  const key = String(v).trim().toLowerCase();
+  if (POSITION_PHRASES_PT[key]) return POSITION_PHRASES_PT[key];
+  const words = key.split(/\s+/);
+  const role = POSITION_ROLES_PT[words[words.length - 1]];
+  if (!role) return v; // unknown role — show it as stored rather than guess
+  const mods = words.slice(0, -1).map(w => POSITION_MODIFIERS_PT[w]).filter(Boolean);
+  if (mods.length !== words.length - 1) return v; // a word we don't know
+  return [role, ...mods].join(' ');
+}
+
 function monthName(n) { return (MONTHS_BY_LANG[getLang()] || MONTHS_BY_LANG.en)[n]; }
 function fmtBirthday(b) {
   if (!b.birthdayMonth || !b.birthdayDay) return '';
@@ -1121,7 +1173,7 @@ function render(el, data) {
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         ${unavailableList.map(p => `<div class="row">
           <span class="squad-num">${p.shirtNumber||'—'}</span>
-          <span class="row-name">${esc(shortName(p.fullName))}${p.primaryPosition?' · '+esc(p.primaryPosition):''}</span>
+          <span class="row-name">${esc(shortName(p.fullName))}${p.primaryPosition?' · '+esc(posName(p.primaryPosition)):''}</span>
           <span class="row-meta" style="color:var(--red)">${tr('unavailable')}</span>
         </div>`).join('')}
       </div>` : ''}
@@ -1137,7 +1189,7 @@ function render(el, data) {
         return `<div class="row">
           <span class="squad-num">${p.shirtNumber||'—'}</span>
           <span class="row-name">${esc(p.fullName)}</span>
-          <span class="row-meta">${p.primaryPosition?esc(p.primaryPosition):''}${(mostPlayed && mostPlayed !== p.primaryPosition) ? ' · ' + esc(mostPlayed) + ' (most played)' : ''}</span>
+          <span class="row-meta">${p.primaryPosition?esc(posName(p.primaryPosition)):''}${(mostPlayed && mostPlayed !== p.primaryPosition) ? ' · ' + esc(posName(mostPlayed)) + ' (' + tr('most_played') + ')' : ''}</span>
         </div>`;
       }).join('')}
     </div>` : ''}
