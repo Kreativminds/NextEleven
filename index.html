@@ -20561,17 +20561,29 @@ const Sync = (() => {
               // leaving this record permanently stuck retrying an INSERT
               // that can never succeed.
               if (insertErr.message && insertErr.message.includes('23505')) {
-                log('INSERT hit duplicate key (likely orphaned cloudId) — looking up existing row to re-link | store:' + store);
-                const existing = await supabaseRequest('GET', storeToTable(store), null, {
+                log('INSERT hit duplicate key — looking up existing row to re-link | store:' + store);
+                let existing = await supabaseRequest('GET', storeToTable(store), null, {
                   user_id: 'eq.' + Auth.getUserId(),
                   device_id: 'eq.' + _cfg.deviceId,
                   local_id: 'eq.' + localId,
                 });
+                // Not this device's own row: the conflict is with a row for
+                // the same real record written by another device, or by an
+                // import. Find it by natural key and adopt it, rather than
+                // leaving this record stuck retrying an impossible insert —
+                // adopting is what stops a second copy being created.
+                if (!(existing && existing[0] && existing[0].id)) {
+                  existing = await findCloudRowByNaturalKey(store, record);
+                }
                 if (existing && existing[0] && existing[0].id) {
-                  result = existing;
-                  log('Re-linked to existing cloud row | store:' + store + ' | cloudId:' + existing[0].id);
+                  // PATCH it so this device's version wins, then link to it.
+                  const adoptedId = existing[0].id;
+                  delete cloudRow.id;
+                  const patched = await supabaseRequest('PATCH', storeToTable(store), cloudRow, { id: 'eq.' + adoptedId });
+                  result = (patched && patched.length) ? patched : existing;
+                  log('Adopted existing cloud row | store:' + store + ' | cloudId:' + adoptedId);
                 } else {
-                  throw insertErr; // couldn't find the row to re-link to — surface the original error
+                  throw insertErr; // nothing to adopt — surface the original error
                 }
               } else {
                 throw insertErr;
@@ -20612,6 +20624,11 @@ const Sync = (() => {
   function naturalKeyFields(store) {
     const keys = {
       games: ['seasonId','date','opponent','competitionType','homeAway'],
+      // A player is called up to a game at most once, so game + player is
+      // the real identity. Without this, call-ups could only ever be
+      // matched by cloudId, and any row written outside this app became a
+      // permanent duplicate.
+      gamePlayers: ['gameId','playerId'],
       players: ['careerPlayerId'], // fallback to fullName+dateOfBirth handled separately
       opponents: ['opponentName'],
       clubTeams: ['name'],
@@ -20621,6 +20638,26 @@ const Sync = (() => {
       externalResources: ['seasonId','title','url'],
     };
     return keys[store] || null;
+  }
+
+  // Cloud counterpart of findByNaturalKey: asks Supabase for the row that
+  // represents this same real record, whoever wrote it. Used when an insert
+  // is rejected by a uniqueness constraint.
+  async function findCloudRowByNaturalKey(store, record) {
+    const fields = naturalKeyFields(store);
+    if (!fields) return null;
+    const params = { user_id: 'eq.' + Auth.getUserId() };
+    for (const f of fields) {
+      const v = record[f];
+      if (v === undefined || v === null || v === '') return null; // incomplete key — don't guess
+      params['payload->>' + f] = 'eq.' + v;
+    }
+    try {
+      return await supabaseRequest('GET', storeToTable(store), null, params);
+    } catch (e) {
+      log('Natural-key lookup failed | store:' + store + ' | ' + e.message);
+      return null;
+    }
   }
 
   function findByNaturalKey(store, allLocal, payload) {
