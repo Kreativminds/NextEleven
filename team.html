@@ -81,6 +81,12 @@
   .sticky-header .name{font-weight:800;font-size:14px}
   .sticky-header .season{font-size:11px;color:var(--muted)}
   @media (prefers-reduced-motion: reduce){.sticky-header{transition:none}}
+  .live-bar{position:sticky;top:0;z-index:1200;background:var(--black);color:#fff;display:flex;align-items:center;justify-content:center;gap:10px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;border:none;width:100%;font-family:inherit;text-align:center}
+  .live-bar .dot{width:8px;height:8px;background:#fff;border-radius:50%;animation:live-pulse 1.5s ease-in-out infinite;flex-shrink:0}
+  .live-bar .bar-label{letter-spacing:1px;font-size:12px}
+  .live-bar .bar-score{font-size:16px;font-weight:800;flex-shrink:0}
+  body.live-on .sticky-header{top:39px}
+  @media (prefers-reduced-motion: reduce){.live-bar .dot{animation:none}}
   .live-banner{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--black);color:#fff;padding:10px 20px;border-radius:24px;font-size:12px;font-weight:700;font-family:inherit;border:none;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:100;display:flex;align-items:center;gap:8px;cursor:pointer}
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
   .skip-link{position:absolute;top:-40px;left:8px;background:var(--dark);color:#fff;padding:8px 14px;border-radius:4px;z-index:1000;text-decoration:none;font-size:13px;font-weight:700}
@@ -99,6 +105,7 @@
 </head>
 <body>
 <a href="#content" class="skip-link">Skip to main content</a>
+<button type="button" id="liveBar" class="live-bar" hidden aria-live="polite"></button>
 <div id="stickyHeader" class="sticky-header" aria-hidden="true">
   <span class="name" id="stickyName"></span>
   <span class="season" id="stickySeason"></span>
@@ -246,6 +253,12 @@ let _lastGoodData = null;
 let _refreshInFlight = false;
 let _pollTimer = null;
 let _lastSuccessfulRefresh = null;
+// While a game is being played the page refreshes every 15s instead of
+// every 60s, so parents watching the live card see goals within seconds of
+// them being recorded. render() sets this each time it runs.
+let _liveGameOnPage = false;
+const POLL_LIVE_MS = 15000;
+const POLL_IDLE_MS = 60000;
 
 async function loadTeamPage() {
   const contentEl = document.getElementById('content');
@@ -316,17 +329,23 @@ async function refreshTeamData(isInitialLoad) {
   }
 }
 
+// Self-rescheduling rather than a fixed interval, so the gap can change
+// between passes when a game kicks off or ends.
 function startPolling() {
   if (_pollTimer) return; // never start twice
-  _pollTimer = setInterval(() => {
+  const tick = async () => {
     if (document.visibilityState === 'visible' && navigator.onLine) {
-      refreshTeamData(false);
+      await refreshTeamData(false);
     }
-  }, 60000); // 60 seconds, per the approved spec — not 2 minutes
+    if (_pollTimer !== null) {
+      _pollTimer = setTimeout(tick, _liveGameOnPage ? POLL_LIVE_MS : POLL_IDLE_MS);
+    }
+  };
+  _pollTimer = setTimeout(tick, _liveGameOnPage ? POLL_LIVE_MS : POLL_IDLE_MS);
 }
 
 function stopPolling() {
-  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+  if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; }
 }
 
 function bindVisibilityAndReconnectRefresh() {
@@ -454,6 +473,7 @@ function renderRecap(el, data) {
   const players = dedupePlayers(data.players || []);
   const tournaments = data.tournaments || [];
   const season = data.season || {};
+  _liveGameOnPage = false; // the recap view has no live card
   const finishedGames = games.filter(g => isGameFinished(g, season));
   const split = splitGames(finishedGames);
 
@@ -578,6 +598,7 @@ function render(el, data) {
   // result. "Next Match" still moves on only once the game has finished.
   const finishedGames = games.filter(g => isGameFinished(g, season));
   const liveGames = games.filter(g => isGameLive(g, season)).sort((a,b) => gameSortKey(a) - gameSortKey(b));
+  _liveGameOnPage = liveGames.length > 0;
   const upcomingGames = games.filter(g => g.date && !finishedGames.includes(g) && !liveGames.includes(g))
     .sort((a,b) => gameSortKey(a) - gameSortKey(b));
   const split = splitGames(finishedGames);
@@ -596,10 +617,7 @@ function render(el, data) {
   // simple date check (today's date matches a scheduled game), not a
   // precise live-clock/in-progress detector, since the app has no
   // concept of "match currently in progress" beyond the scheduled date.
-  const todayStr = now.toISOString().slice(0,10);
-  // Banner while the game is actually being played, otherwise on match day
-  // before kick-off.
-  const liveMatchToday = liveGames[0] || games.find(g => g.date === todayStr);
+  const liveMatchToday = liveGames[0] || null;
 
   const html = `
     <div class="team-header">
@@ -656,7 +674,7 @@ function render(el, data) {
         ${scorers.map(x => `<div><span aria-hidden="true">⚽</span> <span class="who">${esc(x.name)}</span>${x.goals > 1 ? ` ×${x.goals}` : ''}</div>`).join('')}
         ${ownGoals ? `<div><span aria-hidden="true">⚽</span> <span class="who">Own goal</span>${ownGoals > 1 ? ` ×${ownGoals}` : ''}</div>` : ''}
       </div>` : ''}
-      <div class="live-note">Updates as the game is recorded. Counted in the season record once the game ends.</div>
+      <div class="live-note">Updating every 15 seconds while the game is on. Counted in the season record once the game ends.</div>
     </div>`;
     }).join('')}
 
@@ -827,22 +845,29 @@ function render(el, data) {
 
   el.innerHTML = html;
 
-  // Live Match floating banner — a separate fixed element, only ever
-  // added to the page when a game is genuinely scheduled today. Removed
-  // and re-added fresh each render rather than toggled, since it's
-  // simplest to keep in sync with liveMatchToday's actual current value.
-  const existingBanner = document.getElementById('liveBanner');
-  if (existingBanner) existingBanner.remove();
-  if (liveMatchToday) {
-    const banner = document.createElement('button');
-    banner.id = 'liveBanner';
-    banner.type = 'button';
-    banner.className = 'live-banner';
-    banner.setAttribute('role', 'status');
-    banner.setAttribute('aria-live', 'polite');
-    banner.innerHTML = `<span class="dot" aria-hidden="true"></span> LIVE MATCH · vs ${esc(liveMatchToday.opponent)}`;
-    banner.onclick = () => document.querySelector('.card')?.scrollIntoView({behavior:'smooth'});
-    document.body.appendChild(banner);
+  // Live score bar, pinned to the top of the page while a game is on —
+  // both teams and the running score, tap to jump to the live card. It
+  // scrolls with the page rather than floating over the content, which is
+  // what the old bottom pill did.
+  const liveBar = document.getElementById('liveBar');
+  if (liveBar) {
+    if (liveMatchToday) {
+      const gps = gamePlayers.filter(r => r.gameId === liveMatchToday.gameId);
+      const our = teamGoals(gps, liveMatchToday);
+      const their = parseInt(liveMatchToday.opponentScore)||0;
+      const sc = homeAwayScore(liveMatchToday.homeAway, our, their, liveMatchToday.neutralSide);
+      // Score only — the card below names the teams.
+      liveBar.innerHTML = `<span class="dot" aria-hidden="true"></span>`
+        + `<span class="bar-label">LIVE</span>`
+        + `<span class="bar-score">${sc.home} - ${sc.away}</span>`;
+      liveBar.onclick = () => document.querySelector('.live-card')?.scrollIntoView({behavior:'smooth', block:'center'});
+      liveBar.hidden = false;
+      document.body.classList.add('live-on');
+    } else {
+      liveBar.hidden = true;
+      liveBar.innerHTML = '';
+      document.body.classList.remove('live-on');
+    }
   }
 
   // Sticky compact header — populated here, shown/hidden via scroll
