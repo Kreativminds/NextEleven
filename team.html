@@ -81,6 +81,20 @@
   .sticky-header .name{font-weight:800;font-size:14px}
   .sticky-header .season{font-size:11px;color:var(--muted)}
   @media (prefers-reduced-motion: reduce){.sticky-header{transition:none}}
+  .tabs{display:flex;gap:4px;position:sticky;top:0;z-index:900;background:var(--bg,#f2f4f7);padding:8px 0 10px;margin-bottom:4px}
+  body.live-bar-on .tabs{top:39px}
+  body.sticky-on .tabs{top:44px}
+  body.sticky-on.live-bar-on .tabs{top:83px}
+  .tab-btn{flex:1;min-width:0;padding:9px 4px;border:1px solid var(--border);background:var(--surface);border-radius:6px;font-family:inherit;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
+  .tab-btn[aria-selected="true"]{background:var(--black);border-color:var(--black);color:#fff}
+  .pane[hidden]{display:none}
+  .comp-table{width:100%;border-collapse:collapse;font-size:12px}
+  .comp-table th{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;text-align:right;padding:3px 0}
+  .comp-table th:first-child,.comp-table .comp-name{text-align:left}
+  .comp-table td{padding:5px 0;text-align:right;border-top:1px solid var(--border)}
+  .comp-table .comp-name{font-weight:700}
+  .pane[data-tab="history"] .card{padding:12px 14px}
+  .pane[data-tab="history"] .row{padding:6px 0;font-size:12px}
   .live-bar{position:fixed;top:0;left:0;right:0;transform:translateY(-100%);transition:transform .2s ease;z-index:1200;background:var(--black);color:#fff;display:flex;align-items:center;justify-content:center;gap:10px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;border:none;width:100%;font-family:inherit;text-align:center}
   .live-bar .dot{width:8px;height:8px;background:#fff;border-radius:50%;animation:live-pulse 1.5s ease-in-out infinite;flex-shrink:0}
   .live-bar .bar-label{letter-spacing:1px;font-size:12px}
@@ -231,6 +245,36 @@ function leaderNames(names) {
   return names.length > 3 ? `${names.length} players tied` : names.join(', ');
 }
 
+// Compact breakdown by competition, shown inside Season Summary so
+// friendlies and tournaments no longer need cards of their own. A row
+// appears only for a competition that has actually been played.
+function renderCompetitionBreakdown(split, gamePlayers) {
+  const rows = [
+    ['League & Cup', split.official],
+    ['Friendlies', split.friendly],
+    ['Tournaments', split.tournament],
+  ].filter(([, list]) => list.length);
+  if (!rows.length) return '';
+  return `
+  <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+    <div class="stat-label" style="margin-bottom:6px">By Competition</div>
+    <table class="comp-table">
+      <thead><tr><th>&nbsp;</th><th>P</th><th>W-D-L</th><th>GF-GA</th></tr></thead>
+      <tbody>
+        ${rows.map(([label, list]) => {
+          const t = teamSeasonStats(list, gamePlayers);
+          return `<tr>
+            <td class="comp-name">${label}</td>
+            <td>${t.played}</td>
+            <td>${t.wins}-${t.draws}-${t.losses}</td>
+            <td>${t.goalsFor}-${t.goalsAgainst}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
 // Record card for Friendlies / Tournaments; nothing if none played.
 function renderRecordCard(title, list, gamePlayers) {
   if (!list.length) return '';
@@ -313,7 +357,12 @@ async function refreshTeamData(isInitialLoad) {
 
     _lastGoodData = data;
     _lastSuccessfulRefresh = new Date();
+    // A background refresh rebuilds the page, which would otherwise throw
+    // the reader back to the top mid-scroll — especially noticeable at the
+    // 15-second live cadence. Put them back where they were.
+    const keepScroll = isInitialLoad ? null : window.scrollY;
     render(contentEl, data);
+    if (keepScroll != null) window.scrollTo(0, keepScroll);
     updateFooterRefreshStatus(null);
   } catch (err) {
     if (isInitialLoad && !_lastGoodData) {
@@ -422,12 +471,13 @@ function fmtBirthday(b) {
   return b.birthdayDay + ' ' + MONTH_NAMES[b.birthdayMonth - 1];
 }
 
+// Pinned above the tabs: only a birthday today (prominent) or one within
+// the week (compact). Anything further out lives in the Squad tab.
 function renderBirthdaySection(birthdays) {
   if (!birthdays.length) return '';
 
   const todayBirthdays = birthdays.filter(b => b.isToday);
-  const thisWeekBirthdays = birthdays.filter(b => b.isThisWeek);
-  const upcoming = birthdays.slice(0, 3);
+  const thisWeekBirthdays = birthdays.filter(b => b.isThisWeek && !b.isToday);
 
   // Today takes priority — a genuine, prominent celebration card, one
   // per player if multiple share a birthday (rare, but handled).
@@ -457,8 +507,13 @@ function renderBirthdaySection(birthdays) {
     </div>`;
   }
 
-  // Otherwise — a compact, low-key "next 3 upcoming" list, so the
-  // section is genuinely useful even when nothing is imminent.
+  return '';
+}
+
+// Squad tab: the next few birthdays that aren't already pinned above.
+function renderUpcomingBirthdays(birthdays) {
+  const upcoming = (birthdays || []).filter(b => !b.isToday && !b.isThisWeek).slice(0, 3);
+  if (!upcoming.length) return '';
   return `
   <div class="card">
     <h2 class="card-title" style="margin-top:0;font-size:11px">Upcoming Birthdays</h2>
@@ -575,6 +630,50 @@ function applyTeamPageBranding(appBranding) {
   }
 }
 
+const TABS = [
+  { id: 'matches', label: 'Matches' },
+  { id: 'team',    label: 'Team' },
+  { id: 'squad',   label: 'Squad' },
+  { id: 'history', label: 'History' },
+];
+
+// Which tab is open survives the 15-second refresh and a reload, because
+// it lives in the address bar rather than in a variable that render()
+// rebuilds. A tab with nothing in it is dropped from the menu.
+function currentTabId() {
+  const fromHash = (location.hash || '').replace(/^#/, '');
+  return TABS.some(t => t.id === fromHash) ? fromHash : 'matches';
+}
+
+function applyTabs(el) {
+  const panes = [...el.querySelectorAll('.pane')];
+  if (!panes.length) return;
+  const hasContent = id => panes.filter(p => p.dataset.tab === id)
+    .some(p => p.querySelector('.card'));
+  const available = TABS.filter(t => hasContent(t.id)).map(t => t.id);
+  let active = currentTabId();
+  if (!available.includes(active)) active = available[0] || 'matches';
+
+  panes.forEach(p => { p.hidden = p.dataset.tab !== active; });
+  el.querySelectorAll('[data-tabbtn]').forEach(btn => {
+    const id = btn.dataset.tabbtn;
+    btn.hidden = !available.includes(id);
+    btn.setAttribute('aria-selected', id === active ? 'true' : 'false');
+    btn.onclick = () => {
+      // replaceState rather than assigning location.hash: no history entry
+      // per tap, and no browser jump-to-anchor.
+      history.replaceState(null, '', '#' + id);
+      applyTabs(el);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+  });
+}
+
+window.addEventListener('hashchange', () => {
+  const el = document.getElementById('content');
+  if (el) applyTabs(el);
+});
+
 // The bar only earns its place once the live card is off screen — above
 // that, the card itself already shows the score.
 function updateLiveBarVisibility() {
@@ -631,6 +730,25 @@ function render(el, data) {
   // precise live-clock/in-progress detector, since the app has no
   // concept of "match currently in progress" beyond the scheduled date.
   const liveMatchToday = liveGames[0] || null;
+
+  // Next Match and the birthday card sit above the menu when no game is
+  // being played; while one is live the live card takes that spot and
+  // these move into their tabs.
+  const nextMatchHtml = next ? `
+    <div class="card">
+      <h2 class="card-title" style="margin-top:0;font-size:11px">Next Match</h2>
+      <div style="font-weight:700;font-size:15px">${esc(next.opponent)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:3px">${fmtDate(next.date)}${next.gameTime ? ' · ' + next.gameTime : ''}${next.competitionName ? ' · ' + esc(next.competitionName) : ''}</div>
+      ${(() => {
+        const kickoff = new Date(`${next.date}T${next.gameTime || '00:00'}`);
+        const daysLeft = Math.round((kickoff - new Date()) / (1000*60*60*24));
+        if (isNaN(kickoff) || daysLeft < 0) return '';
+        if (daysLeft === 0) return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">Today</div>`;
+        if (daysLeft === 1) return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">Tomorrow</div>`;
+        return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">${daysLeft} days remaining</div>`;
+      })()}
+    </div>` : '';
+  const birthdayHtml = renderBirthdaySection(data.birthdays || []);
 
   const html = `
     <div class="team-header">
@@ -691,23 +809,14 @@ function render(el, data) {
     </div>`;
     }).join('')}
 
-    ${next ? `
-    <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Next Match</h2>
-      <div style="font-weight:700;font-size:15px">${esc(next.opponent)}</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:3px">${fmtDate(next.date)}${next.gameTime ? ' · ' + next.gameTime : ''}${next.competitionName ? ' · ' + esc(next.competitionName) : ''}</div>
-      ${(() => {
-        const kickoff = new Date(`${next.date}T${next.gameTime || '00:00'}`);
-        const daysLeft = Math.round((kickoff - new Date()) / (1000*60*60*24));
-        if (isNaN(kickoff) || daysLeft < 0) return '';
-        if (daysLeft === 0) return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">Today</div>`;
-        if (daysLeft === 1) return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">Tomorrow</div>`;
-        return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">${daysLeft} days remaining</div>`;
-      })()}
-    </div>` : ''}
 
-    ${renderBirthdaySection(data.birthdays || [])}
+    ${liveGames.length ? '' : nextMatchHtml + birthdayHtml}
 
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      ${TABS.map(t => `<button type="button" class="tab-btn" role="tab" data-tabbtn="${t.id}" aria-selected="false">${t.label}</button>`).join('')}
+    </nav>
+
+    <div class="pane" data-tab="team">
     <div class="card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">Season Summary · League &amp; Cup</h2>
       ${officialGames.length ? '' : '<p class="split-note">No League or Cup games played yet.</p>'}
@@ -730,13 +839,14 @@ function render(el, data) {
           }).join('')}
         </div>
       </div>` : ''}
+      ${renderCompetitionBreakdown(split, gamePlayers)}
     </div>
 
-    ${renderRecordCard('Friendlies', split.friendly, gamePlayers)}
-    ${renderRecordCard('Tournament Games', split.tournament, gamePlayers)}
-
     ${renderSeasonLeaders(players, officialGames, gamePlayers)}
+    </div>
 
+    <div class="pane" data-tab="matches">
+    ${liveGames.length ? nextMatchHtml : ''}
     ${recent.length ? `
     <div class="card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">Recent Results</h2>
@@ -769,7 +879,11 @@ function render(el, data) {
       </div>`;
     }).join('')}
     ` : ''}
+    </div>
 
+    <div class="pane" data-tab="squad">
+    ${liveGames.length ? birthdayHtml : ''}
+    ${renderUpcomingBirthdays(data.birthdays || [])}
     ${(data.availability && (data.availability.available + data.availability.unavailable) > 0) ? `
     <div class="card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">Player Availability</h2>
@@ -822,6 +936,9 @@ function render(el, data) {
       }).join('')}
     </div>` : ''}
 
+    </div>
+
+    <div class="pane" data-tab="team">
     ${(data.seasonHighlights && data.seasonHighlights.length) ? `
     <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
       <h2 class="card-title" style="margin-top:0;font-size:11px">Season Highlights</h2>
@@ -831,6 +948,9 @@ function render(el, data) {
       </div>`).join('')}
     </div>` : ''}
 
+    </div>
+
+    <div class="pane" data-tab="history">
     ${(data.previousAchievements && data.previousAchievements.length) ? `
     <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
       <h2 class="card-title" style="margin-top:0;font-size:11px">Previous Achievements</h2>
@@ -848,6 +968,7 @@ function render(el, data) {
         <span class="row-meta">${esc(s.clubName||'')} ›</span>
       </a>`).join('')}
     </div>` : ''}
+    </div>
 
     <div class="footer-note">
       Shared read-only via NextEleven · Live team data<br>
@@ -857,6 +978,7 @@ function render(el, data) {
   `;
 
   el.innerHTML = html;
+  applyTabs(el);
 
   // Live score bar, pinned to the top of the page while a game is on —
   // both teams and the running score, tap to jump to the live card. It
@@ -898,7 +1020,9 @@ function render(el, data) {
       const stickyEl = document.getElementById('stickyHeader');
       const heroEl = document.querySelector('.team-header');
       if (stickyEl && heroEl) {
-        stickyEl.classList.toggle('visible', heroEl.getBoundingClientRect().bottom < 0);
+        const show = heroEl.getBoundingClientRect().bottom < 0;
+        stickyEl.classList.toggle('visible', show);
+        document.body.classList.toggle('sticky-on', show);
       }
       updateLiveBarVisibility();
     }, { passive: true });
