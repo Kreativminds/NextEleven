@@ -1162,7 +1162,8 @@ const CONFIG = {
 function resolvePlayerName(gp, players, tempPlayers) {
   if (gp.playerId) {
     const p = (players||[]).find(x => x.playerId === gp.playerId);
-    return p ? p.fullName : '—';
+    // Registration names are stored in full; screens show first + last.
+    return p ? shortName(p.fullName) : '—';
   }
   if (gp.tempPlayerId) {
     const tp = (tempPlayers||[]).find(x => x.tempPlayerId === gp.tempPlayerId);
@@ -17433,7 +17434,7 @@ const Render = (() => {
         <div class="card" style="cursor:pointer" onclick="Nav.go('tracked-${tp.playerId}')">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
             <div>
-              <div style="font-weight:700;font-size:14px">${esc(tp.fullName)}${tp.isActive?'':` <span class="badge-nc badge" style="font-size:9px">${I18n.t('squad_archived_badge')}</span>`}</div>
+              <div style="font-weight:700;font-size:14px" title="${esc(tp.fullName)}">${esc(shortName(tp.fullName))}${tp.isActive?'':` <span class="badge-nc badge" style="font-size:9px">${I18n.t('squad_archived_badge')}</span>`}</div>
               <div style="font-size:11px;color:var(--muted)">${tp.primaryPosition||''}</div>
             </div>
             <span style="font-size:11px;color:var(--muted)">${I18n.t('dash_tap_arrow')}</span>
