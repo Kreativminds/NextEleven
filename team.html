@@ -51,6 +51,10 @@
   .leader-row .row-name{flex:0 0 auto;white-space:normal}
   .leader-row .row-meta{flex:1;min-width:0;text-align:right;white-space:normal;overflow-wrap:anywhere}
   .comp-tag{font-size:10px;color:var(--muted);font-weight:600;flex-shrink:0}
+  .live-card{border-color:var(--black);border-width:2px}
+  .live-flag{display:inline-flex;align-items:center;gap:6px;color:var(--black);font-weight:800;font-size:11px;letter-spacing:.5px}
+  .live-flag .dot{width:8px;height:8px;background:var(--black);border-radius:50%;animation:live-pulse 1.5s ease-in-out infinite}
+  .live-score{font-size:30px;font-weight:800;margin-top:6px}
   .split-note{font-size:12px;color:var(--muted);margin:0 0 8px}
   .split-line{font-size:11px;color:var(--muted);padding:0 0 9px;margin-top:-4px}
   .outcome-banner{text-align:center;padding:18px 16px}
@@ -159,6 +163,13 @@ function isGameFinished(g, season) {
   if (isNaN(kickoff)) return false;
   const mins = (parseInt(g.matchDurationMins) || parseInt(season && season.defaultMatchDurationMins) || 90) + 15;
   return now >= new Date(kickoff.getTime() + mins * 60000);
+}
+// Kicked off but not finished yet — shown live, never counted in any record.
+function isGameLive(g, season) {
+  if (!g || !g.date || !g.gameTime) return false;
+  const kickoff = new Date(`${g.date}T${g.gameTime}`);
+  if (isNaN(kickoff)) return false;
+  return new Date() >= kickoff && !isGameFinished(g, season);
 }
 // Competition split: official = League/Cup (and untyped), friendly =
 // Friendly/Trial, tournament = linked to a tournament or typed Tournament.
@@ -547,7 +558,8 @@ function render(el, data) {
   // rule counted a game as finished at kick-off, so a live 0-0 showed as a
   // result. "Next Match" still moves on only once the game has finished.
   const finishedGames = games.filter(g => isGameFinished(g, season));
-  const upcomingGames = games.filter(g => g.date && !finishedGames.includes(g))
+  const liveGames = games.filter(g => isGameLive(g, season)).sort((a,b) => gameSortKey(a) - gameSortKey(b));
+  const upcomingGames = games.filter(g => g.date && !finishedGames.includes(g) && !liveGames.includes(g))
     .sort((a,b) => gameSortKey(a) - gameSortKey(b));
   const split = splitGames(finishedGames);
   const officialGames = split.official;
@@ -566,7 +578,9 @@ function render(el, data) {
   // precise live-clock/in-progress detector, since the app has no
   // concept of "match currently in progress" beyond the scheduled date.
   const todayStr = now.toISOString().slice(0,10);
-  const liveMatchToday = games.find(g => g.date === todayStr);
+  // Banner while the game is actually being played, otherwise on match day
+  // before kick-off.
+  const liveMatchToday = liveGames[0] || games.find(g => g.date === todayStr);
 
   const html = `
     <div class="team-header">
@@ -585,6 +599,21 @@ function render(el, data) {
       </div>
       <div style="margin-top:10px;font-size:12px;font-weight:700;text-decoration:underline">View Recap →</div>
     </a>` : ''}
+
+    ${liveGames.map(g => {
+      const gps = gamePlayers.filter(r => r.gameId === g.gameId);
+      const our = teamGoals(gps, g);
+      const their = parseInt(g.opponentScore)||0;
+      const sc = homeAwayScore(g.homeAway, our, their, g.neutralSide);
+      return `
+    <div class="card live-card">
+      <span class="live-flag"><span class="dot" aria-hidden="true"></span>LIVE</span>
+      <div style="font-weight:700;font-size:15px;margin-top:6px">${esc(g.opponent)}</div>
+      <div class="live-score" role="status" aria-live="polite">${sc.home} - ${sc.away}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">${esc(g.homeAway === 'Home' ? 'Home' : 'Away')}${g.venue ? ' · ' + esc(g.venue) : ''} · Kick-off ${esc(g.gameTime||'')}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Updates as the game is recorded. Counted in the season record once the game ends.</div>
+    </div>`;
+    }).join('')}
 
     ${next ? `
     <div class="card">
