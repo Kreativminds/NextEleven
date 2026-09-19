@@ -70,6 +70,9 @@
   .empty{text-align:center;padding:40px 16px;color:var(--muted)}
   .empty .icon{font-size:32px;margin-bottom:10px}
   .loading{text-align:center;padding:60px 16px;color:var(--muted)}
+  .lang-switch{display:flex;justify-content:flex-end;gap:6px;margin:0 0 8px}
+  .lang-btn{min-width:44px;min-height:32px;padding:4px 12px;border:1px solid var(--border);background:var(--surface);border-radius:6px;font-family:inherit;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
+  .lang-btn[aria-pressed="true"]{background:var(--black);border-color:var(--black);color:#fff}
   .footer-note{text-align:center;font-size:11px;color:var(--muted);margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
   .skeleton{background:linear-gradient(90deg,#eee 25%,#f5f5f5 50%,#eee 75%);background-size:200% 100%;animation:skeleton-shimmer 1.4s ease-in-out infinite;border-radius:4px}
   @keyframes skeleton-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
@@ -130,7 +133,7 @@
 </style>
 </head>
 <body>
-<a href="#content" class="skip-link">Skip to main content</a>
+<a href="#content" class="skip-link" id="skipLink">Skip to main content</a>
 <button type="button" id="liveBar" class="live-bar" hidden aria-live="polite"></button>
 <div id="stickyHeader" class="sticky-header" aria-hidden="true">
   <span class="name" id="stickyName"></span>
@@ -241,6 +244,19 @@ function dedupeGames(games) {
 }
 // One row per person: the public data can carry more than one row for
 // the same player, which listed Lorenzo twice in Season Leaders.
+// Birthdays and the availability list arrive as their own arrays, so they
+// need the same de-duplication as the squad list — a duplicated player row
+// otherwise appears two or three times here.
+function dedupePlayerRows(rows) {
+  const seen = new Set();
+  return (rows || []).filter(r => {
+    const key = r.careerPlayerId || ('pid:' + r.playerId) || ('n:' + r.fullName);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function dedupePlayers(players) {
   const seen = new Set();
   return (players || []).filter(p => {
@@ -252,7 +268,7 @@ function dedupePlayers(players) {
 }
 // Leader names: list up to 3, otherwise say how many are tied.
 function leaderNames(names) {
-  return names.length > 3 ? `${names.length} players tied` : names.join(', ');
+  return names.length > 3 ? tr('players_tied', {n: names.length}) : names.join(', ');
 }
 
 // Compact breakdown by competition, shown inside Season Summary so
@@ -260,14 +276,14 @@ function leaderNames(names) {
 // appears only for a competition that has actually been played.
 function renderCompetitionBreakdown(split, gamePlayers) {
   const rows = [
-    ['League & Cup', split.official],
-    ['Friendlies', split.friendly],
-    ['Tournaments', split.tournament],
+    [tr('official'), split.official],
+    [tr('friendlies'), split.friendly],
+    [tr('tournaments'), split.tournament],
   ].filter(([, list]) => list.length);
   if (!rows.length) return '';
   return `
   <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-    <div class="stat-label" style="margin-bottom:6px">By Competition</div>
+    <div class="stat-label" style="margin-bottom:6px">${tr('by_competition')}</div>
     <table class="comp-table">
       <thead><tr><th>&nbsp;</th><th>P</th><th>W-D-L</th><th>GF-GA</th></tr></thead>
       <tbody>
@@ -293,10 +309,10 @@ function renderRecordCard(title, list, gamePlayers) {
   <div class="card">
     <h2 class="card-title" style="margin-top:0;font-size:11px">${title}</h2>
     <div class="stat-grid">
-      <div><div class="stat-label">Record</div><div class="stat-value">${t.wins}-${t.draws}-${t.losses}</div></div>
-      <div><div class="stat-label">Goal Diff</div><div class="stat-value">${t.goalDiff>0?'+':''}${t.goalDiff}</div></div>
-      <div><div class="stat-label">Goals For</div><div class="stat-value">${t.goalsFor}</div></div>
-      <div><div class="stat-label">Goals Against</div><div class="stat-value">${t.goalsAgainst}</div></div>
+      <div><div class="stat-label">${tr('record')}</div><div class="stat-value">${t.wins}-${t.draws}-${t.losses}</div></div>
+      <div><div class="stat-label">${tr('goal_diff')}</div><div class="stat-value">${t.goalDiff>0?'+':''}${t.goalDiff}</div></div>
+      <div><div class="stat-label">${tr('goals_for')}</div><div class="stat-value">${t.goalsFor}</div></div>
+      <div><div class="stat-label">${tr('goals_against')}</div><div class="stat-value">${t.goalsAgainst}</div></div>
     </div>
   </div>`;
 }
@@ -322,10 +338,13 @@ async function loadTeamPage() {
   _teamPageToken = params.get('token');
 
   if (!_teamPageToken) {
-    contentEl.innerHTML = `<div class="empty"><div class="icon">🔗</div><strong>No link provided</strong><p>This page needs a share link from a parent or guardian.</p></div>`;
+    contentEl.innerHTML = `<div class="empty"><div class="icon">🔗</div><strong>${tr('no_link')}</strong><p>${tr('no_link_body')}</p></div>`;
     return;
   }
 
+  document.documentElement.lang = getLang();
+  const skip = document.getElementById('skipLink');
+  if (skip) skip.textContent = tr('skip');
   await refreshTeamData(true); // true = this is the initial load, allowed to replace the skeleton with an error state if it fails
   startPolling();
   bindVisibilityAndReconnectRefresh();
@@ -360,7 +379,7 @@ async function refreshTeamData(isInitialLoad) {
       // state, not a transient failure, so it's correct to replace the
       // page even on a background refresh (per spec: disabled/revoked
       // tokens must show nothing).
-      contentEl.innerHTML = `<div class="empty"><div class="icon">🔒</div><strong>This link isn't available</strong><p>It may have been disabled or replaced with a new one. Ask the team parent for the current link.</p></div>`;
+      contentEl.innerHTML = `<div class="empty"><div class="icon">🔒</div><strong>${tr('unavailable_title')}</strong><p>${tr('unavailable_body_long')}</p></div>`;
       stopPolling();
       return;
     }
@@ -381,9 +400,9 @@ async function refreshTeamData(isInitialLoad) {
       // (a background poll, a flaky reconnect) keeps whatever was last
       // successfully shown, per "keep last successful data visible if
       // refresh fails."
-      contentEl.innerHTML = `<div class="empty"><div class="icon">⚠️</div><strong>Couldn't load this page</strong><p>Please check your connection and try again.</p></div>`;
+      contentEl.innerHTML = `<div class="empty"><div class="icon">⚠️</div><strong>${tr('error_title')}</strong><p>${tr('error_body')}</p></div>`;
     } else {
-      updateFooterRefreshStatus('Refresh failed — showing last update.');
+      updateFooterRefreshStatus(tr('refresh_failed'));
     }
   } finally {
     _refreshInFlight = false;
@@ -434,7 +453,7 @@ function updateFooterRefreshStatus(errorMessage) {
   if (_lastSuccessfulRefresh) {
     const hh = String(_lastSuccessfulRefresh.getHours()).padStart(2,'0');
     const mm = String(_lastSuccessfulRefresh.getMinutes()).padStart(2,'0');
-    el.textContent = `Last updated: ${hh}:${mm}`;
+    el.textContent = tr('last_updated', {time: `${hh}:${mm}`});
   }
 }
 
@@ -470,15 +489,122 @@ function renderSeasonLeaders(players, finishedGames, gamePlayers) {
 
   return `
   <div class="card">
-    <h2 class="card-title" style="margin-top:0;font-size:11px">Season Leaders · League &amp; Cup</h2>
+    <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_leaders')}</h2>
     ${rows.join('')}
   </div>`;
 }
 
-const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+// ── LANGUAGE ────────────────────────────────────────────────────────────
+// Each reader picks their own; the choice is remembered in this browser.
+// Portuguese is the default, since most parents read Portuguese.
+const LANG_KEY = 'nexteleven_team_lang';
+const LANGS = ['pt', 'en'];
+function getLang() {
+  try {
+    const saved = localStorage.getItem(LANG_KEY);
+    if (LANGS.includes(saved)) return saved;
+  } catch (e) { /* private mode — fall through to the default */ }
+  return 'pt';
+}
+function setLang(lang) {
+  if (!LANGS.includes(lang)) return;
+  try { localStorage.setItem(LANG_KEY, lang); } catch (e) { /* not fatal */ }
+  document.documentElement.lang = lang;
+  if (_lastGoodData) {
+    const el = document.getElementById('content');
+    if (el) render(el, _lastGoodData);
+  }
+}
+const STRINGS = {
+  en: {
+    live:'LIVE', home:'Home', away:'Away', kickoff:'Kick-off',
+    live_note:'Updating every 15 seconds while the game is on. Counted in the season record once the game ends.',
+    own_goal:'Own goal',
+    next_match:'Next Match', today:'Today', tomorrow:'Tomorrow', days_remaining:'{n} days remaining',
+    next_birthday:'Next Birthday', birthdays_this_week:'Birthday This Week', birthdays_this_week_pl:'Birthdays This Week',
+    happy_birthday:'Happy Birthday, {name}!', turning:'Turning {n}', turning_today:'Turning {n} today',
+    in_days:'In {n} days', in_days_low:'in {n} days', tomorrow_low:'tomorrow',
+    upcoming_birthdays:'Upcoming Birthdays',
+    season_summary:'Season Summary · League & Cup', record:'Record', goal_diff:'Goal Diff',
+    goals_for:'Goals For', goals_against:'Goals Against', current_form:'Current Form',
+    by_competition:'By Competition', official:'League & Cup', friendlies:'Friendlies', tournaments:'Tournaments',
+    no_official:'No League or Cup games played yet.',
+    season_leaders:'Season Leaders · League & Cup', top_scorer:'Top Scorer', most_assists:'Most Assists',
+    most_apps:'Most Appearances', players_tied:'{n} players tied',
+    recent_results:'Recent Results', tournament:'Tournament', matches_played:'{n} matches played',
+    match_played:'1 match played',
+    availability:'Player Availability', available:'Available', unavailable:'Unavailable',
+    squad:'Squad', player_stats:'Player Statistics · League & Cup',
+    season_highlights:'Season Highlights', prev_achievements:'Previous Achievements', prev_seasons:'Previous Seasons',
+    final_record:'Final Record · League & Cup', season_recap:'{season} Season Recap · League & Cup',
+    completed:'Completed', played:'Games', wins:'Wins', draws:'Draws', losses:'Losses',
+    tab_matches:'Matches', tab_team:'Team', tab_squad:'Squad', tab_history:'History',
+    refresh:'Refresh', footer:'Shared read-only via NextEleven · Live team data',
+    footer_recap:'Shared read-only via NextEleven · Season Recap',
+    unavailable_title:"This link isn't available", unavailable_body:'It may have been disabled or replaced.',
+    error_title:"Couldn't load this page", error_body:'Please check your connection and try again.',
+    no_link:'No link provided', no_link_body:'This page needs a share link from a parent or guardian.',
+    unavailable_body_long:'It may have been disabled or replaced with a new one. Ask the team parent for the current link.',
+    skip:'Skip to main content', loading:'Loading…',
+    last_updated:'Last updated: {time}', refresh_failed:'Refresh failed — showing last update.',
+    lang_label:'Language',
+  },
+  pt: {
+    live:'AO VIVO', home:'Casa', away:'Fora', kickoff:'Início',
+    live_note:'Atualiza a cada 15 segundos durante o jogo. Entra no registo da época quando o jogo terminar.',
+    own_goal:'Autogolo',
+    next_match:'Próximo Jogo', today:'Hoje', tomorrow:'Amanhã', days_remaining:'Faltam {n} dias',
+    next_birthday:'Próximo Aniversário', birthdays_this_week:'Aniversário Esta Semana', birthdays_this_week_pl:'Aniversários Esta Semana',
+    happy_birthday:'Parabéns, {name}!', turning:'Faz {n} anos', turning_today:'Faz {n} anos hoje',
+    in_days:'Daqui a {n} dias', in_days_low:'daqui a {n} dias', tomorrow_low:'amanhã',
+    upcoming_birthdays:'Próximos Aniversários',
+    season_summary:'Resumo da Época · Campeonato e Taça', record:'Registo', goal_diff:'Diferença de Golos',
+    goals_for:'Golos Marcados', goals_against:'Golos Sofridos', current_form:'Forma Atual',
+    by_competition:'Por Competição', official:'Campeonato e Taça', friendlies:'Particulares', tournaments:'Torneios',
+    no_official:'Ainda sem jogos de Campeonato ou Taça.',
+    season_leaders:'Destaques da Época · Campeonato e Taça', top_scorer:'Melhor Marcador', most_assists:'Mais Assistências',
+    most_apps:'Mais Jogos', players_tied:'{n} jogadores empatados',
+    recent_results:'Últimos Resultados', tournament:'Torneio', matches_played:'{n} jogos realizados',
+    match_played:'1 jogo realizado',
+    availability:'Disponibilidade', available:'Disponíveis', unavailable:'Indisponíveis',
+    squad:'Plantel', player_stats:'Estatísticas dos Jogadores · Campeonato e Taça',
+    season_highlights:'Destaques da Época', prev_achievements:'Conquistas Anteriores', prev_seasons:'Épocas Anteriores',
+    final_record:'Registo Final · Campeonato e Taça', season_recap:'Resumo da Época {season} · Campeonato e Taça',
+    completed:'Terminada', played:'Jogos', wins:'Vitórias', draws:'Empates', losses:'Derrotas',
+    tab_matches:'Jogos', tab_team:'Equipa', tab_squad:'Plantel', tab_history:'Histórico',
+    refresh:'Atualizar', footer:'Partilhado apenas para consulta via NextEleven · Dados em direto',
+    footer_recap:'Partilhado apenas para consulta via NextEleven · Resumo da Época',
+    unavailable_title:'Esta ligação não está disponível', unavailable_body:'Pode ter sido desativada ou substituída.',
+    error_title:'Não foi possível carregar esta página', error_body:'Verifique a ligação e tente novamente.',
+    no_link:'Nenhuma ligação indicada', no_link_body:'Esta página precisa de uma ligação partilhada por um encarregado de educação.',
+    unavailable_body_long:'Pode ter sido desativada ou substituída por outra. Peça a ligação atual ao responsável da equipa.',
+    skip:'Saltar para o conteúdo', loading:'A carregar…',
+    last_updated:'Última atualização: {time}', refresh_failed:'Falha ao atualizar — a mostrar os últimos dados.',
+    lang_label:'Idioma',
+  },
+};
+// Language switcher — shown on every view, in the footer.
+function langSwitcherHtml() {
+  const cur = getLang();
+  return `<div class="lang-switch" role="group" aria-label="${tr('lang_label')}">
+    ${LANGS.map(l => `<button type="button" class="lang-btn" aria-pressed="${l === cur ? 'true' : 'false'}" onclick="setLang('${l}')">${l.toUpperCase()}</button>`).join('')}
+  </div>`;
+}
+
+function tr(key, vars) {
+  const lang = getLang();
+  let out = (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
+  if (vars) Object.keys(vars).forEach(k => { out = out.split('{' + k + '}').join(vars[k]); });
+  return out;
+}
+const MONTHS_BY_LANG = {
+  en: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+  pt: ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'],
+};
+function monthName(n) { return (MONTHS_BY_LANG[getLang()] || MONTHS_BY_LANG.en)[n]; }
 function fmtBirthday(b) {
   if (!b.birthdayMonth || !b.birthdayDay) return '';
-  return b.birthdayDay + ' ' + MONTH_NAMES[b.birthdayMonth - 1];
+  return b.birthdayDay + ' ' + monthName(b.birthdayMonth - 1);
 }
 
 // Pinned above the tabs: only a birthday today (prominent) or one within
@@ -497,8 +623,8 @@ function renderBirthdaySection(birthdays) {
       ${todayBirthdays.map(b => `
         <div style="padding:6px 0">
           <div style="font-size:28px" aria-hidden="true">🎂</div>
-          <div style="font-weight:800;font-size:16px;margin-top:4px">Happy Birthday, ${esc(shortName(b.fullName))}!</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">${fmtBirthday(b)} · Turning ${b.turningAge} today${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</div>
+          <div style="font-weight:800;font-size:16px;margin-top:4px">${tr('happy_birthday', {name: esc(shortName(b.fullName))})}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${fmtBirthday(b)} · ${tr('turning_today', {n: b.turningAge})}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</div>
         </div>
       `).join('<hr style="border:none;border-top:1px solid #f0d98a;margin:10px 0">')}
     </div>`;
@@ -509,10 +635,10 @@ function renderBirthdaySection(birthdays) {
   if (thisWeekBirthdays.length) {
     return `
     <div class="card" style="background:#fef6e0;border-color:#f0d98a">
-      <h2 class="card-title" style="color:#7a5f18;margin-top:0;font-size:11px"><span aria-hidden="true">🎂</span> Birthday${thisWeekBirthdays.length>1?'s':''} This Week</h2>
+      <h2 class="card-title" style="color:#7a5f18;margin-top:0;font-size:11px"><span aria-hidden="true">🎂</span> ${thisWeekBirthdays.length>1 ? tr('birthdays_this_week_pl') : tr('birthdays_this_week')}</h2>
       ${thisWeekBirthdays.map(b => `<div class="row">
         <span class="row-name">${esc(shortName(b.fullName))}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</span>
-        <span class="row-meta">${fmtBirthday(b)} · Turning ${b.turningAge} · ${b.daysUntil === 1 ? 'tomorrow' : 'in ' + b.daysUntil + ' days'}</span>
+        <span class="row-meta">${fmtBirthday(b)} · ${tr('turning', {n: b.turningAge})} · ${b.daysUntil === 1 ? tr('tomorrow_low') : tr('in_days_low', {n: b.daysUntil})}</span>
       </div>`).join('')}
     </div>`;
   }
@@ -528,14 +654,14 @@ function renderNextBirthdayCard(birthdays) {
   if (!b) return '';
   const name = esc(shortName(b.fullName));
   const num = b.shirtNumber ? ' · #' + esc(b.shirtNumber) : '';
-  const when = b.isToday ? 'Today'
-    : b.daysUntil === 1 ? 'Tomorrow'
-    : `In ${b.daysUntil} days`;
+  const when = b.isToday ? tr('today')
+    : b.daysUntil === 1 ? tr('tomorrow')
+    : tr('in_days', {n: b.daysUntil});
   return `
   <div class="card" style="background:#fef6e0;border-color:#f0d98a">
-    <h2 class="card-title" style="color:#7a5f18;margin-top:0;font-size:11px"><span aria-hidden="true">🎂</span> Next Birthday</h2>
+    <h2 class="card-title" style="color:#7a5f18;margin-top:0;font-size:11px"><span aria-hidden="true">🎂</span> ${tr('next_birthday')}</h2>
     <div style="font-weight:700;font-size:15px">${name}${num}</div>
-    <div style="font-size:12px;color:var(--muted);margin-top:3px">${fmtBirthday(b)} · Turning ${b.turningAge}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:3px">${fmtBirthday(b)} · ${tr('turning', {n: b.turningAge})}</div>
     <div class="bday-count">${when}</div>
   </div>`;
 }
@@ -546,10 +672,10 @@ function renderUpcomingBirthdays(birthdays) {
   if (!upcoming.length) return '';
   return `
   <div class="card">
-    <h2 class="card-title" style="margin-top:0;font-size:11px">Upcoming Birthdays</h2>
+    <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('upcoming_birthdays')}</h2>
     ${upcoming.map(b => `<div class="row">
       <span class="row-name">${esc(shortName(b.fullName))}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</span>
-      <span class="row-meta">${fmtBirthday(b)} · Turning ${b.turningAge} · in ${b.daysUntil} days</span>
+      <span class="row-meta">${fmtBirthday(b)} · ${tr('turning', {n: b.turningAge})} · ${tr('in_days_low', {n: b.daysUntil})}</span>
     </div>`).join('')}
   </div>`;
 }
@@ -591,12 +717,12 @@ function renderRecap(el, data) {
     </div>` : ''}
 
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Final Record · League &amp; Cup</h2>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('final_record')}</h2>
       <div class="stat-grid">
-        <div><div class="stat-label">Record</div><div class="stat-value">${stats.wins}-${stats.draws}-${stats.losses}</div></div>
-        <div><div class="stat-label">Goal Diff</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
-        <div><div class="stat-label">Goals For</div><div class="stat-value">${stats.goalsFor}</div></div>
-        <div><div class="stat-label">Goals Against</div><div class="stat-value">${stats.goalsAgainst}</div></div>
+        <div><div class="stat-label">${tr('record')}</div><div class="stat-value">${stats.wins}-${stats.draws}-${stats.losses}</div></div>
+        <div><div class="stat-label">${tr('goal_diff')}</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
+        <div><div class="stat-label">${tr('goals_for')}</div><div class="stat-value">${stats.goalsFor}</div></div>
+        <div><div class="stat-label">${tr('goals_against')}</div><div class="stat-value">${stats.goalsAgainst}</div></div>
       </div>
     </div>
 
@@ -605,24 +731,24 @@ function renderRecap(el, data) {
 
     ${(topScorer || topAssists || mostApps) ? `
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Season Leaders · League &amp; Cup</h2>
-      ${topScorer ? `<div class="row leader-row"><span class="row-name">Top Scorer</span><span class="row-meta">${esc(leaderNames(topScorer.names))} (${topScorer.value})</span></div>` : ''}
-      ${topAssists ? `<div class="row leader-row"><span class="row-name">Most Assists</span><span class="row-meta">${esc(leaderNames(topAssists.names))} (${topAssists.value})</span></div>` : ''}
-      ${mostApps ? `<div class="row leader-row"><span class="row-name">Most Appearances</span><span class="row-meta">${esc(leaderNames(mostApps.names))} (${mostApps.value})</span></div>` : ''}
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_leaders')}</h2>
+      ${topScorer ? `<div class="row leader-row"><span class="row-name">${tr('top_scorer')}</span><span class="row-meta">${esc(leaderNames(topScorer.names))} (${topScorer.value})</span></div>` : ''}
+      ${topAssists ? `<div class="row leader-row"><span class="row-name">${tr('most_assists')}</span><span class="row-meta">${esc(leaderNames(topAssists.names))} (${topAssists.value})</span></div>` : ''}
+      ${mostApps ? `<div class="row leader-row"><span class="row-name">${tr('most_apps')}</span><span class="row-meta">${esc(leaderNames(mostApps.names))} (${mostApps.value})</span></div>` : ''}
     </div>` : ''}
 
     ${tournaments.length ? `
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Tournaments</h2>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('tournaments')}</h2>
       ${tournaments.map(t => {
-        const outcome = getTournamentOutcomePublic(t, games, gamePlayers, 'EN');
+        const outcome = getTournamentOutcomePublic(t, games, gamePlayers, getLang().toUpperCase());
         return `<div class="row"><span class="row-name">${esc(t.name)}</span><span class="row-meta">${outcome.emoji?outcome.emoji+' ':''}${esc(outcome.label)}</span></div>`;
       }).join('')}
     </div>` : ''}
 
     ${(data.seasonHighlights && data.seasonHighlights.length) ? `
     <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Season Highlights</h2>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_highlights')}</h2>
       ${data.seasonHighlights.map(a => `<div class="row"><span class="row-name"><span aria-hidden="true">🏆</span> ${esc(a.title)}</span><span class="row-meta">${a.date?fmtDate(a.date):''}</span></div>`).join('')}
     </div>` : ''}
 
@@ -630,7 +756,7 @@ function renderRecap(el, data) {
       <a href="${esc(backUrl)}" style="font-size:13px;font-weight:700;color:var(--red);text-decoration:none">← Back to Team Page</a>
     </div>
 
-    <div class="footer-note">Shared read-only via NextEleven · Season Recap</div>
+    <div class="footer-note">${langSwitcherHtml()}${tr('footer_recap')}</div>
   `;
 }
 
@@ -661,10 +787,10 @@ function applyTeamPageBranding(appBranding) {
 }
 
 const TABS = [
-  { id: 'matches', label: 'Matches' },
-  { id: 'team',    label: 'Team' },
-  { id: 'squad',   label: 'Squad' },
-  { id: 'history', label: 'History' },
+  { id: 'matches', key: 'tab_matches' },
+  { id: 'team',    key: 'tab_team' },
+  { id: 'squad',   key: 'tab_squad' },
+  { id: 'history', key: 'tab_history' },
 ];
 
 // Which tab is open survives the 15-second refresh and a reload, because
@@ -799,37 +925,38 @@ function render(el, data) {
   // these move into their tabs.
   const nextMatchHtml = next ? `
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Next Match</h2>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('next_match')}</h2>
       <div style="font-weight:700;font-size:15px">${esc(next.opponent)}</div>
       <div style="font-size:12px;color:var(--muted);margin-top:3px">${fmtDate(next.date)}${next.gameTime ? ' · ' + next.gameTime : ''}${next.competitionName ? ' · ' + esc(next.competitionName) : ''}</div>
       ${(() => {
         const kickoff = new Date(`${next.date}T${next.gameTime || '00:00'}`);
         const daysLeft = Math.round((kickoff - new Date()) / (1000*60*60*24));
         if (isNaN(kickoff) || daysLeft < 0) return '';
-        if (daysLeft === 0) return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">Today</div>`;
-        if (daysLeft === 1) return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">Tomorrow</div>`;
-        return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">${daysLeft} days remaining</div>`;
+        if (daysLeft === 0) return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">${tr('today')}</div>`;
+        if (daysLeft === 1) return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">${tr('tomorrow')}</div>`;
+        return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">${tr('days_remaining', {n: daysLeft})}</div>`;
       })()}
     </div>` : '';
-  const birthdayHtml = renderBirthdaySection(data.birthdays || []);
+  const birthdays = dedupePlayerRows(data.birthdays || []);
+  const birthdayHtml = renderBirthdaySection(birthdays);
   // Pinned carousel: next match and the next birthday, flipping between
   // them so both stay visible on the main page without more scrolling.
-  const carouselSlides = [nextMatchHtml, renderNextBirthdayCard(data.birthdays || [])].filter(Boolean);
+  const carouselSlides = [nextMatchHtml, renderNextBirthdayCard(birthdays)].filter(Boolean);
 
   const html = `
     <div class="team-header">
       <h1>${esc(season.clubName || 'Team')} ${season.ageGroup ? '· ' + esc(season.ageGroup) : ''}</h1>
-      <div class="sub">${esc(season.seasonName || '')} ${season.status === 'completed' ? '<span class="badge" style="background:#e8f0fe;color:#1a56c4;margin-left:6px">Completed</span>' : ''}</div>
+      <div class="sub">${esc(season.seasonName || '')} ${season.status === 'completed' ? '<span class="badge" style="background:#e8f0fe;color:#1a56c4;margin-left:6px">' + tr('completed') + '</span>' : ''}</div>
     </div>
 
     ${season.status === 'completed' ? `
     <a class="card" href="${esc(window.location.pathname+window.location.search+'&view=recap')}" style="background:#1a1a2e;color:#fff;text-decoration:none;display:block" aria-label="View full ${esc(season.seasonName)} Season Recap">
-      <h2 class="card-title" style="color:#aab;margin-top:0;font-size:11px">${esc(season.seasonName)} Season Recap · League &amp; Cup</h2>
+      <h2 class="card-title" style="color:#aab;margin-top:0;font-size:11px">${tr('season_recap', {season: esc(season.seasonName)})}</h2>
       <div class="stat-grid" style="margin-top:8px">
-        <div><div class="stat-value" style="color:#fff">${stats.played}</div><div class="stat-label" style="color:#889">Games</div></div>
-        <div><div class="stat-value" style="color:#fff">${stats.wins}</div><div class="stat-label" style="color:#889">Wins</div></div>
-        <div><div class="stat-value" style="color:#fff">${stats.draws}</div><div class="stat-label" style="color:#889">Draws</div></div>
-        <div><div class="stat-value" style="color:#fff">${stats.losses}</div><div class="stat-label" style="color:#889">Losses</div></div>
+        <div><div class="stat-value" style="color:#fff">${stats.played}</div><div class="stat-label" style="color:#889">${tr('played')}</div></div>
+        <div><div class="stat-value" style="color:#fff">${stats.wins}</div><div class="stat-label" style="color:#889">${tr('wins')}</div></div>
+        <div><div class="stat-value" style="color:#fff">${stats.draws}</div><div class="stat-label" style="color:#889">${tr('draws')}</div></div>
+        <div><div class="stat-value" style="color:#fff">${stats.losses}</div><div class="stat-label" style="color:#889">${tr('losses')}</div></div>
       </div>
       <div style="margin-top:10px;font-size:12px;font-weight:700;text-decoration:underline">View Recap →</div>
     </a>` : ''}
@@ -859,19 +986,19 @@ function render(el, data) {
       const awayName = usHome ? g.opponent : ourName;
       return `
     <div class="card live-card">
-      <span class="live-flag"><span class="dot" aria-hidden="true"></span>LIVE</span>
+      <span class="live-flag"><span class="dot" aria-hidden="true"></span>${tr('live')}</span>
       <div class="live-fixture">
         <div class="live-team">${esc(homeName)}</div>
         <div class="live-score" role="status" aria-live="polite">${sc.home} - ${sc.away}</div>
         <div class="live-team">${esc(awayName)}</div>
       </div>
-      <div class="live-meta">${esc(g.homeAway === 'Home' ? 'Home' : 'Away')}${g.venue ? ' · ' + esc(g.venue) : ''} · Kick-off ${esc(g.gameTime||'')}</div>
+      <div class="live-meta">${g.homeAway === 'Home' ? tr('home') : tr('away')}${g.venue ? ' · ' + esc(g.venue) : ''} · ${tr('kickoff')} ${esc(g.gameTime||'')}</div>
       ${(scorers.length || ownGoals) ? `
       <div class="live-scorers">
         ${scorers.map(x => `<div><span aria-hidden="true">⚽</span> <span class="who">${esc(x.name)}</span>${x.goals > 1 ? ` ×${x.goals}` : ''}</div>`).join('')}
-        ${ownGoals ? `<div><span aria-hidden="true">⚽</span> <span class="who">Own goal</span>${ownGoals > 1 ? ` ×${ownGoals}` : ''}</div>` : ''}
+        ${ownGoals ? `<div><span aria-hidden="true">⚽</span> <span class="who">${tr('own_goal')}</span>${ownGoals > 1 ? ` ×${ownGoals}` : ''}</div>` : ''}
       </div>` : ''}
-      <div class="live-note">Updating every 15 seconds while the game is on. Counted in the season record once the game ends.</div>
+      <div class="live-note">${tr('live_note')}</div>
     </div>`;
     }).join('')}
 
@@ -890,23 +1017,25 @@ function render(el, data) {
     </div>` : '<div style="height:14px"></div>'}
     ` : ''}
 
+    ${langSwitcherHtml()}
+
     <nav class="tabs" role="tablist" aria-label="Sections">
-      ${TABS.map(t => `<button type="button" class="tab-btn" role="tab" data-tabbtn="${t.id}" aria-selected="false">${t.label}</button>`).join('')}
+      ${TABS.map(tab => `<button type="button" class="tab-btn" role="tab" data-tabbtn="${tab.id}" aria-selected="false">${tr(tab.key)}</button>`).join('')}
     </nav>
 
     <div class="pane" data-tab="team">
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Season Summary · League &amp; Cup</h2>
-      ${officialGames.length ? '' : '<p class="split-note">No League or Cup games played yet.</p>'}
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_summary')}</h2>
+      ${officialGames.length ? '' : '<p class="split-note">' + tr('no_official') + '</p>'}
       <div class="stat-grid">
-        <div><div class="stat-label">Record</div><div class="stat-value">${stats.wins}-${stats.draws}-${stats.losses}</div></div>
-        <div><div class="stat-label">Goal Diff</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
-        <div><div class="stat-label">Goals For</div><div class="stat-value">${stats.goalsFor}</div></div>
-        <div><div class="stat-label">Goals Against</div><div class="stat-value">${stats.goalsAgainst}</div></div>
+        <div><div class="stat-label">${tr('record')}</div><div class="stat-value">${stats.wins}-${stats.draws}-${stats.losses}</div></div>
+        <div><div class="stat-label">${tr('goal_diff')}</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
+        <div><div class="stat-label">${tr('goals_for')}</div><div class="stat-value">${stats.goalsFor}</div></div>
+        <div><div class="stat-label">${tr('goals_against')}</div><div class="stat-value">${stats.goalsAgainst}</div></div>
       </div>
       ${recentOfficial.length ? `
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        <div class="stat-label" style="margin-bottom:6px">Current Form</div>
+        <div class="stat-label" style="margin-bottom:6px">${tr('current_form')}</div>
         <div style="display:flex;gap:6px">
           ${[...recentOfficial].reverse().map(g => {
             const gps = gamePlayers.filter(r => r.gameId === g.gameId);
@@ -926,7 +1055,7 @@ function render(el, data) {
     <div class="pane" data-tab="matches">
     ${recent.length ? `
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Recent Results</h2>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('recent_results')}</h2>
       ${recent.map(g => {
         const gps = gamePlayers.filter(r => r.gameId === g.gameId);
         const our = teamGoals(gps, g);
@@ -946,40 +1075,51 @@ function render(el, data) {
 
     ${tournaments.length ? `
     ${tournaments.map(t => {
-      const outcome = getTournamentOutcomePublic(t, games, gamePlayers, 'EN');
+      const outcome = getTournamentOutcomePublic(t, games, gamePlayers, getLang().toUpperCase());
       const matchesPlayed = games.filter(g => g.tournamentId === t.tournamentId).length;
       return `<div class="card">
-        <h2 class="card-title" style="margin-top:0;font-size:11px">Tournament</h2>
+        <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('tournament')}</h2>
         <div style="font-weight:700;font-size:15px">${esc(t.name)}</div>
         <div style="font-size:13px;margin-top:4px">${outcome.emoji ? outcome.emoji + ' ' : ''}${esc(outcome.label)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${matchesPlayed} match${matchesPlayed===1?'':'es'} played</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${matchesPlayed === 1 ? tr('match_played') : tr('matches_played', {n: matchesPlayed})}</div>
       </div>`;
     }).join('')}
     ` : ''}
     </div>
 
     <div class="pane" data-tab="squad">
-    ${renderUpcomingBirthdays(data.birthdays || [])}
-    ${(data.availability && (data.availability.available + data.availability.unavailable) > 0) ? `
+    ${renderUpcomingBirthdays(birthdays)}
+    ${(() => {
+      const av = data.availability;
+      if (!av || (av.available + av.unavailable) <= 0) return '';
+      const unavailableList = dedupePlayerRows(av.unavailablePlayers || []);
+      // The counts are server-side totals; if duplicate rows inflated them,
+      // fall back to the de-duplicated list rather than showing a number
+      // that contradicts the names underneath.
+      const dupes = (av.unavailablePlayers || []).length - unavailableList.length;
+      const unavailableCount = dupes > 0 ? unavailableList.length : av.unavailable;
+      const availableCount = dupes > 0 ? Math.max(0, players.length - unavailableCount) : av.available;
+      return `
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Player Availability</h2>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('availability')}</h2>
       <div class="stat-grid">
-        <div><div class="stat-label">Available</div><div class="stat-value" style="color:var(--green)">${data.availability.available}</div></div>
-        <div><div class="stat-label">Unavailable</div><div class="stat-value" style="color:var(--red)">${data.availability.unavailable}</div></div>
+        <div><div class="stat-label">${tr('available')}</div><div class="stat-value" style="color:var(--green)">${availableCount}</div></div>
+        <div><div class="stat-label">${tr('unavailable')}</div><div class="stat-value" style="color:var(--red)">${unavailableCount}</div></div>
       </div>
-      ${data.availability.unavailablePlayers && data.availability.unavailablePlayers.length ? `
+      ${unavailableList.length ? `
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        ${data.availability.unavailablePlayers.map(p => `<div class="row">
+        ${unavailableList.map(p => `<div class="row">
           <span class="squad-num">${p.shirtNumber||'—'}</span>
           <span class="row-name">${esc(shortName(p.fullName))}${p.primaryPosition?' · '+esc(p.primaryPosition):''}</span>
-          <span class="row-meta" style="color:var(--red)">Unavailable</span>
+          <span class="row-meta" style="color:var(--red)">${tr('unavailable')}</span>
         </div>`).join('')}
       </div>` : ''}
-    </div>` : ''}
+    </div>`;
+    })()}
 
     ${players.length ? `
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Squad</h2>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('squad')}</h2>
       ${players.map(p => {
         const s = playerPublicStats(p.playerId, finishedGames, gamePlayers);
         const mostPlayed = s.mostPlayedPosition || p.primaryPosition;
@@ -993,7 +1133,7 @@ function render(el, data) {
 
     ${players.length ? `
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Player Statistics · League &amp; Cup</h2>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('player_stats')}</h2>
       ${dedupePlayers(players).map(p => {
         const all = playerPublicStats(p.playerId, finishedGames, gamePlayers);
         if (all.calledUp === 0) return '';
@@ -1017,7 +1157,7 @@ function render(el, data) {
     <div class="pane" data-tab="team">
     ${(data.seasonHighlights && data.seasonHighlights.length) ? `
     <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Season Highlights</h2>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_highlights')}</h2>
       ${data.seasonHighlights.map(a => `<div class="row">
         <span class="row-name"><span aria-hidden="true">🏆</span> ${esc(a.title)}</span>
         <span class="row-meta">${a.date ? fmtDate(a.date) : ''}</span>
@@ -1029,7 +1169,7 @@ function render(el, data) {
     <div class="pane" data-tab="history">
     ${(data.previousAchievements && data.previousAchievements.length) ? `
     <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Previous Achievements</h2>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('prev_achievements')}</h2>
       ${data.previousAchievements.map(a => `<div class="row">
         <span class="row-name"><span aria-hidden="true">🏆</span> ${esc(a.title)}</span>
         <span class="row-meta">${a.date ? fmtDate(a.date) : ''}</span>
@@ -1038,7 +1178,7 @@ function render(el, data) {
 
     ${(data.previousSeasons && data.previousSeasons.length) ? `
     <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">Previous Seasons</h2>
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('prev_seasons')}</h2>
       ${data.previousSeasons.map(s => `<a class="row" href="team.html?token=${encodeURIComponent(s.shareToken)}" style="text-decoration:none;color:inherit" aria-label="View ${esc(s.seasonName)} season for ${esc(s.clubName||'')}">
         <span class="row-name">${esc(s.seasonName)}</span>
         <span class="row-meta">${esc(s.clubName||'')} ›</span>
@@ -1047,9 +1187,9 @@ function render(el, data) {
     </div>
 
     <div class="footer-note">
-      Shared read-only via NextEleven · Live team data<br>
+      ${tr('footer')}<br>
       <span id="footerRefreshStatus" role="status" aria-live="polite"></span>
-      <button type="button" style="background:none;border:none;color:var(--muted);text-decoration:underline;cursor:pointer;font-size:11px;margin-left:6px" onclick="handleManualRefresh()">Refresh</button>
+      <button type="button" style="background:none;border:none;color:var(--muted);text-decoration:underline;cursor:pointer;font-size:11px;margin-left:6px" onclick="handleManualRefresh()">${tr('refresh')}</button>
     </div>
   `;
 
@@ -1070,7 +1210,7 @@ function render(el, data) {
       const sc = homeAwayScore(liveMatchToday.homeAway, our, their, liveMatchToday.neutralSide);
       // Score only — the card below names the teams.
       liveBar.innerHTML = `<span class="dot" aria-hidden="true"></span>`
-        + `<span class="bar-label">LIVE</span>`
+        + `<span class="bar-label">${tr('live')}</span>`
         + `<span class="bar-score">${sc.home} - ${sc.away}</span>`;
       liveBar.onclick = () => document.querySelector('.live-card')?.scrollIntoView({behavior:'smooth', block:'center'});
       liveBar.hidden = false;           // present, but only slides in once
