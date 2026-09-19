@@ -88,6 +88,16 @@
   .tab-btn{flex:1;min-width:0;padding:9px 4px;border:1px solid var(--border);background:var(--surface);border-radius:6px;font-family:inherit;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
   .tab-btn[aria-selected="true"]{background:var(--black);border-color:var(--black);color:#fff}
   .pane[hidden]{display:none}
+  .carousel{position:relative;overflow:hidden}
+  .carousel-track{display:flex;transition:transform .3s ease}
+  .carousel-slide{flex:0 0 100%;min-width:100%;box-sizing:border-box}
+  .carousel-slide .card{margin-bottom:0}
+  .carousel-dots{display:flex;justify-content:center;gap:6px;margin:8px 0 14px}
+  .carousel-dot{width:22px;height:22px;padding:0;border:none;background:none;cursor:pointer;line-height:0}
+  .carousel-dot span{display:block;width:7px;height:7px;margin:0 auto;border-radius:50%;background:var(--border)}
+  .carousel-dot[aria-selected="true"] span{background:var(--black)}
+  @media (prefers-reduced-motion: reduce){.carousel-track{transition:none}}
+  .bday-count{font-size:12px;font-weight:700;color:#7a5f18;margin-top:6px}
   .comp-table{width:100%;border-collapse:collapse;font-size:12px}
   .comp-table th{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;text-align:right;padding:3px 0}
   .comp-table th:first-child,.comp-table .comp-name{text-align:left}
@@ -510,6 +520,26 @@ function renderBirthdaySection(birthdays) {
   return '';
 }
 
+// One card for the single next birthday, with a countdown. Used in the
+// pinned carousel so a birthday is always visible on the main page.
+function renderNextBirthdayCard(birthdays) {
+  const list = birthdays || [];
+  const b = list.find(x => x.isToday) || list[0];
+  if (!b) return '';
+  const name = esc(shortName(b.fullName));
+  const num = b.shirtNumber ? ' · #' + esc(b.shirtNumber) : '';
+  const when = b.isToday ? 'Today'
+    : b.daysUntil === 1 ? 'Tomorrow'
+    : `In ${b.daysUntil} days`;
+  return `
+  <div class="card" style="background:#fef6e0;border-color:#f0d98a">
+    <h2 class="card-title" style="color:#7a5f18;margin-top:0;font-size:11px"><span aria-hidden="true">🎂</span> Next Birthday</h2>
+    <div style="font-weight:700;font-size:15px">${name}${num}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:3px">${fmtBirthday(b)} · Turning ${b.turningAge}</div>
+    <div class="bday-count">${when}</div>
+  </div>`;
+}
+
 // Squad tab: the next few birthdays that aren't already pinned above.
 function renderUpcomingBirthdays(birthdays) {
   const upcoming = (birthdays || []).filter(b => !b.isToday && !b.isThisWeek).slice(0, 3);
@@ -645,6 +675,39 @@ function currentTabId() {
   return TABS.some(t => t.id === fromHash) ? fromHash : 'matches';
 }
 
+// Which slide is showing survives a refresh; auto-advance stops for good
+// once the reader picks a card themselves.
+let _slideIndex = 0;
+let _slideTimer = null;
+let _slidePaused = false;
+
+function applyCarousel(el) {
+  const box = el.querySelector('#pinnedCarousel');
+  if (_slideTimer) { clearInterval(_slideTimer); _slideTimer = null; }
+  if (!box) return;
+  const track = box.querySelector('.carousel-track');
+  const slides = [...box.querySelectorAll('.carousel-slide')];
+  const dots = [...el.querySelectorAll('.carousel-dot')];
+  if (!slides.length) return;
+
+  const show = i => {
+    _slideIndex = (i + slides.length) % slides.length;
+    track.style.transform = `translateX(-${_slideIndex * 100}%)`;
+    dots.forEach((d, n) => d.setAttribute('aria-selected', n === _slideIndex ? 'true' : 'false'));
+  };
+  show(_slideIndex);
+
+  dots.forEach(d => {
+    d.onclick = () => { _slidePaused = true; if (_slideTimer) { clearInterval(_slideTimer); _slideTimer = null; } show(parseInt(d.dataset.slide)); };
+  });
+
+  if (slides.length > 1 && !_slidePaused) {
+    _slideTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') show(_slideIndex + 1);
+    }, 6000);
+  }
+}
+
 function applyTabs(el) {
   const panes = [...el.querySelectorAll('.pane')];
   if (!panes.length) return;
@@ -749,6 +812,9 @@ function render(el, data) {
       })()}
     </div>` : '';
   const birthdayHtml = renderBirthdaySection(data.birthdays || []);
+  // Pinned carousel: next match and the next birthday, flipping between
+  // them so both stay visible on the main page without more scrolling.
+  const carouselSlides = [nextMatchHtml, renderNextBirthdayCard(data.birthdays || [])].filter(Boolean);
 
   const html = `
     <div class="team-header">
@@ -810,7 +876,19 @@ function render(el, data) {
     }).join('')}
 
 
-    ${liveGames.length ? '' : nextMatchHtml + birthdayHtml}
+    ${birthdayHtml}
+
+    ${carouselSlides.length ? `
+    <div class="carousel" id="pinnedCarousel">
+      <div class="carousel-track">
+        ${carouselSlides.map(html => `<div class="carousel-slide">${html}</div>`).join('')}
+      </div>
+    </div>
+    ${carouselSlides.length > 1 ? `
+    <div class="carousel-dots" role="tablist" aria-label="Pinned cards">
+      ${carouselSlides.map((_, i) => `<button type="button" class="carousel-dot" role="tab" data-slide="${i}" aria-selected="false" aria-label="Card ${i+1}"><span></span></button>`).join('')}
+    </div>` : '<div style="height:14px"></div>'}
+    ` : ''}
 
     <nav class="tabs" role="tablist" aria-label="Sections">
       ${TABS.map(t => `<button type="button" class="tab-btn" role="tab" data-tabbtn="${t.id}" aria-selected="false">${t.label}</button>`).join('')}
@@ -846,7 +924,6 @@ function render(el, data) {
     </div>
 
     <div class="pane" data-tab="matches">
-    ${liveGames.length ? nextMatchHtml : ''}
     ${recent.length ? `
     <div class="card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">Recent Results</h2>
@@ -882,7 +959,6 @@ function render(el, data) {
     </div>
 
     <div class="pane" data-tab="squad">
-    ${liveGames.length ? birthdayHtml : ''}
     ${renderUpcomingBirthdays(data.birthdays || [])}
     ${(data.availability && (data.availability.available + data.availability.unavailable) > 0) ? `
     <div class="card">
@@ -979,6 +1055,7 @@ function render(el, data) {
 
   el.innerHTML = html;
   applyTabs(el);
+  applyCarousel(el);
 
   // Live score bar, pinned to the top of the page while a game is on —
   // both teams and the running score, tap to jump to the live card. It
