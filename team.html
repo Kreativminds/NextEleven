@@ -193,6 +193,19 @@ function splitGames(games) {
 const CATEGORY_LABEL = { official: 'League & Cup', friendly: 'Friendlies', tournament: 'Tournaments' };
 const COMP_TYPE_TAG = { Friendly: 'Friendly', Trial: 'Trial', Tournament: 'Tournament', Cup: 'Cup', League: 'League' };
 
+// One row per game. The same game can arrive more than once (a device
+// that re-created a row instead of updating it), and the copies can hold
+// different scores, which showed the same match as two live cards. Keep
+// the most recently updated copy of each gameUuid, falling back to gameId.
+function dedupeGames(games) {
+  const best = new Map();
+  (games || []).forEach(g => {
+    const key = g.gameUuid || ('gid:' + g.gameId);
+    const prev = best.get(key);
+    if (!prev || new Date(g.updatedAt || 0) > new Date(prev.updatedAt || 0)) best.set(key, g);
+  });
+  return [...best.values()];
+}
 // One row per person: the public data can carry more than one row for
 // the same player, which listed Lorenzo twice in Season Leaders.
 function dedupePlayers(players) {
@@ -436,7 +449,7 @@ function renderBirthdaySection(birthdays) {
 }
 
 function renderRecap(el, data) {
-  const games = data.games || [];
+  const games = dedupeGames(data.games || []);
   const gamePlayers = data.gamePlayers || [];
   const players = dedupePlayers(data.players || []);
   const tournaments = data.tournaments || [];
@@ -549,7 +562,7 @@ function render(el, data) {
     return;
   }
 
-  const games = data.games || [];
+  const games = dedupeGames(data.games || []);
   const gamePlayers = data.gamePlayers || [];
   const players = dedupePlayers(data.players || []);
   const tournaments = data.tournaments || [];
