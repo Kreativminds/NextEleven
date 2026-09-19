@@ -51,10 +51,16 @@
   .leader-row .row-name{flex:0 0 auto;white-space:normal}
   .leader-row .row-meta{flex:1;min-width:0;text-align:right;white-space:normal;overflow-wrap:anywhere}
   .comp-tag{font-size:10px;color:var(--muted);font-weight:600;flex-shrink:0}
-  .live-card{border-color:var(--black);border-width:2px}
-  .live-flag{display:inline-flex;align-items:center;gap:6px;color:var(--black);font-weight:800;font-size:11px;letter-spacing:.5px}
-  .live-flag .dot{width:8px;height:8px;background:var(--black);border-radius:50%;animation:live-pulse 1.5s ease-in-out infinite}
-  .live-score{font-size:30px;font-weight:800;margin-top:6px}
+  .live-card{border-color:var(--black);border-width:2px;padding:22px 18px 20px;text-align:center;box-shadow:0 2px 10px rgba(178,51,51,.18)}
+  .live-flag{display:inline-flex;align-items:center;gap:7px;color:#fff;background:var(--black);border-radius:20px;padding:5px 14px;font-weight:800;font-size:12px;letter-spacing:1px}
+  .live-flag .dot{width:9px;height:9px;background:#fff;border-radius:50%;animation:live-pulse 1.5s ease-in-out infinite}
+  .live-fixture{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:14px}
+  .live-team{flex:1;min-width:0;font-weight:800;font-size:15px;line-height:1.25;overflow-wrap:anywhere}
+  .live-score{font-size:44px;font-weight:800;line-height:1;letter-spacing:-1px;flex-shrink:0}
+  .live-meta{font-size:12px;color:var(--muted);margin-top:6px}
+  .live-scorers{font-size:15px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);line-height:1.8;text-align:left}
+  .live-scorers .who{font-weight:700}
+  .live-note{font-size:11px;color:var(--muted);margin-top:12px}
   .split-note{font-size:12px;color:var(--muted);margin:0 0 8px}
   .split-line{font-size:11px;color:var(--muted);padding:0 0 9px;margin-top:-4px}
   .outcome-banner{text-align:center;padding:18px 16px}
@@ -605,13 +611,39 @@ function render(el, data) {
       const our = teamGoals(gps, g);
       const their = parseInt(g.opponentScore)||0;
       const sc = homeAwayScore(g.homeAway, our, their, g.neutralSide);
+      // Scorers come from each player's goal count for this game — the app
+      // records goals per player, not as timed events, so there is no minute
+      // to show. Own goals credited to us have no scorer at all.
+      const scorers = gps.filter(r => (parseInt(r.goals)||0) > 0)
+        .map(r => {
+          const pl = players.find(x => x.playerId === r.playerId);
+          const n = parseInt(r.goals)||0;
+          return { name: pl ? shortName(pl.fullName) : 'Unknown', goals: n };
+        })
+        .sort((a,b) => b.goals - a.goals || a.name.localeCompare(b.name));
+      const ownGoals = parseInt(g.ownGoalsForUs)||0;
+      // Both teams named, in home-away order. Our own club name comes from
+      // the season; homeAway (and neutralSide for a neutral venue) says
+      // which side we are on.
+      const usHome = g.homeAway === 'Home' || (g.homeAway === 'Neutral' && g.neutralSide === 'home');
+      const ourName = season.clubName || 'Us';
+      const homeName = usHome ? ourName : g.opponent;
+      const awayName = usHome ? g.opponent : ourName;
       return `
     <div class="card live-card">
       <span class="live-flag"><span class="dot" aria-hidden="true"></span>LIVE</span>
-      <div style="font-weight:700;font-size:15px;margin-top:6px">${esc(g.opponent)}</div>
-      <div class="live-score" role="status" aria-live="polite">${sc.home} - ${sc.away}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px">${esc(g.homeAway === 'Home' ? 'Home' : 'Away')}${g.venue ? ' · ' + esc(g.venue) : ''} · Kick-off ${esc(g.gameTime||'')}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">Updates as the game is recorded. Counted in the season record once the game ends.</div>
+      <div class="live-fixture">
+        <div class="live-team">${esc(homeName)}</div>
+        <div class="live-score" role="status" aria-live="polite">${sc.home} - ${sc.away}</div>
+        <div class="live-team">${esc(awayName)}</div>
+      </div>
+      <div class="live-meta">${esc(g.homeAway === 'Home' ? 'Home' : 'Away')}${g.venue ? ' · ' + esc(g.venue) : ''} · Kick-off ${esc(g.gameTime||'')}</div>
+      ${(scorers.length || ownGoals) ? `
+      <div class="live-scorers">
+        ${scorers.map(x => `<div><span aria-hidden="true">⚽</span> <span class="who">${esc(x.name)}</span>${x.goals > 1 ? ` ×${x.goals}` : ''}</div>`).join('')}
+        ${ownGoals ? `<div><span aria-hidden="true">⚽</span> <span class="who">Own goal</span>${ownGoals > 1 ? ` ×${ownGoals}` : ''}</div>` : ''}
+      </div>` : ''}
+      <div class="live-note">Updates as the game is recorded. Counted in the season record once the game ends.</div>
     </div>`;
     }).join('')}
 
