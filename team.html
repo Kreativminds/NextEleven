@@ -70,10 +70,9 @@
   .empty{text-align:center;padding:40px 16px;color:var(--muted)}
   .empty .icon{font-size:32px;margin-bottom:10px}
   .loading{text-align:center;padding:60px 16px;color:var(--muted)}
-  .lang-switch{float:right;display:flex;gap:2px;align-items:center;margin:-2px 0 0}
-  .lang-btn{min-width:30px;min-height:30px;padding:0 6px;border:none;background:none;font-family:inherit;font-size:11px;font-weight:600;color:var(--muted);opacity:.55;cursor:pointer}
-  .lang-btn[aria-pressed="true"]{opacity:1;color:var(--black);text-decoration:underline;text-underline-offset:3px}
-  .team-header{overflow:hidden}
+  .lang-switch{margin-left:auto;display:flex;gap:2px;align-items:center}
+  .lang-btn{min-width:30px;min-height:30px;padding:0 5px;border:none;background:none;font-family:inherit;font-size:11px;font-weight:600;color:#fff;opacity:.45;cursor:pointer}
+  .lang-btn[aria-pressed="true"]{opacity:1;text-decoration:underline;text-underline-offset:3px}
   .footer-note{text-align:center;font-size:11px;color:var(--muted);margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
   .skeleton{background:linear-gradient(90deg,#eee 25%,#f5f5f5 50%,#eee 75%);background-size:200% 100%;animation:skeleton-shimmer 1.4s ease-in-out infinite;border-radius:4px}
   @keyframes skeleton-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
@@ -143,6 +142,7 @@
 <div class="app-header">
   <div class="brand-mark" id="brandMark" aria-hidden="true">11</div>
   <div class="brand-name" translate="no">Next<b>Eleven</b></div>
+  <div id="langSwitch"></div>
 </div>
 <div class="wrap">
   <main id="content">
@@ -344,6 +344,7 @@ async function loadTeamPage() {
   }
 
   document.documentElement.lang = getLang();
+  paintLangSwitch();
   const skip = document.getElementById('skipLink');
   if (skip) skip.textContent = tr('skip');
   await refreshTeamData(true); // true = this is the initial load, allowed to replace the skeleton with an error state if it fails
@@ -511,6 +512,7 @@ function setLang(lang) {
   if (!LANGS.includes(lang)) return;
   try { localStorage.setItem(LANG_KEY, lang); } catch (e) { /* not fatal */ }
   document.documentElement.lang = lang;
+  paintLangSwitch();
   if (_lastGoodData) {
     const el = document.getElementById('content');
     if (el) render(el, _lastGoodData);
@@ -585,6 +587,13 @@ const STRINGS = {
   },
 };
 // Language switcher — shown on every view, in the footer.
+// The switcher lives in the top banner, outside the content area, so it
+// survives every re-render and is there on the error and empty states too.
+function paintLangSwitch() {
+  const host = document.getElementById('langSwitch');
+  if (host) host.innerHTML = langSwitcherHtml();
+}
+
 function langSwitcherHtml() {
   const cur = getLang();
   return `<div class="lang-switch" role="group" aria-label="${tr('lang_label')}">
@@ -757,7 +766,7 @@ function renderRecap(el, data) {
       <a href="${esc(backUrl)}" style="font-size:13px;font-weight:700;color:var(--red);text-decoration:none">← Back to Team Page</a>
     </div>
 
-    <div class="footer-note">${langSwitcherHtml()}${tr('footer_recap')}</div>
+    <div class="footer-note">${tr('footer_recap')}</div>
   `;
 }
 
@@ -947,7 +956,6 @@ function render(el, data) {
   const html = `
     <div class="team-header">
       <h1>${esc(season.clubName || 'Team')} ${season.ageGroup ? '· ' + esc(season.ageGroup) : ''}</h1>
-      ${langSwitcherHtml()}
       <div class="sub">${esc(season.seasonName || '')} ${season.status === 'completed' ? '<span class="badge" style="background:#e8f0fe;color:#1a56c4;margin-left:6px">' + tr('completed') + '</span>' : ''}</div>
     </div>
 
