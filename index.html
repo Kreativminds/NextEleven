@@ -4430,7 +4430,10 @@ async function renderShareTeamCard() {
     const url = buildTeamShareUrl(existing.share_token);
     const nameMode = existing.show_name_mode || 'first_last';
     const showStats = existing.show_player_stats === true;
-    const previewName = nameMode === 'hidden' ? I18n.t('set_share_preview_hidden_example') : nameMode === 'initials' ? 'L. Mabere' : 'Lorenzo Mabere';
+    const previewName = nameMode === 'hidden' ? I18n.t('set_share_preview_hidden_example')
+      : nameMode === 'initials' ? 'Lorenzo M.'
+      : nameMode === 'initial_surname' ? 'L. Mabere'
+      : 'Lorenzo Mabere';
     return `<div class="card" style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <div style="font-weight:700;font-size:13px">${esc(season.seasonName)}${isCurrent?` <span class="pos-pill">${I18n.t('set_share_current_badge')}</span>`:''}</div>
@@ -4454,7 +4457,10 @@ async function renderShareTeamCard() {
         <div id="nameModeGroup-${season.seasonId}" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
           ${[
             {v:'first_last', l:I18n.t('set_share_name_full'), ex:'Lorenzo Mabere'},
-            {v:'initials',   l:I18n.t('set_share_name_initials'), ex:'L. Mabere'},
+            // The examples match what the database actually produces:
+            // 'initials' keeps the first name, 'initial_surname' keeps the surname.
+            {v:'initials',   l:I18n.t('set_share_name_initials'), ex:'Lorenzo M.'},
+            {v:'initial_surname', l:I18n.t('set_share_name_initial_surname'), ex:'L. Mabere'},
             {v:'hidden',     l:I18n.t('set_share_name_hidden_opt'), ex:I18n.t('set_share_preview_hidden_example')},
           ].map(opt => `
             <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid ${nameMode===opt.v?'var(--navy)':'var(--border)'};border-radius:6px;cursor:pointer;min-height:44px;background:${nameMode===opt.v?'rgba(15,30,46,.04)':'transparent'}">
@@ -4526,7 +4532,10 @@ async function handleToggleShareLink(seasonId, enabled) {
 function handlePrivacyPreviewUpdate(seasonId) {
   const nameMode = document.querySelector(`input[name="nameMode-${seasonId}"]:checked`)?.value || 'first_last';
   const showStats = document.getElementById(`showStats-${seasonId}`)?.checked || false;
-  const previewName = nameMode === 'hidden' ? I18n.t('set_share_preview_hidden_example') : nameMode === 'initials' ? 'L. Mabere' : 'Lorenzo Mabere';
+  const previewName = nameMode === 'hidden' ? I18n.t('set_share_preview_hidden_example')
+      : nameMode === 'initials' ? 'Lorenzo M.'
+      : nameMode === 'initial_surname' ? 'L. Mabere'
+      : 'Lorenzo Mabere';
   const previewEl = document.getElementById(`privacyPreview-${seasonId}`);
   if (previewEl) previewEl.innerHTML = `${I18n.t('set_share_preview_label')} <strong>${esc(previewName)}</strong> · ${showStats ? I18n.t('set_share_preview_stats_shown') : I18n.t('set_share_preview_stats_hidden')}`;
   document.querySelectorAll(`#nameModeGroup-${seasonId} label`).forEach(lbl => {
@@ -6748,7 +6757,8 @@ const TR = {
     set_share_status_active:'Active — visible to anyone with the link', set_share_status_disabled:'Disabled — link no longer works',
     set_share_btn_copy:'Copy Link', set_share_btn_open:'Open Team Page', set_share_btn_disable:'Disable', set_share_btn_enable:'Enable', set_share_btn_regenerate:'Regenerate',
     set_share_privacy_title:'Privacy', set_share_name_visibility:'Player Names',
-    set_share_name_full:'Full names', set_share_name_initials:'Initials only', set_share_name_hidden_opt:'Hide names',
+    set_share_name_full:'Full names', set_share_name_initials:'First name + surname initial',
+    set_share_name_initial_surname:'Initial + surname', set_share_name_hidden_opt:'Hide names',
     set_share_preview_hidden_example:'Player 1', set_share_show_stats:'Show player statistics',
     set_share_stats_hint:'Goals, assists, appearances, top scorers and similar player-level stats. Team results always stay visible.',
     set_share_preview_label:'Preview:', set_share_preview_stats_shown:'stats shown', set_share_preview_stats_hidden:'stats hidden',
@@ -8062,7 +8072,8 @@ const TR = {
     set_share_status_active:'Ativo — visível a quem tiver o link', set_share_status_disabled:'Desativado — o link já não funciona',
     set_share_btn_copy:'Copiar Link', set_share_btn_open:'Abrir Página de Equipa', set_share_btn_disable:'Desativar', set_share_btn_enable:'Ativar', set_share_btn_regenerate:'Regenerar',
     set_share_privacy_title:'Privacidade', set_share_name_visibility:'Nomes dos Jogadores',
-    set_share_name_full:'Nomes completos', set_share_name_initials:'Apenas iniciais', set_share_name_hidden_opt:'Ocultar nomes',
+    set_share_name_full:'Nomes completos', set_share_name_initials:'Nome próprio + inicial do apelido',
+    set_share_name_initial_surname:'Inicial + apelido', set_share_name_hidden_opt:'Ocultar nomes',
     set_share_preview_hidden_example:'Jogador 1', set_share_show_stats:'Mostrar estatísticas de jogadores',
     set_share_stats_hint:'Golos, assistências, presenças, melhores marcadores e estatísticas semelhantes por jogador. Os resultados da equipa mantêm-se sempre visíveis.',
     set_share_preview_label:'Pré-visualização:', set_share_preview_stats_shown:'estatísticas visíveis', set_share_preview_stats_hidden:'estatísticas ocultas',
