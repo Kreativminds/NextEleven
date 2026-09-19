@@ -19976,7 +19976,10 @@ const Sync = (() => {
     if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured() || !Auth.isLoggedIn()) return null;
     const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
-    const res = await fetch(base + `team_share_links?season_id=eq.${seasonId}&select=share_token,enabled`, {
+    // The privacy columns must be selected too — the settings card reads
+    // show_name_mode and show_player_stats from this row, and without them
+    // it fell back to the defaults every time it re-rendered.
+    const res = await fetch(base + `team_share_links?season_id=eq.${seasonId}&select=share_token,enabled,show_name_mode,show_player_stats`, {
       headers: {
         'apikey':        _cfg.anonKey,
         'Authorization': 'Bearer ' + Auth.getAccessToken(),
