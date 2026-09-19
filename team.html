@@ -81,11 +81,13 @@
   .sticky-header .name{font-weight:800;font-size:14px}
   .sticky-header .season{font-size:11px;color:var(--muted)}
   @media (prefers-reduced-motion: reduce){.sticky-header{transition:none}}
-  .live-bar{position:sticky;top:0;z-index:1200;background:var(--black);color:#fff;display:flex;align-items:center;justify-content:center;gap:10px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;border:none;width:100%;font-family:inherit;text-align:center}
+  .live-bar{position:fixed;top:0;left:0;right:0;transform:translateY(-100%);transition:transform .2s ease;z-index:1200;background:var(--black);color:#fff;display:flex;align-items:center;justify-content:center;gap:10px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;border:none;width:100%;font-family:inherit;text-align:center}
   .live-bar .dot{width:8px;height:8px;background:#fff;border-radius:50%;animation:live-pulse 1.5s ease-in-out infinite;flex-shrink:0}
   .live-bar .bar-label{letter-spacing:1px;font-size:12px}
   .live-bar .bar-score{font-size:16px;font-weight:800;flex-shrink:0}
-  body.live-on .sticky-header{top:39px}
+  .live-bar.visible{transform:translateY(0)}
+  body.live-bar-on .sticky-header{top:39px}
+  @media (prefers-reduced-motion: reduce){.live-bar{transition:none}}
   @media (prefers-reduced-motion: reduce){.live-bar .dot{animation:none}}
   .live-banner{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--black);color:#fff;padding:10px 20px;border-radius:24px;font-size:12px;font-weight:700;font-family:inherit;border:none;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:100;display:flex;align-items:center;gap:8px;cursor:pointer}
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
@@ -573,6 +575,17 @@ function applyTeamPageBranding(appBranding) {
   }
 }
 
+// The bar only earns its place once the live card is off screen — above
+// that, the card itself already shows the score.
+function updateLiveBarVisibility() {
+  const bar = document.getElementById('liveBar');
+  if (!bar || bar.hidden) return;
+  const card = document.querySelector('.live-card');
+  const show = !card || card.getBoundingClientRect().bottom < 0;
+  bar.classList.toggle('visible', show);
+  document.body.classList.toggle('live-bar-on', show);
+}
+
 function render(el, data) {
   applyTeamPageBranding(data.appBranding);
 
@@ -861,12 +874,13 @@ function render(el, data) {
         + `<span class="bar-label">LIVE</span>`
         + `<span class="bar-score">${sc.home} - ${sc.away}</span>`;
       liveBar.onclick = () => document.querySelector('.live-card')?.scrollIntoView({behavior:'smooth', block:'center'});
-      liveBar.hidden = false;
-      document.body.classList.add('live-on');
+      liveBar.hidden = false;           // present, but only slides in once
+      updateLiveBarVisibility();        // the live card has scrolled away
     } else {
       liveBar.hidden = true;
       liveBar.innerHTML = '';
-      document.body.classList.remove('live-on');
+      liveBar.classList.remove('visible');
+      document.body.classList.remove('live-bar-on');
     }
   }
 
@@ -880,12 +894,13 @@ function render(el, data) {
 
   if (!window._stickyScrollBound) {
     window._stickyScrollBound = true;
-    const stickyEl = document.getElementById('stickyHeader');
-    const heroEl = document.querySelector('.team-header');
     window.addEventListener('scroll', () => {
-      if (!stickyEl || !heroEl) return;
-      const heroBottom = heroEl.getBoundingClientRect().bottom;
-      stickyEl.classList.toggle('visible', heroBottom < 0);
+      const stickyEl = document.getElementById('stickyHeader');
+      const heroEl = document.querySelector('.team-header');
+      if (stickyEl && heroEl) {
+        stickyEl.classList.toggle('visible', heroEl.getBoundingClientRect().bottom < 0);
+      }
+      updateLiveBarVisibility();
     }, { passive: true });
   }
 }
