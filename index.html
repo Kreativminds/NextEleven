@@ -10216,11 +10216,11 @@ async function buildTrackedNav() {
   if (!navEl || !sectionsEl) return;
 
   navEl.innerHTML = tracked.map(p =>
-    `<button class="nav-link" data-section="tracked-${p.playerId}" onclick="Nav.go('tracked-${p.playerId}')">${esc(shortName(p.fullName))}${p.isActive?'':` <span class="badge-nc badge" style="font-size:9px">${I18n.t('squad_archived_badge')}</span>`}</button>`
+    `<button class="nav-link" data-section="tracked-${p.playerId}" data-nav-icon="tracked-player" onclick="Nav.go('tracked-${p.playerId}')"><span data-nav-label>${esc(shortName(p.fullName))}${p.isActive?'':` <span class="badge-nc badge" style="font-size:9px">${I18n.t('squad_archived_badge')}</span>`}</span></button>`
   ).join('');
 
   if (mobileEl) mobileEl.innerHTML = tracked.map(p =>
-    `<button class="nav-link" data-section="tracked-${p.playerId}" onclick="Nav.go('tracked-${p.playerId}');document.getElementById('mobileMenu').classList.remove('open')">${esc(shortName(p.fullName))}${p.isActive?'':` <span class="badge-nc badge" style="font-size:9px">${I18n.t('squad_archived_badge')}</span>`}</button>`
+    `<button class="nav-link" data-section="tracked-${p.playerId}" data-nav-icon="tracked-player" onclick="Nav.go('tracked-${p.playerId}');document.getElementById('mobileMenu').classList.remove('open')"><span data-nav-label>${esc(shortName(p.fullName))}${p.isActive?'':` <span class="badge-nc badge" style="font-size:9px">${I18n.t('squad_archived_badge')}</span>`}</span></button>`
   ).join('');
 
   // Build dynamic sections
@@ -10260,6 +10260,13 @@ async function buildTrackedNav() {
       <div id="tracked-ach-${p.playerId}" style="display:none"></div>
       <div id="tracked-events-${p.playerId}" style="display:none"></div>
     </div>`).join('');
+
+  // The tracked-player buttons above were just rebuilt from scratch, so
+  // any icon a previous call injected into them is gone with the old
+  // markup — apply it again. applyNavigationIcons() only ever touches a
+  // [data-nav-icon] element that doesn't already contain an svg, so this
+  // is a no-op for every other nav button, already-iconed or not.
+  applyNavigationIcons();
 
   await updateProgressiveNavVisibility();
 }
