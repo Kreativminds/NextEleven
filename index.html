@@ -6144,6 +6144,9 @@ const TR = {
     fixture_status_confirmed:'Confirmed', fixture_status_to_confirm:'To confirm',
     tip_fixture_status:'Whether these match details are confirmed by the federation/club, or still provisional. Applies to the whole fixture — date, time, opponent and venue together.',
     games_round_label:'Round {n}', games_last_updated:'Details last updated {date}',
+    games_tab_upcoming:'Upcoming', games_tab_played:'Played',
+    games_empty_upcoming_tab:'No upcoming games — every game on this page has been played.',
+    games_empty_played_tab:'No games played yet this season.',
     games_lbl_tournament_new:'Tournament',
     games_lbl_stage_new:'Tournament stage',
     games_lbl_venue_new:'Venue',
@@ -7466,6 +7469,9 @@ const TR = {
     fixture_status_confirmed:'Confirmado', fixture_status_to_confirm:'Por confirmar',
     tip_fixture_status:'Se os detalhes deste jogo já estão confirmados pela federação/clube, ou ainda são provisórios. Aplica-se ao jogo todo — data, hora, adversário e local em conjunto.',
     games_round_label:'Jornada {n}', games_last_updated:'Detalhes atualizados em {date}',
+    games_tab_upcoming:'Por jogar', games_tab_played:'Jogados',
+    games_empty_upcoming_tab:'Sem jogos por realizar — todos os jogos desta página já foram disputados.',
+    games_empty_played_tab:'Ainda não foi disputado nenhum jogo esta época.',
     games_lbl_tournament_new:'Torneio',
     games_lbl_stage_new:'Fase do torneio',
     games_lbl_venue_new:'Local',
@@ -17897,12 +17903,10 @@ const Render = (() => {
     const opponentLogoByName = {};
     allOpponents.forEach(o => { if (o.logoUrl) opponentLogoByName[(o.opponentName||'').toLowerCase()] = o.logoUrl; });
 
-    // Most recent game first, using full date+time (not just date), so two
-    // games on the same day still order correctly by actual kickoff time.
-    const sorted = [...games].sort((a,b) => gameSortKey(b) - gameSortKey(a));
-
-    if (mySeq !== _gamesRenderSeq) return; // a newer render superseded this one
-    el.innerHTML = sorted.map(g => {
+    // One card renderer, reused whichever list it ends up in — the card
+    // itself is unchanged; only which games reach it, and in what order,
+    // changes below.
+    const renderGameRow = (g) => {
       const gps = allGP.filter(r=>r.gameId===g.gameId);
       const our = Calc.teamGoals(gps, g);
       const their = parseInt(g.opponentScore)||0;
@@ -17939,7 +17943,39 @@ const Render = (() => {
           `}
         </div>
       </div>`;
-    }).join('');
+    };
+
+    // First to last — the explicit ordering requested, replacing the
+    // previous most-recent-first order (which put the season's LAST
+    // fixture at the very top of an otherwise-upcoming list).
+    const chronological = (a,b) => gameSortKey(a) - gameSortKey(b);
+
+    if (mySeq !== _gamesRenderSeq) return; // a newer render superseded this one
+
+    // Once the season itself is marked completed there is nothing left to
+    // plan for — one flat list, start to end of season, no split needed.
+    const isSeasonCompleted = State.currentSeason?.status === 'completed';
+    if (isSeasonCompleted) {
+      el.innerHTML = [...games].sort(chronological).map(renderGameRow).join('');
+      return;
+    }
+
+    // Otherwise: a game not yet played reads very differently from one
+    // already decided, so they get their own tabs rather than being
+    // interleaved by date — each tab itself still ordered first to last.
+    const upcoming = games.filter(g => !isGameResultVisible(g, _seasonMap)).sort(chronological);
+    const played   = games.filter(g =>  isGameResultVisible(g, _seasonMap)).sort(chronological);
+    const activeTab = (State.gamesResultTab === 'played') ? 'played' : 'upcoming';
+    const activeList = activeTab === 'played' ? played : upcoming;
+
+    el.innerHTML = `
+      <div class="tab-bar-row" style="margin-bottom:12px">
+        <button class="import-tab ${activeTab==='upcoming'?'active-tab':''}" onclick="switchGamesResultTab('upcoming')">${I18n.t('games_tab_upcoming')} (${upcoming.length})</button>
+        <button class="import-tab ${activeTab==='played'?'active-tab':''}" onclick="switchGamesResultTab('played')">${I18n.t('games_tab_played')} (${played.length})</button>
+      </div>
+      ${activeList.length ? activeList.map(renderGameRow).join('')
+        : `<div class="empty"><strong>${I18n.t(activeTab==='upcoming' ? 'games_empty_upcoming_tab' : 'games_empty_played_tab')}</strong></div>`}
+    `;
   }
 
   // ── GAME DETAIL ────────────────────────────────────────────────────────────
@@ -22575,6 +22611,15 @@ async function deletePlayer(id) {
 // Reads the currently active Games filters. Safe to call from anywhere —
 // if the Games controls aren't in the DOM, returns empty defaults rather
 // than throwing.
+// Which of the two sub-tabs is open, kept on State so it survives a
+// search/filter re-render but resets on leaving the page — same pattern
+// already used for State.gameDetailTab and the tournaments/main split.
+function switchGamesResultTab(tab) {
+  State.gamesResultTab = tab;
+  const gf = getCurrentGamesFilters();
+  Render.gamesList(gf.search, gf.compFilter);
+}
+
 function getCurrentGamesFilters() {
   return {
     search: document.getElementById('gamesSearch')?.value || '',
