@@ -525,6 +525,9 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .sync-log{background:#111;color:#0f0;font-family:monospace;font-size:11px;padding:10px;border-radius:3px;max-height:140px;overflow-y:auto;margin-top:8px}
 
 /* ── POSITION PILL ────────────────────────────────────────────────────────── */
+.info-tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--border-dark,#bbb);background:none;color:var(--muted,#777);font-size:10px;font-weight:700;font-family:inherit;line-height:1;cursor:pointer;padding:0;vertical-align:middle;margin-left:4px}
+.info-tip:hover,.info-tip:focus{background:#f0f0f0;color:#333}
+.info-tip-bubble{position:absolute;z-index:3000;max-width:260px;background:#0F1E2E;color:#fff;font-size:11px;font-weight:400;line-height:1.5;padding:9px 11px;border-radius:6px;box-shadow:0 3px 12px rgba(0,0,0,.28)}
 .pos-pill{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;background:#f0f0f0;color:#555;text-transform:uppercase;letter-spacing:.5px}
 
 /* ── LOADING ──────────────────────────────────────────────────────────────── */
@@ -836,6 +839,19 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
           </div>
 
           <!-- League / Cup only -->
+          <div class="form-group" id="gf-round-status-group" style="display:flex;gap:10px">
+            <div style="flex:1">
+              <label data-i18n="games_lbl_round">Round</label>
+              <input id="gf-round" type="number" min="1" max="99" data-i18n-placeholder="games_ph_round" placeholder="e.g. 8">
+            </div>
+            <div style="flex:1">
+              <label data-i18n="games_lbl_fixture_status">Fixture status</label>${infoTip('tip_fixture_status')}
+              <select id="gf-fixture-status">
+                <option value="confirmed" data-i18n="fixture_status_confirmed">Confirmed</option>
+                <option value="to_confirm" data-i18n="fixture_status_to_confirm">To confirm</option>
+              </select>
+            </div>
+          </div>
           <div class="form-group" id="gf-compName-group"><label id="gf-compName-label" data-i18n="games_lbl_league_name">League name</label><input id="gf-compName" type="text" data-i18n-placeholder="games_ph_league" placeholder="e.g. Liga Revelação"></div>
 
           <!-- Tournament only -->
@@ -1485,7 +1501,8 @@ function renderSingleNextGameCard(nextGame, showArrivalTime, innerCardOnly) {
           <div>
             <div style="font-size:18px;font-weight:700">${esc(nextGame.opponent)}</div>
             <div style="font-size:12px;color:var(--muted);margin-top:2px">${homeAwayLabel(nextGame.homeAway)} ${nextGame.venue?'· '+esc(nextGame.venue):''}</div>
-            <div style="font-size:13px;margin-top:8px">${fmtDate(nextGame.date)}${nextGame.gameTime?(showArrivalTime?' · Kick-off '+nextGame.gameTime:' · '+nextGame.gameTime):''}</div>
+            <div style="font-size:13px;margin-top:8px">${roundLabel(nextGame)?roundLabel(nextGame)+' · ':''}${fmtDate(nextGame.date)}${nextGame.gameTime?(showArrivalTime?' · Kick-off '+nextGame.gameTime:' · '+nextGame.gameTime):''}</div>
+            <div style="margin-top:4px">${fixtureStatusBadge(nextGame)}</div>
           </div>
           ${showArrivalTime && nextGame.arrivalTime?`
           <div style="background:var(--black);color:#fff;padding:10px 16px;border-radius:4px;text-align:center">
@@ -1509,6 +1526,32 @@ function shiftHomeCarousel(scope, delta, total) {
 // active display language — only the on-screen label gets translated. This
 // keeps the data model language-independent while every place it's shown
 // goes through this mapping instead of displaying the raw stored string.
+// Subtle ✓/○ indicator for an upcoming fixture's confirmation state.
+// Only ever shown for a game that hasn't been played yet — a finished
+// game's result speaks for itself. A game with no fixtureStatus recorded
+// (every game created before this field existed) is treated as Confirmed
+// rather than flagging old data as newly uncertain.
+function fixtureStatusBadge(game) {
+  const status = game.fixtureStatus || 'confirmed';
+  const isConfirmed = status === 'confirmed';
+  const symbol = isConfirmed ? '&#10003;' : '&#9675;';
+  const label = I18n.t(isConfirmed ? 'fixture_status_confirmed' : 'fixture_status_to_confirm');
+  const color = isConfirmed ? 'var(--muted)' : '#a66a1e';
+  return `<span style="font-size:11px;font-weight:700;color:${color}" title="${esc(label)}">${symbol} ${esc(label)}</span>`;
+}
+// Compact variant for single-line rows with no room for the word — same
+// rule, symbol only, with the label as a tooltip.
+function fixtureStatusSymbol(game) {
+  const status = game.fixtureStatus || 'confirmed';
+  const isConfirmed = status === 'confirmed';
+  const symbol = isConfirmed ? '&#10003;' : '&#9675;';
+  const label = I18n.t(isConfirmed ? 'fixture_status_confirmed' : 'fixture_status_to_confirm');
+  const color = isConfirmed ? 'var(--muted)' : '#a66a1e';
+  return `<span style="font-size:12px;font-weight:700;color:${color}" title="${esc(label)}">${symbol}</span>`;
+}
+function roundLabel(game) {
+  return game.round ? I18n.t('games_round_label', {n: game.round}) : '';
+}
 function compTypeLabel(value) {
   const map = {
     'League': 'comp_league', 'Cup': 'comp_cup', 'Friendly': 'comp_friendly',
@@ -4098,6 +4141,47 @@ async function handleSignupSubmit() {
   }
 }
 
+// ── INFO TIPS ────────────────────────────────────────────────────────
+// A small circled i next to a label. Tapping it shows one short sentence
+// explaining what the field does. Takes an i18n key, so the text is
+// translated like everything else, and only one bubble is ever open.
+function infoTip(key) {
+  return `<button type="button" class="info-tip" aria-label="${esc(I18n.t('tip_aria'))}" onclick="showInfoTip(event, '${key}')">i</button>`;
+}
+
+function closeInfoTip() {
+  document.getElementById('infoTipBubble')?.remove();
+}
+
+function showInfoTip(ev, key) {
+  ev.stopPropagation();
+  const existing = document.getElementById('infoTipBubble');
+  closeInfoTip();
+  if (existing && existing.dataset.key === key) return; // tapping again closes it
+
+  const bubble = document.createElement('div');
+  bubble.id = 'infoTipBubble';
+  bubble.className = 'info-tip-bubble';
+  bubble.dataset.key = key;
+  bubble.setAttribute('role', 'status');
+  bubble.textContent = I18n.t(key);
+  document.body.appendChild(bubble);
+
+  // Positioned under the icon, nudged left if it would run off screen.
+  const r = ev.currentTarget.getBoundingClientRect();
+  const w = bubble.offsetWidth;
+  let left = r.left + window.scrollX;
+  const maxLeft = window.scrollX + document.documentElement.clientWidth - w - 8;
+  if (left > maxLeft) left = Math.max(window.scrollX + 8, maxLeft);
+  bubble.style.left = left + 'px';
+  bubble.style.top = (r.bottom + window.scrollY + 6) + 'px';
+
+  setTimeout(() => {
+    document.addEventListener('click', closeInfoTip, { once: true });
+    document.addEventListener('scroll', closeInfoTip, { once: true, passive: true });
+  }, 0);
+}
+
 function togglePinVisibility() {
   const input = document.getElementById('player-pin');
   const btn = document.getElementById('pin-toggle-btn');
@@ -6055,6 +6139,11 @@ const TR = {
     games_more_details:'Additional match details',
     games_more_hint:'Arrival time, venue, duration and notes — most matches need none of these.',
     games_lbl_league_name:'League name',
+    games_lbl_round:'Round', games_ph_round:'e.g. 8',
+    games_lbl_fixture_status:'Fixture status',
+    fixture_status_confirmed:'Confirmed', fixture_status_to_confirm:'To confirm',
+    tip_fixture_status:'Whether these match details are confirmed by the federation/club, or still provisional. Applies to the whole fixture — date, time, opponent and venue together.',
+    games_round_label:'Round {n}', games_last_updated:'Details last updated {date}',
     games_lbl_tournament_new:'Tournament',
     games_lbl_stage_new:'Tournament stage',
     games_lbl_venue_new:'Venue',
@@ -6756,6 +6845,8 @@ const TR = {
     set_share_loading:'Loading…', set_share_btn_generate:'Generate Link',
     set_share_status_active:'Active — visible to anyone with the link', set_share_status_disabled:'Disabled — link no longer works',
     set_share_btn_copy:'Copy Link', set_share_btn_open:'Open Team Page', set_share_btn_disable:'Disable', set_share_btn_enable:'Enable', set_share_btn_regenerate:'Regenerate',
+    tip_aria:'What is this?',
+    tip_shirt_color:'The shirt colour used on the most-used line-up pitch, in Team Summary and on the shared team page. It is not used anywhere else. The pitch only appears once games have a recorded starting eleven.',
     set_share_privacy_title:'Privacy', set_share_name_visibility:'Player Names',
     set_share_name_full:'Full names', set_share_name_initials:'First name + surname initial',
     set_share_name_initial_surname:'Initial + surname', set_share_name_hidden_opt:'Hide names',
@@ -7370,6 +7461,11 @@ const TR = {
     games_more_details:'Detalhes adicionais do jogo',
     games_more_hint:'Hora de chegada, local, duração e notas — a maioria dos jogos não precisa de nenhum destes.',
     games_lbl_league_name:'Nome da liga',
+    games_lbl_round:'Jornada', games_ph_round:'ex: 8',
+    games_lbl_fixture_status:'Estado do jogo',
+    fixture_status_confirmed:'Confirmado', fixture_status_to_confirm:'Por confirmar',
+    tip_fixture_status:'Se os detalhes deste jogo já estão confirmados pela federação/clube, ou ainda são provisórios. Aplica-se ao jogo todo — data, hora, adversário e local em conjunto.',
+    games_round_label:'Jornada {n}', games_last_updated:'Detalhes atualizados em {date}',
     games_lbl_tournament_new:'Torneio',
     games_lbl_stage_new:'Fase do torneio',
     games_lbl_venue_new:'Local',
@@ -8071,6 +8167,8 @@ const TR = {
     set_share_loading:'A carregar…', set_share_btn_generate:'Gerar Link',
     set_share_status_active:'Ativo — visível a quem tiver o link', set_share_status_disabled:'Desativado — o link já não funciona',
     set_share_btn_copy:'Copiar Link', set_share_btn_open:'Abrir Página de Equipa', set_share_btn_disable:'Desativar', set_share_btn_enable:'Ativar', set_share_btn_regenerate:'Regenerar',
+    tip_aria:'O que é isto?',
+    tip_shirt_color:'A cor do equipamento usada no campo do onze mais utilizado, no Resumo da Equipa e na página partilhada. Não é usada em mais nenhum sítio. O campo só aparece quando os jogos têm um onze inicial registado.',
     set_share_privacy_title:'Privacidade', set_share_name_visibility:'Nomes dos Jogadores',
     set_share_name_full:'Nomes completos', set_share_name_initials:'Nome próprio + inicial do apelido',
     set_share_name_initial_surname:'Inicial + apelido', set_share_name_hidden_opt:'Ocultar nomes',
@@ -16361,6 +16459,7 @@ async function renderPlayerPortalGames() {
             <span class="wp-name">${esc(g.opponent)}</span>
             <span class="pos-pill" style="margin-left:auto">${fmtDate(g.date)}</span>
             <span style="margin-left:6px;font-size:12px;font-weight:700">${gVisible?(()=>{const s=Calc.homeAwayScore(g.homeAway,gOurs,gTheirs,g.neutralSide);return s.home+'–'+s.away;})():I18n.t('games_status_upcoming')}</span>
+            ${!gVisible ? `<span style="margin-left:4px">${fixtureStatusSymbol(g)}</span>` : ''}
           </div>
         </div>`;
       }).join('')}
@@ -16410,6 +16509,7 @@ async function openPortalGameViewer(gameId) {
       <div style="display:flex;gap:8px;align-items:center;margin:6px 0 14px;flex-wrap:wrap">
         <span class="pos-pill">${fmtDate(game.date)}</span>
         <span style="font-size:11px;color:var(--muted)">${homeAwayLabel(game.homeAway)}</span>
+        ${!visible ? fixtureStatusBadge(game) : ''}
         ${visible ? `<span class="badge badge-${res}">${res}</span><strong style="font-size:16px">${scoreDisplay.home}–${scoreDisplay.away}</strong>` : `<span class="td-muted" style="font-size:11px">${I18n.t('games_status_upcoming')}</span>`}
       </div>
 
@@ -17817,14 +17917,14 @@ const Render = (() => {
               ${logoUrl?`<img src="${esc(logoUrl)}" style="width:20px;height:20px;object-fit:contain;border-radius:3px;flex-shrink:0" onerror="this.style.display='none'">`:''}
               <span style="font-weight:700;font-size:14px">${esc(g.opponent)}</span>
             </div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">${g.date?fmtDate(g.date):'—'} · ${g.homeAway?homeAwayLabel(g.homeAway):'—'} · ${g.competitionType?compTypeLabel(g.competitionType):'—'}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${roundLabel(g)?roundLabel(g)+' · ':''}${g.date?fmtDate(g.date):'—'} · ${g.homeAway?homeAwayLabel(g.homeAway):'—'} · ${g.competitionType?compTypeLabel(g.competitionType):'—'}</div>
           </div>
           <div style="text-align:right;flex-shrink:0">
             ${gVisible ? `
               <span class="badge badge-${res}">${res}</span>
               <div style="font-size:15px;font-weight:700;margin-top:2px">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their,g.neutralSide);return s.home+' — '+s.away;})()}</div>
               ${hasPens?`<div style="font-size:10px;color:var(--muted);font-weight:700">${g.ourPenaltyGoals}-${g.penaltiesForThem} P</div>`:''}
-            ` : `<span class="pos-pill">${I18n.t('games_status_upcoming')}</span>`}
+            ` : `<span class="pos-pill">${I18n.t('games_status_upcoming')}</span><div style="margin-top:4px">${fixtureStatusBadge(g)}</div>`}
           </div>
         </div>
         <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);align-items:center" onclick="event.stopPropagation()">
@@ -17908,7 +18008,8 @@ const Render = (() => {
             ${matchedOpponent?.logoUrl ? `<img src="${esc(matchedOpponent.logoUrl)}" style="width:36px;height:36px;object-fit:contain;border-radius:4px;flex-shrink:0;background:#f0f0f0" onerror="this.style.display='none'">` : ''}
             <div>
               <div class="game-title">${esc(game.opponent)}</div>
-              <div class="game-meta">${game.date?fmtDate(game.date):'—'} · ${homeAwayLabel(game.homeAway)} · ${compTypeLabel(game.competitionType)} ${game.competitionName?'· '+esc(game.competitionName):''} ${game.venue?'· '+esc(game.venue):''}</div>
+              ${!isGameResultVisible(game, new Map([[game.seasonId, season]])) ? `<div style="margin:2px 0 4px">${fixtureStatusBadge(game)}</div>` : ''}
+              <div class="game-meta">${roundLabel(game)?roundLabel(game)+' · ':''}${game.date?fmtDate(game.date):'—'} · ${homeAwayLabel(game.homeAway)} · ${compTypeLabel(game.competitionType)} ${game.competitionName?'· '+esc(game.competitionName):''} ${game.venue?'· '+esc(game.venue):''}</div>
             </div>
           </div>
           <div>
@@ -17917,6 +18018,7 @@ const Render = (() => {
           </div>
         </div>
         ${game.teamNotes?`<div style="margin-top:10px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px">${esc(game.teamNotes)}</div>`:''}
+        ${(game.fixtureStatus === 'to_confirm' && game.lastUpdated) ? `<div style="margin-top:8px;font-size:10px;color:var(--muted)">${I18n.t('games_last_updated', {date: fmtDate(game.lastUpdated.slice(0,10))})}</div>` : ''}
       </div>
 
       <div class="card" style="margin-bottom:14px;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:${isEditable?'#e6f4ea':'#faf7f0'}">
@@ -18512,7 +18614,7 @@ const Render = (() => {
               </select>
               <input id="sf-duration-custom" type="number" min="10" max="150" placeholder="e.g. 65" style="display:none;margin-top:6px">
             </div>
-            <div class="form-group"><label>${I18n.t('set_lbl_shirt_color')} <span style="font-size:10px;font-weight:400;color:#999">${I18n.t('set_shirt_color_hint')}</span></label>
+            <div class="form-group"><label>${I18n.t('set_lbl_shirt_color')}${infoTip('tip_shirt_color')} <span style="font-size:10px;font-weight:400;color:#999">${I18n.t('set_shirt_color_hint')}</span></label>
               <div style="display:flex;gap:6px;align-items:center">
                 <input id="sf-shirtcolor" type="color" value="#B23333" style="width:44px;height:36px;padding:2px;border:1px solid var(--border);border-radius:4px">
                 <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('sf-shirtcolor').value='#B23333';document.getElementById('sf-shirtcolor').dataset.useDefault='true'">${I18n.t('set_btn_use_default')}</button>
@@ -18567,7 +18669,7 @@ const Render = (() => {
               </div>
               <div class="form-group"><label>Home Ground</label><input id="sf-edit-homeground" type="text" placeholder="e.g. Campo SL Olivais" value="${esc(State.currentSeason?.homeGround||'')}"></div>
               <div class="form-group"><label>Age Group</label>${renderAgeGroupField('sf-edit-age', 'sf-edit-age-other', State.currentSeason?.ageGroup||'')}</div>
-              <div class="form-group"><label>${I18n.t('set_lbl_shirt_color')} <span style="font-size:10px;font-weight:400;color:#999">${I18n.t('set_shirt_color_hint')}</span></label>
+              <div class="form-group"><label>${I18n.t('set_lbl_shirt_color')}${infoTip('tip_shirt_color')} <span style="font-size:10px;font-weight:400;color:#999">${I18n.t('set_shirt_color_hint')}</span></label>
                 <div style="display:flex;gap:6px;align-items:center">
                   <input id="sf-edit-shirtcolor" type="color" value="${esc(State.currentSeason?.shirtColor||'#B23333')}" style="width:44px;height:36px;padding:2px;border:1px solid var(--border);border-radius:4px">
                   <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('sf-edit-shirtcolor').value='#B23333'">${I18n.t('set_btn_use_default')}</button>
@@ -22521,6 +22623,8 @@ async function resetGameForm() {
   populateDurationField('gf-duration-select', 'gf-duration-custom', null);
   document.getElementById('gf-compType').value='League';
   document.getElementById('gf-stage').value='';
+  document.getElementById('gf-round').value='';
+  document.getElementById('gf-fixture-status').value='confirmed';
 
   // Reapply the choices used for the last fixture in this season — adding a
   // run of league games shouldn't mean re-picking the same three answers
@@ -22651,12 +22755,14 @@ async function buildDurationOptions(selectId) {
 function onCompetitionTypeChange() {
   const type = document.getElementById('gf-compType')?.value || 'League';
   const nameGroup  = document.getElementById('gf-compName-group');
+  const roundGroup = document.getElementById('gf-round-status-group');
   const nameLabel  = document.getElementById('gf-compName-label');
   const tourGroup  = document.getElementById('gf-tournament-group');
   const stageGroup = document.getElementById('gf-stage-group');
   const isTournament = (type === 'Tournament');
   const usesName = (type === 'League' || type === 'Cup');
   if (nameGroup)  nameGroup.style.display  = usesName ? '' : 'none';
+  if (roundGroup) roundGroup.style.display = usesName ? 'flex' : 'none';
   if (tourGroup)  tourGroup.style.display  = isTournament ? '' : 'none';
   if (stageGroup) stageGroup.style.display = isTournament ? '' : 'none';
   if (nameLabel && usesName) {
@@ -22774,6 +22880,9 @@ async function saveGame() {
       stage: document.getElementById('gf-stage')?.value || null,
       venue: document.getElementById('gf-ground').value.trim()||null,
       teamNotes: document.getElementById('gf-notes').value.trim()||null,
+      round: document.getElementById('gf-round')?.value ? parseInt(document.getElementById('gf-round').value) : null,
+      fixtureStatus: document.getElementById('gf-fixture-status')?.value || 'confirmed',
+      lastUpdated: new Date().toISOString(),
     };
     if (existingId) {
       game.gameId = parseInt(existingId);
@@ -22853,6 +22962,8 @@ async function editGame(id) {
   document.getElementById('gf-compName').value = g.competitionName||'';
   populateTournamentDropdown(g.tournamentId);
   document.getElementById('gf-stage').value = g.stage || '';
+  document.getElementById('gf-round').value = g.round || '';
+  document.getElementById('gf-fixture-status').value = g.fixtureStatus || 'confirmed';
   document.getElementById('gf-ground').value = g.venue||'';
   document.getElementById('gf-notes').value = g.teamNotes||'';
   document.getElementById('gf-id').value = id;
