@@ -6393,7 +6393,7 @@ const TR = {
     tp_btn_export_pdf:'Export PDF',
 
     // ── SETTINGS — TABS ──
-    set_tab_seasons:'Seasons', set_tab_import:'Import', set_tab_sync:'Cloud Sync',
+    set_tab_seasons:'Seasons', set_tab_language:'Language', set_tab_import:'Import', set_tab_sync:'Cloud Sync',
     set_tab_backup:'Backup', set_tab_danger:'Danger Zone', set_tab_sharing:'Sharing', set_tab_tournaments:'Tournaments', set_tab_diagnostics:'Diagnostics',
     diag_intro:'Tools to review and correct your own season, club, and player data — for example if a game or tournament ended up in the wrong season.',
     set_tournaments_hint:'Manage your tournaments, Tournament Team, and temporary players from the Games page.', set_tournaments_btn_open:'Open Tournaments',
@@ -7722,7 +7722,7 @@ const TR = {
     tp_btn_export_pdf:'Exportar PDF',
 
     // ── SETTINGS — TABS ──
-    set_tab_seasons:'Épocas', set_tab_import:'Importar', set_tab_sync:'Sincronização',
+    set_tab_seasons:'Épocas', set_tab_language:'Idioma', set_tab_import:'Importar', set_tab_sync:'Sincronização',
     set_tab_backup:'Cópia de Segurança', set_tab_danger:'Zona de Risco', set_tab_sharing:'Partilha', set_tab_tournaments:'Torneios', set_tab_diagnostics:'Diagnóstico',
     diag_intro:'Ferramentas para rever e corrigir os seus próprios dados de época, clube e jogadores — por exemplo, se um jogo ou torneio ficou associado à época errada.',
     set_tournaments_hint:'Faça a gestão dos seus torneios, Plantel do Torneio e jogadores temporários a partir da página de Jogos.', set_tournaments_btn_open:'Abrir Torneios',
@@ -18601,6 +18601,7 @@ const Render = (() => {
            content is unchanged; only grouping/order and two new tabs added. -->
       <div class="tab-bar-row settings-tabs">
         <button class="import-tab active-tab" id="stab-seasons" onclick="switchSettingsTab('seasons')">${I18n.t('set_tab_seasons')}</button>
+        <button class="import-tab" id="stab-language" onclick="switchSettingsTab('language')">${I18n.t('set_tab_language')}</button>
         <button class="import-tab" id="stab-opponents" onclick="switchSettingsTab('opponents')">${I18n.t('set_tab_opponents_catalogue')}</button>
         <button class="import-tab" id="stab-sharing" onclick="switchSettingsTab('sharing')">${I18n.t('set_tab_sharing')}</button>
         <button class="import-tab" id="stab-tournaments" onclick="switchSettingsTab('tournaments')">${I18n.t('set_tab_tournaments')}</button>
@@ -18891,7 +18892,9 @@ const Render = (() => {
         </div>
       </div>
 
-      <!-- Language -->
+      </div><!-- end stab-panel-backup -->
+
+      <div id="stab-panel-language" style="display:none">
       <div class="settings-section">
         <h3>${I18n.t('set_language')}</h3>
         <div class="card">
@@ -18909,7 +18912,7 @@ const Render = (() => {
           <p style="font-size:11px;color:#999;margin-top:8px">&#9432; ${I18n.t('set_lang_note')}</p>
         </div>
       </div>
-      </div><!-- end stab-panel-backup -->
+      </div><!-- end stab-panel-language -->
 
       <!-- DIAGNOSTICS TAB — relocated from Admin. This tool operates
            entirely on the current authenticated user's own data (every
@@ -25200,7 +25203,7 @@ async function handleSaveBrandAssets() {
 function switchSettingsTab(tab) {
   State.currentSettingsTab = tab;
   try { sessionStorage.setItem('squadTracker_settingsTab', tab); } catch(e) {}
-  ['seasons','opponents','sharing','tournaments','import','sync','backup','diagnostics','brandassets','danger'].forEach(t => {
+  ['seasons','language','opponents','sharing','tournaments','import','sync','backup','diagnostics','brandassets','danger'].forEach(t => {
     const panel = document.getElementById(`stab-panel-${t}`);
     const btn   = document.getElementById(`stab-${t}`);
     if (panel) panel.style.display = t === tab ? '' : 'none';
