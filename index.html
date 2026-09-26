@@ -845,7 +845,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
               <input id="gf-round" type="number" min="1" max="99" data-i18n-placeholder="games_ph_round" placeholder="e.g. 8">
             </div>
             <div style="flex:1">
-              <label data-i18n="games_lbl_fixture_status">Fixture status</label>${infoTip('tip_fixture_status')}
+              <label data-i18n="games_lbl_fixture_status">Fixture status</label><button type="button" class="info-tip" data-i18n-title="tip_aria" title="What is this?" aria-label="What is this?" onclick="showInfoTip(event, 'tip_fixture_status')">i</button>
               <select id="gf-fixture-status">
                 <option value="confirmed" data-i18n="fixture_status_confirmed">Confirmed</option>
                 <option value="to_confirm" data-i18n="fixture_status_to_confirm">To confirm</option>
@@ -6225,6 +6225,10 @@ const TR = {
     gd_goals_hint:'Enter goals and assists for anyone in the squad — Starter or Sub.',
     gd_goals_no_squad_desc:'Go to "Squad List" first.',
     gd_their_score:'Their Score',
+    gd_reset_scores_btn:'Reset all scores to zero',
+    gd_reset_scores_confirm_title:'Reset all scores?',
+    gd_reset_scores_confirm_body:'Their score, own goals, and every player\'s goals and assists on this game will be set back to zero. This cannot be undone.',
+    gd_reset_scores_done:'All scores reset to zero.',
     gd_own_goal_hint:'If the opponent scored an own goal (counts for us), add it here — not on any of our players.',
     gd_shootout_title:'Penalty Shootout', gd_shootout_hint:'Tap each of our players who scored their penalty. This does not change the match score or player goal stats.',
     gd_shootout_our_scorers:'Our Scorers', gd_shootout_their_scorers:'Their Penalties',
@@ -7550,6 +7554,10 @@ const TR = {
     gd_goals_hint:'Introduza golos e assistências de qualquer jogador convocado — Titular ou Suplente.',
     gd_goals_no_squad_desc:'Vá primeiro a "Convocados".',
     gd_their_score:'Resultado Adversário',
+    gd_reset_scores_btn:'Repor todos os resultados a zero',
+    gd_reset_scores_confirm_title:'Repor todos os resultados?',
+    gd_reset_scores_confirm_body:'O resultado do adversário, os autogolos e os golos e assistências de todos os jogadores neste jogo voltam a zero. Não pode ser desfeito.',
+    gd_reset_scores_done:'Todos os resultados repostos a zero.',
     gd_own_goal_hint:'Se o adversário marcou um autogolo (conta a nosso favor), adicione aqui — não em nenhum dos nossos jogadores.',
     gd_shootout_title:'Grande Penalidades', gd_shootout_hint:'Toque em cada jogador nosso que marcou o seu penálti. Isto não altera o resultado do jogo nem as estatísticas de golos dos jogadores.',
     gd_shootout_our_scorers:'Os Nossos Marcadores', gd_shootout_their_scorers:'Penáltis Deles',
@@ -23691,6 +23699,9 @@ async function renderSimpleGoalsTab(gameId) {
           </div>`;
         }).join('')}
       </div>
+      <div style="margin-top:18px;text-align:right">
+        <button type="button" onclick="resetGameGoals(${gameId})" style="background:none;border:none;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:6px 0">&#8635; ${I18n.t('gd_reset_scores_btn')}</button>
+      </div>
     `;
     gdDebugLog(`goals tab: innerHTML written, ${el.querySelectorAll('.goal-row').length} rows`);
   } catch(err) {
@@ -23780,6 +23791,38 @@ async function adjustOwnGoalsForUs(gameId, delta) {
   } catch(err) {
     Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
   }
+}
+
+// Resets exactly what's editable on this tab — their score, our own
+// goals, and every player's (including guests') goals and assists —
+// back to zero. Scoped deliberately: penalty-shootout data lives on its
+// own tab for tournament games and is a separate concern, untouched here.
+// A cancelled confirmation changes nothing; Confirm.show only ever runs
+// its callback when the person actually confirms.
+async function resetGameGoals(gameId) {
+  if (!checkGameEditableOrWarn()) return;
+  Confirm.show(I18n.t('gd_reset_scores_confirm_title'), I18n.t('gd_reset_scores_confirm_body'), async () => {
+    try {
+      const game = await DB.get('games', gameId);
+      if (game) {
+        game.opponentScore = 0;
+        game.ownGoalsForUs = 0;
+        await DB.put('games', game);
+      }
+      const allGP = await DB.getAll('gamePlayers', 'gameId', gameId);
+      for (const gp of allGP) {
+        if ((gp.goals||0) === 0 && (gp.assists||0) === 0) continue; // nothing to change on this row
+        gp.goals = 0;
+        gp.assists = 0;
+        await DB.put('gamePlayers', gp);
+      }
+      await refreshGameHeaderScore(gameId);
+      await renderSimpleGoalsTab(gameId);
+      Toast.show(I18n.t('gd_reset_scores_done'));
+    } catch(err) {
+      Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
+    }
+  });
 }
 
 // ── PENALTY SHOOTOUT ─────────────────────────────────────────────────────────
