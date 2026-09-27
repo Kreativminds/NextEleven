@@ -6959,6 +6959,8 @@ const TR = {
     adm_users_col_activity:'Last activity', adm_users_col_seasons:'Seasons', adm_users_col_tracking:'Tracking a player',
     adm_users_yes:'Yes', adm_users_no:'No', adm_users_never:'Never', adm_users_load_error:'Could not load user overview: {msg}',
     adm_users_empty:'No accounts found.',
+    adm_users_col_login_method:'Login method', adm_demo_stats_title:'Demo Mode',
+    adm_demo_total:'Total opens', adm_demo_7d:'Last 7 days', adm_demo_30d:'Last 30 days', adm_demo_last:'Last opened',
     adm_err_not_authorised:'You do not have access to that area.',
     adm_tab_integrity:'Database Integrity',
     integ_title:'Database Integrity', integ_intro:'Scans for duplicate records and broken references caused by sync issues, and repairs them safely without losing any data.',
@@ -8292,6 +8294,8 @@ const TR = {
     adm_users_col_activity:'Última atividade', adm_users_col_seasons:'Épocas', adm_users_col_tracking:'A seguir um jogador',
     adm_users_yes:'Sim', adm_users_no:'Não', adm_users_never:'Nunca', adm_users_load_error:'Não foi possível carregar: {msg}',
     adm_users_empty:'Nenhuma conta encontrada.',
+    adm_users_col_login_method:'Método de acesso', adm_demo_stats_title:'Modo de Demonstração',
+    adm_demo_total:'Total de acessos', adm_demo_7d:'Últimos 7 dias', adm_demo_30d:'Últimos 30 dias', adm_demo_last:'Último acesso',
     adm_err_not_authorised:'Não tem acesso a essa área.',
     adm_tab_integrity:'Integridade da Base de Dados',
     integ_title:'Integridade da Base de Dados', integ_intro:'Procura registos duplicados e referências quebradas causadas por problemas de sincronização, e corrige-os em segurança sem perder dados.',
@@ -9519,6 +9523,12 @@ function fmtAdminTs(iso) {
   return iso.slice(0,16).replace('T',' ');
 }
 
+function loginMethodLabel(m) {
+  if (m === 'google') return 'Google';
+  if (m === 'email')  return I18n.t('adm_users_email_pw') || 'Email &amp; password';
+  return esc(m || '—');
+}
+
 async function renderAdminUsersTab() {
   const el = document.getElementById('admin-panel-users');
   if (!el) return;
@@ -9534,7 +9544,23 @@ async function renderAdminUsersTab() {
     el.innerHTML = `<div class="empty"><strong>${I18n.t('adm_users_empty')}</strong></div>`;
     return;
   }
+  // A separate call, deliberately: if the demo-stats function isn't
+  // deployed yet (or fails for any reason), the person's own account
+  // table above still renders fine — this card just quietly omits itself.
+  let demo = null;
+  try { demo = await Sync.fetchAdminDemoStats(); } catch (e) { /* card omitted below */ }
+
   el.innerHTML = `
+    ${demo ? `
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${I18n.t('adm_demo_stats_title')}</div>
+      <div class="stat-grid" style="margin-bottom:0">
+        <div class="stat-card"><div class="val">${demo.total_opens||0}</div><div class="lbl">${I18n.t('adm_demo_total')}</div></div>
+        <div class="stat-card"><div class="val">${demo.opens_last_7_days||0}</div><div class="lbl">${I18n.t('adm_demo_7d')}</div></div>
+        <div class="stat-card"><div class="val">${demo.opens_last_30_days||0}</div><div class="lbl">${I18n.t('adm_demo_30d')}</div></div>
+        <div class="stat-card"><div class="val" style="font-size:13px">${esc(fmtAdminTs(demo.last_opened_at)||I18n.t('adm_users_never'))}</div><div class="lbl">${I18n.t('adm_demo_last')}</div></div>
+      </div>
+    </div>` : ''}
     <div class="card" style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap">
         <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase">
@@ -9544,6 +9570,7 @@ async function renderAdminUsersTab() {
           <th style="padding:6px 10px">${I18n.t('adm_users_col_activity')}</th>
           <th style="padding:6px 10px">${I18n.t('adm_users_col_seasons')}</th>
           <th style="padding:6px 10px">${I18n.t('adm_users_col_tracking')}</th>
+          <th style="padding:6px 10px">${I18n.t('adm_users_col_login_method')}</th>
         </tr></thead>
         <tbody>
           ${rows.map(r => `<tr style="border-top:1px solid var(--border)">
@@ -9553,6 +9580,7 @@ async function renderAdminUsersTab() {
             <td style="padding:8px 10px;color:var(--muted)">${esc(fmtAdminTs(r.last_activity)||I18n.t('adm_users_never'))}</td>
             <td style="padding:8px 10px">${r.season_count||0}</td>
             <td style="padding:8px 10px">${r.has_tracked_player?I18n.t('adm_users_yes'):I18n.t('adm_users_no')}</td>
+            <td style="padding:8px 10px">${loginMethodLabel(r.login_method)}</td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -20189,6 +20217,30 @@ const Sync = (() => {
     return await res.json();
   }
 
+  // Aggregate only — never the individual demo_opens rows, which carry
+  // no identifying data anyway but aren't the point of this view.
+  async function fetchAdminDemoStats() {
+    if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
+    if (!isConfigured()) throw new Error('Sync not configured.');
+    if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
+    const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
+    const res = await fetch(base + 'rpc/get_admin_demo_stats', {
+      method: 'POST',
+      headers: {
+        'apikey':        _cfg.anonKey,
+        'Authorization': 'Bearer ' + Auth.getAccessToken(),
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(res.status + ' ' + err.slice(0,200));
+    }
+    const rows = await res.json();
+    return (rows && rows[0]) || null;
+  }
+
   async function updateTeamSharePrivacy(seasonId, showNameMode, showPlayerStats) {
     if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured.');
@@ -21286,7 +21338,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, fetchAdminUserOverview, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, stopTimers, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, fetchAdminUserOverview, fetchAdminDemoStats, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, stopTimers, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
 })();
 
 function attachEvents() {
@@ -21893,6 +21945,24 @@ async function editPlayer(id) {
 // IndexedDB database. Sync is blocked at every network path (see the
 // isDemoMode() guards in the Sync module), so nothing here can reach Supabase.
 // ════════════════════════════════════════════════════════════════════════════
+// A single anonymous "the demo was opened" timestamp — nothing else.
+// Never awaited by anything that matters: if this fails (offline, the
+// function not deployed yet, whatever), the demo itself must be
+// completely unaffected, so every failure mode here is swallowed
+// silently rather than surfaced to the person trying the demo.
+function pingDemoOpened() {
+  try {
+    const { url, anonKey } = Sync.getRawConfig();
+    if (!url || !anonKey) return;
+    const base = url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
+    fetch(base + 'rpc/log_demo_open', {
+      method: 'POST',
+      headers: { 'apikey': anonKey, 'Authorization': 'Bearer ' + anonKey, 'Content-Type': 'application/json' },
+      body: '{}',
+    }).catch(() => {});
+  } catch (e) { /* never let this reach the person using the demo */ }
+}
+
 const Demo = (() => {
 
   const CLUB = 'Clube Atlético Lisboa';
@@ -22243,6 +22313,7 @@ const Demo = (() => {
         Toast.error(I18n.t('demo_err_locked'));
         return;
       }
+      pingDemoOpened(); // fire-and-forget — see function for why
 
       sessionStorage.setItem(DEMO_FLAG, '1');
       // Reload so every module re-initialises against the demo database. The
