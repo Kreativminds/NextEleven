@@ -1,1 +1,524 @@
+/* ── RESET & BASE ─────────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;font-family:'Montserrat',Arial,sans-serif;font-size:14px;background:#F2F4F7;color:#111;overflow-x:hidden;max-width:100vw;overscroll-behavior-x:none}
+button{font-family:'Montserrat',Arial,sans-serif;cursor:pointer}
+input,select,textarea{font-family:'Montserrat',Arial,sans-serif;font-size:13px}
+a{color:#111;text-decoration:none}
 
+/* ── VARIABLES ────────────────────────────────────────────────────────────── */
+:root{
+  /* NextEleven brand palette */
+  --black:#B23333;
+  --black-dark:#8f2828;
+  --navy:#0F1E2E;
+  --dark:#333333;
+  --mid:#6B7280;
+  --muted:#999999;
+  --border:#dddddd;
+  --border-dark:#bbbbbb;
+  --bg:#F2F4F7;
+  --surface:#ffffff;
+  --highlight:#f5e9e9;
+  --radius:3px;
+  --shadow:0 1px 3px rgba(0,0,0,0.1);
+  --nav-h:52px;
+}
+
+/* ── LAYOUT ───────────────────────────────────────────────────────────────── */
+#app{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh;max-width:100vw;overflow-x:hidden}
+.main-content{margin-top:var(--nav-h);padding:20px;max-width:1200px;width:100%;margin-left:auto;margin-right:auto;flex:1;overflow-x:hidden}
+
+/* ── NAV ──────────────────────────────────────────────────────────────────── */
+nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--navy);z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 16px;max-width:100vw;overflow:hidden}
+/* Add Game form — sentence-case labels, calmer spacing, consistent control
+   widths, and touch targets that stay comfortable on a phone. Scoped to the
+   game panel so no other form is affected. */
+#addGamePanel label{text-transform:none;letter-spacing:0;font-size:12px;font-weight:600;color:var(--dark);margin-bottom:5px;display:block}
+#addGamePanel .form-group{margin-bottom:14px;min-width:0}
+#addGamePanel input,#addGamePanel select,#addGamePanel textarea{width:100%;max-width:100%;box-sizing:border-box;font-size:14px;padding:9px 10px;min-height:40px}
+#addGamePanel textarea{min-height:72px}
+#addGamePanel details>summary::-webkit-details-marker{display:none}
+#addGamePanel details>summary::after{content:'\25be';float:right;opacity:.6;transition:transform .15s}
+#addGamePanel details[open]>summary::after{transform:rotate(180deg)}
+#addGamePanel details>summary:hover{background:var(--light)}
+@media(max-width:768px){
+  #addGamePanel .form-grid{grid-template-columns:1fr;gap:0}
+  #addGamePanel input,#addGamePanel select,#addGamePanel textarea{font-size:16px}
+  #addGamePanel details>summary{padding:12px}
+}
+.breadcrumb{font-size:11px;color:var(--muted);padding:2px 0 10px;display:flex;align-items:center;flex-wrap:wrap;gap:0;line-height:1.4;min-width:0}
+.breadcrumb a{color:var(--muted);text-decoration:none}
+.breadcrumb a:hover{text-decoration:underline}
+.breadcrumb .bc-sep{margin:0 6px;opacity:.5}
+.breadcrumb .bc-current{color:var(--dark);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.nav-brand{display:flex;align-items:center;gap:8px;white-space:nowrap;min-width:0;overflow:hidden;flex:1}
+.nav-wordmark,.nav-season{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.nav-logo-mark{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#0F1E2E,#1a2f45);border:1.5px solid #B23333;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
+.nav-logo-mark span{color:#fff;font-weight:800;font-size:12px;font-style:italic;line-height:1}
+.nav-wordmark{font-size:15px;font-weight:800;letter-spacing:.2px;color:#fff}
+.nav-wordmark b{color:#B23333}
+.nav-season{color:#9aa5b1;font-size:10px;font-weight:500;margin-left:6px;border-left:1px solid rgba(255,255,255,.2);padding-left:8px}
+.nav-page-name{color:#fff;font-size:13px;font-weight:700;margin-left:8px;padding-left:8px;border-left:1px solid rgba(255,255,255,.25);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-links{display:flex;gap:2px;align-items:center}
+.portal-nav-links{display:flex;gap:2px;align-items:center;flex-wrap:wrap;justify-content:center;width:100%;order:3}
+.nav-link{color:#ccc;font-size:12px;padding:6px 10px;border-radius:var(--radius);cursor:pointer;border:none;background:none;white-space:nowrap;transition:all .15s}
+.nav-account-btn{color:#ccc;font-size:15px;padding:6px 10px;border-radius:var(--radius);cursor:pointer;border:none;background:none;transition:all .15s}
+.nav-account-btn:hover{color:#fff;background:rgba(255,255,255,.1)}
+.nav-account-btn-active{color:#fff!important;background:rgba(255,255,255,.18)!important;font-weight:700}
+.nav-link:hover{color:#fff;background:rgba(255,255,255,.1)}
+.nav-link.active{color:#fff;background:rgba(255,255,255,.18);font-weight:700}
+.hamburger{display:none;flex-direction:column;gap:4px;cursor:pointer;padding:6px;background:none;border:none}
+.hamburger span{display:block;width:22px;height:2px;background:#fff;transition:.2s}
+.mobile-menu{display:none;position:fixed;top:var(--nav-h);left:0;right:0;background:var(--navy);z-index:99;padding:8px;flex-direction:column;gap:2px}
+.nav-account-menu{position:fixed;top:var(--nav-h);right:12px;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.18);z-index:101;min-width:220px;padding:14px}
+.nav-account-menu .nam-email{font-size:12px;font-weight:700;color:var(--dark);word-break:break-all;margin-bottom:2px}
+.nav-account-menu .nam-note{font-size:11px;color:var(--muted);margin-bottom:10px}
+.mobile-menu.open{display:flex}
+.mobile-menu .nav-link{text-align:left;padding:10px 14px;font-size:13px}
+
+/* ── SECTIONS ─────────────────────────────────────────────────────────────── */
+.section{display:none}
+.section.active{display:block}
+
+/* ── PAGE HEADER ─────────────────────────────────────────────────────────── */
+.page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid var(--black)}
+.page-header h1{font-size:20px;font-weight:700}
+.page-header-sub{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* ── CARDS ────────────────────────────────────────────────────────────────── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);margin-bottom:16px}
+/* Home: Next Game + Next Training. Two balanced columns when there's room,
+   automatically stacking to one column on narrow/mobile widths — no media
+   query needed, since auto-fit collapses the grid on its own. */
+.home-activity-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:16px;align-items:start}
+.home-activity-row > div{margin-bottom:0}
+.home-activity-empty{display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:0}
+.card-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px}
+
+/* ── STAT CARDS ───────────────────────────────────────────────────────────── */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;margin-bottom:16px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);text-align:center}
+.stat-card .val{font-size:28px;font-weight:700;line-height:1}
+.stat-card .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-top:4px}
+.stat-card .sub{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* ── TABLES ───────────────────────────────────────────────────────────────── */
+.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:auto;box-shadow:var(--shadow);margin-bottom:16px}
+table{width:100%;border-collapse:collapse;min-width:400px}
+th{background:#f2f2f2;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--mid);padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+th:hover{background:#ebebeb}
+th.sort-asc::after{content:" ▲";font-size:9px}
+th.sort-desc::after{content:" ▼";font-size:9px}
+td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;color:var(--dark);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--highlight)}
+.td-bold{font-weight:700;color:var(--black)}
+.td-center{text-align:center}
+.td-num{text-align:center;font-variant-numeric:tabular-nums}
+.td-muted{color:var(--muted)}
+
+/* ── BADGES ───────────────────────────────────────────────────────────────── */
+.badge{display:inline-block;padding:2px 7px;border-radius:2px;font-size:10px;font-weight:700;letter-spacing:.5px}
+.badge-W{background:#e6f4ea;color:#2a7a3b}
+.badge-D{background:#fff8e1;color:#b07a00}
+.badge-L{background:#fde8e8;color:#b03030}
+.badge-mom{background:var(--black);color:#fff}
+.badge-cap{background:#555;color:#fff}
+.badge-lor{background:var(--black);color:#fff;font-size:9px;padding:1px 5px}
+.badge-starter{background:#e8f0fe;color:#1a56c4}
+.badge-sub{background:#f3f3f3;color:#555}
+.badge-nc{background:#fafafa;color:#aaa}
+
+/* ── BUTTONS ──────────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:var(--radius);font-size:12px;font-weight:700;border:none;cursor:pointer;transition:opacity .15s;white-space:nowrap}
+.btn:hover{opacity:.85}
+.btn-primary{background:var(--black);color:#fff}
+.btn-secondary{background:none;border:1px solid var(--border-dark);color:var(--dark)}
+.btn-danger{background:none;border:1px solid #ddd;color:#b03030;font-size:11px;padding:5px 10px}
+.btn-sm{padding:4px 9px;font-size:11px}
+.btn-icon{padding:5px 8px;font-size:13px}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ── FORMS ────────────────────────────────────────────────────────────────── */
+.form-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px;box-shadow:var(--shadow)}
+.form-panel h3{font-size:14px;font-weight:700;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group.full{grid-column:1/-1}
+.form-group label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
+.form-group input,.form-group select,.form-group textarea{border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;font-size:13px;color:var(--black);background:#fff;transition:border-color .15s}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--black)}
+.form-group textarea{resize:vertical;min-height:70px}
+.form-group input[type=checkbox]{width:16px;height:16px;cursor:pointer;margin-top:2px}
+.form-actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.form-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ── SEARCH ───────────────────────────────────────────────────────────────── */
+.search-bar{display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap}
+.search-bar input{flex:1;min-width:160px;border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;font-size:13px}
+.search-bar input:focus{outline:none;border-color:var(--black)}
+
+/* ── EMPTY STATE ──────────────────────────────────────────────────────────── */
+.empty{text-align:center;padding:48px 20px;color:var(--muted)}
+.empty strong{display:block;font-size:15px;color:var(--dark);margin-bottom:6px}
+.empty p{font-size:13px;margin-bottom:16px}
+
+/* ── TOAST ────────────────────────────────────────────────────────────────── */
+#toast{position:fixed;bottom:24px;right:24px;background:var(--black);color:#fff;padding:10px 18px;border-radius:var(--radius);font-size:12px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s;z-index:500;max-width:300px}
+#toast.show{opacity:1}
+#toast.error{background:#b03030}
+
+/* ── CONFIRM DIALOG ───────────────────────────────────────────────────────── */
+.dialog-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:400;display:none}
+.dialog-overlay.open{display:flex}
+.dialog{background:var(--surface);border-radius:var(--radius);padding:24px;width:360px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,.18)}
+.dialog h3{font-size:15px;font-weight:700;margin-bottom:10px}
+.dialog p{font-size:13px;color:var(--mid);margin-bottom:20px;line-height:1.5}
+.dialog-actions{display:flex;gap:8px;justify-content:flex-end}
+
+/* ── FORM PANEL TOGGLE ────────────────────────────────────────────────────── */
+.panel-hidden{display:none}
+
+/* ── GAME DETAIL ──────────────────────────────────────────────────────────── */
+.game-header{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:16px;box-shadow:0 4px 10px rgba(0,0,0,.12);position:sticky;top:var(--nav-h);z-index:50}
+.game-header-top{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px}
+.game-title{font-size:18px;font-weight:700}
+.game-meta{font-size:12px;color:var(--muted);margin-top:3px}
+.game-score{font-size:32px;font-weight:700;text-align:center;min-width:100px}
+.game-score-sub{font-size:11px;color:var(--muted);text-align:center}
+.game-detail-table td input[type=number]{width:44px;padding:4px 5px;text-align:center;border:1px solid var(--border);border-radius:var(--radius)}
+.game-detail-table td input[type=text]{width:120px;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius)}
+.game-detail-table td select{padding:4px 5px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px}
+.game-detail-table td input[type=checkbox]{width:15px;height:15px}
+.row-locked td{opacity:.4;pointer-events:none}
+.row-locked td:first-child,.row-locked td:nth-child(2),.row-locked td:nth-child(4){opacity:1;pointer-events:auto}
+
+/* ── STICKY GAME DETAIL COLUMNS ───────────────────────────────────────────── */
+.game-detail-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px;background:var(--surface)}
+
+/* ── WHO PLAYED LIST ── */
+.who-played-list{display:flex;flex-direction:column;gap:6px}
+.wp-row{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:6px;background:var(--surface);overflow:hidden;transition:border-color .15s,background .15s}
+.wp-row.wp-active{border-color:var(--black);background:#fbf3f3}
+.wp-info{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;user-select:none}
+.wp-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#eee;font-size:12px;font-weight:700;flex-shrink:0}
+.wp-row.wp-active .wp-num{background:var(--black);color:#fff}
+.wp-name{flex:1;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:80px}
+.wp-pos{font-size:11px;color:var(--muted)}
+.wp-role-toggle{display:flex;gap:6px;padding:0 14px 12px}
+.wp-role-btn{flex:1;padding:8px;border:1px solid var(--border);border-radius:5px;background:#fff;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
+.wp-role-btn.wp-role-active{background:var(--black);color:#fff;border-color:var(--black)}
+.wp-role-pill{flex-shrink:0;padding:4px 10px;border-radius:12px;font-size:10px;font-weight:700;border:none;cursor:pointer;margin-left:auto}
+.wp-role-starter{background:var(--black);color:#fff}
+.wp-role-sub{background:#e8e8e8;color:#555}
+.wp-stats-row{display:flex;gap:10px;padding:0 14px 12px;align-items:flex-end}
+.wp-stat-field{display:flex;flex-direction:column;gap:3px}
+.wp-stat-field label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.wp-stat-field input{border:1px solid var(--border);border-radius:5px;padding:6px 8px;font-size:13px;width:56px}
+.wp-stat-notes{flex:1}
+.wp-stat-notes input{width:100%}
+
+/* ── GOALS TAB ── */
+.goals-list{display:flex;flex-direction:column;gap:8px}
+.goal-row{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid var(--border);border-radius:6px;background:var(--surface)}
+.goal-info{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.badge-assist-tag{font-size:10px;font-weight:700;background:#e8f0fe;color:#1a56c4;padding:2px 7px;border-radius:3px;flex-shrink:0}
+.goal-stepper{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.stepper-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:#fff;font-size:18px;font-weight:700;color:var(--dark);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.stepper-btn:disabled{opacity:.3;cursor:not-allowed}
+.stepper-btn-add{background:var(--black);color:#fff;border-color:var(--black)}
+.stepper-count{font-size:18px;font-weight:700;min-width:24px;text-align:center}
+.game-detail-table{width:100%;border-collapse:collapse;min-width:760px}
+.game-detail-table th,.game-detail-table td{padding:7px 8px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:middle;white-space:nowrap}
+.game-detail-table th{background:#f2f2f2;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--mid)}
+.game-detail-table tr:last-child td{border-bottom:none}
+.game-detail-table tr:hover td{background:var(--highlight)}
+.col-sticky-num{position:sticky;left:0;z-index:2;background:#f2f2f2;border-right:1px solid var(--border);width:26px;min-width:26px;max-width:26px;text-align:center;padding:6px 3px!important}
+.col-sticky-name{position:sticky;left:26px;z-index:2;background:#f2f2f2;border-right:2px solid var(--border-dark);min-width:90px;max-width:120px}
+td.col-sticky-num{background:var(--surface);font-weight:700;padding:6px 3px!important}
+td.col-sticky-name{background:var(--surface);font-weight:600}
+tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highlight)}
+
+/* ── PROGRESS BAR ─────────────────────────────────────────────────────────── */
+.prog-wrap{margin:6px 0}
+.prog-bar{height:4px;background:#e8e8e8;border-radius:2px;overflow:hidden}
+.prog-fill{height:100%;background:var(--black);border-radius:2px}
+/* ── MOST USED LINEUP PITCH ── */
+.pitch{background:linear-gradient(180deg,#5aa362,#4d9355);border-radius:8px;padding:18px 10px;display:flex;flex-direction:column;gap:14px;position:relative;overflow:hidden}
+.pitch::before{content:'';position:absolute;inset:8px;border:2px solid rgba(255,255,255,.35);border-radius:4px;pointer-events:none}
+.pitch-row{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;position:relative;z-index:1}
+.pitch-row-gk{margin-top:4px}
+.pitch-player{display:flex;flex-direction:column;align-items:center;width:64px}
+.pitch-shirt{width:34px;height:34px;border-radius:6px 6px 3px 3px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;box-shadow:0 2px 4px rgba(0,0,0,.25);position:relative}
+.pitch-shirt::before{content:'';position:absolute;top:-3px;left:-4px;width:10px;height:14px;background:inherit;border-radius:3px 0 0 0;box-shadow:-1px -1px 2px rgba(0,0,0,.15)}
+.pitch-shirt::after{content:'';position:absolute;top:-3px;right:-4px;width:10px;height:14px;background:inherit;border-radius:0 3px 0 0;box-shadow:1px -1px 2px rgba(0,0,0,.15)}
+.pitch-name{font-size:9px;font-weight:700;color:#fff;text-align:center;margin-top:4px;text-shadow:0 1px 2px rgba(0,0,0,.4);line-height:1.2;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ── COMPETITION SPLIT (Official / Friendlies / Tournaments) ── */
+.comp-scope-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:0 0 8px}
+.comp-scope-empty{font-size:12px;color:var(--muted);margin:0 0 10px}
+.comp-split-inline{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}
+/* ── LEADER CARD (Top Scorers / Assisters / Most Used) — ZeroZero style ── */
+.leader-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;align-items:start}
+.leader-col{display:flex;flex-direction:column;gap:10px}
+.leader-col-title{font-size:13px;font-weight:800;letter-spacing:.3px;color:var(--dark)}
+.leader-feature-card{padding:0!important;overflow:hidden;border-left:4px solid var(--black)}
+.leader-feature{display:flex;align-items:stretch;min-height:90px}
+.leader-feature-left{flex:1;display:flex;flex-direction:column;justify-content:center;padding:12px 8px 12px 14px;background:linear-gradient(135deg,var(--black),var(--black-dark));color:#fff;min-width:0}
+.leader-name{font-size:13px;font-weight:700;margin-bottom:6px;white-space:normal;line-height:1.2}
+.leader-stat-val{font-size:30px;font-weight:800;line-height:1}
+.leader-stat-lbl{font-size:9px;font-weight:700;letter-spacing:1px;opacity:.85;margin-top:2px;text-transform:uppercase}
+.leader-feature-photo{width:90px;flex-shrink:0;background:#ddd;position:relative;overflow:hidden}
+.leader-feature-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.leader-photo-fallback{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#fff;background:linear-gradient(135deg,#8a8f98,#6b7280)}
+.leader-list-card{padding:4px 14px!important}
+.leader-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #eee}
+.leader-row:last-child{border-bottom:none}
+.leader-rank{font-size:12px;color:#999;font-weight:700;width:16px;flex-shrink:0}
+.leader-row-name{flex:1;font-size:13px;font-weight:700;color:var(--dark);white-space:normal;line-height:1.2}
+.leader-row-val{font-size:18px;font-weight:800;color:var(--dark);flex-shrink:0}
+@media(max-width:480px){
+  .leader-grid{grid-template-columns:1fr}
+}
+/* ── FIELD VISIBILITY TOGGLE SWITCH ── */
+.fv-switch{position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0}
+.fv-switch input{opacity:0;width:0;height:0}
+.fv-slider{position:absolute;cursor:pointer;inset:0;background:#ccc;border-radius:24px;transition:.15s}
+.fv-slider:before{position:absolute;content:"";height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.15s}
+.fv-switch input:checked + .fv-slider{background:var(--black)}
+.fv-switch input:checked + .fv-slider:before{transform:translateX(18px)}
+.prog-label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px}
+
+/* ── FORM BADGES (recent form) ────────────────────────────────────────────── */
+.form-strip{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.form-badge{display:inline-flex;flex-direction:column;align-items:center;gap:2px;padding:6px 10px;border-radius:var(--radius);border:1px solid var(--border);font-size:10px;min-width:52px}
+.form-badge .fb-result{font-weight:700;font-size:12px}
+.form-badge .fb-stat{color:var(--muted)}
+
+/* ── BACK BUTTON ──────────────────────────────────────────────────────────── */
+.back-btn{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--mid);cursor:pointer;margin-bottom:14px;background:none;border:none;padding:0}
+.back-btn:hover{color:var(--black)}
+
+/* ── TIMELINE ─────────────────────────────────────────────────────────────── */
+.timeline-list{display:flex;flex-direction:column;gap:10px}
+.timeline-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;box-shadow:var(--shadow)}
+.timeline-item .ti-title{font-weight:700;font-size:13px}
+.timeline-item .ti-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.timeline-item .ti-desc{font-size:12px;color:var(--dark);margin-top:6px}
+
+/* ── SETTINGS ─────────────────────────────────────────────────────────────── */
+.settings-section{margin-bottom:24px}
+.settings-section h3{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.info-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.info-row:last-child{border-bottom:none}
+.info-row .ir-label{color:var(--muted);font-size:12px}
+.info-row .ir-value{font-weight:600}
+.danger-zone{border:1px solid #e8c8c8;border-radius:var(--radius);padding:16px;background:#fffafa}
+/* Danger Zone tab — visually distinguished from the nine benign Settings
+   tabs so a destructive area isn't identical to Brand Assets. Colour only:
+   position, label, order, switching and every confirmation flow are
+   unchanged. Reuses the same red family as .danger-zone above. */
+.import-tab.danger-tab{color:#b03030}
+.import-tab.danger-tab.active-tab{color:#b03030;border-bottom-color:#b03030}
+.danger-zone h3{color:#b03030}
+
+/* ── BACKUP LIST ──────────────────────────────────────────────────────────── */
+.backup-list{max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)}
+.backup-item{padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px;display:flex;justify-content:space-between;align-items:center}
+.backup-item:last-child{border-bottom:none}
+.backup-item .bi-time{color:var(--muted);font-size:11px}
+.backup-item .bi-trigger{font-size:10px;color:var(--mid)}
+
+/* ── ADMIN / ROADMAP ─────────────────────────────────────────────────────── */
+.kanban-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;align-items:start}
+.kanban-col{background:#f8f8f8;border-radius:4px;padding:10px}
+.kanban-col-header{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#fff;padding:6px 10px;border-radius:3px;margin-bottom:10px;text-align:center}
+.kanban-col-header.backlog{background:#999}
+.kanban-col-header.in-progress{background:#1a56c4}
+.kanban-col-header.testing{background:#b07a00}
+.kanban-col-header.deployed{background:#2a7a3b}
+.kanban-col-header.cancelled{background:#b03030}
+.roadmap-card{background:#fff;border:1px solid #ddd;border-radius:3px;padding:10px;margin-bottom:8px;cursor:pointer;transition:box-shadow .15s}
+.roadmap-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.roadmap-card .rc-title{font-size:12px;font-weight:700;margin-bottom:4px}
+.roadmap-card .rc-meta{font-size:10px;color:#999;display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.roadmap-card .rc-desc{font-size:11px;color:#666;margin-top:4px}
+.type-badge{padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700}
+.type-Bug{background:#fde8e8;color:#b03030}
+.type-Feature{background:#e8f0fe;color:#1a56c4}
+.type-Improvement{background:#e6f4ea;color:#2a7a3b}
+.type-Technical{background:#f3f3f3;color:#555}
+.type-Security{background:#fff3cd;color:#856404}
+.type-Release{background:var(--black);color:#fff}
+.priority-P1{color:#b03030;font-weight:700}
+.priority-P2{color:#b07a00;font-weight:700}
+.priority-P3{color:#1a56c4}
+.priority-P4{color:#555}
+.priority-P5{color:#999}
+.rm-form-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;z-index:300;overflow-y:auto;padding:20px}
+.rm-form-overlay.open{display:flex}
+.rm-form{background:#fff;border-radius:4px;width:680px;max-width:95vw;padding:24px;box-shadow:0 8px 40px rgba(0,0,0,.2)}
+
+/* ── PLAYER CARD POPUP ── */
+.pc-photo{width:56px;height:56px;border-radius:6px;object-fit:cover;background:#fff;flex-shrink:0;border:2px solid rgba(255,255,255,.4)}
+.pc-photo-fallback{width:56px;height:56px;border-radius:6px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0;border:2px solid rgba(255,255,255,.4)}
+/* The silhouette lives in the header BACKGROUND IMAGE on the left, so the
+   content is inset past it with a single variable. Previously each block set
+   its own margin-left:108px, which on a 380px card left ~230px for three
+   facts — hence the overlap and the sideways scroll. */
+.pc-header-v2{--pc-silhouette:150px;background-size:cover;background-position:center;padding:20px;color:#fff;position:relative}
+.pc-header-v2-top{display:flex;align-items:center;gap:14px;margin-left:var(--pc-silhouette);justify-content:flex-end;text-align:right}
+.pc-shirt-badge{width:52px;height:52px;border:2px solid #B23333;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;flex-shrink:0;background:rgba(15,30,46,.5)}
+.pc-header-v2-divider{height:1px;background:rgba(255,255,255,.25);margin:16px 0;margin-left:var(--pc-silhouette)}
+.pc-achievement{margin-top:10px;font-size:11px;color:#fff;opacity:.9;overflow:hidden;text-overflow:ellipsis;text-align:right;margin-left:var(--pc-silhouette)}
+/* A grid, never a scroller: every fact stays visible and nothing sits behind
+   the silhouette. One row on desktop, two columns on mobile. */
+.pc-header-v2-facts{display:grid;grid-template-columns:repeat(3,auto);gap:10px 14px;justify-content:end;margin-left:var(--pc-silhouette)}
+.pc-fact{display:flex;align-items:center;gap:6px;min-width:0;text-align:right;flex-direction:row-reverse;justify-content:flex-start}
+.pc-fact-main{font-size:11.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-fact-sub{font-size:9px;opacity:.75;white-space:nowrap}
+.pc-name{overflow:hidden;text-overflow:ellipsis}
+
+@media(max-width:600px){
+  /* Same card, adapted — never a reduced or different one. The silhouette
+     stays; it simply takes less horizontal space so the facts can breathe. */
+  .pc-header-v2{--pc-silhouette:96px;padding:16px 14px}
+  .pc-header-v2-facts{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .pc-fact{flex-direction:row;text-align:left;justify-content:flex-start}
+  .pc-fact-main{font-size:12px}
+  .pc-fact-sub{font-size:9.5px}
+  .pc-shirt-badge{width:44px;height:44px;font-size:19px}
+  .pc-header-v2-top{gap:10px}
+}
+@media(max-width:380px){
+  /* Smallest phones: one column rather than squeezing two, so nothing clips. */
+  .pc-header-v2{--pc-silhouette:76px}
+  .pc-header-v2-facts{grid-template-columns:minmax(0,1fr)}
+}
+.pc-name{font-weight:700;line-height:1.2;white-space:nowrap;display:inline-block}
+.pc-shirt{font-size:12px;opacity:.85;margin-top:2px}
+.pc-close{position:absolute;top:14px;right:16px;background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;opacity:.8}
+.pc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:6px}
+.pc-card{display:flex;align-items:center;gap:8px;background:var(--surface,#fff);border:1px solid var(--border);border-radius:6px;padding:8px}
+.pc-card-icon{width:28px;height:28px;border-radius:50%;background:#f0f0f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;font-weight:800;color:#555}
+.pc-card-label{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#999}
+.pc-card-value{font-size:12px;font-weight:700;color:#222;margin-top:1px}
+.pc-stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.pc-stat{text-align:center;background:var(--surface,#fff);border:1px solid var(--border);border-radius:6px;padding:8px 4px}
+.pc-stat-icon{font-size:13px;margin-bottom:3px}
+.pc-stat-value{font-size:15px;font-weight:800}
+.pc-stat-label{font-size:7.5px;font-weight:700;text-transform:uppercase;color:#999;margin-top:1px}
+@media(max-width:480px){ .pc-stats-grid{grid-template-columns:repeat(3,1fr)} }
+.pc-body{padding:18px 20px}
+.pc-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#a23b3b;border-bottom:2px solid #a23b3b;padding-bottom:6px;margin-bottom:12px;display:inline-block}
+.pc-row{padding:8px 0;border-bottom:1px solid #eee}
+.pc-row:last-child{border-bottom:none}
+.pc-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#999;margin-bottom:2px}
+.pc-value{font-size:14px;color:#222;display:flex;align-items:center;gap:6px}
+.pc-footer{padding:14px 20px;border-top:1px solid #eee;display:flex;justify-content:flex-end}
+.rm-form h2{font-size:16px;font-weight:700;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid #ddd}
+/* ── PRINT ────────────────────────────────────────────────────────────────── */
+@media print{
+  nav,.breadcrumb,.hamburger,.mobile-menu,.btn,.back-btn,.search-bar,.form-panel,.page-header .btn-group,#toast,.dialog-overlay{display:none!important}
+  .main-content{margin-top:0;padding:0}
+  .section{display:block!important}
+  body{background:#fff}
+  .print-only{display:block!important}
+  .no-print{display:none!important}
+}
+.print-header{display:none}
+
+/* ── RESPONSIVE ───────────────────────────────────────────────────────────── */
+@media(max-width:768px){
+  .nav-links{display:none}
+  .hamburger{display:flex}
+  .main-content{padding:14px}
+  .stat-grid{grid-template-columns:repeat(2,1fr)}
+  .form-grid{grid-template-columns:1fr}
+  table{min-width:500px}
+  .club-card-jersey{display:none}
+  /* Squad table on mobile. The global .game-detail-table sets min-width:760px,
+     which a bare `table` selector cannot override (class beats element), so
+     the Squad table previously stayed 760px wide on phones. These rules are
+     scoped to #squadContent only — no other table or page is affected, and
+     the desktop layout above this breakpoint is unchanged. */
+  #squadContent .game-detail-table{min-width:620px}
+  #squadContent .game-detail-table th,
+  #squadContent .game-detail-table td{padding:6px}
+  /* Action buttons: the global .btn-sm yields roughly a 20-22px touch
+     target, well under half the 44px guideline, with up to five adjacent
+     per row. 40px is used rather than 44px to avoid pushing the actions
+     column even wider in an already horizontally-scrolling table. */
+  #squadContent .btn-sm{min-height:40px;padding:8px 10px;font-size:11px}
+  /* Scroll affordance for the Tracked Player tab bar only (7 tabs). A soft
+     trailing fade signals that more tabs exist off-screen. Deliberately
+     scoped to .tracked-player-tabs so no other .tab-bar-row — Games,
+     Admin, Auth, Player Portal, Game Detail, Settings, Import — is
+     affected. Purely visual: overflow-x:auto and flex-wrap:nowrap from the
+     base rule are untouched, as are tab order, labels, count and clicks.
+     Where mask-image is unsupported the bar renders exactly as before. */
+  .tracked-player-tabs{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent 100%);mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent 100%)}
+  /* Same affordance for the two other long tab bars: Settings (10 tabs)
+     and Admin (5). Each is opted in by its own class rather than styling
+     .tab-bar-row broadly, so Games, Auth, Player Portal, Game Detail and
+     Import bars remain untouched. Visual only — overflow-x:auto and
+     flex-wrap:nowrap come from the unchanged base rule, and tab order,
+     labels, count and clicks are unaffected. */
+  .settings-tabs,.admin-tabs{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent 100%);mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent 100%)}
+  .club-card-desktop-only{display:none}
+  .club-card-mobile-only{display:block}
+}
+@media(min-width:769px){
+  .club-card-mobile-only{display:none}
+  /* Do NOT shrink .game-detail-table here — it needs its full natural width
+     (set per-table via inline min-width, or the 760px base) so columns have
+     room to render properly and the sticky columns + horizontal scroll work
+     as intended, instead of being artificially squeezed on mobile. */
+}
+@media(max-width:480px){
+  .stat-grid{grid-template-columns:repeat(2,1fr)}
+  .stat-card .val{font-size:22px}
+  .nav-season{display:none}
+}
+
+/* ── FILE LABEL BUTTON ────────────────────────────────────────────────────── */
+.file-label-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;background:#fff;border:1px solid #bbb;border-radius:3px;font-size:13px;font-weight:700;color:var(--black);cursor:pointer;transition:background .15s}
+.file-label-btn:hover{background:#f0f0f0}
+/* ── IMPORT TABS ──────────────────────────────────────────────────────────── */
+.import-tab{padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;color:#999;border-bottom:2px solid transparent;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none;white-space:nowrap;flex-shrink:0}
+.tab-bar-row{display:flex;gap:0;border-bottom:2px solid #ddd;margin-bottom:20px;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;align-items:stretch}
+.import-tab.active-tab{color:var(--black);border-bottom-color:var(--black)}
+/* ── IMPORT BADGE ─────────────────────────────────────────────────────────── */
+.badge-ok{background:#e6f4ea;color:#2a7a3b;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700;display:inline-block}
+.badge-skip{background:#f0f0f0;color:#888;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700;display:inline-block}
+.badge-warn{background:#fff3cd;color:#856404;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700;display:inline-block}
+.badge-err{background:#fde8e8;color:#b03030;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700;display:inline-block}
+.import-preview-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
+.import-preview-table th{background:#f2f2f2;padding:5px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#666;border-bottom:1px solid #ddd}
+.import-preview-table td{padding:5px 8px;border-bottom:1px solid #eee}
+.row-ok{background:#f0faf2}.row-warn{background:#fffbe6}.row-skip{opacity:.6}.row-err{background:#fff0f0}
+
+/* ── CLOUD SYNC ───────────────────────────────────────────────────────────── */
+.sync-status-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:3px;font-size:12px;margin-bottom:12px}
+.sync-status-bar.connected{background:#e6f4ea;color:#2a7a3b}
+.sync-status-bar.disconnected{background:#f5f5f5;color:#999}
+.sync-status-bar.error{background:#fde8e8;color:#b03030}
+.sync-status-bar.syncing{background:#e8f0fe;color:#1a56c4}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0}
+.sync-dot.pulse{animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.badge-sync-local{background:#fff3cd;color:#856404;font-size:10px;padding:1px 6px;border-radius:2px;font-weight:700}
+.badge-sync-synced{background:#e6f4ea;color:#2a7a3b;font-size:10px;padding:1px 6px;border-radius:2px;font-weight:700}
+.badge-sync-modified{background:#fde8e8;color:#b03030;font-size:10px;padding:1px 6px;border-radius:2px;font-weight:700}
+.sync-log{background:#111;color:#0f0;font-family:monospace;font-size:11px;padding:10px;border-radius:3px;max-height:140px;overflow-y:auto;margin-top:8px}
+
+/* ── POSITION PILL ────────────────────────────────────────────────────────── */
+.info-tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--border-dark,#bbb);background:none;color:var(--muted,#777);font-size:10px;font-weight:700;font-family:inherit;line-height:1;cursor:pointer;padding:0;vertical-align:middle;margin-left:4px}
+.info-tip:hover,.info-tip:focus{background:#f0f0f0;color:#333}
+.info-tip-bubble{position:absolute;z-index:3000;max-width:260px;background:#0F1E2E;color:#fff;font-size:11px;font-weight:400;line-height:1.5;padding:9px 11px;border-radius:6px;box-shadow:0 3px 12px rgba(0,0,0,.28)}
+.pos-pill{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;background:#f0f0f0;color:#555;text-transform:uppercase;letter-spacing:.5px}
+
+/* ── LOADING ──────────────────────────────────────────────────────────────── */
+#loading{position:fixed;inset:0;background:#fff;display:flex;align-items:center;justify-content:center;z-index:999;flex-direction:column;gap:12px}
+#loading p{font-size:13px;color:var(--muted)}
+.spinner{width:32px;height:32px;border:3px solid #ccc;border-top-color:var(--black);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
