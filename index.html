@@ -6961,6 +6961,7 @@ const TR = {
     adm_users_empty:'No accounts found.',
     adm_users_col_login_method:'Login method', adm_demo_stats_title:'Demo Mode',
     adm_demo_total:'Total opens', adm_demo_7d:'Last 7 days', adm_demo_30d:'Last 30 days', adm_demo_last:'Last opened',
+    adm_users_col_id:'ID', adm_users_col_details:'Details',
     adm_err_not_authorised:'You do not have access to that area.',
     adm_tab_integrity:'Database Integrity',
     integ_title:'Database Integrity', integ_intro:'Scans for duplicate records and broken references caused by sync issues, and repairs them safely without losing any data.',
@@ -8296,6 +8297,7 @@ const TR = {
     adm_users_empty:'Nenhuma conta encontrada.',
     adm_users_col_login_method:'Método de acesso', adm_demo_stats_title:'Modo de Demonstração',
     adm_demo_total:'Total de acessos', adm_demo_7d:'Últimos 7 dias', adm_demo_30d:'Últimos 30 dias', adm_demo_last:'Último acesso',
+    adm_users_col_id:'ID', adm_users_col_details:'Detalhes',
     adm_err_not_authorised:'Não tem acesso a essa área.',
     adm_tab_integrity:'Integridade da Base de Dados',
     integ_title:'Integridade da Base de Dados', integ_intro:'Procura registos duplicados e referências quebradas causadas por problemas de sincronização, e corrige-os em segurança sem perder dados.',
@@ -9561,31 +9563,49 @@ async function renderAdminUsersTab() {
         <div class="stat-card"><div class="val" style="font-size:13px">${esc(fmtAdminTs(demo.last_opened_at)||I18n.t('adm_users_never'))}</div><div class="lbl">${I18n.t('adm_demo_last')}</div></div>
       </div>
     </div>` : ''}
-    <div class="card" style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap">
+    <div class="card">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase">
-          <th style="padding:6px 10px 6px 0">${I18n.t('adm_users_col_email')}</th>
-          <th style="padding:6px 10px">${I18n.t('adm_users_col_created')}</th>
-          <th style="padding:6px 10px">${I18n.t('adm_users_col_login')}</th>
-          <th style="padding:6px 10px">${I18n.t('adm_users_col_activity')}</th>
-          <th style="padding:6px 10px">${I18n.t('adm_users_col_seasons')}</th>
-          <th style="padding:6px 10px">${I18n.t('adm_users_col_tracking')}</th>
-          <th style="padding:6px 10px">${I18n.t('adm_users_col_login_method')}</th>
+          <th style="padding:6px 8px 6px 0;width:36px">${I18n.t('adm_users_col_id')}</th>
+          <th style="padding:6px 8px">${I18n.t('adm_users_col_email')}</th>
+          <th style="padding:6px 8px">${I18n.t('adm_users_col_login_method')}</th>
+          <th style="padding:6px 0;width:20px"></th>
         </tr></thead>
         <tbody>
-          ${rows.map(r => `<tr style="border-top:1px solid var(--border)">
-            <td style="padding:8px 10px 8px 0;font-weight:700">${esc(r.email||'—')}${r.role==='super_admin'?' &#128081;':''}</td>
-            <td style="padding:8px 10px;color:var(--muted)">${esc(fmtAdminTs(r.created_at)||'—')}</td>
-            <td style="padding:8px 10px;color:var(--muted)">${esc(fmtAdminTs(r.last_sign_in_at)||I18n.t('adm_users_never'))}</td>
-            <td style="padding:8px 10px;color:var(--muted)">${esc(fmtAdminTs(r.last_activity)||I18n.t('adm_users_never'))}</td>
-            <td style="padding:8px 10px">${r.season_count||0}</td>
-            <td style="padding:8px 10px">${r.has_tracked_player?I18n.t('adm_users_yes'):I18n.t('adm_users_no')}</td>
-            <td style="padding:8px 10px">${loginMethodLabel(r.login_method)}</td>
+          ${rows.map(r => `
+          <tr style="border-top:1px solid var(--border);cursor:pointer" onclick="toggleAdminUserDetail(${r.seq_no})">
+            <td style="padding:8px 8px 8px 0;color:var(--muted);font-weight:700">${r.seq_no}</td>
+            <td style="padding:8px;font-weight:700;overflow-wrap:anywhere">${esc(r.email||'—')}${r.role==='super_admin'?' &#128081;':''}</td>
+            <td style="padding:8px">${loginMethodLabel(r.login_method)}</td>
+            <td style="padding:8px 0;color:var(--muted);text-align:right" id="adm-user-caret-${r.seq_no}">&#8250;</td>
+          </tr>
+          <tr id="adm-user-detail-${r.seq_no}" style="display:none;background:var(--bg,#f7f7f9)">
+            <td colspan="4" style="padding:4px 8px 12px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:12px">
+                <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_created')}</div>${esc(fmtAdminTs(r.created_at)||'—')}</div>
+                <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_login')}</div>${esc(fmtAdminTs(r.last_sign_in_at)||I18n.t('adm_users_never'))}</div>
+                <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_activity')}</div>${esc(fmtAdminTs(r.last_activity)||I18n.t('adm_users_never'))}</div>
+                <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_seasons')}</div>${r.season_count||0}</div>
+                <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_tracking')}</div>${r.has_tracked_player?I18n.t('adm_users_yes'):I18n.t('adm_users_no')}</div>
+              </div>
+            </td>
           </tr>`).join('')}
         </tbody>
       </table>
     </div>
   `;
+}
+
+// One row's detail at a time is plenty for a list this size — no extra
+// fetch, everything needed is already in the response render() closed
+// over when it built these rows.
+function toggleAdminUserDetail(seqNo) {
+  const row = document.getElementById(`adm-user-detail-${seqNo}`);
+  const caret = document.getElementById(`adm-user-caret-${seqNo}`);
+  if (!row) return;
+  const opening = row.style.display === 'none';
+  row.style.display = opening ? '' : 'none';
+  if (caret) caret.textContent = opening ? '\u2304' : '\u203a';
 }
 
 async function renderDebugTab() {
@@ -20196,6 +20216,24 @@ const Sync = (() => {
   // caller's own profile role every time — this client call carries no
   // special authority beyond the logged-in user's own Bearer token, same
   // as every other request this module makes.
+  // Best-effort, deliberately quiet — a failure here (offline, RPC not
+  // yet deployed) must never surface to the person using the app. The
+  // server-side throttle in touch_last_active() is the real safeguard;
+  // this can be called eagerly without worrying about over-calling it.
+  async function touchLastActive() {
+    if (isDemoMode() || !isConfigured() || !Auth.isLoggedIn()) return;
+    const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
+    await fetch(base + 'rpc/touch_last_active', {
+      method: 'POST',
+      headers: {
+        'apikey':        _cfg.anonKey,
+        'Authorization': 'Bearer ' + Auth.getAccessToken(),
+        'Content-Type':  'application/json',
+      },
+      body: '{}',
+    });
+  }
+
   async function fetchAdminUserOverview() {
     if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured.');
@@ -21338,7 +21376,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, fetchAdminUserOverview, fetchAdminDemoStats, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, stopTimers, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, fetchAdminUserOverview, fetchAdminDemoStats, touchLastActive, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, stopTimers, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
 })();
 
 function attachEvents() {
@@ -24843,6 +24881,28 @@ setInterval(() => {
     if (State.currentPortalSection === 'teamsummary') renderPlayerPortalTeamSummary();
   }
 }, 120000);
+
+// ── LAST ACTIVE — a lightweight, deliberately throttled signal for the
+// admin dashboard (Usage & Adoption spec, Stage 1). Distinct from login:
+// this says "someone was genuinely using the app recently," not just
+// "someone signed in at some point." The localStorage timestamp means
+// the actual network call fires roughly every 20 minutes, however often
+// this check itself runs — and the database's own touch_last_active()
+// throttles again server-side, so even a bug here can't turn into
+// per-click writes. Never awaited by anything the person is waiting on;
+// a failure here is invisible and inconsequential.
+const LAST_ACTIVE_PING_KEY = 'nexteleven_last_active_ping';
+const LAST_ACTIVE_PING_INTERVAL_MS = 20 * 60 * 1000; // ~20 minutes
+function maybePingLastActive() {
+  if (!Auth.isLoggedIn() || !navigator.onLine || !Sync.isConfigured()) return;
+  let last = 0;
+  try { last = parseInt(localStorage.getItem(LAST_ACTIVE_PING_KEY) || '0'); } catch(e) {}
+  if (Date.now() - last < LAST_ACTIVE_PING_INTERVAL_MS) return;
+  try { localStorage.setItem(LAST_ACTIVE_PING_KEY, String(Date.now())); } catch(e) {}
+  Sync.touchLastActive().catch(() => {});
+}
+maybePingLastActive(); // once at boot, so a fresh session isn't waiting on the interval
+setInterval(maybePingLastActive, 5 * 60 * 1000); // checks every 5 min; the gate above decides whether it actually calls out
 
 // Auto-sync when coming back online
 window.addEventListener('online', () => {
