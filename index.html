@@ -949,12 +949,14 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
       <button class="import-tab" id="atab-fields" onclick="switchAdminTab('fields')">&#128065; <span data-i18n="adm_tab_fields">Field Visibility</span></button>
       <button class="import-tab" id="atab-debug" onclick="switchAdminTab('debug')">&#128027; <span data-i18n="adm_tab_debug">Debug</span></button>
       <button class="import-tab" id="atab-integrity" onclick="switchAdminTab('integrity')">&#128295; <span data-i18n="adm_tab_integrity">Database Integrity</span></button>
+      <button class="import-tab" id="atab-users" onclick="switchAdminTab('users')">&#128101; <span data-i18n="adm_tab_users">Users</span></button>
     </div>
     <div id="admin-panel-roadmap"></div>
     <div id="admin-panel-kanban" style="display:none"></div>
     <div id="admin-panel-fields" style="display:none"></div>
     <div id="admin-panel-debug" style="display:none"></div>
     <div id="admin-panel-integrity" style="display:none"></div>
+    <div id="admin-panel-users" style="display:none"></div>
   </div>
 
   <!-- HELP PAGE -->
@@ -6953,6 +6955,10 @@ const TR = {
     adm_subtitle:'Super Admin — NextEleven',
     adm_btn_add_item:'Add Item',
     adm_tab_roadmap:'Roadmap', adm_tab_kanban:'Kanban', adm_tab_fields:'Field Visibility', adm_tab_debug:'Debug',
+    adm_tab_users:'Users', adm_users_col_email:'Account', adm_users_col_created:'Created', adm_users_col_login:'Last login',
+    adm_users_col_activity:'Last activity', adm_users_col_seasons:'Seasons', adm_users_col_tracking:'Tracking a player',
+    adm_users_yes:'Yes', adm_users_no:'No', adm_users_never:'Never', adm_users_load_error:'Could not load user overview: {msg}',
+    adm_users_empty:'No accounts found.',
     adm_err_not_authorised:'You do not have access to that area.',
     adm_tab_integrity:'Database Integrity',
     integ_title:'Database Integrity', integ_intro:'Scans for duplicate records and broken references caused by sync issues, and repairs them safely without losing any data.',
@@ -8282,6 +8288,10 @@ const TR = {
     adm_subtitle:'Super Admin — NextEleven',
     adm_btn_add_item:'Adicionar Item',
     adm_tab_roadmap:'Roteiro', adm_tab_kanban:'Kanban', adm_tab_fields:'Visibilidade de Campos', adm_tab_debug:'Depuração',
+    adm_tab_users:'Utilizadores', adm_users_col_email:'Conta', adm_users_col_created:'Criada em', adm_users_col_login:'Último acesso',
+    adm_users_col_activity:'Última atividade', adm_users_col_seasons:'Épocas', adm_users_col_tracking:'A seguir um jogador',
+    adm_users_yes:'Sim', adm_users_no:'Não', adm_users_never:'Nunca', adm_users_load_error:'Não foi possível carregar: {msg}',
+    adm_users_empty:'Nenhuma conta encontrada.',
     adm_err_not_authorised:'Não tem acesso a essa área.',
     adm_tab_integrity:'Integridade da Base de Dados',
     integ_title:'Integridade da Base de Dados', integ_intro:'Procura registos duplicados e referências quebradas causadas por problemas de sincronização, e corrige-os em segurança sem perder dados.',
@@ -9486,7 +9496,7 @@ async function initAdmin() {
 
 // ── Admin tab switching ────────────────────────────────────────────────────────
 function switchAdminTab(tab) {
-  ['roadmap','kanban','fields','debug','integrity'].forEach(t => {
+  ['roadmap','kanban','fields','debug','integrity','users'].forEach(t => {
     // Guarded the same way switchSettingsTab does — a missing panel
     // previously threw here and stopped every tab from switching.
     const panel = document.getElementById(`admin-panel-${t}`);
@@ -9498,6 +9508,56 @@ function switchAdminTab(tab) {
   if (tab === 'fields')  renderFieldVisibilityTab();
   if (tab === 'debug')   renderDebugTab();
   if (tab === 'integrity') renderIntegrityTab();
+  if (tab === 'users') renderAdminUsersTab();
+}
+
+// Formats a Supabase timestamptz (or null) as a plain, unambiguous
+// YYYY-MM-DD HH:MM — no locale guessing, matches how every other
+// SQL-facing display in this app has shown a timestamp this session.
+function fmtAdminTs(iso) {
+  if (!iso) return null;
+  return iso.slice(0,16).replace('T',' ');
+}
+
+async function renderAdminUsersTab() {
+  const el = document.getElementById('admin-panel-users');
+  if (!el) return;
+  el.innerHTML = `<div class="empty"><strong>${I18n.t('loading')||'Loading…'}</strong></div>`;
+  let rows;
+  try {
+    rows = await Sync.fetchAdminUserOverview();
+  } catch (err) {
+    el.innerHTML = `<div class="empty"><strong>${I18n.t('adm_users_load_error', {msg: esc(err.message)})}</strong></div>`;
+    return;
+  }
+  if (!rows || !rows.length) {
+    el.innerHTML = `<div class="empty"><strong>${I18n.t('adm_users_empty')}</strong></div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="card" style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap">
+        <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase">
+          <th style="padding:6px 10px 6px 0">${I18n.t('adm_users_col_email')}</th>
+          <th style="padding:6px 10px">${I18n.t('adm_users_col_created')}</th>
+          <th style="padding:6px 10px">${I18n.t('adm_users_col_login')}</th>
+          <th style="padding:6px 10px">${I18n.t('adm_users_col_activity')}</th>
+          <th style="padding:6px 10px">${I18n.t('adm_users_col_seasons')}</th>
+          <th style="padding:6px 10px">${I18n.t('adm_users_col_tracking')}</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => `<tr style="border-top:1px solid var(--border)">
+            <td style="padding:8px 10px 8px 0;font-weight:700">${esc(r.email||'—')}${r.role==='super_admin'?' &#128081;':''}</td>
+            <td style="padding:8px 10px;color:var(--muted)">${esc(fmtAdminTs(r.created_at)||'—')}</td>
+            <td style="padding:8px 10px;color:var(--muted)">${esc(fmtAdminTs(r.last_sign_in_at)||I18n.t('adm_users_never'))}</td>
+            <td style="padding:8px 10px;color:var(--muted)">${esc(fmtAdminTs(r.last_activity)||I18n.t('adm_users_never'))}</td>
+            <td style="padding:8px 10px">${r.season_count||0}</td>
+            <td style="padding:8px 10px">${r.has_tracked_player?I18n.t('adm_users_yes'):I18n.t('adm_users_no')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
 }
 
 async function renderDebugTab() {
@@ -20104,6 +20164,31 @@ const Sync = (() => {
     return await res.json(); // the raw token string
   }
 
+  // Admin-only, cross-account overview. The RPC itself re-checks the
+  // caller's own profile role every time — this client call carries no
+  // special authority beyond the logged-in user's own Bearer token, same
+  // as every other request this module makes.
+  async function fetchAdminUserOverview() {
+    if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
+    if (!isConfigured()) throw new Error('Sync not configured.');
+    if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
+    const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
+    const res = await fetch(base + 'rpc/get_admin_user_overview', {
+      method: 'POST',
+      headers: {
+        'apikey':        _cfg.anonKey,
+        'Authorization': 'Bearer ' + Auth.getAccessToken(),
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(res.status + ' ' + err.slice(0,200));
+    }
+    return await res.json();
+  }
+
   async function updateTeamSharePrivacy(seasonId, showNameMode, showPlayerStats) {
     if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured.');
@@ -21201,7 +21286,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, stopTimers, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, fetchAdminUserOverview, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, stopTimers, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
 })();
 
 function attachEvents() {
