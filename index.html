@@ -6960,8 +6960,18 @@ const TR = {
     adm_users_yes:'Yes', adm_users_no:'No', adm_users_never:'Never', adm_users_load_error:'Could not load user overview: {msg}',
     adm_users_empty:'No accounts found.',
     adm_users_col_login_method:'Login method', adm_demo_stats_title:'Demo Mode',
-    adm_demo_total:'Total opens', adm_demo_7d:'Last 7 days', adm_demo_30d:'Last 30 days', adm_demo_last:'Last opened',
-    adm_users_col_id:'ID', adm_users_col_details:'Details',
+    adm_demo_total:'Total opens', adm_demo_today:'Today', adm_demo_7d:'Last 7 days', adm_demo_30d:'Last 30 days', adm_demo_last:'Last opened',
+    adm_users_col_id:'ID', adm_users_col_details:'Details', adm_users_col_uuid:'User ID (UUID)',
+    adm_ov_title:'Users', adm_ov_registered:'Registered', adm_ov_activated:'Activated',
+    adm_ov_active7:'Active 7d', adm_ov_active30:'Active 30d', adm_ov_new7:'New 7d', adm_ov_new30:'New 30d',
+    adm_ov_rate:'Activation rate',
+    adm_ad_title:'Adoption', adm_ad_seasons:'Seasons', adm_ad_players:'Players',
+    adm_ad_avg:'Avg players/season', adm_ad_multi:'Multi-season accounts',
+    adm_ad_unique_players:'Unique players',
+    adm_users_col_last_active:'Last active', adm_users_col_last_data:'Last data update',
+    adm_users_col_players:'Players (all seasons)', adm_users_col_unique_players:'Unique players',
+    adm_users_col_avg:'Avg players/season', adm_users_col_activated:'Activated',
+    adm_users_col_season_usage:'Season usage', adm_users_season_n:'Season {n}', adm_users_n_players:'{n} players',
     adm_err_not_authorised:'You do not have access to that area.',
     adm_tab_integrity:'Database Integrity',
     integ_title:'Database Integrity', integ_intro:'Scans for duplicate records and broken references caused by sync issues, and repairs them safely without losing any data.',
@@ -8296,8 +8306,18 @@ const TR = {
     adm_users_yes:'Sim', adm_users_no:'Não', adm_users_never:'Nunca', adm_users_load_error:'Não foi possível carregar: {msg}',
     adm_users_empty:'Nenhuma conta encontrada.',
     adm_users_col_login_method:'Método de acesso', adm_demo_stats_title:'Modo de Demonstração',
-    adm_demo_total:'Total de acessos', adm_demo_7d:'Últimos 7 dias', adm_demo_30d:'Últimos 30 dias', adm_demo_last:'Último acesso',
-    adm_users_col_id:'ID', adm_users_col_details:'Detalhes',
+    adm_demo_total:'Total de acessos', adm_demo_today:'Hoje', adm_demo_7d:'Últimos 7 dias', adm_demo_30d:'Últimos 30 dias', adm_demo_last:'Último acesso',
+    adm_users_col_id:'ID', adm_users_col_details:'Detalhes', adm_users_col_uuid:'ID de Utilizador (UUID)',
+    adm_ov_title:'Utilizadores', adm_ov_registered:'Registados', adm_ov_activated:'Ativados',
+    adm_ov_active7:'Ativos 7d', adm_ov_active30:'Ativos 30d', adm_ov_new7:'Novos 7d', adm_ov_new30:'Novos 30d',
+    adm_ov_rate:'Taxa de ativação',
+    adm_ad_title:'Adoção', adm_ad_seasons:'Épocas', adm_ad_players:'Jogadores',
+    adm_ad_avg:'Média jogadores/época', adm_ad_multi:'Contas com várias épocas',
+    adm_ad_unique_players:'Jogadores únicos',
+    adm_users_col_last_active:'Última atividade', adm_users_col_last_data:'Última atualização de dados',
+    adm_users_col_players:'Jogadores (todas as épocas)', adm_users_col_unique_players:'Jogadores únicos',
+    adm_users_col_avg:'Média jogadores/época', adm_users_col_activated:'Ativada',
+    adm_users_col_season_usage:'Utilização por época', adm_users_season_n:'Época {n}', adm_users_n_players:'{n} jogadores',
     adm_err_not_authorised:'Não tem acesso a essa área.',
     adm_tab_integrity:'Integridade da Base de Dados',
     integ_title:'Integridade da Base de Dados', integ_intro:'Procura registos duplicados e referências quebradas causadas por problemas de sincronização, e corrige-os em segurança sem perder dados.',
@@ -9525,10 +9545,37 @@ function fmtAdminTs(iso) {
   return iso.slice(0,16).replace('T',' ');
 }
 
+function loginMethodShortLabel(m) {
+  if (m === 'google') return 'Google';
+  return 'Email';
+}
+
 function loginMethodLabel(m) {
   if (m === 'google') return 'Google';
   if (m === 'email')  return I18n.t('adm_users_email_pw') || 'Email &amp; password';
   return esc(m || '—');
+}
+
+function fmtNum(n) { return (n === null || n === undefined) ? '0' : String(n); }
+function fmtPct(n) { return (n === null || n === undefined) ? '0%' : (n + '%'); }
+function fmtAvg(n) { return (n === null || n === undefined) ? '—' : String(n); }
+
+// Plain divs, proportional height — no charting dependency, per the
+// spec. Each bar's title carries the exact date and count for a11y /
+// hover, the visual is just relative height.
+function renderDemoTrend(daily) {
+  if (!daily || !daily.length) return '';
+  const max = Math.max(1, ...daily.map(d => d.count || 0));
+  return `
+    <div style="margin-top:10px">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">${I18n.t('adm_demo_stats_title')} · 30d</div>
+      <div style="display:flex;align-items:flex-end;gap:2px;height:36px">
+        ${daily.map(d => {
+          const h = Math.max(2, Math.round((d.count||0) / max * 36));
+          return `<div title="${esc(d.date)}: ${d.count||0}" style="flex:1;height:${h}px;background:var(--black,#222);border-radius:1px;opacity:${d.count?1:.15}"></div>`;
+        }).join('')}
+      </div>
+    </div>`;
 }
 
 async function renderAdminUsersTab() {
@@ -9546,49 +9593,94 @@ async function renderAdminUsersTab() {
     el.innerHTML = `<div class="empty"><strong>${I18n.t('adm_users_empty')}</strong></div>`;
     return;
   }
-  // A separate call, deliberately: if the demo-stats function isn't
-  // deployed yet (or fails for any reason), the person's own account
-  // table above still renders fine — this card just quietly omits itself.
-  let demo = null;
+  // Three independent calls. Each card renders only if its own call
+  // succeeds — a failure in one (e.g. a function not yet deployed) never
+  // hides the others, and the account list above always renders once
+  // the one REQUIRED call (fetchAdminUserOverview, above) has returned.
+  let overview = null, demo = null;
+  try { overview = await Sync.fetchAdminOverviewStats(); } catch (e) { /* card omitted below */ }
   try { demo = await Sync.fetchAdminDemoStats(); } catch (e) { /* card omitted below */ }
 
   el.innerHTML = `
+    ${overview ? `
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${I18n.t('adm_ov_title')}</div>
+      <div class="stat-grid" style="margin-bottom:0">
+        <div class="stat-card"><div class="val">${fmtNum(overview.registered)}</div><div class="lbl">${I18n.t('adm_ov_registered')}</div></div>
+        <div class="stat-card"><div class="val">${fmtNum(overview.activated)}</div><div class="lbl">${I18n.t('adm_ov_activated')}</div></div>
+        <div class="stat-card"><div class="val">${fmtNum(overview.active_7d)}</div><div class="lbl">${I18n.t('adm_ov_active7')}</div></div>
+        <div class="stat-card"><div class="val">${fmtNum(overview.active_30d)}</div><div class="lbl">${I18n.t('adm_ov_active30')}</div></div>
+        <div class="stat-card"><div class="val">${fmtNum(overview.new_30d)}</div><div class="lbl">${I18n.t('adm_ov_new30')}</div></div>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:10px;font-size:11px;color:var(--muted)">
+        <div>${I18n.t('adm_ov_new7')}: ${fmtNum(overview.new_7d)}</div>
+        <div>${I18n.t('adm_ov_rate')}: ${fmtPct(overview.activation_rate)}</div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${I18n.t('adm_ad_title')}</div>
+      <div class="stat-grid" style="margin-bottom:0">
+        <div class="stat-card"><div class="val">${fmtNum(overview.total_seasons)}</div><div class="lbl">${I18n.t('adm_ad_seasons')}</div></div>
+        <div class="stat-card"><div class="val">${fmtNum(overview.total_players)}</div><div class="lbl">${I18n.t('adm_ad_players')}</div></div>
+        <div class="stat-card"><div class="val">${fmtNum(overview.total_unique_players)}</div><div class="lbl">${I18n.t('adm_ad_unique_players')}</div></div>
+        <div class="stat-card"><div class="val">${fmtAvg(overview.avg_players_per_season)}</div><div class="lbl">${I18n.t('adm_ad_avg')}</div></div>
+        <div class="stat-card"><div class="val">${fmtNum(overview.multi_season_accounts)}</div><div class="lbl">${I18n.t('adm_ad_multi')}</div></div>
+      </div>
+    </div>` : ''}
     ${demo ? `
     <div class="card" style="margin-bottom:14px">
       <div class="card-title">${I18n.t('adm_demo_stats_title')}</div>
       <div class="stat-grid" style="margin-bottom:0">
-        <div class="stat-card"><div class="val">${demo.total_opens||0}</div><div class="lbl">${I18n.t('adm_demo_total')}</div></div>
-        <div class="stat-card"><div class="val">${demo.opens_last_7_days||0}</div><div class="lbl">${I18n.t('adm_demo_7d')}</div></div>
-        <div class="stat-card"><div class="val">${demo.opens_last_30_days||0}</div><div class="lbl">${I18n.t('adm_demo_30d')}</div></div>
-        <div class="stat-card"><div class="val" style="font-size:13px">${esc(fmtAdminTs(demo.last_opened_at)||I18n.t('adm_users_never'))}</div><div class="lbl">${I18n.t('adm_demo_last')}</div></div>
+        <div class="stat-card"><div class="val">${fmtNum(demo.opens_today)}</div><div class="lbl">${I18n.t('adm_demo_today')}</div></div>
+        <div class="stat-card"><div class="val">${fmtNum(demo.opens_last_7_days)}</div><div class="lbl">${I18n.t('adm_demo_7d')}</div></div>
+        <div class="stat-card"><div class="val">${fmtNum(demo.opens_last_30_days)}</div><div class="lbl">${I18n.t('adm_demo_30d')}</div></div>
+        <div class="stat-card"><div class="val">${fmtNum(demo.total_opens)}</div><div class="lbl">${I18n.t('adm_demo_total')}</div></div>
       </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">${I18n.t('adm_demo_last')}: ${esc(fmtAdminTs(demo.last_opened_at)||I18n.t('adm_users_never'))}</div>
+      ${renderDemoTrend(demo.daily_opens)}
     </div>` : ''}
-    <div class="card" style="padding-left:8px;padding-right:8px">
+    <div class="card" style="padding-left:6px;padding-right:6px">
       <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px">
-        <colgroup><col style="width:15%"><col style="width:60%"><col style="width:25%"></colgroup>
+        <colgroup><col style="width:22%"><col style="width:48%"><col style="width:20%"><col style="width:10%"></colgroup>
         <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase">
           <th style="padding:6px 4px 6px 0">${I18n.t('adm_users_col_id')}</th>
           <th style="padding:6px 4px">${I18n.t('adm_users_col_email')}</th>
-          <th style="padding:6px 0 6px 4px">${I18n.t('adm_users_col_login_method')}</th>
+          <th style="padding:6px 4px">${I18n.t('adm_users_col_login_method')}</th>
+          <th style="padding:6px 0"></th>
         </tr></thead>
         <tbody>
-          ${rows.map(r => `
+          ${rows.map(r => {
+            const breakdown = Array.isArray(r.season_breakdown) ? r.season_breakdown : [];
+            return `
           <tr style="border-top:1px solid var(--border);cursor:pointer" onclick="toggleAdminUserDetail(${r.account_number})">
-            <td style="padding:8px 4px 8px 0;color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums">#${String(r.account_number).padStart(6,'0')}</td>
+            <td style="padding:8px 4px 8px 0;color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums;overflow-wrap:anywhere">#${String(r.account_number).padStart(6,'0')}</td>
             <td style="padding:8px 4px;font-weight:700;overflow-wrap:anywhere;word-break:break-word">${esc(r.email||'—')}${r.role==='super_admin'?' &#128081;':''}</td>
-            <td style="padding:8px 0 8px 4px;overflow-wrap:anywhere">${loginMethodLabel(r.login_method)} <span style="float:right;color:var(--muted)" id="adm-user-caret-${r.account_number}">&#8250;</span></td>
+            <td style="padding:8px 4px;overflow-wrap:anywhere">${loginMethodShortLabel(r.login_method)}</td>
+            <td style="padding:8px 0;color:var(--muted);text-align:right" id="adm-user-caret-${r.account_number}">&#8250;</td>
           </tr>
           <tr id="adm-user-detail-${r.account_number}" style="display:none;background:var(--bg,#f7f7f9)">
-            <td colspan="3" style="padding:4px 4px 12px">
+            <td colspan="4" style="padding:4px 4px 12px">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:12px">
+                <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_login_method')}</div>${loginMethodLabel(r.login_method)}</div>
                 <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_created')}</div>${esc(fmtAdminTs(r.created_at)||'—')}</div>
                 <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_login')}</div>${esc(fmtAdminTs(r.last_sign_in_at)||I18n.t('adm_users_never'))}</div>
-                <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_activity')}</div>${esc(fmtAdminTs(r.last_activity)||I18n.t('adm_users_never'))}</div>
+                <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_last_active')}</div>${esc(fmtAdminTs(r.last_active_at)||I18n.t('adm_users_never'))}</div>
+                <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_last_data')}</div>${esc(fmtAdminTs(r.last_data_update)||I18n.t('adm_users_never'))}</div>
                 <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_seasons')}</div>${r.season_count||0}</div>
+                <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_players')}</div>${r.total_players||0}</div>
+                <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_unique_players')}</div>${r.unique_players||0}</div>
+                <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_avg')}</div>${fmtAvg(r.avg_players_per_season)}</div>
+                <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_activated')}</div>${r.is_activated?I18n.t('adm_users_yes'):I18n.t('adm_users_no')}</div>
                 <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_tracking')}</div>${r.has_tracked_player?I18n.t('adm_users_yes'):I18n.t('adm_users_no')}</div>
               </div>
+              ${breakdown.length ? `
+              <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+                <div style="color:var(--muted);font-size:10px;text-transform:uppercase;margin-bottom:4px">${I18n.t('adm_users_col_season_usage')}</div>
+                ${breakdown.map(b => `<div style="font-size:12px">${I18n.t('adm_users_season_n',{n:b.seq})} · ${I18n.t('adm_users_n_players',{n:b.players})}</div>`).join('')}
+              </div>` : ''}
             </td>
-          </tr>`).join('')}
+          </tr>`;
+          }).join('')}
         </tbody>
       </table>
     </div>
@@ -20233,6 +20325,28 @@ const Sync = (() => {
     });
   }
 
+  async function fetchAdminOverviewStats() {
+    if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
+    if (!isConfigured()) throw new Error('Sync not configured.');
+    if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
+    const base = _cfg.url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/';
+    const res = await fetch(base + 'rpc/get_admin_overview_stats', {
+      method: 'POST',
+      headers: {
+        'apikey':        _cfg.anonKey,
+        'Authorization': 'Bearer ' + Auth.getAccessToken(),
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(res.status + ' ' + err.slice(0,200));
+    }
+    const rows = await res.json();
+    return (rows && rows[0]) || null;
+  }
+
   async function fetchAdminUserOverview() {
     if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured.');
@@ -21375,7 +21489,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, fetchAdminUserOverview, fetchAdminDemoStats, touchLastActive, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, stopTimers, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, fetchAdminUserOverview, fetchAdminOverviewStats, fetchAdminDemoStats, touchLastActive, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, stopTimers, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
 })();
 
 function attachEvents() {
@@ -24890,14 +25004,18 @@ setInterval(() => {
 // throttles again server-side, so even a bug here can't turn into
 // per-click writes. Never awaited by anything the person is waiting on;
 // a failure here is invisible and inconsequential.
-const LAST_ACTIVE_PING_KEY = 'nexteleven_last_active_ping';
 const LAST_ACTIVE_PING_INTERVAL_MS = 20 * 60 * 1000; // ~20 minutes
+// Scoped to the logged-in account's own id, not a single shared key — a
+// generic key meant a second person on the same browser could inherit
+// the first person's cooldown and have their own activity silently
+// skipped. Never shown anywhere; it's just a localStorage key name.
 function maybePingLastActive() {
   if (!Auth.isLoggedIn() || !navigator.onLine || !Sync.isConfigured()) return;
+  const key = 'nexteleven_last_active_ping_' + Auth.getUserId();
   let last = 0;
-  try { last = parseInt(localStorage.getItem(LAST_ACTIVE_PING_KEY) || '0'); } catch(e) {}
+  try { last = parseInt(localStorage.getItem(key) || '0'); } catch(e) {}
   if (Date.now() - last < LAST_ACTIVE_PING_INTERVAL_MS) return;
-  try { localStorage.setItem(LAST_ACTIVE_PING_KEY, String(Date.now())); } catch(e) {}
+  try { localStorage.setItem(key, String(Date.now())); } catch(e) {}
   Sync.touchLastActive().catch(() => {});
 }
 maybePingLastActive(); // once at boot, so a fresh session isn't waiting on the interval
