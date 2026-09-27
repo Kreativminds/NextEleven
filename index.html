@@ -8616,7 +8616,12 @@ const TR = {
 };
 
 const I18n = (() => {
-  let _lang = 'EN';
+  // Default before anything has been saved on this device — including the
+  // very first paint of the login screen, which loads before appMeta can
+  // be read. Portuguese, since that's who this app is actually for; a
+  // device that has already saved a choice (loadMeta(), on boot) always
+  // overrides this regardless of what it's set to here.
+  let _lang = 'PT';
   function set(lang) { if (TR[lang]) _lang = lang; }
   function get() { return _lang; }
   function t(key, vars) {
