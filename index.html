@@ -9563,24 +9563,23 @@ async function renderAdminUsersTab() {
         <div class="stat-card"><div class="val" style="font-size:13px">${esc(fmtAdminTs(demo.last_opened_at)||I18n.t('adm_users_never'))}</div><div class="lbl">${I18n.t('adm_demo_last')}</div></div>
       </div>
     </div>` : ''}
-    <div class="card">
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
+    <div class="card" style="padding-left:8px;padding-right:8px">
+      <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px">
+        <colgroup><col style="width:15%"><col style="width:60%"><col style="width:25%"></colgroup>
         <thead><tr style="text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase">
-          <th style="padding:6px 8px 6px 0;width:36px">${I18n.t('adm_users_col_id')}</th>
-          <th style="padding:6px 8px">${I18n.t('adm_users_col_email')}</th>
-          <th style="padding:6px 8px">${I18n.t('adm_users_col_login_method')}</th>
-          <th style="padding:6px 0;width:20px"></th>
+          <th style="padding:6px 4px 6px 0">${I18n.t('adm_users_col_id')}</th>
+          <th style="padding:6px 4px">${I18n.t('adm_users_col_email')}</th>
+          <th style="padding:6px 0 6px 4px">${I18n.t('adm_users_col_login_method')}</th>
         </tr></thead>
         <tbody>
           ${rows.map(r => `
-          <tr style="border-top:1px solid var(--border);cursor:pointer" onclick="toggleAdminUserDetail(${r.seq_no})">
-            <td style="padding:8px 8px 8px 0;color:var(--muted);font-weight:700">${r.seq_no}</td>
-            <td style="padding:8px;font-weight:700;overflow-wrap:anywhere">${esc(r.email||'—')}${r.role==='super_admin'?' &#128081;':''}</td>
-            <td style="padding:8px">${loginMethodLabel(r.login_method)}</td>
-            <td style="padding:8px 0;color:var(--muted);text-align:right" id="adm-user-caret-${r.seq_no}">&#8250;</td>
+          <tr style="border-top:1px solid var(--border);cursor:pointer" onclick="toggleAdminUserDetail(${r.account_number})">
+            <td style="padding:8px 4px 8px 0;color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums">#${String(r.account_number).padStart(6,'0')}</td>
+            <td style="padding:8px 4px;font-weight:700;overflow-wrap:anywhere;word-break:break-word">${esc(r.email||'—')}${r.role==='super_admin'?' &#128081;':''}</td>
+            <td style="padding:8px 0 8px 4px;overflow-wrap:anywhere">${loginMethodLabel(r.login_method)} <span style="float:right;color:var(--muted)" id="adm-user-caret-${r.account_number}">&#8250;</span></td>
           </tr>
-          <tr id="adm-user-detail-${r.seq_no}" style="display:none;background:var(--bg,#f7f7f9)">
-            <td colspan="4" style="padding:4px 8px 12px">
+          <tr id="adm-user-detail-${r.account_number}" style="display:none;background:var(--bg,#f7f7f9)">
+            <td colspan="3" style="padding:4px 4px 12px">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:12px">
                 <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_created')}</div>${esc(fmtAdminTs(r.created_at)||'—')}</div>
                 <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase">${I18n.t('adm_users_col_login')}</div>${esc(fmtAdminTs(r.last_sign_in_at)||I18n.t('adm_users_never'))}</div>
@@ -9599,9 +9598,9 @@ async function renderAdminUsersTab() {
 // One row's detail at a time is plenty for a list this size — no extra
 // fetch, everything needed is already in the response render() closed
 // over when it built these rows.
-function toggleAdminUserDetail(seqNo) {
-  const row = document.getElementById(`adm-user-detail-${seqNo}`);
-  const caret = document.getElementById(`adm-user-caret-${seqNo}`);
+function toggleAdminUserDetail(accountNumber) {
+  const row = document.getElementById(`adm-user-detail-${accountNumber}`);
+  const caret = document.getElementById(`adm-user-caret-${accountNumber}`);
   if (!row) return;
   const opening = row.style.display === 'none';
   row.style.display = opening ? '' : 'none';
