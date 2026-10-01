@@ -198,6 +198,24 @@ function shortName(fullName) {
   return parts[0] + ' ' + parts[parts.length - 1];
 }
 
+// Ordering — date, then kick-off time, everywhere a game list appears on
+// this page. public-stats-core.js (loaded above) defines its own
+// gameSortKey; this one is declared after it, so it takes over the name
+// for every caller, including any sort done internally by that file's own
+// stats functions (a plain function name is one shared slot, resolved at
+// call time — the later declaration wins regardless of who calls it).
+// A round number breaks a genuine tie (two games at the same kick-off,
+// e.g. two tournament groups playing simultaneously) so the order is
+// always the same rather than depending on whatever order the data
+// happened to arrive in.
+function gameSortKey(game) {
+  if (!game || !game.date) return 0;
+  const ms = new Date(`${game.date}T${game.gameTime || '00:00'}`).getTime();
+  if (isNaN(ms)) return 0;
+  const roundFrac = Number.isFinite(game.round) ? Math.min(game.round, 999) / 1000 : 0;
+  return ms + roundFrac; // sub-millisecond nudge — never changes the date/time order, only breaks exact ties
+}
+
 // ── SAME RULES AS THE MAIN APP ─────────────────────────────────────────
 // Completion: kick-off + match duration + 15 min buffer (the app's
 // isGameResultVisible). No kick-off time: counts once the day has ended.
@@ -230,7 +248,15 @@ function splitGames(games) {
   (games || []).forEach(g => out[gameCategory(g)].push(g));
   return out;
 }
-const CATEGORY_LABEL = { official: 'League & Cup', friendly: 'Friendlies', tournament: 'Tournaments' };
+// No longer a static object — official/friendly/tournament map to the
+// SAME translated keys used everywhere else on this page, so this line
+// can never drift out of sync with the rest of the translation again.
+function categoryLabel(k) {
+  if (k === 'official') return tr('official');
+  if (k === 'friendly') return tr('friendlies');
+  if (k === 'tournament') return tr('tournaments');
+  return k;
+}
 const COMP_TYPE_TAG = { Friendly: 'Friendly', Trial: 'Trial', Tournament: 'Tournament', Cup: 'Cup', League: 'League' };
 
 // One row per game. The same game can arrive more than once (a device
@@ -791,8 +817,8 @@ function renderRecap(el, data) {
       </div>
     </div>
 
-    ${renderRecordCard('Friendlies', split.friendly, gamePlayers)}
-    ${renderRecordCard('Tournament Games', split.tournament, gamePlayers)}
+    ${renderRecordCard(tr('friendlies'), split.friendly, gamePlayers)}
+    ${renderRecordCard(tr('tournaments'), split.tournament, gamePlayers)}
 
     ${(topScorer || topAssists || mostApps) ? `
     <div class="card">
@@ -1151,7 +1177,6 @@ function render(el, data) {
     </div>
 
     <div class="pane" data-tab="squad">
-    ${renderUpcomingBirthdays(birthdays)}
     ${(() => {
       const av = data.availability;
       if (!av || (av.available + av.unavailable) <= 0) return '';
@@ -1204,7 +1229,7 @@ function render(el, data) {
         const extra = ['friendly', 'tournament'].map(k => {
           if (!split[k].length) return '';
           const x = playerPublicStats(p.playerId, split[k], gamePlayers);
-          return x.calledUp ? `${CATEGORY_LABEL[k]}: ${x.calledUp} GP · ${x.goals} G · ${x.assists} A` : '';
+          return x.calledUp ? `${categoryLabel(k)}: ${x.calledUp} GP · ${x.goals} G · ${x.assists} A` : '';
         }).filter(Boolean).join(' &nbsp;|&nbsp; ');
         return `<div class="row"${extra ? ' style="border-bottom:none"' : ''}>
           <span class="row-name">${esc(shortName(p.fullName))}</span>
