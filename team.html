@@ -858,9 +858,11 @@ function renderRecap(el, data) {
 
   el.innerHTML = `
     <div class="team-header">
-      ${renderCenteredClubLogo(season)}
-      <h1>${esc(season.clubName || 'Team')} ${season.ageGroup ? '· ' + esc(season.ageGroup) : ''}</h1>
-      <div class="sub">${esc(season.seasonName || '')} Season Recap</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <h1 style="margin:0">${esc(season.clubName || 'Team')} ${season.ageGroup ? '· ' + esc(season.ageGroup) : ''}</h1>
+        ${renderClubLogo(season)}
+      </div>
+      <div class="sub" style="margin-top:2px">${esc(season.seasonName || '')} Season Recap</div>
     </div>
 
     ${data.seasonStory ? `
@@ -920,10 +922,10 @@ function renderRecap(el, data) {
 // A small, centered club crest above the title — discreet: capped size,
 // no border or shadow, simply absent if no logo is set rather than
 // showing a placeholder.
-function renderCenteredClubLogo(season) {
+function renderClubLogo(season) {
   const logoUrl = season?.clubLogoUrl;
   if (!logoUrl) return '';
-  return `<div style="text-align:center;margin-bottom:8px"><img src="${esc(logoUrl)}" alt="" style="width:56px;height:56px;object-fit:contain;border-radius:50%"></div>`;
+  return `<img src="${esc(logoUrl)}" alt="" style="width:72px;height:72px;object-fit:contain;border-radius:50%;flex-shrink:0">`;
 }
 
 function applyTeamPageBranding(appBranding) {
@@ -1107,9 +1109,11 @@ function render(el, data) {
 
   const html = `
     <div class="team-header">
-      ${renderCenteredClubLogo(season)}
-      <h1>${esc(season.clubName || 'Team')} ${season.ageGroup ? '· ' + esc(season.ageGroup) : ''}</h1>
-      <div class="sub">${esc(season.seasonName || '')} ${season.status === 'completed' ? '<span class="badge" style="background:#e8f0fe;color:#1a56c4;margin-left:6px">' + tr('completed') + '</span>' : ''}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <h1 style="margin:0">${esc(season.clubName || 'Team')} ${season.ageGroup ? '· ' + esc(season.ageGroup) : ''}</h1>
+        ${renderClubLogo(season)}
+      </div>
+      <div class="sub" style="margin-top:2px">${esc(season.seasonName || '')} ${season.status === 'completed' ? '<span class="badge" style="background:#e8f0fe;color:#1a56c4;margin-left:6px">' + tr('completed') + '</span>' : ''}</div>
     </div>
 
     ${season.status === 'completed' ? `
