@@ -257,18 +257,70 @@ function categoryLabel(k) {
   if (k === 'tournament') return tr('tournaments');
   return k;
 }
-const COMP_TYPE_TAG = { Friendly: 'Friendly', Trial: 'Trial', Tournament: 'Tournament', Cup: 'Cup', League: 'League' };
+// Per-game competition tag — singular, since this labels one fixture at
+// a time (distinct from tr('friendlies')/tr('tournaments'), which are
+// the plural/category forms used for section headers and breakdowns).
+// One compact row per fixture — date, time, opponent, home/away, venue,
+// and a small competition tag. Deliberately no fixture-status (confirmed
+// / to-confirm) wording here — that's coach-app-only; the disclaimer
+// below the list already covers "this may change."
+function renderUpcomingMatchRow(g) {
+  const dateLabel = fmtDate(g.date); // the one real date formatter already used elsewhere on this page
+  const haLabel = g.homeAway === 'Home' ? tr('home') : tr('away');
+  const compLabel = g.competitionName || compTypeTag(g.competitionType);
+  return `<div class="row" style="flex-wrap:wrap;row-gap:2px">
+    <span class="row-name" style="flex-basis:100%">${esc(g.opponent)}</span>
+    <span class="row-meta">${esc(dateLabel)} · ${esc(g.gameTime || '')}</span>
+    <span class="row-meta">${haLabel}${g.venue ? ' · ' + esc(g.venue) : ''}</span>
+    ${compLabel ? `<span class="comp-tag">${esc(compLabel)}</span>` : ''}
+  </div>`;
+}
+
+function toggleUpcomingMatches() {
+  const rest = document.getElementById('upcoming-matches-rest');
+  const btn = document.getElementById('upcoming-matches-toggle');
+  if (!rest || !btn) return;
+  const opening = rest.style.display === 'none';
+  rest.style.display = opening ? '' : 'none';
+  btn.textContent = opening ? tr('show_less') : tr('view_all_matches');
+}
+
+function compTypeTag(type) {
+  if (type === 'Friendly') return tr('comp_tag_friendly');
+  if (type === 'Trial') return tr('comp_tag_trial');
+  if (type === 'Tournament') return tr('tournament');
+  if (type === 'Cup') return tr('comp_tag_cup');
+  if (type === 'League') return tr('comp_tag_league');
+  return '';
+}
 
 // One row per game. The same game can arrive more than once (a device
 // that re-created a row instead of updating it), and the copies can hold
 // different scores, which showed the same match as two live cards. Keep
 // the most recently updated copy of each gameUuid, falling back to gameId.
+// Visible behaviour is unchanged: same key (gameUuid, or gameId as a
+// fallback), same "keep the most recently updated copy" rule. The only
+// addition is a console.warn when a discarded copy actually DISAGREES
+// with the one kept (different score, date, opponent, etc.) rather than
+// being a harmless exact duplicate — that distinction matters, since a
+// genuine disagreement is exactly what a future database-level
+// regression would look like, and this function was previously silent
+// either way. This never changes what a parent sees; it only makes a
+// real conflict checkable (via the browser console) instead of invisible.
 function dedupeGames(games) {
+  const CONFLICT_FIELDS = ['date','gameTime','opponent','homeAway','opponentScore','ownGoalsForUs','competitionType'];
   const best = new Map();
   (games || []).forEach(g => {
     const key = g.gameUuid || ('gid:' + g.gameId);
     const prev = best.get(key);
-    if (!prev || new Date(g.updatedAt || 0) > new Date(prev.updatedAt || 0)) best.set(key, g);
+    if (!prev) { best.set(key, g); return; }
+    const newer = new Date(g.updatedAt || 0) > new Date(prev.updatedAt || 0) ? g : prev;
+    const older = newer === g ? prev : g;
+    const conflict = CONFLICT_FIELDS.some(f => String(older[f] ?? '') !== String(newer[f] ?? ''));
+    if (conflict) {
+      console.warn('[dedupeGames] duplicate game records disagree with each other — showing the most recently updated one. This may indicate a data-integrity issue.', { key, kept: newer, discarded: older });
+    }
+    best.set(key, newer);
   });
   return [...best.values()];
 }
@@ -560,6 +612,10 @@ const STRINGS = {
     season_summary:'Season Summary · League & Cup', record:'Record', goal_diff:'Goal Diff',
     goals_for:'Goals For', goals_against:'Goals Against', current_form:'Current Form',
     by_competition:'By Competition', official:'League & Cup', friendlies:'Friendlies', tournaments:'Tournaments',
+    comp_tag_friendly:'Friendly', comp_tag_league:'League', comp_tag_cup:'Cup', comp_tag_trial:'Trial',
+    upcoming_matches:'Upcoming Matches', view_all_matches:'View all matches', show_less:'Show less',
+    no_upcoming_matches:'No upcoming matches are currently scheduled.',
+    upcoming_note:'Note: Dates, times and venues may change. Always confirm the information with the club\'s official match call-up.',
     no_official:'No League or Cup games played yet.',
     season_leaders:'Season Leaders · League & Cup', top_scorer:'Top Scorer', most_assists:'Most Assists',
     most_apps:'Most Appearances', players_tied:'{n} players tied', most_played:'most played',
@@ -592,7 +648,11 @@ const STRINGS = {
     upcoming_birthdays:'Próximos Aniversários',
     season_summary:'Resumo da Época · Campeonato e Taça', record:'Registo', goal_diff:'Diferença de Golos',
     goals_for:'Golos Marcados', goals_against:'Golos Sofridos', current_form:'Forma Atual',
-    by_competition:'Por Competição', official:'Campeonato e Taça', friendlies:'Particulares', tournaments:'Torneios',
+    by_competition:'Por Competição', official:'Campeonato e Taça', friendlies:'Jogos Amigáveis', tournaments:'Torneios',
+    comp_tag_friendly:'Amigável', comp_tag_league:'Campeonato', comp_tag_cup:'Taça', comp_tag_trial:'Teste',
+    upcoming_matches:'Próximos Jogos', view_all_matches:'Ver todos os jogos', show_less:'Mostrar menos',
+    no_upcoming_matches:'Não existem próximos jogos agendados.',
+    upcoming_note:'Nota: Datas, horários e locais podem sofrer alterações. Confirma sempre a informação na convocatória oficial do clube.',
     no_official:'Ainda sem jogos de Campeonato ou Taça.',
     season_leaders:'Destaques da Época · Campeonato e Taça', top_scorer:'Melhor Marcador', most_assists:'Mais Assistências',
     most_apps:'Mais Jogos', players_tied:'{n} jogadores empatados', most_played:'mais jogada',
@@ -1154,13 +1214,31 @@ function render(el, data) {
         const hasPens = g.ourPenaltyGoals!=null && g.penaltiesForThem!=null;
         return `<div class="row">
           <span class="row-name">${esc(g.opponent)}</span>
-          <span class="comp-tag">${esc(g.competitionName || COMP_TYPE_TAG[g.competitionType] || '')}</span>
+          <span class="comp-tag">${esc(g.competitionName || compTypeTag(g.competitionType))}</span>
           <span class="score">${s.home}-${s.away}</span>
           ${hasPens?`<span class="row-meta">${g.ourPenaltyGoals}-${g.penaltiesForThem}P</span>`:''}
           <span class="badge badge-${res}">${res}</span>
         </div>`;
       }).join('')}
     </div>` : ''}
+
+    <div class="card">
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('upcoming_matches')}</h2>
+      ${upcomingGames.length ? `
+      <div id="upcoming-matches-list">
+        ${upcomingGames.slice(0, 5).map(g => renderUpcomingMatchRow(g)).join('')}
+      </div>
+      ${upcomingGames.length > 5 ? `
+      <div id="upcoming-matches-rest" style="display:none">
+        ${upcomingGames.slice(5).map(g => renderUpcomingMatchRow(g)).join('')}
+      </div>
+      <button type="button" id="upcoming-matches-toggle" class="link-button"
+              style="background:none;border:none;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:6px 0;display:block"
+              onclick="toggleUpcomingMatches()">${tr('view_all_matches')}</button>
+      ` : ''}
+      ` : `<p class="row-meta" style="padding:4px 0">${tr('no_upcoming_matches')}</p>`}
+      <p class="row-meta" style="margin-top:8px;font-size:10px;color:var(--muted)">${tr('upcoming_note')}</p>
+    </div>
 
     ${tournaments.length ? `
     ${tournaments.map(t => {
