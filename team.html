@@ -271,7 +271,10 @@ function renderPositionGroupedRows(players, renderRow) {
 // page and inside the Lineup tab — previously only existed inline.
 function renderLiveCard(g, season, players, gamePlayers) {
   const gps = gamePlayers.filter(r => r.gameId === g.gameId);
-  const our = teamGoals(gps, g);
+  // Server-computed, independent of show_player_stats — previously
+  // summed from gamePlayers directly, which is empty whenever player
+  // stats are private, making our own score always read as 0.
+  const our = parseInt(g.ourScore) || 0;
   const their = parseInt(g.opponentScore)||0;
   const sc = homeAwayScore(g.homeAway, our, their, g.neutralSide);
   const scorers = gps.filter(r => (parseInt(r.goals)||0) > 0)
@@ -1518,8 +1521,10 @@ function render(el, data) {
           <span class="row-name">${esc(p.fullName)}</span>
           <span class="row-meta">${p.primaryPosition?esc(posName(p.primaryPosition)):''}</span>
         </div>`;
+      // Live card: deliberately NOT rendered here — the global one
+      // above the tab bar already covers it. Starting 11 goes straight
+      // into its own content, per the confirmed design.
       return `
-      ${renderLiveCard(liveMatchToday, season, players, gamePlayers)}
       <div class="card">
         <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('tab_lineup')}</h2>
         ${starters.length ? renderPositionGroupedRows(starters, playerRow) : `<p class="row-meta" style="padding:4px 0">${tr('lineup_none')}</p>`}
