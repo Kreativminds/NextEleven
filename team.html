@@ -1500,10 +1500,19 @@ function render(el, data) {
       // toggle rather than show_player_stats, so this can be shared
       // without exposing goals/assists/season stats.
       const liveGP = (data.lineup || []).filter(r => r.gameId === liveMatchToday.gameId);
-      const starterIds = new Set(liveGP.filter(r => r.calledUp && r.role === 'Starter').map(r => r.playerId));
-      const subIds = new Set(liveGP.filter(r => r.calledUp && r.role !== 'Starter').map(r => r.playerId));
-      const starters = players.filter(p => starterIds.has(p.playerId));
-      const subs = players.filter(p => subIds.has(p.playerId));
+      const starterIds = new Set(liveGP.filter(r => r.calledUp && r.role === 'Starter' && r.playerId).map(r => r.playerId));
+      const subIds = new Set(liveGP.filter(r => r.calledUp && r.role !== 'Starter' && r.playerId).map(r => r.playerId));
+      // Guest players normalized into the same shape as a regular
+      // player (fullName/shirtNumber/primaryPosition) so the existing
+      // grouping and row rendering below need no changes at all to
+      // handle them — they're just more entries in the same array.
+      const starterTempIds = new Set(liveGP.filter(r => r.calledUp && r.role === 'Starter' && r.tempPlayerId).map(r => r.tempPlayerId));
+      const subTempIds = new Set(liveGP.filter(r => r.calledUp && r.role !== 'Starter' && r.tempPlayerId).map(r => r.tempPlayerId));
+      const asPlayerShape = g => ({ fullName: g.name, shirtNumber: g.shirtNumber, primaryPosition: g.preferredPosition || null });
+      const guestStarters = (data.guestPlayers || []).filter(g => starterTempIds.has(g.tempPlayerId)).map(asPlayerShape);
+      const guestSubs = (data.guestPlayers || []).filter(g => subTempIds.has(g.tempPlayerId)).map(asPlayerShape);
+      const starters = players.filter(p => starterIds.has(p.playerId)).concat(guestStarters);
+      const subs = players.filter(p => subIds.has(p.playerId)).concat(guestSubs);
       const playerRow = p => `<div class="row">
           <span class="squad-num">${p.shirtNumber||'—'}</span>
           <span class="row-name">${esc(p.fullName)}</span>

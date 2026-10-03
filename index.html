@@ -5588,7 +5588,7 @@ const TR = {
     // ── COMMON ──
     common_save:'Save', common_saving:'Saving…', common_cancel:'Cancel', common_no:'No', common_yes:'Yes', common_close:'Close',
     discovery_team_summary:'Team Summary is now available.', discovery_tournament_summary:'Tournament Summary is now available.',
-    gd_tournament_guests:'Tournament Guests', gd_guest_badge:'Guest',
+    gd_tournament_guests:'Guest Players', gd_guest_badge:'Guest',
     games_lbl_tournament:'Tournament (optional)',
     games_lbl_stage:'Stage (optional)',
     stage_group:'Group Stage', stage_r16:'Round of 16', stage_qf:'Quarter-Final', stage_sf:'Semi-Final',
@@ -5625,7 +5625,7 @@ const TR = {
     tourn_err_duplicate:'A tournament named "{name}" already exists this season — using it instead.',
     tourn_section_title:'Tournaments', tourn_btn_create:'+ Create Tournament',
     tourn_empty:'No tournaments yet.',
-    tempp_new_title:'Add Temporary Player', tempp_edit_title:'Edit Temporary Player',
+    tempp_new_title:'Add Guest Player', tempp_edit_title:'Edit Guest Player',
     tourn_players_label:'Tournament Squad',
     tournsum_title:'Tournament Summary', tournsum_select_label:'Tournament',
     tournsum_record:'Record', tournsum_goal_diff:'Goal Diff',
@@ -5640,7 +5640,10 @@ const TR = {
     tourn_players_hint:'Select the season players attending this tournament. Only these players (plus any guests) will be available in every game linked to this tournament.',
     tourn_players_count:'{n} of {total} selected',
     tempp_name:'Name', tempp_shirt:'Shirt Number', tempp_position:'Preferred Position', tempp_notes:'Notes',
-    tempp_saved:'Temporary player saved.', tempp_err_name_required:'Name is required.',
+    tempp_saved:'Guest player saved.', tempp_err_name_required:'Name is required.',
+    tempp_confirm_dup_title:'Possible duplicate',
+    tempp_confirm_dup_guest_body:'A guest player named "{name}" already exists this season. Create a new one anyway?',
+    tempp_confirm_dup_permanent_body:'"{name}" is already a permanent squad player this season. Create a separate guest anyway?',
     common_edit:'Edit', common_delete:'Delete', common_archive:'Archive', common_restore:'Restore',
     games_more_options:'More options',
 
@@ -6940,7 +6943,7 @@ const TR = {
     // ── COMMON ──
     common_save:'Guardar', common_saving:'A guardar…', common_cancel:'Cancelar', common_no:'Não', common_yes:'Sim', common_close:'Fechar',
     discovery_team_summary:'O Resumo da Equipa já está disponível.', discovery_tournament_summary:'O Resumo do Torneio já está disponível.',
-    gd_tournament_guests:'Convidados do Torneio', gd_guest_badge:'Convidado',
+    gd_tournament_guests:'Jogadores Convidados', gd_guest_badge:'Convidado',
     games_lbl_tournament:'Torneio (opcional)',
     games_lbl_stage:'Fase (opcional)',
     stage_group:'Fase de Grupos', stage_r16:'Oitavos de Final', stage_qf:'Quartos de Final', stage_sf:'Meia-Final',
@@ -6977,7 +6980,7 @@ const TR = {
     tourn_err_duplicate:'Já existe um torneio chamado "{name}" nesta época — a usar esse.',
     tourn_section_title:'Torneios', tourn_btn_create:'+ Criar Torneio',
     tourn_empty:'Ainda sem torneios.',
-    tempp_new_title:'Adicionar Jogador Temporário', tempp_edit_title:'Editar Jogador Temporário',
+    tempp_new_title:'Adicionar Jogador Convidado', tempp_edit_title:'Editar Jogador Convidado',
     tourn_players_label:'Plantel do Torneio',
     tournsum_title:'Resumo do Torneio', tournsum_select_label:'Torneio',
     tournsum_record:'Registo', tournsum_goal_diff:'Diferença de Golos',
@@ -6992,7 +6995,10 @@ const TR = {
     tourn_players_hint:'Selecione os jogadores da época que vão a este torneio. Apenas estes jogadores (mais quaisquer convidados) estarão disponíveis em todos os jogos ligados a este torneio.',
     tourn_players_count:'{n} de {total} selecionados',
     tempp_name:'Nome', tempp_shirt:'Número da Camisola', tempp_position:'Posição Preferida', tempp_notes:'Notas',
-    tempp_saved:'Jogador temporário guardado.', tempp_err_name_required:'O nome é obrigatório.',
+    tempp_saved:'Jogador convidado guardado.', tempp_err_name_required:'O nome é obrigatório.',
+    tempp_confirm_dup_title:'Possível duplicado',
+    tempp_confirm_dup_guest_body:'Já existe um jogador convidado chamado "{name}" nesta época. Criar um novo mesmo assim?',
+    tempp_confirm_dup_permanent_body:'"{name}" já é um jogador permanente do plantel nesta época. Criar um convidado separado mesmo assim?',
     common_edit:'Editar', common_delete:'Eliminar', common_archive:'Arquivar', common_restore:'Restaurar',
     games_more_options:'Mais opções',
 
@@ -12154,13 +12160,38 @@ async function openTemporaryPlayerForm(tempPlayerId, tournamentId) {
 async function saveTemporaryPlayerFromForm(tempPlayerId, tournamentId) {
   const name = document.getElementById('tpf-name')?.value.trim();
   if (!name) { Toast.error(I18n.t('tempp_err_name_required')); return; }
+
+  // Duplicate-prevention UX only — never a uniqueness constraint, since
+  // two real players can share a name. Only checked when creating a
+  // NEW guest (not when editing one), against both the season's other
+  // guests and its permanent squad.
+  if (!tempPlayerId) {
+    const folded = foldForSearch(name);
+    const [allTemp, allPlayers] = await Promise.all([
+      getTemporaryPlayersForSeason(State.currentSeasonId),
+      DB.getAll('players', 'seasonId', State.currentSeasonId),
+    ]);
+    const existingGuest = allTemp.find(tp => foldForSearch(tp.name) === folded);
+    const existingPermanent = allPlayers.find(p => p.isActive && foldForSearch(p.fullName) === folded);
+    if (existingGuest || existingPermanent) {
+      const proceed = await new Promise(resolve => {
+        const bodyKey = existingGuest ? 'tempp_confirm_dup_guest_body' : 'tempp_confirm_dup_permanent_body';
+        Confirm.show(I18n.t('tempp_confirm_dup_title'), I18n.t(bodyKey, {name}), () => resolve(true));
+        // Confirm.show has no explicit cancel callback in this codebase's
+        // existing usage — closing/dismissing simply never calls the
+        // confirm callback, which is exactly "do not proceed" here.
+      });
+      if (!proceed) return;
+    }
+  }
+
   const tempPlayer = {
     seasonId: State.currentSeasonId,
     name,
     shirtNumber: parseInt(document.getElementById('tpf-shirt')?.value) || null,
     preferredPosition: document.getElementById('tpf-position')?.value.trim() || '',
     notes: document.getElementById('tpf-notes')?.value.trim() || '',
-    sourceType: 'tournament',
+    sourceType: tournamentId ? 'tournament' : 'manual',
   };
   if (tempPlayerId) tempPlayer.tempPlayerId = tempPlayerId;
   const savedId = await saveTemporaryPlayer(tempPlayer);
@@ -17823,11 +17854,11 @@ const Render = (() => {
 
     const activePlayers = players.filter(p=>p.isActive).sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99));
 
-    // Pass 3 — if this game belongs to a tournament, merge in that
-    // tournament's temporary players (guests) so they're selectable
-    // alongside the season squad for this game only. A non-tournament
-    // game never sees this list at all — activePlayers stays exactly as
-    // it always has been.
+    // Pass 3 — a tournament game merges in that tournament's specific
+    // guest list (and applies squad locking, if configured) exactly as
+    // before — unchanged. A non-tournament game (league, friendly, cup,
+    // or anything else) now gets the full season Guest Player pool —
+    // previously it saw none at all.
     let tempPlayersForGame = [];
     let lockedPlayers = activePlayers; // default: no lock, show full season squad
     if (game.tournamentId) {
@@ -17844,6 +17875,12 @@ const Render = (() => {
       // existing tournament game with zero migration — locking only
       // takes effect the moment a real selection exists.
       lockedPlayers = await getLockedPlayersForGame(game, activePlayers);
+    } else {
+      // Guest Players for any non-tournament game: the full season
+      // pool, same reusable identity whether the game is a league
+      // fixture, a friendly, a cup tie, or anything else. No squad
+      // locking here — that concept is tournament-specific.
+      tempPlayersForGame = await getTemporaryPlayersForSeason(State.currentSeasonId);
     }
     window._gdTempPlayers = tempPlayersForGame;
     window._gdPlayers = lockedPlayers;
