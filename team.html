@@ -1335,7 +1335,10 @@ function render(el, data) {
 
     <div class="pane" data-tab="lineup">
     ${liveMatchToday ? (() => {
-      const liveGP = gamePlayers.filter(r => r.gameId === liveMatchToday.gameId);
+      // Independent field from gamePlayers — gated by its own show_lineup
+      // toggle rather than show_player_stats, so this can be shared
+      // without exposing goals/assists/season stats.
+      const liveGP = (data.lineup || []).filter(r => r.gameId === liveMatchToday.gameId);
       const starterIds = new Set(liveGP.filter(r => r.calledUp && r.role === 'Starter').map(r => r.playerId));
       const subIds = new Set(liveGP.filter(r => r.calledUp && r.role !== 'Starter').map(r => r.playerId));
       const starters = players.filter(p => starterIds.has(p.playerId));
