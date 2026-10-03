@@ -343,6 +343,37 @@ function splitGames(games) {
   (games || []).forEach(g => out[gameCategory(g)].push(g));
   return out;
 }
+// Further splits the 'official' bucket by the actual competitionType
+// field — structured data, not name-guessing. An untyped official game
+// (no competitionType at all) defaults to league, preserving how it
+// was already being treated before this split existed.
+function splitOfficialByType(officialGames) {
+  const out = { league: [], cup: [] };
+  (officialGames || []).forEach(g => out[g.competitionType === 'Cup' ? 'cup' : 'league'].push(g));
+  return out;
+}
+// Pre/in/post-season boundary for friendlies, per the defined rule:
+// before the earliest scheduled league/cup fixture, between the
+// earliest and latest, or after the latest. Boundary dates come from
+// ALL official fixtures (played or not — we already know the
+// schedule), not just finished ones; which STATS get counted from
+// each bucket still only ever uses finished games, unchanged.
+// With no official fixtures at all to anchor against, a friendly
+// safely defaults to in-season rather than guessing pre or post.
+function splitFriendliesByPhase(friendlyGames, allGames) {
+  const out = { preSeason: [], inSeason: [], postSeason: [] };
+  const officialDates = (allGames || [])
+    .filter(g => gameCategory(g) === 'official' && g.date)
+    .map(g => g.date)
+    .sort();
+  (friendlyGames || []).forEach(g => {
+    if (!officialDates.length || !g.date) { out.inSeason.push(g); return; }
+    if (g.date < officialDates[0]) out.preSeason.push(g);
+    else if (g.date > officialDates[officialDates.length - 1]) out.postSeason.push(g);
+    else out.inSeason.push(g);
+  });
+  return out;
+}
 // No longer a static object — official/friendly/tournament map to the
 // SAME translated keys used everywhere else on this page, so this line
 // can never drift out of sync with the rest of the translation again.
@@ -451,10 +482,20 @@ function leaderNames(names) {
 // Compact breakdown by competition, shown inside Season Summary so
 // friendlies and tournaments no longer need cards of their own. A row
 // appears only for a competition that has actually been played.
-function renderCompetitionBreakdown(split, gamePlayers) {
+// League and Cup shown separately (structured competitionType, not
+// name-guessing); Friendlies further split into Pre/In/Post-season.
+// A row only appears when it actually has finished games — a team
+// that's never played a Cup fixture gets no empty Cup row, keeping
+// this compact rather than padding every season with blank rows.
+function renderCompetitionBreakdown(split, allGames, gamePlayers) {
+  const officialByType = splitOfficialByType(split.official);
+  const friendliesByPhase = splitFriendliesByPhase(split.friendly, allGames);
   const rows = [
-    [tr('official'), split.official],
-    [tr('friendlies'), split.friendly],
+    [tr('league'), officialByType.league],
+    [tr('cup'), officialByType.cup],
+    [tr('pre_season_friendlies'), friendliesByPhase.preSeason],
+    [tr('in_season_friendlies'), friendliesByPhase.inSeason],
+    [tr('post_season_friendlies'), friendliesByPhase.postSeason],
     [tr('tournaments'), split.tournament],
   ].filter(([, list]) => list.length);
   if (!rows.length) return '';
@@ -469,7 +510,7 @@ function renderCompetitionBreakdown(split, gamePlayers) {
           return `<tr>
             <td class="comp-name">${label}</td>
             <td>${t.played}</td>
-            <td>${t.wins}-${t.draws}-${t.losses}</td>
+            <td>${t.wins}${tr('w_short')}-${t.draws}${tr('d_short')}-${t.losses}${tr('l_short')}</td>
             <td>${t.goalsFor}-${t.goalsAgainst}</td>
           </tr>`;
         }).join('')}
@@ -486,7 +527,7 @@ function renderRecordCard(title, list, gamePlayers) {
   <div class="card">
     <h2 class="card-title" style="margin-top:0;font-size:11px">${title}</h2>
     <div class="stat-grid">
-      <div><div class="stat-label">${tr('record')}</div><div class="stat-value">${t.wins}-${t.draws}-${t.losses}</div></div>
+      <div><div class="stat-label">${tr('record')}</div><div class="stat-value">${t.wins}${tr('w_short')}-${t.draws}${tr('d_short')}-${t.losses}${tr('l_short')}</div></div>
       <div><div class="stat-label">${tr('goal_diff')}</div><div class="stat-value">${t.goalDiff>0?'+':''}${t.goalDiff}</div></div>
       <div><div class="stat-label">${tr('goals_for')}</div><div class="stat-value">${t.goalsFor}</div></div>
       <div><div class="stat-label">${tr('goals_against')}</div><div class="stat-value">${t.goalsAgainst}</div></div>
@@ -729,6 +770,8 @@ const STRINGS = {
     season_summary:'Season Summary · League & Cup', record:'Record', goal_diff:'Goal Diff',
     goals_for:'Goals For', goals_against:'Goals Against', current_form:'Current Form',
     by_competition:'By Competition', official:'League & Cup', friendlies:'Friendlies', tournaments:'Tournaments',
+    league:'League', cup:'Cup', pre_season_friendlies:'Pre-Season', in_season_friendlies:'In-Season', post_season_friendlies:'Post-Season',
+    w_short:'W', d_short:'D', l_short:'L',
     comp_tag_friendly:'Friendly', comp_tag_league:'League', comp_tag_cup:'Cup', comp_tag_trial:'Trial',
     upcoming_matches:'Upcoming Matches', view_all_matches:'View all matches', show_less:'Show less',
     no_upcoming_matches:'No upcoming matches are currently scheduled.',
@@ -788,6 +831,8 @@ const STRINGS = {
     season_summary:'Resumo da Época · Campeonato e Taça', record:'Registo', goal_diff:'Diferença de Golos',
     goals_for:'Golos Marcados', goals_against:'Golos Sofridos', current_form:'Forma Atual',
     by_competition:'Por Competição', official:'Campeonato e Taça', friendlies:'Jogos Amigáveis', tournaments:'Torneios',
+    league:'Campeonato', cup:'Taça', pre_season_friendlies:'Pré-Época', in_season_friendlies:'Durante a Época', post_season_friendlies:'Pós-Época',
+    w_short:'V', d_short:'E', l_short:'D',
     comp_tag_friendly:'Amigável', comp_tag_league:'Campeonato', comp_tag_cup:'Taça', comp_tag_trial:'Teste',
     upcoming_matches:'Próximos Jogos', view_all_matches:'Ver todos os jogos', show_less:'Mostrar menos',
     no_upcoming_matches:'Não existem próximos jogos agendados.',
@@ -1107,7 +1152,7 @@ function renderRecap(el, data) {
     <div class="card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('final_record')}</h2>
       <div class="stat-grid">
-        <div><div class="stat-label">${tr('record')}</div><div class="stat-value">${stats.wins}-${stats.draws}-${stats.losses}</div></div>
+        <div><div class="stat-label">${tr('record')}</div><div class="stat-value">${stats.wins}${tr('w_short')}-${stats.draws}${tr('d_short')}-${stats.losses}${tr('l_short')}</div></div>
         <div><div class="stat-label">${tr('goal_diff')}</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
         <div><div class="stat-label">${tr('goals_for')}</div><div class="stat-value">${stats.goalsFor}</div></div>
         <div><div class="stat-label">${tr('goals_against')}</div><div class="stat-value">${stats.goalsAgainst}</div></div>
@@ -1458,7 +1503,7 @@ function render(el, data) {
       <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_summary')}</h2>
       ${officialGames.length ? '' : '<p class="split-note">' + tr('no_official') + '</p>'}
       <div class="stat-grid">
-        <div><div class="stat-label">${tr('record')}</div><div class="stat-value">${stats.wins}-${stats.draws}-${stats.losses}</div></div>
+        <div><div class="stat-label">${tr('record')}</div><div class="stat-value">${stats.wins}${tr('w_short')}-${stats.draws}${tr('d_short')}-${stats.losses}${tr('l_short')}</div></div>
         <div><div class="stat-label">${tr('goal_diff')}</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
         <div><div class="stat-label">${tr('goals_for')}</div><div class="stat-value">${stats.goalsFor}</div></div>
         <div><div class="stat-label">${tr('goals_against')}</div><div class="stat-value">${stats.goalsAgainst}</div></div>
@@ -1475,7 +1520,7 @@ function render(el, data) {
           }).join('')}
         </div>
       </div>` : ''}
-      ${renderCompetitionBreakdown(split, gamePlayers)}
+      ${renderCompetitionBreakdown(split, games, gamePlayers)}
     </div>
 
     ${renderSeasonLeaders(players, officialGames, gamePlayers)}
@@ -1547,11 +1592,24 @@ function render(el, data) {
       // handle them — they're just more entries in the same array.
       const starterTempIds = new Set(liveGP.filter(r => r.calledUp && r.role === 'Starter' && r.tempPlayerId).map(r => r.tempPlayerId));
       const subTempIds = new Set(liveGP.filter(r => r.calledUp && r.role !== 'Starter' && r.tempPlayerId).map(r => r.tempPlayerId));
-      const asPlayerShape = g => ({ fullName: g.name, shirtNumber: g.shirtNumber, primaryPosition: g.preferredPosition || null });
+      // Effective position for this game: positionPlayed if the coach
+      // set one, else the usual position — same chain as the coach
+      // app, same reason: a player moved for today's match should be
+      // grouped/shown by where they're actually playing, not their
+      // normal spot. New objects via spread, not a mutation of the
+      // shared players/guestPlayers arrays.
+      const asPlayerShape = g => {
+        const gp = liveGP.find(r => r.tempPlayerId === g.tempPlayerId) || {};
+        return { fullName: g.name, shirtNumber: g.shirtNumber, primaryPosition: gp.positionPlayed || g.preferredPosition || null };
+      };
+      const withEffectivePos = p => {
+        const gp = liveGP.find(r => r.playerId === p.playerId) || {};
+        return { ...p, primaryPosition: gp.positionPlayed || p.primaryPosition };
+      };
       const guestStarters = (data.guestPlayers || []).filter(g => starterTempIds.has(g.tempPlayerId)).map(asPlayerShape);
       const guestSubs = (data.guestPlayers || []).filter(g => subTempIds.has(g.tempPlayerId)).map(asPlayerShape);
-      const starters = players.filter(p => starterIds.has(p.playerId)).concat(guestStarters);
-      const subs = players.filter(p => subIds.has(p.playerId)).concat(guestSubs);
+      const starters = players.filter(p => starterIds.has(p.playerId)).map(withEffectivePos).concat(guestStarters);
+      const subs = players.filter(p => subIds.has(p.playerId)).map(withEffectivePos).concat(guestSubs);
       const playerRow = p => `<div class="row">
           <span class="squad-num">${p.shirtNumber||'—'}</span>
           <span class="row-name">${esc(p.fullName)}</span>

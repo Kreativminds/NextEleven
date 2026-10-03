@@ -23438,8 +23438,14 @@ async function simpleToggleSquadTemp(gameId, tempPlayerId) {
 // selection list. Reuses CONFIG.POSITIONS exactly, the app's existing
 // canonical list, rather than inventing a separate one. Exactly one of
 // playerId/tempPlayerId is ever real; the other is null.
-async function openPositionPickerForGame(gameId, playerId, tempPlayerId) {
+// sourceTab tells the picker which tab to refresh after saving — it
+// can now be opened from either Convocados (Squad) or Starting XI, and
+// must land back on whichever one the coach was actually looking at.
+// Defaults to 'squad' so every existing call site (unchanged, not
+// passing this new argument) keeps behaving exactly as before.
+async function openPositionPickerForGame(gameId, playerId, tempPlayerId, sourceTab) {
   if (!checkGameEditableOrWarn()) return;
+  sourceTab = sourceTab || 'squad';
   const gp = playerId
     ? await getOrCreateGP(gameId, playerId)
     : await getOrCreateGPForTemp(gameId, tempPlayerId);
@@ -23451,7 +23457,7 @@ async function openPositionPickerForGame(gameId, playerId, tempPlayerId) {
       <h3 style="margin-bottom:14px">${I18n.t('gd_position_picker_title')}</h3>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
         ${CONFIG.POSITIONS.map(pos => `
-          <button class="btn ${gp.positionPlayed===pos?'btn-primary':'btn-secondary'} btn-sm" onclick="handleSetPositionPlayed(${gameId},${playerId||'null'},${tempPlayerId||'null'},'${esc(pos)}')">${esc(pos)}</button>
+          <button class="btn ${gp.positionPlayed===pos?'btn-primary':'btn-secondary'} btn-sm" onclick="handleSetPositionPlayed(${gameId},${playerId||'null'},${tempPlayerId||'null'},'${esc(pos)}','${sourceTab}')">${esc(pos)}</button>
         `).join('')}
       </div>
       <div class="form-actions" style="margin-top:16px">
@@ -23461,14 +23467,17 @@ async function openPositionPickerForGame(gameId, playerId, tempPlayerId) {
   document.body.appendChild(overlay);
 }
 
-async function handleSetPositionPlayed(gameId, playerId, tempPlayerId, position) {
+async function handleSetPositionPlayed(gameId, playerId, tempPlayerId, position, sourceTab) {
   const gp = playerId
     ? await getOrCreateGP(gameId, playerId)
     : await getOrCreateGPForTemp(gameId, tempPlayerId);
+  // Changes THIS game's record only — never touches the player's own
+  // primaryPosition/preferredPosition.
   gp.positionPlayed = position;
   await DB.put('gamePlayers', gp);
   document.querySelector('.rm-form-overlay')?.remove();
-  await renderSquadListTab(gameId);
+  if (sourceTab === 'xi') await renderStartingXITab(gameId);
+  else await renderSquadListTab(gameId);
   Sync.scheduleAutoSync();
 }
 
@@ -23492,10 +23501,23 @@ async function renderStartingXITab(gameId) {
       return gp && gp.calledUp;
     });
     gdDebugLog(`xi tab: squad size=${squad.length}, temp squad size=${tempSquad.length}`);
-    // Same Goalkeeper → Defender → Midfielder → Striker grouping as the
-    // Squad and Convocados screens.
-    const _xiGroups = groupPlayersByPosition(squad, p => p.primaryPosition);
-    const groupedSquad = POSITION_GROUP_ORDER.flatMap(g => _xiGroups[g]);
+    // Permanent players and guests merged into ONE list before
+    // grouping — same consistent Goalkeepers→Defenders→Midfielders→
+    // Strikers structure applies to both, not a grouped block followed
+    // by a separate flat guest list. Grouped by EFFECTIVE position:
+    // this game's positionPlayed if set, else the player/guest's usual
+    // position — so a coach-made change here is reflected immediately
+    // on this same screen, not just the Parents Page.
+    const combinedXI = [
+      ...squad.map(p => ({ isTemp: false, id: p.playerId, shirtNumber: p.shirtNumber, name: p.fullName, defaultPos: p.primaryPosition })),
+      ...tempSquad.map(tp => ({ isTemp: true, id: tp.tempPlayerId, shirtNumber: tp.shirtNumber, name: tp.name, defaultPos: tp.preferredPosition })),
+    ];
+    const findGP = e => e.isTemp
+      ? (existingGP.find(r => r.tempPlayerId === e.id) || {})
+      : (existingGP.find(r => r.playerId === e.id) || {});
+    const effectivePos = e => findGP(e).positionPlayed || e.defaultPos;
+    const _xiGroups = groupPlayersByPosition(combinedXI, effectivePos);
+    const groupedXI = POSITION_GROUP_ORDER.flatMap(g => _xiGroups[g]);
 
     if (!squad.length && !tempSquad.length) {
       el.innerHTML = `<div class="empty"><strong>${I18n.t('gd_xi_no_squad_title')}</strong><p>${I18n.t('gd_xi_no_squad_desc')}</p><button class="btn btn-primary" onclick="switchSimpleTab(${gameId},'squad')">${I18n.t('gd_btn_go_to_squad')}</button></div>`;
@@ -23508,31 +23530,25 @@ async function renderStartingXITab(gameId) {
       <p style="font-size:12px;color:var(--muted);margin-bottom:10px">${I18n.t('gd_xi_hint')}</p>
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('gd_xi_starters')} <strong style="color:var(--dark)" id="gdStarterCount">${starterCount}</strong> / 11</div>
       <div class="who-played-list">
-        ${groupedSquad.map((p, _idx) => {
-          const _grp = getPositionGroup(p.primaryPosition);
-          const _groupHeader = (_idx === 0 || getPositionGroup(groupedSquad[_idx-1].primaryPosition) !== _grp)
+        ${groupedXI.map((e, _idx) => {
+          const _grp = getPositionGroup(effectivePos(e));
+          const _groupHeader = (_idx === 0 || getPositionGroup(effectivePos(groupedXI[_idx-1])) !== _grp)
             ? `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:${_idx===0?'0':'12px'} 0 6px">${I18n.t('pos_group_'+_grp)}</div>`
             : '';
-          const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
+          const gp = findGP(e);
           const isStarter = gp.role === 'Starter';
-          return `${_groupHeader}<div class="wp-row ${isStarter?'wp-active':''}" id="xi-${p.playerId}" onclick="simpleToggleStarter(${gameId},${p.playerId})">
+          const effPos = effectivePos(e);
+          const toggleCall = e.isTemp ? `simpleToggleStarterTemp(${gameId},${e.id})` : `simpleToggleStarter(${gameId},${e.id})`;
+          const pickerCall = e.isTemp
+            ? `openPositionPickerForGame(${gameId},null,${e.id},'xi')`
+            : `openPositionPickerForGame(${gameId},${e.id},null,'xi')`;
+          const rowId = e.isTemp ? '' : ` id="xi-${e.id}"`;
+          return `${_groupHeader}<div class="wp-row ${isStarter?'wp-active':''}"${rowId} onclick="${toggleCall}">
             <div class="wp-info">
-              <span class="wp-num">${p.shirtNumber||'—'}</span>
-              <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))}</span>
-              ${p.primaryPosition?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px">${esc(p.primaryPosition)}</span>`:''}
-              <span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:${p.primaryPosition?'6px':'auto'}">${isStarter?I18n.t('gd_role_starter'):I18n.t('gd_role_sub')}</span>
-            </div>
-          </div>`;
-        }).join('')}
-        ${tempSquad.map(tp => {
-          const gp = existingGP.find(r=>r.tempPlayerId===tp.tempPlayerId) || {};
-          const isStarter = gp.role === 'Starter';
-          return `<div class="wp-row ${isStarter?'wp-active':''}" onclick="simpleToggleStarterTemp(${gameId},${tp.tempPlayerId})">
-            <div class="wp-info">
-              <span class="wp-num">${tp.shirtNumber||'—'}</span>
-              <span class="wp-name" title="${esc(tp.name)}">${esc(tp.name)} <span class="pos-pill">${I18n.t('gd_guest_badge')}</span></span>
-              ${tp.preferredPosition?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px">${esc(tp.preferredPosition)}</span>`:''}
-              <span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:6px">${isStarter?I18n.t('gd_role_starter'):I18n.t('gd_role_sub')}</span>
+              <span class="wp-num">${e.shirtNumber||'—'}</span>
+              <span class="wp-name" title="${esc(e.name)}">${esc(e.isTemp ? e.name : shortName(e.name))}${e.isTemp ? ` <span class="pos-pill">${I18n.t('gd_guest_badge')}</span>` : ''}</span>
+              ${effPos?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();${pickerCall}">${esc(effPos)}</span>`:''}
+              <span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:${effPos?'6px':'auto'}">${isStarter?I18n.t('gd_role_starter'):I18n.t('gd_role_sub')}</span>
             </div>
           </div>`;
         }).join('')}
