@@ -304,17 +304,21 @@ function renderLiveCard(g, season, players, gamePlayers) {
     </div>`;
 }
 
-// Large, faded club identity behind the tabs/content area. Absolutely
-// positioned within a position:relative wrapper (not position:fixed) so
-// it scrolls naturally with the page rather than following the viewport.
-// pointer-events:none and z-index:0 with no positioning on the real
-// content keep it strictly behind everything and out of the way of taps.
-// vw-based width with min/max caps keeps it proportionate without ever
-// causing horizontal overflow on a narrow phone.
+// Large, faded club identity, fixed to the viewport — stays in place
+// while the page scrolls past it, rather than scrolling with the
+// content. A SINGLE element, rendered once; previously this sat inside
+// a tall position:relative wrapper spanning from the tab bar down past
+// the Season Summary card, so its top and bottom edges could read as
+// two separate appearances even though it was only ever one image.
+// position:fixed removes that ambiguity entirely — one spot on screen,
+// always. pointer-events:none keeps it fully non-interactive; the
+// sticky header (opaque, position:fixed, z-index above this) correctly
+// covers it when visible. vw-based width with a px cap keeps it
+// proportionate without ever causing horizontal overflow.
 function renderClubWatermark(season) {
   const logoUrl = season?.clubLogoUrl;
   if (!logoUrl) return '';
-  return `<img src="${esc(logoUrl)}" alt="" aria-hidden="true" style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:min(70vw,320px);height:min(70vw,320px);max-width:100%;object-fit:contain;opacity:0.06;pointer-events:none;z-index:0;user-select:none">`;
+  return `<img src="${esc(logoUrl)}" alt="" aria-hidden="true" style="position:fixed;top:90px;left:50%;transform:translateX(-50%);width:min(70vw,320px);height:min(70vw,320px);max-width:100%;object-fit:contain;opacity:0.06;pointer-events:none;z-index:0;user-select:none">`;
 }
 
 function isGameLive(g, season) {
@@ -852,14 +856,20 @@ function fmtBirthday(b) {
 
 // Pinned above the tabs: only a birthday today (prominent) or one within
 // the week (compact). Anything further out lives in the Squad tab.
-function renderBirthdaySection(birthdays) {
-  if (!birthdays.length) return '';
+// ONE consolidated birthday card, used as a single carousel slide —
+// replaces the two previous functions (a standalone card plus a
+// separate carousel card) that could both render for the same
+// birthday at once. There is now exactly one birthday rendering path,
+// so the same birthday structurally cannot appear twice.
+function renderBirthdayCard(birthdays) {
+  const list = birthdays || [];
+  if (!list.length) return '';
 
-  const todayBirthdays = birthdays.filter(b => b.isToday);
-  const thisWeekBirthdays = birthdays.filter(b => b.isThisWeek && !b.isToday);
+  const todayBirthdays = list.filter(b => b.isToday);
+  const thisWeekBirthdays = list.filter(b => b.isThisWeek && !b.isToday);
 
-  // Today takes priority — a genuine, prominent celebration card, one
-  // per player if multiple share a birthday (rare, but handled).
+  // Today takes priority — a festive card, one entry per player if
+  // multiple share the day (rare, but handled).
   if (todayBirthdays.length) {
     return `
     <div class="card" style="background:#fef6e0;border-color:#f0d98a;text-align:center">
@@ -873,8 +883,8 @@ function renderBirthdaySection(birthdays) {
     </div>`;
   }
 
-  // Within the coming week — a lighter mention, not a full celebration
-  // card, since the day itself hasn't arrived yet.
+  // This week, not today — BIRTHDAY THIS WEEK, listing everyone who
+  // qualifies rather than picking just one.
   if (thisWeekBirthdays.length) {
     return `
     <div class="card" style="background:#fef6e0;border-color:#f0d98a">
@@ -886,20 +896,12 @@ function renderBirthdaySection(birthdays) {
     </div>`;
   }
 
-  return '';
-}
-
-// One card for the single next birthday, with a countdown. Used in the
-// pinned carousel so a birthday is always visible on the main page.
-function renderNextBirthdayCard(birthdays) {
-  const list = birthdays || [];
-  const b = list.find(x => x.isToday) || list[0];
-  if (!b) return '';
+  // Nothing imminent — fall back to the single soonest birthday,
+  // labeled NEXT BIRTHDAY rather than BIRTHDAY THIS WEEK.
+  const b = list[0];
   const name = esc(shortName(b.fullName));
   const num = b.shirtNumber ? ' · #' + esc(b.shirtNumber) : '';
-  const when = b.isToday ? tr('today')
-    : b.daysUntil === 1 ? tr('tomorrow')
-    : tr('in_days', {n: b.daysUntil});
+  const when = b.daysUntil === 1 ? tr('tomorrow') : tr('in_days', {n: b.daysUntil});
   return `
   <div class="card" style="background:#fef6e0;border-color:#f0d98a">
     <h2 class="card-title" style="color:#7a5f18;margin-top:0;font-size:11px"><span aria-hidden="true">🎂</span> ${tr('next_birthday')}</h2>
@@ -1203,10 +1205,10 @@ function render(el, data) {
       })()}
     </div>` : '';
   const birthdays = dedupePlayerRows(data.birthdays || []);
-  const birthdayHtml = renderBirthdaySection(birthdays);
-  // Pinned carousel: next match and the next birthday, flipping between
-  // them so both stay visible on the main page without more scrolling.
-  const carouselSlides = [nextMatchHtml, renderNextBirthdayCard(birthdays)].filter(Boolean);
+  // Pinned carousel: birthday and next match share ONE card area,
+  // flipping between them — not two separate stacked cards. Birthday
+  // first, matching how it's meant to read when both are present.
+  const carouselSlides = [renderBirthdayCard(birthdays), nextMatchHtml].filter(Boolean);
 
   const html = `
     <div class="team-header" style="position:relative;overflow:hidden">
@@ -1230,9 +1232,6 @@ function render(el, data) {
 
     ${liveGames.map(g => renderLiveCard(g, season, players, gamePlayers)).join('')}
 
-
-    ${birthdayHtml}
-
     ${carouselSlides.length ? `
     <div class="carousel" id="pinnedCarousel">
       <div class="carousel-track">
@@ -1245,8 +1244,7 @@ function render(el, data) {
     </div>` : '<div style="height:14px"></div>'}
     ` : ''}
 
-    <div class="tabs-watermark-wrap" style="position:relative">
-      ${renderClubWatermark(season)}
+    ${renderClubWatermark(season)}
     <nav class="tabs" role="tablist" aria-label="Sections">
       ${TABS.map(tab => `<button type="button" class="tab-btn" role="tab" data-tabbtn="${tab.id}" aria-selected="false">${tr(tab.key)}</button>`).join('')}
     </nav>
@@ -1458,7 +1456,6 @@ function render(el, data) {
         <span class="row-meta">${esc(s.clubName||'')} ›</span>
       </a>`).join('')}
     </div>` : ''}
-    </div>
     </div>
 
     <div class="footer-note">
