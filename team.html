@@ -229,6 +229,94 @@ function isGameFinished(g, season) {
   return now >= new Date(kickoff.getTime() + mins * 60000);
 }
 // Kicked off but not finished yet — shown live, never counted in any record.
+// Same grouping as the main app's Squad/Convocados/Starting XI screens —
+// kept identical by hand, since this file and index.html share no
+// module system. The 10 input values match CONFIG.POSITIONS there.
+const POSITION_GROUP_ORDER = ['goalkeeper','defender','midfielder','striker','other'];
+const POSITION_TO_GROUP = {
+  'Goalkeeper': 'goalkeeper',
+  'Centre Back': 'defender', 'Right Back': 'defender', 'Left Back': 'defender',
+  'Defensive Midfielder': 'midfielder', 'Central Midfielder': 'midfielder', 'Attacking Midfielder': 'midfielder',
+  'Right Winger': 'striker', 'Left Winger': 'striker', 'Striker': 'striker',
+};
+function getPositionGroup(position) {
+  return POSITION_TO_GROUP[position] || 'other';
+}
+function groupPlayersByPosition(players, getPosition) {
+  const groups = { goalkeeper: [], defender: [], midfielder: [], striker: [], other: [] };
+  (players || []).forEach(p => groups[getPositionGroup(getPosition(p))].push(p));
+  const byShirt = (a, b) => {
+    const na = a.shirtNumber, nb = b.shirtNumber;
+    const hasA = na !== null && na !== undefined && na !== '';
+    const hasB = nb !== null && nb !== undefined && nb !== '';
+    if (hasA && hasB) return parseInt(na) - parseInt(nb);
+    if (hasA) return -1;
+    if (hasB) return 1;
+    return 0;
+  };
+  POSITION_GROUP_ORDER.forEach(g => groups[g].sort(byShirt));
+  return groups;
+}
+function renderPositionGroupedRows(players, renderRow) {
+  const groups = groupPlayersByPosition(players, p => p.primaryPosition);
+  return POSITION_GROUP_ORDER
+    .filter(g => groups[g].length)
+    .map(g => `
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:14px 0 6px">${tr('pos_group_'+g)}</div>
+      ${groups[g].map(renderRow).join('')}
+    `).join('');
+}
+
+// Factored out so the same live card can render both at the top of the
+// page and inside the Lineup tab — previously only existed inline.
+function renderLiveCard(g, season, players, gamePlayers) {
+  const gps = gamePlayers.filter(r => r.gameId === g.gameId);
+  const our = teamGoals(gps, g);
+  const their = parseInt(g.opponentScore)||0;
+  const sc = homeAwayScore(g.homeAway, our, their, g.neutralSide);
+  const scorers = gps.filter(r => (parseInt(r.goals)||0) > 0)
+    .map(r => {
+      const pl = players.find(x => x.playerId === r.playerId);
+      const n = parseInt(r.goals)||0;
+      return { name: pl ? shortName(pl.fullName) : 'Unknown', goals: n };
+    })
+    .sort((a,b) => b.goals - a.goals || a.name.localeCompare(b.name));
+  const ownGoals = parseInt(g.ownGoalsForUs)||0;
+  const usHome = g.homeAway === 'Home' || (g.homeAway === 'Neutral' && g.neutralSide === 'home');
+  const ourName = season.clubName || 'Us';
+  const homeName = usHome ? ourName : g.opponent;
+  const awayName = usHome ? g.opponent : ourName;
+  return `
+    <div class="card live-card">
+      <span class="live-flag"><span class="dot" aria-hidden="true"></span>${tr('live')}</span>
+      <div class="live-fixture">
+        <div class="live-team">${esc(homeName)}</div>
+        <div class="live-score" role="status" aria-live="polite">${sc.home} - ${sc.away}</div>
+        <div class="live-team">${esc(awayName)}</div>
+      </div>
+      <div class="live-meta">${g.homeAway === 'Home' ? tr('home') : tr('away')}${g.venue ? ' · ' + esc(g.venue) : ''} · ${tr('kickoff')} ${esc(g.gameTime||'')}</div>
+      ${(scorers.length || ownGoals) ? `
+      <div class="live-scorers">
+        ${scorers.map(x => `<div><span aria-hidden="true">⚽</span> <span class="who">${esc(x.name)}</span>${x.goals > 1 ? ` ×${x.goals}` : ''}</div>`).join('')}
+        ${ownGoals ? `<div><span aria-hidden="true">⚽</span> <span class="who">${tr('own_goal')}</span>${ownGoals > 1 ? ` ×${ownGoals}` : ''}</div>` : ''}
+      </div>` : ''}
+      <div class="live-note">${tr('live_note')}</div>
+    </div>`;
+}
+
+// Large, faded club identity behind the tabs/content area. Absolutely
+// positioned within a position:relative wrapper (not position:fixed) so
+// it scrolls naturally with the page rather than following the viewport.
+// pointer-events:none and z-index:0 with no positioning on the real
+// content keep it strictly behind everything and out of the way of taps.
+// vw-based width with min/max caps keeps it proportionate without ever
+// causing horizontal overflow on a narrow phone.
+function renderClubWatermark(season) {
+  const logoUrl = season?.clubLogoUrl;
+  if (!logoUrl) return '';
+  return `<img src="${esc(logoUrl)}" alt="" aria-hidden="true" style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:min(70vw,320px);height:min(70vw,320px);max-width:100%;object-fit:contain;opacity:0.06;pointer-events:none;z-index:0;user-select:none">`;
+}
+
 function isGameLive(g, season) {
   if (!g || !g.date || !g.gameTime) return false;
   const kickoff = new Date(`${g.date}T${g.gameTime}`);
@@ -626,7 +714,9 @@ const STRINGS = {
     season_highlights:'Season Highlights', prev_achievements:'Previous Achievements', prev_seasons:'Previous Seasons',
     final_record:'Final Record · League & Cup', season_recap:'{season} Season Recap · League & Cup',
     completed:'Completed', played:'Games', wins:'Wins', draws:'Draws', losses:'Losses',
-    tab_matches:'Matches', tab_team:'Team', tab_squad:'Squad', tab_history:'History',
+    tab_matches:'Matches', tab_team:'Team', tab_squad:'Squad', tab_history:'History', tab_lineup:'Starting 11',
+    pos_group_goalkeeper:'Goalkeepers', pos_group_defender:'Defenders', pos_group_midfielder:'Midfielders', pos_group_striker:'Strikers', pos_group_other:'Other',
+    lineup_subs:'Also called up', lineup_none:'The starting lineup isn\'t set yet.',
     refresh:'Refresh', footer:'Shared read-only via NextEleven · Live team data',
     footer_recap:'Shared read-only via NextEleven · Season Recap',
     unavailable_title:"This link isn't available", unavailable_body:'It may have been disabled or replaced.',
@@ -663,7 +753,9 @@ const STRINGS = {
     season_highlights:'Destaques da Época', prev_achievements:'Conquistas Anteriores', prev_seasons:'Épocas Anteriores',
     final_record:'Registo Final · Campeonato e Taça', season_recap:'Resumo da Época {season} · Campeonato e Taça',
     completed:'Terminada', played:'Jogos', wins:'Vitórias', draws:'Empates', losses:'Derrotas',
-    tab_matches:'Jogos', tab_team:'Equipa', tab_squad:'Plantel', tab_history:'Histórico',
+    tab_matches:'Jogos', tab_team:'Equipa', tab_squad:'Plantel', tab_history:'Histórico', tab_lineup:'11 Inicial',
+    pos_group_goalkeeper:'Guarda-Redes', pos_group_defender:'Defesas', pos_group_midfielder:'Médios', pos_group_striker:'Avançados', pos_group_other:'Sem posição',
+    lineup_subs:'Também convocados', lineup_none:'O onze inicial ainda não foi definido.',
     refresh:'Atualizar', footer:'Partilhado apenas para consulta via NextEleven · Dados em direto',
     footer_recap:'Partilhado apenas para consulta via NextEleven · Resumo da Época',
     unavailable_title:'Esta ligação não está disponível', unavailable_body:'Pode ter sido desativada ou substituída.',
@@ -857,12 +949,12 @@ function renderRecap(el, data) {
   const backUrl = window.location.pathname + window.location.search.replace(/&?view=recap/, '');
 
   el.innerHTML = `
-    <div class="team-header">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+    <div class="team-header" style="position:relative;overflow:hidden">
+      ${renderClubLogo(season)}
+      <div style="position:relative;z-index:1">
         <h1 style="margin:0">${esc(season.clubName || 'Team')} ${season.ageGroup ? '· ' + esc(season.ageGroup) : ''}</h1>
-        ${renderClubLogo(season)}
+        <div class="sub" style="margin-top:2px">${esc(season.seasonName || '')} Season Recap</div>
       </div>
-      <div class="sub" style="margin-top:2px">${esc(season.seasonName || '')} Season Recap</div>
     </div>
 
     ${data.seasonStory ? `
@@ -925,7 +1017,7 @@ function renderRecap(el, data) {
 function renderClubLogo(season) {
   const logoUrl = season?.clubLogoUrl;
   if (!logoUrl) return '';
-  return `<img src="${esc(logoUrl)}" alt="" style="width:72px;height:72px;object-fit:contain;border-radius:50%;flex-shrink:0">`;
+  return `<img src="${esc(logoUrl)}" alt="" aria-hidden="true" style="position:absolute;top:50%;right:-10px;transform:translateY(-50%);width:160px;height:160px;object-fit:contain;opacity:0.12;pointer-events:none;z-index:0">`;
 }
 
 function applyTeamPageBranding(appBranding) {
@@ -950,6 +1042,7 @@ function applyTeamPageBranding(appBranding) {
 }
 
 const TABS = [
+  { id: 'lineup',  key: 'tab_lineup' },
   { id: 'matches', key: 'tab_matches' },
   { id: 'team',    key: 'tab_team' },
   { id: 'squad',   key: 'tab_squad' },
@@ -1000,10 +1093,18 @@ function applyCarousel(el) {
 function applyTabs(el) {
   const panes = [...el.querySelectorAll('.pane')];
   if (!panes.length) return;
-  const hasContent = id => panes.filter(p => p.dataset.tab === id)
-    .some(p => p.querySelector('.card'));
+  const hasContent = id => {
+    // Squad temporarily disappears during a live match — the roster is
+    // still in the DOM, just not offered as a destination right now.
+    if (id === 'squad' && _liveGameOnPage) return false;
+    return panes.filter(p => p.dataset.tab === id).some(p => p.querySelector('.card'));
+  };
   const available = TABS.filter(t => hasContent(t.id)).map(t => t.id);
-  let active = currentTabId();
+  // A genuinely fresh open (no tab explicitly chosen via the URL) lands
+  // on Lineup when a match is live, per spec — but an already-engaged
+  // visitor's own tab choice, preserved in the hash, is never overridden.
+  const hasExplicitHash = !!(location.hash || '').replace(/^#/, '');
+  let active = (!hasExplicitHash && available.includes('lineup')) ? 'lineup' : currentTabId();
   if (!available.includes(active)) active = available[0] || 'matches';
 
   panes.forEach(p => { p.hidden = p.dataset.tab !== active; });
@@ -1108,12 +1209,11 @@ function render(el, data) {
   const carouselSlides = [nextMatchHtml, renderNextBirthdayCard(birthdays)].filter(Boolean);
 
   const html = `
-    <div class="team-header">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+    <div class="team-header" style="position:relative;overflow:hidden">
+      ${renderClubLogo(season)}
+      <div style="position:relative;z-index:1">
         <h1 style="margin:0">${esc(season.clubName || 'Team')} ${season.ageGroup ? '· ' + esc(season.ageGroup) : ''}</h1>
-        ${renderClubLogo(season)}
-      </div>
-      <div class="sub" style="margin-top:2px">${esc(season.seasonName || '')} ${season.status === 'completed' ? '<span class="badge" style="background:#e8f0fe;color:#1a56c4;margin-left:6px">' + tr('completed') + '</span>' : ''}</div>
+        <div class="sub" style="margin-top:2px">${esc(season.seasonName || '')} ${season.status === 'completed' ? '<span class="badge" style="background:#e8f0fe;color:#1a56c4;margin-left:6px">' + tr('completed') + '</span>' : ''}</div>
     </div>
 
     ${season.status === 'completed' ? `
@@ -1128,46 +1228,7 @@ function render(el, data) {
       <div style="margin-top:10px;font-size:12px;font-weight:700;text-decoration:underline">View Recap →</div>
     </a>` : ''}
 
-    ${liveGames.map(g => {
-      const gps = gamePlayers.filter(r => r.gameId === g.gameId);
-      const our = teamGoals(gps, g);
-      const their = parseInt(g.opponentScore)||0;
-      const sc = homeAwayScore(g.homeAway, our, their, g.neutralSide);
-      // Scorers come from each player's goal count for this game — the app
-      // records goals per player, not as timed events, so there is no minute
-      // to show. Own goals credited to us have no scorer at all.
-      const scorers = gps.filter(r => (parseInt(r.goals)||0) > 0)
-        .map(r => {
-          const pl = players.find(x => x.playerId === r.playerId);
-          const n = parseInt(r.goals)||0;
-          return { name: pl ? shortName(pl.fullName) : 'Unknown', goals: n };
-        })
-        .sort((a,b) => b.goals - a.goals || a.name.localeCompare(b.name));
-      const ownGoals = parseInt(g.ownGoalsForUs)||0;
-      // Both teams named, in home-away order. Our own club name comes from
-      // the season; homeAway (and neutralSide for a neutral venue) says
-      // which side we are on.
-      const usHome = g.homeAway === 'Home' || (g.homeAway === 'Neutral' && g.neutralSide === 'home');
-      const ourName = season.clubName || 'Us';
-      const homeName = usHome ? ourName : g.opponent;
-      const awayName = usHome ? g.opponent : ourName;
-      return `
-    <div class="card live-card">
-      <span class="live-flag"><span class="dot" aria-hidden="true"></span>${tr('live')}</span>
-      <div class="live-fixture">
-        <div class="live-team">${esc(homeName)}</div>
-        <div class="live-score" role="status" aria-live="polite">${sc.home} - ${sc.away}</div>
-        <div class="live-team">${esc(awayName)}</div>
-      </div>
-      <div class="live-meta">${g.homeAway === 'Home' ? tr('home') : tr('away')}${g.venue ? ' · ' + esc(g.venue) : ''} · ${tr('kickoff')} ${esc(g.gameTime||'')}</div>
-      ${(scorers.length || ownGoals) ? `
-      <div class="live-scorers">
-        ${scorers.map(x => `<div><span aria-hidden="true">⚽</span> <span class="who">${esc(x.name)}</span>${x.goals > 1 ? ` ×${x.goals}` : ''}</div>`).join('')}
-        ${ownGoals ? `<div><span aria-hidden="true">⚽</span> <span class="who">${tr('own_goal')}</span>${ownGoals > 1 ? ` ×${ownGoals}` : ''}</div>` : ''}
-      </div>` : ''}
-      <div class="live-note">${tr('live_note')}</div>
-    </div>`;
-    }).join('')}
+    ${liveGames.map(g => renderLiveCard(g, season, players, gamePlayers)).join('')}
 
 
     ${birthdayHtml}
@@ -1184,6 +1245,8 @@ function render(el, data) {
     </div>` : '<div style="height:14px"></div>'}
     ` : ''}
 
+    <div class="tabs-watermark-wrap" style="position:relative">
+      ${renderClubWatermark(season)}
     <nav class="tabs" role="tablist" aria-label="Sections">
       ${TABS.map(tab => `<button type="button" class="tab-btn" role="tab" data-tabbtn="${tab.id}" aria-selected="false">${tr(tab.key)}</button>`).join('')}
     </nav>
@@ -1270,6 +1333,32 @@ function render(el, data) {
     ` : ''}
     </div>
 
+    <div class="pane" data-tab="lineup">
+    ${liveMatchToday ? (() => {
+      const liveGP = gamePlayers.filter(r => r.gameId === liveMatchToday.gameId);
+      const starterIds = new Set(liveGP.filter(r => r.calledUp && r.role === 'Starter').map(r => r.playerId));
+      const subIds = new Set(liveGP.filter(r => r.calledUp && r.role !== 'Starter').map(r => r.playerId));
+      const starters = players.filter(p => starterIds.has(p.playerId));
+      const subs = players.filter(p => subIds.has(p.playerId));
+      const playerRow = p => `<div class="row">
+          <span class="squad-num">${p.shirtNumber||'—'}</span>
+          <span class="row-name">${esc(p.fullName)}</span>
+          <span class="row-meta">${p.primaryPosition?esc(posName(p.primaryPosition)):''}</span>
+        </div>`;
+      return `
+      ${renderLiveCard(liveMatchToday, season, players, gamePlayers)}
+      <div class="card">
+        <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('tab_lineup')}</h2>
+        ${starters.length ? renderPositionGroupedRows(starters, playerRow) : `<p class="row-meta" style="padding:4px 0">${tr('lineup_none')}</p>`}
+        ${subs.length ? `
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+          <div class="stat-label" style="margin-bottom:6px">${tr('lineup_subs')}</div>
+          ${renderPositionGroupedRows(subs, playerRow)}
+        </div>` : ''}
+      </div>`;
+    })() : ''}
+    </div>
+
     <div class="pane" data-tab="squad">
     ${(() => {
       const av = data.availability;
@@ -1302,7 +1391,7 @@ function render(el, data) {
     ${players.length ? `
     <div class="card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('squad')}</h2>
-      ${players.map(p => {
+      ${renderPositionGroupedRows(players, p => {
         const s = playerPublicStats(p.playerId, finishedGames, gamePlayers);
         const mostPlayed = s.mostPlayedPosition || p.primaryPosition;
         return `<div class="row">
@@ -1310,7 +1399,7 @@ function render(el, data) {
           <span class="row-name">${esc(p.fullName)}</span>
           <span class="row-meta">${p.primaryPosition?esc(posName(p.primaryPosition)):''}${(mostPlayed && mostPlayed !== p.primaryPosition) ? ' · ' + esc(posName(mostPlayed)) + ' (' + tr('most_played') + ')' : ''}</span>
         </div>`;
-      }).join('')}
+      })}
     </div>` : ''}
 
     ${players.length ? `
@@ -1366,6 +1455,7 @@ function render(el, data) {
         <span class="row-meta">${esc(s.clubName||'')} ›</span>
       </a>`).join('')}
     </div>` : ''}
+    </div>
     </div>
 
     <div class="footer-note">

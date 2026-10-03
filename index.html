@@ -628,6 +628,44 @@ function activeDbName() {
   return isDemoMode() ? CONFIG.DEMO_DB_NAME : CONFIG.DB_NAME;
 }
 
+// Shared across Squad, Convocados selection, and Starting XI selection —
+// one definition of "what group does a position belong to" and "what
+// order do groups render in", so these three screens can never drift
+// out of sync with each other. The 10 input values match
+// CONFIG.POSITIONS exactly; anything else (missing, legacy, corrupted)
+// falls into 'other' rather than being dropped.
+const POSITION_GROUP_ORDER = ['goalkeeper','defender','midfielder','striker','other'];
+const POSITION_TO_GROUP = {
+  'Goalkeeper': 'goalkeeper',
+  'Centre Back': 'defender', 'Right Back': 'defender', 'Left Back': 'defender',
+  'Defensive Midfielder': 'midfielder', 'Central Midfielder': 'midfielder', 'Attacking Midfielder': 'midfielder',
+  'Right Winger': 'striker', 'Left Winger': 'striker', 'Striker': 'striker',
+};
+function getPositionGroup(position) {
+  return POSITION_TO_GROUP[position] || 'other';
+}
+// Splits a flat player array into the 5 ordered groups. sortWithinGroup
+// is optional — defaults to shirt-number ascending (missing numbers
+// last), but a caller with its own sort (e.g. a user-togglable column
+// sort) can supply its own comparator to use INSIDE each group instead,
+// without losing the grouping itself.
+function groupPlayersByPosition(players, getPosition, sortWithinGroup) {
+  const groups = { goalkeeper: [], defender: [], midfielder: [], striker: [], other: [] };
+  (players || []).forEach(p => groups[getPositionGroup(getPosition(p))].push(p));
+  const defaultSort = (a, b) => {
+    const na = a.shirtNumber, nb = b.shirtNumber;
+    const hasA = na !== null && na !== undefined && na !== '';
+    const hasB = nb !== null && nb !== undefined && nb !== '';
+    if (hasA && hasB) return parseInt(na) - parseInt(nb);
+    if (hasA) return -1;
+    if (hasB) return 1;
+    return 0;
+  };
+  const cmp = sortWithinGroup || defaultSort;
+  POSITION_GROUP_ORDER.forEach(g => groups[g].sort(cmp));
+  return groups;
+}
+
 const CONFIG = {
   APP_VERSION: '1.2.1', // human-readable label only — staleness detection no longer depends on this matching anything
   SCHEMA_VERSION: 19,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index
@@ -5680,6 +5718,7 @@ const TR = {
     squad_btn_show_archived:'Show Archived ({n})', squad_btn_hide_archived:'Hide Archived',
     squad_total_count:'{n} player(s) total', squad_archived_hidden_count:'{n} archived (hidden)',
     squad_col_num:'#', squad_col_name:'Name', squad_col_position:'Preferred', squad_col_most_played:'Most Played', squad_col_pos2:'2nd Pos',
+    pos_group_goalkeeper:'Goalkeepers', pos_group_defender:'Defenders', pos_group_midfielder:'Midfielders', pos_group_striker:'Strikers', pos_group_other:'Other',
     squad_col_foot:'Foot', squad_col_dob:'DOB', squad_tracked_label_default:'Tracked',
 
     // ── GAMES PAGE ──
@@ -7031,6 +7070,7 @@ const TR = {
     squad_btn_show_archived:'Mostrar Arquivados ({n})', squad_btn_hide_archived:'Ocultar Arquivados',
     squad_total_count:'{n} jogador(es) no total', squad_archived_hidden_count:'{n} arquivado(s) (ocultos)',
     squad_col_num:'#', squad_col_name:'Nome', squad_col_position:'Preferida', squad_col_most_played:'Mais Jogada', squad_col_pos2:'2ª Pos',
+    pos_group_goalkeeper:'Guarda-Redes', pos_group_defender:'Defesas', pos_group_midfielder:'Médios', pos_group_striker:'Avançados', pos_group_other:'Sem posição',
     squad_col_foot:'Pé', squad_col_dob:'D. Nasc.', squad_tracked_label_default:'Acompanhado',
 
     // ── GAMES PAGE ──
@@ -17540,10 +17580,12 @@ const Render = (() => {
       dateOfBirth: (a,b) => (a.dateOfBirth||'').localeCompare(b.dateOfBirth||''),
     };
 
-    players.sort((a,b) => {
+    const withinGroupSort = (a,b) => {
       const fn = sortFns[sortKey] || sortFns.shirtNumber;
       return sortDir === 'asc' ? fn(a,b) : fn(b,a);
-    });
+    };
+    const positionGroups = groupPlayersByPosition(players, p => p.primaryPosition, withinGroupSort);
+    players = POSITION_GROUP_ORDER.flatMap(g => positionGroups[g]);
 
     function thSort(key, label, extraClass='') {
       const active = sortKey === key;
@@ -17563,13 +17605,18 @@ const Render = (() => {
     // gamePlayers collection already loaded above (no extra read).
     const playerIdsWithHistory = new Set(allGPForSquad.map(gp => gp.playerId).filter(Boolean));
 
-    const rows = players.map(p => {
+    const rows = players.map((p, _rowIdx) => {
+      const _grp = getPositionGroup(p.primaryPosition);
+      const _groupHeader = (_rowIdx === 0 || getPositionGroup(players[_rowIdx-1].primaryPosition) !== _grp)
+        ? `<tr><td colspan="99" style="background:var(--bg);font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;padding:6px 10px">${I18n.t('pos_group_'+_grp)}</td></tr>`
+        : '';
       const injury = activeInjuryByPlayer[p.playerId];
       const rowBg = injury ? '#fbeaea' : '';
       const rowStyle = injury ? `style="background:${rowBg}"` : '';
       const stickyBg = injury ? `style="background:${rowBg}"` : '';
       const hasHistory = playerIdsWithHistory.has(p.playerId);
       return `
+      ${_groupHeader}
       <tr ${rowStyle} class="${injury?'row-injured':''}">
         <td class="col-sticky-num" ${stickyBg}>${p.shirtNumber||'—'}</td>
         <td class="col-sticky-name" title="${esc(p.fullName)}" style="${injury?`background:${rowBg};`:''}cursor:pointer;text-decoration:underline;text-decoration-color:#ccc" onclick="openPlayerCardPopup(${p.playerId})">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor" title="${esc(p.trackingLabel||I18n.t('squad_tracked_label_default'))}">${esc(p.trackingLabel||'★')}</span>`:''} ${!p.isActive?`<span class="badge-nc badge" style="font-size:9px">${I18n.t('squad_archived_badge')}</span>`:''}</td>
@@ -23185,10 +23232,15 @@ async function renderSquadListTab(gameId) {
       const fallbackActivePlayers = (await DB.getAll('players','seasonId', State.currentSeasonId)).filter(p=>p.isActive).sort((a,b)=>(a.shirtNumber||99)-(b.shirtNumber||99));
       window._gdPlayers = await getLockedPlayersForGame(fallbackGame, fallbackActivePlayers);
     }
-    const players = window._gdPlayers;
+    const rawPlayers = window._gdPlayers;
     const existingGP = await DB.getAll('gamePlayers','gameId',gameId);
     const calledUpCount = existingGP.filter(r=>r.calledUp).length;
-    gdDebugLog(`squad tab: ${players.length} players, ${calledUpCount} called up`);
+    gdDebugLog(`squad tab: ${rawPlayers.length} players, ${calledUpCount} called up`);
+    // Goalkeepers → Defenders → Midfielders → Strikers, same grouping used
+    // on the Squad screen and Starting XI selection. Shirt number within
+    // each group (this screen has no column-sort to preserve).
+    const _squadGroups = groupPlayersByPosition(rawPlayers, p => p.primaryPosition);
+    const players = POSITION_GROUP_ORDER.flatMap(g => _squadGroups[g]);
 
     // Find the previous game to offer a squad copy from. For a tournament
     // game, this must be the previous game IN THE SAME TOURNAMENT — not
@@ -23220,10 +23272,14 @@ async function renderSquadListTab(gameId) {
       ${(prevGame && calledUpCount===0) ? `<button class="btn btn-secondary btn-sm" style="margin-bottom:10px" onclick="copySquadFromPreviousGame(${gameId},${prevGame.gameId})">&#128203; ${I18n.t('gd_btn_copy_squad',{opponent:esc(prevGame.opponent),date:fmtDate(prevGame.date)})}</button>` : ''}
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('gd_squad_in_squad')} <strong style="color:var(--dark)" id="gdSquadCount">${calledUpCount}</strong> / ${players.length}</div>
       <div class="who-played-list">
-        ${players.map(p => {
+        ${players.map((p, _idx) => {
+          const _grp = getPositionGroup(p.primaryPosition);
+          const _groupHeader = (_idx === 0 || getPositionGroup(players[_idx-1].primaryPosition) !== _grp)
+            ? `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:${_idx===0?'0':'12px'} 0 6px">${I18n.t('pos_group_'+_grp)}</div>`
+            : '';
           const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
           const calledUp = !!gp.calledUp;
-          return `<div class="wp-row ${calledUp?'wp-active':''}" id="sql-${p.playerId}" onclick="simpleToggleSquad(${gameId},${p.playerId})">
+          return `${_groupHeader}<div class="wp-row ${calledUp?'wp-active':''}" id="sql-${p.playerId}" onclick="simpleToggleSquad(${gameId},${p.playerId})">
             <div class="wp-info">
               <span class="wp-num">${p.shirtNumber||'—'}</span>
               <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor">${esc(p.trackingLabel||'★')}</span>`:''}</span>
@@ -23399,6 +23455,10 @@ async function renderStartingXITab(gameId) {
       return gp && gp.calledUp;
     });
     gdDebugLog(`xi tab: squad size=${squad.length}, temp squad size=${tempSquad.length}`);
+    // Same Goalkeeper → Defender → Midfielder → Striker grouping as the
+    // Squad and Convocados screens.
+    const _xiGroups = groupPlayersByPosition(squad, p => p.primaryPosition);
+    const groupedSquad = POSITION_GROUP_ORDER.flatMap(g => _xiGroups[g]);
 
     if (!squad.length && !tempSquad.length) {
       el.innerHTML = `<div class="empty"><strong>${I18n.t('gd_xi_no_squad_title')}</strong><p>${I18n.t('gd_xi_no_squad_desc')}</p><button class="btn btn-primary" onclick="switchSimpleTab(${gameId},'squad')">${I18n.t('gd_btn_go_to_squad')}</button></div>`;
@@ -23411,10 +23471,14 @@ async function renderStartingXITab(gameId) {
       <p style="font-size:12px;color:var(--muted);margin-bottom:10px">${I18n.t('gd_xi_hint')}</p>
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('gd_xi_starters')} <strong style="color:var(--dark)" id="gdStarterCount">${starterCount}</strong> / 11</div>
       <div class="who-played-list">
-        ${squad.map(p => {
+        ${groupedSquad.map((p, _idx) => {
+          const _grp = getPositionGroup(p.primaryPosition);
+          const _groupHeader = (_idx === 0 || getPositionGroup(groupedSquad[_idx-1].primaryPosition) !== _grp)
+            ? `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:${_idx===0?'0':'12px'} 0 6px">${I18n.t('pos_group_'+_grp)}</div>`
+            : '';
           const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
           const isStarter = gp.role === 'Starter';
-          return `<div class="wp-row ${isStarter?'wp-active':''}" id="xi-${p.playerId}" onclick="simpleToggleStarter(${gameId},${p.playerId})">
+          return `${_groupHeader}<div class="wp-row ${isStarter?'wp-active':''}" id="xi-${p.playerId}" onclick="simpleToggleStarter(${gameId},${p.playerId})">
             <div class="wp-info">
               <span class="wp-num">${p.shirtNumber||'—'}</span>
               <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))}</span>
