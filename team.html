@@ -95,7 +95,7 @@
   .tab-btn[aria-selected="true"]{background:var(--black);border-color:var(--black);color:#fff}
   .pane[hidden]{display:none}
   .carousel{position:relative;overflow:hidden}
-  .carousel-track{display:flex;transition:transform .3s ease}
+  .carousel-track{display:flex;align-items:flex-start;transition:transform .3s ease,height .25s ease}
   .carousel-slide{flex:0 0 100%;min-width:100%;box-sizing:border-box}
   .carousel-slide .card{margin-bottom:0}
   .carousel-dots{display:flex;justify-content:center;gap:6px;margin:8px 0 14px}
@@ -700,6 +700,28 @@ const STRINGS = {
     next_birthday:'Next Birthday', birthdays_this_week:'Birthday This Week', birthdays_this_week_pl:'Birthdays This Week',
     happy_birthday:'Happy Birthday, {name}!', turning:'Turning {n}', turning_today:'Turning {n} today',
     in_days:'In {n} days', in_days_low:'in {n} days', tomorrow_low:'tomorrow',
+    turns_today:'Turns {n} today', birthday_today:'Happy Birthday!',
+    birthday_msg_pool: [
+      "🎂⚽ Happy Birthday, {name}! 🥳\n\nHope you have a brilliant day, full of smiles, football and good times with family and friends.\n\nA big hug from the whole team!",
+      "🥳⚽ Today's your day, {name}! 🎂\n\nWishing you lots of happiness and a good dose of football, as always.\n\nHappy Birthday from the whole team!",
+      "🎉⚽ Happy Birthday, {name}!\n\nToday we're not counting goals, we're counting candles! 🎂\n\nHope it's a great day with family and friends.\n\nA hug from the whole team!",
+      "🎂🙌 Happy Birthday, {name}!\n\nMay this new year bring great moments, great matches and plenty of reasons to smile. ⚽\n\nHappy Birthday from the whole team!",
+      "⚽🎉 It's {name}'s big day!\n\nWishing you a fantastic birthday, full of joy and good moments. 🎂🥳\n\nA big hug from the whole team!",
+      "🥳🎂 Happy Birthday, {name}!\n\nEnjoy your day, have fun, and save some energy for the next matches! ⚽💪\n\nThe whole team wishes you a brilliant birthday!",
+      "🎉⚽ Today we're celebrating {name}!\n\nHope it's a day full of smiles, family, friends, and of course, football. 🎂\n\nHappy Birthday from the whole team!",
+      "🎂⚽ Happy Birthday, {name}! 🥳\n\nAnother year, more stories, more football, and lots of good times ahead.\n\nHope you have a great day!",
+    ],
+    // First variant's opening line is count-dependent (a pun that only
+    // works for exactly 2); the rest are generic for any count ≥2.
+    birthday_msg_pool_shared_opener0_pair: "Double the celebration today!",
+    birthday_msg_pool_shared_opener0_many: "Lots to celebrate today!",
+    birthday_msg_pool_shared: [
+      "🎂⚽ {opener0} 🥳\n\nHappy Birthday, {names}!\n\nHope it's a great day for everyone, full of joy, football and good times.\n\nA hug from the whole team!",
+      "🥳🎉 Today we've got several reasons to celebrate!\n\nHappy Birthday, {names}! 🎂⚽\n\nWishing you all a wonderful birthday.\n\nA big hug from the whole team!",
+      "⚽🎂 Party day for the squad!\n\nToday's birthday wishes go to {names}! 🥳\n\nHope there are plenty of smiles, good times and fun.\n\nHappy Birthday!",
+      "🎉⚽ Today the scoreboard is special: birthdays to celebrate! 🎂\n\nHappy Birthday, {names}!\n\nEnjoy your day.\n\nA big hug from the whole team!",
+      "🎂🥳 There's a party on the team!\n\nToday we're celebrating {names}. ⚽\n\nWishing you all a fantastic day with family and friends.\n\nHappy Birthday!",
+    ],
     upcoming_birthdays:'Upcoming Birthdays',
     season_summary:'Season Summary · League & Cup', record:'Record', goal_diff:'Goal Diff',
     goals_for:'Goals For', goals_against:'Goals Against', current_form:'Current Form',
@@ -739,6 +761,26 @@ const STRINGS = {
     next_birthday:'Próximo Aniversário', birthdays_this_week:'Aniversário Esta Semana', birthdays_this_week_pl:'Aniversários Esta Semana',
     happy_birthday:'Parabéns, {name}!', turning:'Faz {n} anos', turning_today:'Faz {n} anos hoje',
     in_days:'Daqui a {n} dias', in_days_low:'daqui a {n} dias', tomorrow_low:'amanhã',
+    turns_today:'Faz {n} anos hoje', birthday_today:'Parabéns!',
+    birthday_msg_pool: [
+      "🎂⚽ Muitos parabéns, {name}! 🥳\n\nQue tenhas um dia em grande, cheio de alegria, futebol e bons momentos com a família e amigos.\n\nUm grande abraço de toda a equipa!",
+      "🥳⚽ Hoje o dia é teu, {name}! 🎂\n\nMuitas felicidades, muitos sorrisos e que não falte uma boa dose de futebol!\n\nParabéns de toda a equipa!",
+      "🎉⚽ Parabéns, {name}!\n\nHoje não contamos golos, contamos velas! 🎂\n\nQue seja um grande dia junto da família e dos amigos.\n\nUm abraço de toda a equipa!",
+      "🎂🙌 Feliz aniversário, {name}!\n\nQue este novo ano venha cheio de bons momentos, grandes jogos e muitas razões para sorrir. ⚽\n\nMuitos parabéns de toda a equipa!",
+      "⚽🎉 Dia de festa para o {name}!\n\nDesejamos-te um aniversário fantástico, cheio de alegria e bons momentos. 🎂🥳\n\nUm grande abraço de toda a equipa!",
+      "🥳🎂 Muitos parabéns, {name}!\n\nAproveita muito o teu dia, diverte-te e guarda energia para os próximos jogos! ⚽💪\n\nToda a equipa te deseja um excelente aniversário!",
+      "🎉⚽ Hoje celebramos o {name}!\n\nQue seja um dia cheio de sorrisos, família, amigos e, claro, futebol. 🎂\n\nMuitos parabéns de toda a equipa!",
+      "🎂⚽ Parabéns, {name}! 🥳\n\nMais um ano, mais histórias, mais futebol e muitos bons momentos pela frente.\n\nQue tenhas um grande dia!",
+    ],
+    birthday_msg_pool_shared_opener0_pair: "Hoje a festa é a dobrar!",
+    birthday_msg_pool_shared_opener0_many: "Hoje temos vários motivos para festejar!",
+    birthday_msg_pool_shared: [
+      "🎂⚽ {opener0} 🥳\n\nMuitos parabéns, {names}!\n\nQue seja um grande dia para todos, cheio de alegria, futebol e bons momentos.\n\nUm abraço de toda a equipa!",
+      "🥳🎉 Hoje temos vários motivos para festejar!\n\nParabéns, {names}! 🎂⚽\n\nMuitas felicidades e um excelente aniversário para todos.\n\nDa equipa inteira, um grande abraço!",
+      "⚽🎂 Dia de festa no plantel!\n\nHoje os parabéns vão para {names}! 🥳\n\nQue não faltem sorrisos, bons momentos e muita diversão.\n\nFeliz aniversário!",
+      "🎉⚽ Hoje o marcador é especial: aniversários para festejar! 🎂\n\nMuitos parabéns, {names}!\n\nAproveitem muito o vosso dia.\n\nUm grande abraço de toda a equipa!",
+      "🎂🥳 Há festa na equipa!\n\nHoje celebramos {names}. ⚽\n\nDesejamos a todos um dia fantástico junto da família e dos amigos.\n\nMuitos parabéns!",
+    ],
     upcoming_birthdays:'Próximos Aniversários',
     season_summary:'Resumo da Época · Campeonato e Taça', record:'Registo', goal_diff:'Diferença de Golos',
     goals_for:'Golos Marcados', goals_against:'Golos Sofridos', current_form:'Forma Atual',
@@ -849,6 +891,30 @@ function posName(v) {
 }
 
 function monthName(n) { return (MONTHS_BY_LANG[getLang()] || MONTHS_BY_LANG.en)[n]; }
+// Deterministic pick from a pool — same (date, key) always picks the
+// same index, so a birthday message stays stable across refreshes
+// within the day, while different birthdays/players naturally vary.
+function stableHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+function pickStable(pool, seed) {
+  return pool[stableHash(seed) % pool.length];
+}
+// "João", "João e Miguel", "João, Miguel e Pedro" — language-aware,
+// works for any number of names, via the browser's own Intl.ListFormat
+// rather than hand-written joining logic.
+function formatNameList(names) {
+  const lang = getLang();
+  try {
+    return new Intl.ListFormat(lang === 'en' ? 'en' : 'pt', {style:'long', type:'conjunction'}).format(names);
+  } catch (e) {
+    // Fallback for an environment without Intl.ListFormat.
+    if (names.length <= 1) return names[0] || '';
+    return names.slice(0,-1).join(', ') + (lang === 'en' ? ' and ' : ' e ') + names[names.length-1];
+  }
+}
 function fmtBirthday(b) {
   if (!b.birthdayMonth || !b.birthdayDay) return '';
   return b.birthdayDay + ' ' + monthName(b.birthdayMonth - 1);
@@ -861,30 +927,68 @@ function fmtBirthday(b) {
 // separate carousel card) that could both render for the same
 // birthday at once. There is now exactly one birthday rendering path,
 // so the same birthday structurally cannot appear twice.
-function renderBirthdayCard(birthdays) {
-  const list = birthdays || [];
-  if (!list.length) return '';
+// A stable per-player short name. esc() applied by the caller where
+// used directly in HTML.
+function todayLocalDateStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 
-  const todayBirthdays = list.filter(b => b.isToday);
-  const thisWeekBirthdays = list.filter(b => b.isThisWeek && !b.isToday);
+// The celebration slide — only ever rendered when one or more
+// birthdays fall on the actual current day. Single-player and
+// shared-birthday cases use separate message pools (shared pools are
+// written for multiple people, not just names inserted into a
+// single-player template). Selection is deterministic per day, so a
+// refresh never changes the message, but different birthdays and
+// different players naturally vary.
+function renderHappyBirthdaySlide(todayBirthdays) {
+  if (!todayBirthdays.length) return '';
+  const lang = getLang();
+  const T = STRINGS[lang] || STRINGS.en;
+  const todayStr = todayLocalDateStr();
 
-  // Today takes priority — a festive card, one entry per player if
-  // multiple share the day (rare, but handled).
-  if (todayBirthdays.length) {
+  if (todayBirthdays.length === 1) {
+    const b = todayBirthdays[0];
+    const pool = T.birthday_msg_pool || STRINGS.en.birthday_msg_pool;
+    const template = pickStable(pool, `${todayStr}-${b.playerId}`);
+    const message = template.split('{name}').join(esc(shortName(b.fullName)));
     return `
     <div class="card" style="background:#fef6e0;border-color:#f0d98a;text-align:center">
-      ${todayBirthdays.map(b => `
-        <div style="padding:6px 0">
-          <div style="font-size:28px" aria-hidden="true">🎂</div>
-          <div style="font-weight:800;font-size:16px;margin-top:4px">${tr('happy_birthday', {name: esc(shortName(b.fullName))})}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">${fmtBirthday(b)} · ${tr('turning_today', {n: b.turningAge})}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</div>
-        </div>
-      `).join('<hr style="border:none;border-top:1px solid #f0d98a;margin:10px 0">')}
+      <div style="font-size:28px" aria-hidden="true">🎂</div>
+      <div style="font-size:13px;white-space:pre-line;overflow-wrap:anywhere;margin-top:6px;line-height:1.5">${message}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">${tr('turns_today', {n: b.turningAge})}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</div>
     </div>`;
   }
 
-  // This week, not today — BIRTHDAY THIS WEEK, listing everyone who
-  // qualifies rather than picking just one.
+  // Multiple players sharing the day — its own pool, its own seed
+  // (sorted player IDs, so the group's identity — and its message
+  // selection — correctly changes if who's included changes).
+  const sortedIds = todayBirthdays.map(b => b.playerId).sort();
+  const pool = T.birthday_msg_pool_shared || STRINGS.en.birthday_msg_pool_shared;
+  const template = pickStable(pool, `${todayStr}-${sortedIds.join(',')}`);
+  const names = formatNameList(todayBirthdays.map(b => shortName(b.fullName)));
+  const opener0 = todayBirthdays.length === 2
+    ? (T.birthday_msg_pool_shared_opener0_pair || STRINGS.en.birthday_msg_pool_shared_opener0_pair)
+    : (T.birthday_msg_pool_shared_opener0_many || STRINGS.en.birthday_msg_pool_shared_opener0_many);
+  const message = template.split('{names}').join(esc(names)).split('{opener0}').join(opener0);
+  return `
+    <div class="card" style="background:#fef6e0;border-color:#f0d98a;text-align:center">
+      <div style="font-size:28px" aria-hidden="true">🎂</div>
+      <div style="font-size:13px;white-space:pre-line;overflow-wrap:anywhere;margin-top:6px;line-height:1.5">${message}</div>
+    </div>`;
+}
+
+// This week (not today) or the next upcoming birthday otherwise —
+// the plain informational slide, distinct from the celebration slide
+// above so a given birthday is only ever in ONE of the two states.
+function renderBirthdayInfoSlide(birthdays) {
+  const list = (birthdays || []).filter(b => !b.isToday);
+  if (!list.length) return '';
+
+  const thisWeekBirthdays = list.filter(b => b.isThisWeek);
+
+  // This week — BIRTHDAY THIS WEEK, listing everyone who qualifies
+  // rather than picking just one.
   if (thisWeekBirthdays.length) {
     return `
     <div class="card" style="background:#fef6e0;border-color:#f0d98a">
@@ -1074,9 +1178,15 @@ function applyCarousel(el) {
   const dots = [...el.querySelectorAll('.carousel-dot')];
   if (!slides.length) return;
 
+  // align-items:flex-start above stops slides from being stretched to
+  // match the tallest one (flex's default row behavior) — this syncs
+  // the TRACK's own height to just the active slide, so a short Next
+  // Match card never carries empty space left over from a taller
+  // Happy Birthday message, or vice versa.
   const show = i => {
     _slideIndex = (i + slides.length) % slides.length;
     track.style.transform = `translateX(-${_slideIndex * 100}%)`;
+    track.style.height = slides[_slideIndex].scrollHeight + 'px';
     dots.forEach((d, n) => d.setAttribute('aria-selected', n === _slideIndex ? 'true' : 'false'));
   };
   show(_slideIndex);
@@ -1085,10 +1195,44 @@ function applyCarousel(el) {
     d.onclick = () => { _slidePaused = true; if (_slideTimer) { clearInterval(_slideTimer); _slideTimer = null; } show(parseInt(d.dataset.slide)); };
   });
 
-  if (slides.length > 1 && !_slidePaused) {
-    _slideTimer = setInterval(() => {
-      if (document.visibilityState === 'visible') show(_slideIndex + 1);
-    }, 6000);
+  // Shared by initial setup and by a manual swipe (which restarts
+  // auto-advance rather than permanently stopping it, unlike a dot
+  // tap) — one place sets up the interval so both stay consistent.
+  const startAutoAdvance = () => {
+    if (_slideTimer) { clearInterval(_slideTimer); _slideTimer = null; }
+    if (slides.length > 1 && !_slidePaused) {
+      _slideTimer = setInterval(() => {
+        if (document.visibilityState === 'visible') show(_slideIndex + 1);
+      }, 6000);
+    }
+  };
+  startAutoAdvance();
+
+  // Touch swipe — plain touch events, no library. Classification
+  // happens once, at touchend, from the total movement: a gesture
+  // only changes slides when its horizontal distance clears a minimum
+  // threshold AND exceeds its own vertical distance. Listeners are
+  // passive (preventDefault is never called), so normal page
+  // scrolling is never touched — a vertical or diagonal gesture just
+  // scrolls the page as it always would, the swipe check simply
+  // declines to act on it afterward.
+  if (slides.length > 1) {
+    const SWIPE_MIN_PX = 40;
+    let tStartX = 0, tStartY = 0, tActive = false;
+    box.ontouchstart = e => {
+      const t = e.touches[0];
+      tStartX = t.clientX; tStartY = t.clientY; tActive = true;
+    };
+    box.ontouchend = e => {
+      if (!tActive) return;
+      tActive = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - tStartX, dy = t.clientY - tStartY;
+      if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) <= Math.abs(dy)) return;
+      show(_slideIndex + (dx < 0 ? 1 : -1));
+      _slidePaused = false;
+      startAutoAdvance();
+    };
   }
 }
 
@@ -1206,9 +1350,20 @@ function render(el, data) {
     </div>` : '';
   const birthdays = dedupePlayerRows(data.birthdays || []);
   // Pinned carousel: birthday and next match share ONE card area,
-  // flipping between them — not two separate stacked cards. Birthday
-  // first, matching how it's meant to read when both are present.
-  const carouselSlides = [renderBirthdayCard(birthdays), nextMatchHtml].filter(Boolean);
+  // flipping between them — not two separate stacked cards.
+  //
+  // Priority: Next Match normally comes first — football has priority
+  // on this page. The one exception is a birthday that falls on the
+  // actual current day: that becomes slide 1, UNLESS there's also a
+  // game today, in which case the game keeps first priority and the
+  // birthday celebration is slide 2.
+  const todayBirthdays = birthdays.filter(b => b.isToday);
+  const gameToday = games.some(g => g.date === todayLocalDateStr());
+  const happyBirthdaySlide = renderHappyBirthdaySlide(todayBirthdays);
+  const birthdaySlide = happyBirthdaySlide || renderBirthdayInfoSlide(birthdays);
+  const carouselSlides = (todayBirthdays.length && !gameToday)
+    ? [birthdaySlide, nextMatchHtml].filter(Boolean)
+    : [nextMatchHtml, birthdaySlide].filter(Boolean);
 
   const html = `
     <div class="team-header" style="position:relative;overflow:hidden">
