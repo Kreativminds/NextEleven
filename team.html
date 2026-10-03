@@ -1178,11 +1178,19 @@ function applyCarousel(el) {
   const dots = [...el.querySelectorAll('.carousel-dot')];
   if (!slides.length) return;
 
+  // Both cards get the same minimum height — the taller of the two
+  // (in practice, usually Next Match) sets the floor, so a short
+  // birthday message doesn't look visually smaller than the match
+  // card when they share the same carousel.
+  const cardEls = slides.map(s => s.querySelector('.card')).filter(Boolean);
+  const maxCardHeight = Math.max(0, ...cardEls.map(c => c.scrollHeight));
+  cardEls.forEach(c => { c.style.minHeight = maxCardHeight + 'px'; });
+
   // align-items:flex-start above stops slides from being stretched to
   // match the tallest one (flex's default row behavior) — this syncs
-  // the TRACK's own height to just the active slide, so a short Next
-  // Match card never carries empty space left over from a taller
-  // Happy Birthday message, or vice versa.
+  // the TRACK's own height to just the active slide, which — now that
+  // both cards share the same min-height above — ends up the same
+  // regardless of which slide is showing.
   const show = i => {
     _slideIndex = (i + slides.length) % slides.length;
     track.style.transform = `translateX(-${_slideIndex * 100}%)`;
