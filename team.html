@@ -465,7 +465,7 @@ function renderCompetitionBreakdown(split, gamePlayers) {
       <thead><tr><th>&nbsp;</th><th>P</th><th>W-D-L</th><th>GF-GA</th></tr></thead>
       <tbody>
         ${rows.map(([label, list]) => {
-          const t = teamSeasonStats(list, gamePlayers);
+          const t = computeTeamStats(list);
           return `<tr>
             <td class="comp-name">${label}</td>
             <td>${t.played}</td>
@@ -481,7 +481,7 @@ function renderCompetitionBreakdown(split, gamePlayers) {
 // Record card for Friendlies / Tournaments; nothing if none played.
 function renderRecordCard(title, list, gamePlayers) {
   if (!list.length) return '';
-  const t = teamSeasonStats(list, gamePlayers);
+  const t = computeTeamStats(list);
   return `
   <div class="card">
     <h2 class="card-title" style="margin-top:0;font-size:11px">${title}</h2>
@@ -918,6 +918,39 @@ function formatNameList(names) {
     return names.slice(0,-1).join(', ') + (lang === 'en' ? ' and ' : ' e ') + names[names.length-1];
   }
 }
+// Replaces external teamSeasonStats() for the purpose of this page —
+// that function depends on gamePlayers (privacy-gated) to compute
+// goals, which silently breaks GF/GA whenever show_player_stats is
+// off. This computes the same shape (played/wins/draws/losses/
+// goalsFor/goalsAgainst/goalDiff) directly from each finished game's
+// authoritative ourScore/opponentScore — no snapshot, no separate
+// stored result: called fresh against whatever data is current, so a
+// later score correction is reflected automatically on the next
+// render, same as everything else on this page.
+// W/D/L classification still goes through the existing external
+// result() helper (which only needs two numbers, not gamePlayers) —
+// the same function Current Form and Recent Results already use, so
+// this can never disagree with them about what counts as a win.
+function computeTeamStats(games) {
+  let wins = 0, draws = 0, losses = 0, goalsFor = 0, goalsAgainst = 0;
+  (games || []).forEach(g => {
+    const our = parseInt(g.ourScore) || 0;
+    const their = parseInt(g.opponentScore) || 0;
+    goalsFor += our;
+    goalsAgainst += their;
+    const res = result(our, their, g);
+    if (res === 'W') wins++;
+    else if (res === 'D') draws++;
+    else if (res === 'L') losses++;
+  });
+  return {
+    played: (games || []).length,
+    wins, draws, losses,
+    goalsFor, goalsAgainst,
+    goalDiff: goalsFor - goalsAgainst,
+  };
+}
+
 function fmtBirthday(b) {
   if (!b.birthdayMonth || !b.birthdayDay) return '';
   return b.birthdayDay + ' ' + monthName(b.birthdayMonth - 1);
@@ -1042,7 +1075,7 @@ function renderRecap(el, data) {
   const finishedGames = games.filter(g => isGameFinished(g, season));
   const split = splitGames(finishedGames);
 
-  const stats = teamSeasonStats(split.official, gamePlayers);
+  const stats = computeTeamStats(split.official);
   const withStats = dedupePlayers(players).map(p => ({ ...p, stats: playerPublicStats(p.playerId, split.official, gamePlayers) }));
 
   function leader(statKey) {
@@ -1326,7 +1359,7 @@ function render(el, data) {
   const split = splitGames(finishedGames);
   const officialGames = split.official;
 
-  const stats = teamSeasonStats(officialGames, gamePlayers);
+  const stats = computeTeamStats(officialGames);
 
   // Recent Results lists every finished game (tagged by type); the form
   // strip in Season Summary is League & Cup only.
@@ -1372,9 +1405,14 @@ function render(el, data) {
   const gameToday = games.some(g => g.date === todayLocalDateStr());
   const happyBirthdaySlide = renderHappyBirthdaySlide(todayBirthdays);
   const birthdaySlide = happyBirthdaySlide || renderBirthdayInfoSlide(birthdays);
-  const carouselSlides = (todayBirthdays.length && !gameToday)
-    ? [birthdaySlide, nextMatchHtml].filter(Boolean)
-    : [nextMatchHtml, birthdaySlide].filter(Boolean);
+  // Hidden entirely while a match is live — the global live card
+  // already has full attention; the carousel returns once the match
+  // finishes and liveMatchToday clears on the next render.
+  const carouselSlides = liveMatchToday ? [] : (
+    (todayBirthdays.length && !gameToday)
+      ? [birthdaySlide, nextMatchHtml].filter(Boolean)
+      : [nextMatchHtml, birthdaySlide].filter(Boolean)
+  );
 
   const html = `
     <div class="team-header" style="position:relative;overflow:hidden">
@@ -1430,8 +1468,7 @@ function render(el, data) {
         <div class="stat-label" style="margin-bottom:6px">${tr('current_form')}</div>
         <div style="display:flex;gap:6px">
           ${[...recentOfficial].reverse().map(g => {
-            const gps = gamePlayers.filter(r => r.gameId === g.gameId);
-            const our = teamGoals(gps, g);
+            const our = parseInt(g.ourScore) || 0;
             const their = parseInt(g.opponentScore)||0;
             const res = result(our, their, g);
             return `<span class="badge badge-${res}" style="width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%">${res}</span>`;
@@ -1449,8 +1486,7 @@ function render(el, data) {
     <div class="card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('recent_results')}</h2>
       ${recent.map(g => {
-        const gps = gamePlayers.filter(r => r.gameId === g.gameId);
-        const our = teamGoals(gps, g);
+        const our = parseInt(g.ourScore) || 0;
         const their = parseInt(g.opponentScore)||0;
         const res = result(our, their, g);
         const s = homeAwayScore(g.homeAway, our, their, g.neutralSide);
@@ -1653,8 +1689,7 @@ function render(el, data) {
   const liveBar = document.getElementById('liveBar');
   if (liveBar) {
     if (liveMatchToday) {
-      const gps = gamePlayers.filter(r => r.gameId === liveMatchToday.gameId);
-      const our = teamGoals(gps, liveMatchToday);
+      const our = parseInt(liveMatchToday.ourScore) || 0;
       const their = parseInt(liveMatchToday.opponentScore)||0;
       const sc = homeAwayScore(liveMatchToday.homeAway, our, their, liveMatchToday.neutralSide);
       // Score only — the card below names the teams.
