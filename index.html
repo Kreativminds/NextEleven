@@ -20844,6 +20844,23 @@ const Sync = (() => {
         // record. If found, adopt its local primary key so the write
         // below UPDATES that row instead of inserting a duplicate, and
         // correctly attaches this cloudId going forward.
+        //
+        // Guard added after the 2026-10 duplicate-merge incident: a
+        // *deleted* cloud row (cr.deleted_at set) that has no direct
+        // cloudId match locally must NEVER be adopted via natural key.
+        // Natural key only identifies "same player" — it does not prove
+        // this cloud row is the one the local record is linked to. When
+        // a duplicate player row gets cleaned up server-side (e.g. a
+        // SQL dedupe merge) and this device never happened to have that
+        // specific duplicate's cloudId cached, adopting its delete via
+        // natural key would overwrite the still-live local record for
+        // that same player with isDeleted=true — silently deleting a
+        // real player from this device while the cloud copy stays
+        // intact. A deletion we can't link directly is simply not ours
+        // to apply here; skip it and let any live cloud row for that
+        // natural key (processed elsewhere in this same pull) be the
+        // one that writes the real, current state.
+        if (!existing && cr.deleted_at) continue;
         if (!existing) {
           const naturalMatch = findByNaturalKey(store, all, payload);
           if (naturalMatch) {
