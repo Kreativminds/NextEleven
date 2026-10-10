@@ -668,7 +668,7 @@ function groupPlayersByPosition(players, getPosition, sortWithinGroup) {
 
 const CONFIG = {
   APP_VERSION: '1.2.1', // human-readable label only — staleness detection no longer depends on this matching anything
-  SCHEMA_VERSION: 19,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index
+  SCHEMA_VERSION: 20,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability)
   DB_NAME: 'footballSquadTrackerDB',
   // Demo Mode lives in a SEPARATE IndexedDB database. Isolation is physical,
   // not a flag on shared rows: production data is in another database that the
@@ -5546,13 +5546,35 @@ async function findOpponentByName(name) {
 }
 
 // ── MOST USED LINEUP ─────────────────────────────────────────────────────────
-// Maps specific position labels to a pitch row + simple bucket, so we can
-// lay out a best-XI graphic from real recorded positionPlayed data.
-const LINEUP_ROW_MAP = {
-  'Goalkeeper': 'GK',
-  'Centre Back': 'DEF', 'Right Back': 'DEF', 'Left Back': 'DEF',
-  'Defensive Midfielder': 'MID', 'Central Midfielder': 'MID', 'Attacking Midfielder': 'MID',
-  'Right Winger': 'FWD', 'Left Winger': 'FWD', 'Striker': 'FWD',
+// One slot per SPECIFIC position (never a coarse row bucket). The previous
+// version grouped all ten positions into just four rows (GK/DEF/MID/FWD)
+// with a simple headcount per row (e.g. "3 forwards") and filled each row
+// by raw appearance strength — so a Striker with more appearances than a
+// Winger would take whichever FWD slot was still open, and the pitch graphic
+// (which always lays its 3 FWD players left-to-right as Winger/Striker/
+// Winger) would then show that Striker standing in a Winger's spot. Giving
+// every slot its own named position, and matching candidates to a slot only
+// when that candidate's OWN best recorded position is that exact slot's
+// position, is what stops a Striker from ever filling a Winger slot.
+// row/order place each slot within renderLineupPitch's four visual rows,
+// left-to-right, independent of the order candidates were matched in.
+const LINEUP_FORMATION = [
+  { position: 'Goalkeeper',           row: 'GK',  order: 0 },
+  { position: 'Left Back',            row: 'DEF', order: 0 },
+  { position: 'Centre Back',          row: 'DEF', order: 1 },
+  { position: 'Centre Back',          row: 'DEF', order: 2 },
+  { position: 'Right Back',           row: 'DEF', order: 3 },
+  { position: 'Defensive Midfielder', row: 'MID', order: 0 },
+  { position: 'Central Midfielder',   row: 'MID', order: 1 },
+  { position: 'Attacking Midfielder', row: 'MID', order: 2 },
+  { position: 'Left Winger',          row: 'FWD', order: 0 },
+  { position: 'Striker',              row: 'FWD', order: 1 },
+  { position: 'Right Winger',         row: 'FWD', order: 2 },
+];
+const POSITION_ABBR = {
+  'Goalkeeper':'GK', 'Centre Back':'CB', 'Right Back':'RB', 'Left Back':'LB',
+  'Defensive Midfielder':'DM', 'Central Midfielder':'CM', 'Attacking Midfielder':'AM',
+  'Right Winger':'RW', 'Left Winger':'LW', 'Striker':'ST',
 };
 const MIN_APPEARANCES_FOR_LINEUP = 3;
 
@@ -5613,7 +5635,15 @@ function buildMostUsedLineup(players, tempPlayers, officialGames, allGP) {
     const fallbackPos = info.kind === 'player' ? info.record.primaryPosition : info.record.preferredPosition;
     const position = bestPos ? bestPos[0] : (fallbackPos || null);
     if (!position) return;
-    allCandidates.push({ identity, info, position, bestCount: bestPos ? bestPos[1] : 0, apps: totalApps[identity] });
+    // bestCount is this identity's own appearance count IN THIS SPECIFIC
+    // POSITION — used below to rank several candidates competing for the
+    // same named slot (section B: "rank them using their official
+    // appearances in that position"). When position came from the profile
+    // fallback rather than any recorded match, there is no positional
+    // count to rank by, so it's 0 — such a candidate only ever wins a slot
+    // when nobody else with real position history is competing for it.
+    const bestCount = bestPos ? bestPos[1] : 0;
+    allCandidates.push({ identity, info, position, bestCount, apps: totalApps[identity] });
   });
 
   // The minimum-appearances rule is a season-progress gate, not a fixed
@@ -5621,37 +5651,49 @@ function buildMostUsedLineup(players, tempPlayers, officialGames, allGP) {
   // itself, applying it would empty the whole formation in the season's
   // first couple of matches, so it relaxes to "any real appearance" until
   // the season has played enough games for the real threshold to mean
-  // anything (section C). Once it's active, a slot it leaves empty is
-  // backfilled from the next-best remaining candidates by appearances —
-  // never left blank just because fewer than 11 players cleared the bar,
-  // and the backfill pool still only ever contains official-game
-  // appearances, so it can never reach for a friendly-only player.
+  // anything (section C/D).
   const effectiveMin = (officialGames || []).length < MIN_APPEARANCES_FOR_LINEUP ? 1 : MIN_APPEARANCES_FOR_LINEUP;
   const byStrength = (a, b) => b.bestCount - a.bestCount || b.apps - a.apps;
-  const primary = allCandidates.filter(c => c.apps >= effectiveMin).sort(byStrength);
-  const secondary = allCandidates.filter(c => c.apps < effectiveMin).sort(byStrength);
 
+  // One real formation slot per specific position (LINEUP_FORMATION) —
+  // never a shared row bucket. Each slot only ever considers candidates
+  // whose OWN best recorded position matches that slot's position, so a
+  // Striker can never be handed a Winger's slot just because the Winger
+  // slot filled up first. A slot's candidate pool prefers players who
+  // clear the appearances threshold (primary) and only reaches into
+  // below-threshold players (secondary) — still restricted to that same
+  // specific position — when nobody above the threshold is available
+  // (the early-season relaxation of section D). A slot with no eligible
+  // candidate at all for its own position is simply left empty: per
+  // section B, "prioritise accurate positions over filling all 11 slots"
+  // rather than reassigning a leftover player into the wrong spot.
   const used = new Set();
   const bySlot = { GK: [], DEF: [], MID: [], FWD: [] };
-  const slotLimits = { GK: 1, DEF: 4, MID: 3, FWD: 3 }; // simple 4-3-3-ish default shape
 
-  const place = (c) => {
-    if (used.has(c.identity)) return;
-    const row = LINEUP_ROW_MAP[c.position] || 'MID';
-    if (bySlot[row].length >= slotLimits[row]) return;
+  LINEUP_FORMATION.forEach(slot => {
+    const pool = allCandidates.filter(c => c.position === slot.position && !used.has(c.identity));
+    const primary = pool.filter(c => c.apps >= effectiveMin).sort(byStrength);
+    const secondary = pool.filter(c => c.apps < effectiveMin).sort(byStrength);
+    const pick = primary[0] || secondary[0];
+    if (!pick) return;
+    used.add(pick.identity);
     // renderLineupPitch only ever reads .fullName and .shirtNumber off
     // the player object — a guest's temporaryPlayers record uses .name
     // instead of .fullName, so it's normalized into the same shape here
     // rather than teaching the renderer two field conventions.
-    const p = (c.info.kind === 'player') ? c.info.record : {
-      playerId: null, tempPlayerId: c.info.record.tempPlayerId, isGuest: true,
-      fullName: c.info.record.name, shirtNumber: c.info.record.shirtNumber,
+    const p = (pick.info.kind === 'player') ? pick.info.record : {
+      playerId: null, tempPlayerId: pick.info.record.tempPlayerId, isGuest: true,
+      fullName: pick.info.record.name, shirtNumber: pick.info.record.shirtNumber,
     };
-    bySlot[row].push({ player: p, position: c.position });
-    used.add(c.identity);
-  };
-  primary.forEach(place);
-  secondary.forEach(place); // only ever reaches here once effectiveMin > 1 left slots unfilled
+    bySlot[slot.row].push({ player: p, position: pick.position, order: slot.order });
+  });
+
+  // Each row keeps its canonical left-to-right pitch order (e.g. FWD is
+  // always Left Winger, Striker, Right Winger) regardless of the order
+  // slots happened to be filled above — this is what makes the pitch
+  // graphic itself show every player in their real position rather than
+  // just whichever generic spot in the row was still open.
+  Object.keys(bySlot).forEach(row => bySlot[row].sort((a, b) => a.order - b.order));
 
   return bySlot;
 }
@@ -5661,12 +5703,16 @@ function renderLineupPitch(lineup, shirtColor) {
   if (!totalPlaced) {
     return `<div class="card"><div class="card-title">Most Used Lineup</div><p style="font-size:12px;color:var(--muted)">Not enough finished games with recorded positions yet. Needs at least ${MIN_APPEARANCES_FOR_LINEUP} appearances per player with position played logged (Game Detail → Details tab).</p></div>`;
   }
+  // The position abbreviation is shown per player so a recorded position
+  // (Striker, Winger, etc.) is visibly verifiable on the pitch itself,
+  // rather than only implied by which slot a player happens to land in.
   const shirtRow = (players, extraClass='', color=shirtColor) => `
     <div class="pitch-row ${extraClass}">
-      ${players.map(({player:p}) => `
+      ${players.map(({player:p, position}) => `
         <div class="pitch-player">
           <div class="pitch-shirt" style="background:${color}">${p.shirtNumber||''}</div>
           <div class="pitch-name">${esc(shortName(p.fullName))}</div>
+          <div class="pitch-pos">${esc(POSITION_ABBR[position] || '')}</div>
         </div>`).join('')}
     </div>`;
   return `
@@ -5857,6 +5903,13 @@ const TR = {
     tempp_confirm_dup_title:'Possible duplicate',
     tempp_confirm_dup_guest_body:'A guest player named "{name}" already exists this season. Create a new one anyway?',
     tempp_confirm_dup_permanent_body:'"{name}" is already a permanent squad player this season. Create a separate guest anyway?',
+    tempp_btn_convert:'Convert to Permanent Player',
+    tempp_confirm_convert_title:'Convert to Permanent Player',
+    tempp_confirm_convert_body:'Convert this guest player into a permanent squad member? Their existing match history and statistics will be preserved.',
+    tempp_confirm_convert_merge_title:'Player already exists',
+    tempp_confirm_convert_merge_body:"A permanent player named \"{name}\" already exists this season. Merge this guest's history into that existing player instead of creating a new one?",
+    tempp_converted:'{name} is now a permanent squad player. Match history and statistics were preserved.',
+    tempp_already_converted:'This guest was already converted to a permanent player.',
     common_edit:'Edit', common_delete:'Delete', common_archive:'Archive', common_restore:'Restore',
     games_more_options:'More options',
 
@@ -5925,8 +5978,8 @@ const TR = {
     ch_unknown_club:'Club not recorded', ch_from_season:'From season',
     ch_derived_hint:'Taken automatically from the season this player was registered in.',
     squad_act_edit:'Edit Player', squad_act_profile:'Player Profile',
-    squad_act_injury:'Record Injury', squad_act_injury_manage:'Manage Injury',
-    squad_act_injury_history:'Injury History',
+    squad_act_injury:'Manage Availability', squad_act_injury_manage:'Manage Availability',
+    squad_act_injury_history:'Availability History',
     squad_act_archive:'Archive Player', squad_act_restore:'Restore Player',
     squad_act_delete:'Delete Player',
     squad_act_delete_blocked:'Has match history — archive instead',
@@ -6047,7 +6100,7 @@ const TR = {
     gd_lbl_goals:'Goals', gd_lbl_assists:'Assists',
     gd_added_to_squad:'Added to squad', gd_removed_from_squad:'Removed from squad',
     gd_could_not_save:'Could not save: {msg}',
-    gd_player_unavailable:'This player is marked unavailable (injured) and cannot be called up.',
+    gd_player_unavailable:'Player unavailable. Update their availability status before selecting them.',
     gd_copy_skipped_unavailable:'{n} unavailable player(s) were not copied.',
     inj_conflict_removed:'{name} is now unavailable and has been removed from {n} upcoming match(es).',
 
@@ -6069,7 +6122,7 @@ const TR = {
     pc_quick_stats_title:'Quick Stats', pc_stat_appearances:'Appearances', pc_stat_goals:'Goals', pc_stat_assists:'Assists', pc_stat_minutes:'Minutes', pc_stat_mom:'MOTM',
     pc_status_active:'Active', pc_status_archived:'Archived',
     pc_btn_edit:'Edit Player',
-    inj_marked_injured:'Marked as injured.', inj_marked_recovered:'Marked as recovered.',
+    inj_marked_injured:'Marked as {status}.', inj_marked_recovered:'Marked as available.',
     squad_confirm_archive_title:'Archive Player', squad_confirm_restore_title:'Restore Player',
     squad_confirm_archive_body:'Are you sure you want to archive this player?',
     squad_confirm_restore_body:'Are you sure you want to restore this player?',
@@ -6294,21 +6347,26 @@ const TR = {
 
 
 
-    // ── INJURY MODAL ──
-    inj_modal_manage:'Manage Injury', inj_modal_mark:'Mark as Injured',
+    // ── AVAILABILITY MODAL (formerly "injury only" — now covers every
+    // unavailability reason; the underlying injuries table/status field is
+    // unchanged, so existing Injured/Not Injured records keep working with
+    // zero migration) ──
+    inj_modal_manage:'Manage Availability', inj_modal_mark:'Set Availability',
     inj_lbl_status:'Status',
-    inj_status_injured:'Injured', inj_status_recovered:'Not Injured / Recovered',
+    inj_status_injured:'Injured', inj_status_recovered:'Available',
+    inj_status_ill:'Ill', inj_status_suspended:'Suspended',
+    inj_status_personal:'Personal reasons', inj_status_other:'Other unavailable',
     inj_lbl_start:'Start Date', inj_lbl_end:'Expected End Date',
     inj_lbl_type:'Injury Type', inj_type_not_specified:'— Not specified —',
     inj_type_foot:'Foot', inj_type_leg:'Leg', inj_type_knee:'Knee', inj_type_ankle:'Ankle',
     inj_type_head:'Head', inj_type_body:'Body / Torso', inj_type_arm:'Arm',
     inj_type_shoulder:'Shoulder', inj_type_other:'Other',
     inj_lbl_notes:'Notes (optional)',
-    inj_notes_placeholder:'e.g. mild ankle sprain, expected back in 2 weeks',
+    inj_notes_placeholder:'e.g. ankle injury / suspended one match / unavailable this weekend',
     inj_btn_history:'History',
     inj_btn_close:'Close',
-    inj_history_title:'Injury History',
-    inj_history_empty:'No injury history recorded for this player yet.',
+    inj_history_title:'Availability History',
+    inj_history_empty:'No availability history recorded for this player yet.',
     inj_unknown_season:'Unknown season',
 
     // ── TEAM SUMMARY — INJURY REPORT ──
@@ -7219,6 +7277,13 @@ const TR = {
     tempp_confirm_dup_title:'Possível duplicado',
     tempp_confirm_dup_guest_body:'Já existe um jogador convidado chamado "{name}" nesta época. Criar um novo mesmo assim?',
     tempp_confirm_dup_permanent_body:'"{name}" já é um jogador permanente do plantel nesta época. Criar um convidado separado mesmo assim?',
+    tempp_btn_convert:'Converter em Jogador Permanente',
+    tempp_confirm_convert_title:'Converter em Jogador Permanente',
+    tempp_confirm_convert_body:'Queres converter este jogador convidado num jogador permanente do plantel? O histórico de jogos e as estatísticas serão mantidos.',
+    tempp_confirm_convert_merge_title:'Jogador já existe',
+    tempp_confirm_convert_merge_body:"Já existe um jogador permanente chamado \"{name}\" nesta época. Juntar o histórico deste convidado a esse jogador existente em vez de criar um novo?",
+    tempp_converted:'{name} é agora um jogador permanente do plantel. O histórico de jogos e as estatísticas foram mantidos.',
+    tempp_already_converted:'Este convidado já foi convertido num jogador permanente.',
     common_edit:'Editar', common_delete:'Eliminar', common_archive:'Arquivar', common_restore:'Restaurar',
     games_more_options:'Mais opções',
 
@@ -7287,8 +7352,8 @@ const TR = {
     ch_unknown_club:'Clube não registado', ch_from_season:'Da época',
     ch_derived_hint:'Obtido automaticamente da época em que o jogador estava inscrito.',
     squad_act_edit:'Editar Jogador', squad_act_profile:'Perfil do Jogador',
-    squad_act_injury:'Registar Lesão', squad_act_injury_manage:'Gerir Lesão',
-    squad_act_injury_history:'Histórico de Lesões',
+    squad_act_injury:'Gerir Disponibilidade', squad_act_injury_manage:'Gerir Disponibilidade',
+    squad_act_injury_history:'Histórico de Disponibilidade',
     squad_act_archive:'Arquivar Jogador', squad_act_restore:'Restaurar Jogador',
     squad_act_delete:'Eliminar Jogador',
     squad_act_delete_blocked:'Tem histórico de jogos — arquive em vez disso',
@@ -7409,7 +7474,7 @@ const TR = {
     gd_lbl_goals:'Golos', gd_lbl_assists:'Assistências',
     gd_added_to_squad:'Adicionado à convocatória', gd_removed_from_squad:'Removido da convocatória',
     gd_could_not_save:'Não foi possível guardar: {msg}',
-    gd_player_unavailable:'Este jogador está marcado como indisponível (lesionado) e não pode ser convocado.',
+    gd_player_unavailable:'Jogador indisponível. Atualiza o estado de disponibilidade para o poderes selecionar.',
     gd_copy_skipped_unavailable:'{n} jogador(es) indisponível(eis) não foram copiados.',
     inj_conflict_removed:'{name} está agora indisponível e foi removido de {n} jogo(s) futuro(s).',
 
@@ -7431,7 +7496,7 @@ const TR = {
     pc_quick_stats_title:'Estatísticas Rápidas', pc_stat_appearances:'Presenças', pc_stat_goals:'Golos', pc_stat_assists:'Assistências', pc_stat_minutes:'Minutos', pc_stat_mom:'MOTM',
     pc_status_active:'No ativo', pc_status_archived:'Arquivado',
     pc_btn_edit:'Editar Jogador',
-    inj_marked_injured:'Marcado como lesionado.', inj_marked_recovered:'Marcado como recuperado.',
+    inj_marked_injured:'Marcado como {status}.', inj_marked_recovered:'Marcado como disponível.',
     squad_confirm_archive_title:'Arquivar Jogador', squad_confirm_restore_title:'Restaurar Jogador',
     squad_confirm_archive_body:'Tem a certeza que quer arquivar este jogador?',
     squad_confirm_restore_body:'Tem a certeza que quer restaurar este jogador?',
@@ -7656,21 +7721,23 @@ const TR = {
 
 
 
-    // ── INJURY MODAL ──
-    inj_modal_manage:'Gerir Lesão', inj_modal_mark:'Marcar como Lesionado',
+    // ── AVAILABILITY MODAL ──
+    inj_modal_manage:'Gerir Disponibilidade', inj_modal_mark:'Definir Disponibilidade',
     inj_lbl_status:'Estado',
-    inj_status_injured:'Lesionado', inj_status_recovered:'Não Lesionado / Recuperado',
+    inj_status_injured:'Lesionado', inj_status_recovered:'Disponível',
+    inj_status_ill:'Doente', inj_status_suspended:'Suspenso',
+    inj_status_personal:'Motivos pessoais', inj_status_other:'Outra indisponibilidade',
     inj_lbl_start:'Data de Início', inj_lbl_end:'Data Prevista de Regresso',
     inj_lbl_type:'Tipo de Lesão', inj_type_not_specified:'— Não especificado —',
     inj_type_foot:'Pé', inj_type_leg:'Perna', inj_type_knee:'Joelho', inj_type_ankle:'Tornozelo',
     inj_type_head:'Cabeça', inj_type_body:'Tronco', inj_type_arm:'Braço',
     inj_type_shoulder:'Ombro', inj_type_other:'Outra',
     inj_lbl_notes:'Notas (opcional)',
-    inj_notes_placeholder:'ex.: entorse leve do tornozelo, regresso previsto em 2 semanas',
+    inj_notes_placeholder:'ex.: lesão no tornozelo / suspenso um jogo / indisponível este fim de semana',
     inj_btn_history:'Histórico',
     inj_btn_close:'Fechar',
-    inj_history_title:'Histórico de Lesões',
-    inj_history_empty:'Ainda não há histórico de lesões registado para este jogador.',
+    inj_history_title:'Histórico de Disponibilidade',
+    inj_history_empty:'Ainda não há histórico de disponibilidade registado para este jogador.',
     inj_unknown_season:'Época desconhecida',
 
     // ── TEAM SUMMARY — INJURY REPORT ──
@@ -8571,13 +8638,22 @@ const DB = (() => {
           const inj = db.createObjectStore('injuries', { keyPath: 'injuryId', autoIncrement: true });
           inj.createIndex('playerId', 'playerId', { unique: false });
           inj.createIndex('seasonId', 'seasonId', { unique: false });
+          // Guest availability (section 5) reuses this exact table rather
+          // than a second, parallel one: a row now carries EITHER playerId
+          // OR tempPlayerId (never both), so the same status values, the
+          // same shared validation helpers, and the same UI all already
+          // just work for guests too.
+          inj.createIndex('tempPlayerId', 'tempPlayerId', { unique: false });
         } else {
           // Upgrading from an older schema where injuries existed but had
-          // no seasonId index yet.
+          // no seasonId/tempPlayerId index yet.
           const tx = e.currentTarget.transaction;
           const injStore = tx.objectStore('injuries');
           if (!injStore.indexNames.contains('seasonId')) {
             injStore.createIndex('seasonId', 'seasonId', { unique: false });
+          }
+          if (!injStore.indexNames.contains('tempPlayerId')) {
+            injStore.createIndex('tempPlayerId', 'tempPlayerId', { unique: false });
           }
         }
         if (!db.objectStoreNames.contains('opponents')) {
@@ -12370,6 +12446,11 @@ async function renderTournamentGamesTab() {
 // ── TEMPORARY PLAYERS (Pass 2 — UI) ──────────────────────────────────────────
 async function openTemporaryPlayerForm(tempPlayerId, tournamentId) {
   const existing = tempPlayerId ? await DB.get('temporaryPlayers', tempPlayerId) : null;
+  // Guest availability (section 5A) lives in this same form — "the
+  // existing guest player management interface" the ticket points to,
+  // since this is the only place a guest is ever managed at all.
+  const activeAvail = tempPlayerId ? await getTempPlayerAvailabilityRecord(tempPlayerId) : null;
+  const statusOptions = ['Not Injured', ...UNAVAILABLE_STATUSES];
   const overlay = document.createElement('div');
   overlay.className = 'rm-form-overlay open';
   overlay.id = 'tempPlayerFormOverlay';
@@ -12380,12 +12461,20 @@ async function openTemporaryPlayerForm(tempPlayerId, tournamentId) {
         <div class="form-group full"><label>${I18n.t('tempp_name')} *</label><input id="tpf-name" type="text" value="${esc(existing?.name||'')}"></div>
         <div class="form-group"><label>${I18n.t('tempp_shirt')}</label><input id="tpf-shirt" type="number" min="0" value="${existing?.shirtNumber??''}"></div>
         <div class="form-group"><label>${I18n.t('tempp_position')}</label><input id="tpf-position" type="text" value="${esc(existing?.preferredPosition||'')}"></div>
+        ${existing ? `<div class="form-group full"><label>${I18n.t('inj_lbl_status')}</label>
+          <select id="tpf-status">
+            ${statusOptions.map(s => `<option value="${s}" ${(activeAvail?activeAvail.status:'Not Injured')===s?'selected':''}>${availabilityStatusLabel(s)}</option>`).join('')}
+          </select>
+        </div>` : ''}
         <div class="form-group full"><label>${I18n.t('tempp_notes')}</label><textarea id="tpf-notes">${esc(existing?.notes||'')}</textarea></div>
       </div>
       <div class="form-actions">
         <button class="btn btn-primary" onclick="saveTemporaryPlayerFromForm(${tempPlayerId ?? 'null'}, ${tournamentId ?? 'null'})">${I18n.t('common_save')}</button>
         <button class="btn btn-secondary" onclick="document.getElementById('tempPlayerFormOverlay').remove()">${I18n.t('common_cancel')}</button>
       </div>
+      ${existing ? `<div class="form-actions" style="margin-top:8px;border-top:1px solid var(--border);padding-top:12px">
+        <button class="btn btn-secondary" style="width:100%" onclick="confirmConvertTempPlayer(${tempPlayerId}, ${tournamentId ?? 'null'})">${I18n.t('tempp_btn_convert')}</button>
+      </div>` : ''}
     </div>`;
   document.body.appendChild(overlay);
 }
@@ -12430,6 +12519,21 @@ async function saveTemporaryPlayerFromForm(tempPlayerId, tournamentId) {
   const savedId = await saveTemporaryPlayer(tempPlayer);
   const realTempPlayerId = tempPlayerId || savedId;
 
+  // The status field only renders when editing an existing guest (a brand
+  // new guest has nothing to be unavailable FROM yet). Toast is a single
+  // overwriting slot (see Toast.show), so this is folded into ONE message
+  // rather than a second Toast.show call that would just get clobbered by
+  // the unconditional "saved" toast below.
+  let conflictSuffix = '';
+  const statusEl = document.getElementById('tpf-status');
+  if (tempPlayerId && statusEl) {
+    const removedCount = await saveGuestAvailabilityStatus(tempPlayerId, State.currentSeasonId, statusEl.value);
+    if (removedCount > 0) {
+      conflictSuffix = ' ' + I18n.t('inj_conflict_removed', {name, n: removedCount});
+      Sync.scheduleAutoSync();
+    }
+  }
+
   // This was the actual bug: a temp player was being saved into the
   // temporaryPlayers store correctly, but never added to the tournament's
   // own team.temporaryPlayerIds list — which is the ONLY thing every
@@ -12448,7 +12552,7 @@ async function saveTemporaryPlayerFromForm(tempPlayerId, tournamentId) {
   }
 
   document.getElementById('tempPlayerFormOverlay')?.remove();
-  Toast.show(I18n.t('tempp_saved'));
+  Toast.show(I18n.t('tempp_saved') + conflictSuffix);
 
   // The targeted live-refresh wasn't reliably updating in practice, so this
   // simply closes and fully reopens the tournament form instead — confirmed
@@ -12457,6 +12561,125 @@ async function saveTemporaryPlayerFromForm(tempPlayerId, tournamentId) {
   if (tournamentId) {
     document.getElementById('tournamentFormOverlay')?.remove();
     await openTournamentForm(tournamentId);
+  }
+}
+
+// ── GUEST → PERMANENT CONVERSION (section 6) ─────────────────────────────
+// A guest's own identity (tempPlayerId) is never reused as a playerId, so
+// "converting" is: create (or reuse) a real players row, then re-point the
+// EXISTING gamePlayers/injuries rows that already carry this guest's full
+// history onto that player's id — never re-derive or recompute a single
+// stat. That's what keeps goals, assists, appearances and recorded
+// positions exactly as they were, with nothing duplicated.
+async function confirmConvertTempPlayer(tempPlayerId, tournamentId) {
+  const tp = await DB.get('temporaryPlayers', tempPlayerId);
+  if (!tp) return;
+  if (tp.convertedToPlayerId) { Toast.error(I18n.t('tempp_already_converted')); return; }
+
+  // "If a matching permanent player already exists, prevent accidental
+  // duplication and require the user to resolve the match before
+  // conversion" — same duplicate-detection already used when creating a
+  // new guest (saveTemporaryPlayerFromForm), reused here rather than a
+  // second name-matching implementation.
+  const folded = foldForSearch(tp.name);
+  const allPlayers = await DB.getAll('players', 'seasonId', tp.seasonId);
+  const match = allPlayers.find(p => p.isActive && foldForSearch(p.fullName) === folded);
+
+  if (match) {
+    Confirm.show(
+      I18n.t('tempp_confirm_convert_merge_title'),
+      I18n.t('tempp_confirm_convert_merge_body', {name: match.fullName}),
+      async () => { await convertTempPlayerToPermanent(tempPlayerId, match.playerId, tournamentId); }
+    );
+  } else {
+    Confirm.show(
+      I18n.t('tempp_confirm_convert_title'),
+      I18n.t('tempp_confirm_convert_body'),
+      async () => { await convertTempPlayerToPermanent(tempPlayerId, null, tournamentId); }
+    );
+  }
+}
+
+async function convertTempPlayerToPermanent(tempPlayerId, mergeIntoPlayerId, tournamentId) {
+  try {
+    const tp = await DB.get('temporaryPlayers', tempPlayerId);
+    if (!tp) return;
+    if (tp.convertedToPlayerId) { Toast.error(I18n.t('tempp_already_converted')); return; }
+
+    let targetPlayerId = mergeIntoPlayerId;
+    if (!targetPlayerId) {
+      const newPlayer = {
+        seasonId: tp.seasonId,
+        fullName: tp.name,
+        shirtNumber: tp.shirtNumber || null,
+        primaryPosition: tp.preferredPosition || null,
+        isActive: true,
+        developmentNotes: tp.notes || null,
+      };
+      targetPlayerId = await DB.put('players', newPlayer);
+    }
+
+    // Re-point every gamePlayers row this guest ever had onto the target
+    // player's identity — the SAME rows, so goals/assists/appearances and
+    // recorded positions carry over with zero duplication.
+    const allGP = await DB.getAll('gamePlayers');
+    const guestRows = allGP.filter(r => r.tempPlayerId === tempPlayerId);
+    let skippedClashes = 0;
+    for (const gp of guestRows) {
+      // Merging into a player who already has their OWN row for the same
+      // game would collide on (gameId, playerId). There's no safe way to
+      // guess which of the two rows should win, so that one game is left
+      // untouched (still under the guest identity) rather than silently
+      // overwriting a real record — surfaced as a count, never silent.
+      const clash = allGP.find(r => r !== gp && r.gameId === gp.gameId && r.playerId === targetPlayerId);
+      if (clash) { skippedClashes++; continue; }
+      gp.playerId = targetPlayerId;
+      gp.tempPlayerId = null;
+      await DB.put('gamePlayers', gp);
+    }
+
+    // Guest availability rows (section 5A) move the same way.
+    const guestInjuries = await DB.getAll('injuries', 'tempPlayerId', tempPlayerId);
+    for (const r of guestInjuries) {
+      r.playerId = targetPlayerId;
+      r.tempPlayerId = null;
+      await DB.put('injuries', r);
+    }
+
+    // The guest record itself is never hard-deleted — its identity and
+    // conversion are kept on record — but it's soft-deleted so it stops
+    // appearing as a selectable guest anywhere, and marked with exactly
+    // which player it became (also guards against converting it twice).
+    tp.convertedToPlayerId = targetPlayerId;
+    tp.isDeleted = true;
+    tp.deletedAt = new Date().toISOString();
+    await DB.put('temporaryPlayers', tp);
+
+    // Keep the tournament's own roster consistent: the new/merged player
+    // must be selectable for any of this tournament's UPCOMING games the
+    // same way the guest was (historical games are already fixed via the
+    // gamePlayers re-point above, independent of roster membership).
+    if (tournamentId && !mergeIntoPlayerId) {
+      const tournament = await getTournamentById(tournamentId);
+      if (tournament?.team) {
+        if (!tournament.team.playerIds) tournament.team.playerIds = [];
+        if (!tournament.team.playerIds.includes(targetPlayerId)) {
+          tournament.team.playerIds.push(targetPlayerId);
+          await DB.put('tournaments', tournament);
+        }
+      }
+    }
+
+    document.getElementById('tempPlayerFormOverlay')?.remove();
+    Toast.show(I18n.t('tempp_converted', {name: tp.name}) + (skippedClashes ? ` (${skippedClashes})` : ''));
+    Sync.scheduleAutoSync();
+
+    if (tournamentId) {
+      document.getElementById('tournamentFormOverlay')?.remove();
+      await openTournamentForm(tournamentId);
+    }
+  } catch(err) {
+    Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
   }
 }
 
@@ -17777,7 +18000,7 @@ const Render = (() => {
 
     const activeInjuryByPlayer = {};
     allInjuries.forEach(inj => {
-      if (inj.status === 'Injured') activeInjuryByPlayer[inj.playerId] = inj;
+      if (UNAVAILABLE_STATUSES.includes(inj.status)) activeInjuryByPlayer[inj.playerId] = inj;
     });
 
     // In-memory lookups built once, replacing per-player DB reads and
@@ -17901,7 +18124,7 @@ const Render = (() => {
         <td>${p.secondaryPosition||'—'}</td>
         <td>${p.dominantFoot||'—'}</td>
         <td>${p.dateOfBirth?fmtDate(p.dateOfBirth):'—'}</td>
-        <td>${injury?`<span class="badge" style="background:#fde8e8;color:#b03030" title="${esc(injuryTypeLabel(injury.injuryType)||'')} ${esc(injury.notes||'')}">&#129460; ${I18n.t('squad_status_injured')}</span>`:`<span style="color:#2a7a3b;font-size:11px">&#10003; ${I18n.t('squad_status_fit')}</span>`}</td>
+        <td>${injury?`<span class="badge" style="background:#fde8e8;color:#b03030" title="${esc(injuryTypeLabel(injury.injuryType)||'')} ${esc(injury.notes||'')}">&#129460; ${esc(availabilityStatusLabel(injury.status))}</span>`:`<span style="color:#2a7a3b;font-size:11px">&#10003; ${I18n.t('squad_status_fit')}</span>`}</td>
         <td style="white-space:nowrap">
           <button class="btn btn-secondary btn-sm" onclick="editPlayer(${p.playerId})" aria-label="${I18n.t('squad_act_edit')}">&#9998; <span>${I18n.t('common_edit')}</span></button>
           <button class="btn btn-secondary btn-sm" style="margin-left:4px" aria-haspopup="menu" aria-expanded="false"
@@ -18467,7 +18690,7 @@ const Render = (() => {
     });
     const currentlyInjured = allPlayers.filter(p => {
       const list = injuriesByPlayer[p.playerId] || [];
-      return list.some(i => i.status === 'Injured');
+      return list.some(i => UNAVAILABLE_STATUSES.includes(i.status));
     });
     const playersWithHistory = allPlayers.filter(p => (injuriesByPlayer[p.playerId]||[]).length > 0);
 
@@ -18503,10 +18726,13 @@ const Render = (() => {
         ${currentlyInjured.length ? `
           <p style="font-size:11px;color:var(--muted);margin-bottom:8px">${I18n.t('ts_injuries_current_count', {n: currentlyInjured.length})}</p>
           ${currentlyInjured.map(p => {
-            const inj = (injuriesByPlayer[p.playerId]||[]).find(i => i.status === 'Injured');
+            const inj = (injuriesByPlayer[p.playerId]||[]).find(i => UNAVAILABLE_STATUSES.includes(i.status));
+            const reason = inj?.status === 'Injured'
+              ? (inj?.injuryType ? injuryTypeLabel(inj.injuryType) : I18n.t('inj_type_not_specified'))
+              : availabilityStatusLabel(inj?.status);
             return `<div class="info-row">
               <span class="ir-label">${esc(shortName(p.fullName))}</span>
-              <span class="ir-value" style="color:#b03030">${inj?.injuryType?injuryTypeLabel(inj.injuryType):I18n.t('inj_type_not_specified')}${inj?.startDate?' · '+fmtDate(inj.startDate):''}</span>
+              <span class="ir-value" style="color:#b03030">${reason}${inj?.startDate?' · '+fmtDate(inj.startDate):''}</span>
             </div>`;
           }).join('')}
         ` : `<p style="font-size:12px;color:#2a7a3b;font-weight:700;margin-bottom:0">${I18n.t('ts_injuries_none_active')}</p>`}
@@ -19442,8 +19668,14 @@ const Confirm = (() => {
   }
   function resolve(yes) {
     document.getElementById('confirmDialog').classList.remove('open');
-    if (yes && _cb) _cb();
+    // Null out _cb BEFORE invoking it, not after: a callback that itself
+    // calls Confirm.show() (a second, nested confirmation step) reassigns
+    // _cb synchronously while it runs. Clearing _cb afterward would wipe
+    // out that reassignment and silently no-op the second dialog's own
+    // "Yes" — which is exactly what broke the two-step game-deletion flow.
+    const cb = _cb;
     _cb = null;
+    if (yes && cb) cb();
   }
   return { show, resolve };
 })();
@@ -21755,19 +21987,91 @@ function injuryTypeLabel(value) {
 }
 
 // ── AVAILABILITY GATE ────────────────────────────────────────────────────
-// The injuries table is the only "is this player currently fit to play"
-// signal the app has (status: 'Injured' | 'Not Injured', with a reason
-// type/notes) — there is no separate illness/suspension/personal-leave
-// table. Marking a player 'Injured' here already functions as "mark
-// unavailable" in practice, so that single flag is what every selection
-// screen checks, whatever the real underlying reason the coach records in
-// its type/notes. Only covers permanent players — temporaryPlayers
-// (guests) have no availability record of any kind yet in this data
-// model, so a guest is never blocked here.
-async function isPlayerUnavailable(playerId) {
-  if (!playerId) return false;
+// Extended from a binary Injured/Not-Injured flag to five unavailability
+// reasons (Injured, Ill, Suspended, Personal reasons, Other unavailable)
+// plus Available — WITHOUT a new table or a migration. The injuries table
+// and its 'status' field are reused exactly as before: 'Not Injured' keeps
+// meaning "available" (every existing record keeps working unchanged),
+// and 'status' now simply accepts four more values alongside 'Injured'.
+// "Unavailable" is just "status is set and isn't 'Not Injured'", so the
+// same single field that already worked for injuries covers every other
+// reason with no conflicting second field anywhere.
+//
+// Only one row per player is ever the "live" one (openInjuryModal below
+// always edits that row in place rather than creating a second), so
+// finding ANY one non-'Not Injured' row is enough to know the player is
+// currently unavailable and which reason/status to show.
+//
+// Covers permanent players AND guests through the exact same table and
+// status values — a row carries either playerId or tempPlayerId, never
+// both, so there is still only ONE validation function family, mirroring
+// the existing getOrCreateGP/getOrCreateGPForTemp split already used
+// elsewhere in this file for the same permanent/guest duality (section 5:
+// "use the same availability validation logic... avoid two independent
+// implementations").
+const UNAVAILABLE_STATUSES = ['Injured', 'Ill', 'Suspended', 'Personal reasons', 'Other unavailable'];
+const AVAILABILITY_STATUS_KEYS = {
+  'Injured': 'inj_status_injured', 'Ill': 'inj_status_ill', 'Suspended': 'inj_status_suspended',
+  'Personal reasons': 'inj_status_personal', 'Other unavailable': 'inj_status_other',
+  'Not Injured': 'inj_status_recovered',
+};
+function availabilityStatusLabel(status) {
+  return AVAILABILITY_STATUS_KEYS[status] ? I18n.t(AVAILABILITY_STATUS_KEYS[status]) : (status || '');
+}
+
+async function getPlayerAvailabilityRecord(playerId) {
+  if (!playerId) return null;
   const injuries = await DB.getAll('injuries', 'playerId', playerId);
-  return injuries.some(i => i.status === 'Injured');
+  return injuries.find(i => UNAVAILABLE_STATUSES.includes(i.status)) || null;
+}
+
+async function isPlayerUnavailable(playerId) {
+  return !!(await getPlayerAvailabilityRecord(playerId));
+}
+
+// Guest mirror of getPlayerAvailabilityRecord/isPlayerUnavailable — same
+// table, same statuses, keyed by tempPlayerId instead of playerId.
+async function getTempPlayerAvailabilityRecord(tempPlayerId) {
+  if (!tempPlayerId) return null;
+  const injuries = await DB.getAll('injuries', 'tempPlayerId', tempPlayerId);
+  return injuries.find(i => UNAVAILABLE_STATUSES.includes(i.status)) || null;
+}
+
+async function isTempPlayerUnavailable(tempPlayerId) {
+  return !!(await getTempPlayerAvailabilityRecord(tempPlayerId));
+}
+
+// Season-scoped, one query for the whole squad (permanent AND guests
+// together) — the same batch-fetch pattern as getSeasonGamePlayers — so
+// rendering a squad list costs one DB read, not one per player. Only ever
+// holds the single "live" unavailable record per identity (see above).
+async function getUnavailablePlayerMap(seasonId) {
+  const rows = await DB.getAll('injuries', 'seasonId', seasonId);
+  const byPlayer = {}, byTemp = {};
+  rows.forEach(r => {
+    if (!UNAVAILABLE_STATUSES.includes(r.status)) return;
+    if (r.tempPlayerId != null) byTemp[r.tempPlayerId] = r;
+    else if (r.playerId != null) byPlayer[r.playerId] = r;
+  });
+  return { byPlayer, byTemp };
+}
+
+// Guest mirror of saveInjury's write + conflict-resolution, used from the
+// temp player form (section 5A). Skips writing anything when the guest is
+// already available and has no record to update — saving the form's other
+// fields (shirt number, notes, etc.) must not create an empty 'Not Injured'
+// row every time. Returns how many upcoming selections were cleared, same
+// contract as saveInjury, so the caller can toast/sync the same way.
+async function saveGuestAvailabilityStatus(tempPlayerId, seasonId, status) {
+  const existing = await getTempPlayerAvailabilityRecord(tempPlayerId);
+  if (!existing && status === 'Not Injured') return 0;
+  const record = { tempPlayerId, seasonId, status, startDate: new Date().toISOString().split('T')[0] };
+  if (existing) record.injuryId = existing.injuryId;
+  await DB.put('injuries', record);
+  if (UNAVAILABLE_STATUSES.includes(status)) {
+    return await removeUnavailablePlayerFromUpcomingGames({tempPlayerId}, seasonId);
+  }
+  return 0;
 }
 
 // ── PORTAL PIN MANAGEMENT — Squad row, tracked players only ──────────────────
@@ -21891,8 +22195,13 @@ async function openInjuryModal(playerId) {
   const p = await DB.get('players', playerId);
   if (!p) return;
   const allInjuries = await DB.getAll('injuries','playerId',playerId);
-  const active = allInjuries.find(i => i.status === 'Injured');
+  // Any one row with a non-'Not Injured' status is "the" currently live
+  // one (see the AVAILABILITY GATE comment above) — editing reuses it in
+  // place instead of creating a second, whichever of the five reasons it
+  // is now, exactly like the old Injured-only version did.
+  const active = allInjuries.find(i => UNAVAILABLE_STATUSES.includes(i.status));
   const today = new Date().toISOString().split('T')[0];
+  const statusOptions = [...UNAVAILABLE_STATUSES, 'Not Injured'];
 
   const overlay = document.createElement('div');
   overlay.className = 'rm-form-overlay open';
@@ -21903,8 +22212,7 @@ async function openInjuryModal(playerId) {
       <div class="form-grid">
         <div class="form-group"><label>${I18n.t('inj_lbl_status')}</label>
           <select id="inj-status">
-            <option value="Injured" ${(!active||active.status==='Injured')?'selected':''}>${I18n.t('inj_status_injured')}</option>
-            <option value="Not Injured" ${active&&active.status!=='Injured'?'selected':''}>${I18n.t('inj_status_recovered')}</option>
+            ${statusOptions.map(s => `<option value="${s}" ${(active?active.status===s:s==='Injured')?'selected':''}>${availabilityStatusLabel(s)}</option>`).join('')}
           </select>
         </div>
         <div class="form-group"><label>${I18n.t('inj_lbl_start')}</label><input type="date" id="inj-start" value="${active?.startDate||today}"></div>
@@ -21945,8 +22253,8 @@ async function openInjuryHistoryModal(playerId) {
         ${allInjuries.map(inj => `
           <div class="timeline-item">
             <div class="ti-title">
-              <span class="badge" style="background:${inj.status==='Injured'?'#fde8e8':'#e6f4ea'};color:${inj.status==='Injured'?'#b03030':'#2a7a3b'}">
-                ${inj.status==='Injured'?I18n.t('inj_status_injured'):I18n.t('inj_status_recovered')}
+              <span class="badge" style="background:${UNAVAILABLE_STATUSES.includes(inj.status)?'#fde8e8':'#e6f4ea'};color:${UNAVAILABLE_STATUSES.includes(inj.status)?'#b03030':'#2a7a3b'}">
+                ${availabilityStatusLabel(inj.status)}
               </span>
               ${inj.injuryType?`<span class="pos-pill">${esc(injuryTypeLabel(inj.injuryType))}</span>`:''}
             </div>
@@ -21973,7 +22281,10 @@ async function openInjuryHistoryModal(playerId) {
 // ones. clearCalledUp also resets role/playedFullGame, so a removed
 // Starter doesn't leave a stale 'Starter' role sitting on a calledUp:false
 // row.
-async function removeUnavailablePlayerFromUpcomingGames(playerId, seasonId) {
+// identity is {playerId} for a permanent player or {tempPlayerId} for a
+// guest — same function, same rules, for both (section 5).
+async function removeUnavailablePlayerFromUpcomingGames(identity, seasonId) {
+  const { playerId, tempPlayerId } = identity;
   const [games, seasonMap, allGP] = await Promise.all([
     DB.getAll('games', 'seasonId', seasonId),
     getSeasonMap(),
@@ -21982,7 +22293,8 @@ async function removeUnavailablePlayerFromUpcomingGames(playerId, seasonId) {
   let removedCount = 0;
   for (const g of games) {
     if (isGameResultVisible(g, seasonMap)) continue; // historical — never modified
-    const gp = allGP.find(r => r.gameId === g.gameId && r.playerId === playerId && r.calledUp);
+    const gp = allGP.find(r => r.gameId === g.gameId && r.calledUp &&
+      (tempPlayerId != null ? r.tempPlayerId === tempPlayerId : r.playerId === playerId));
     if (!gp) continue;
     applySquadStateRules(gp, 'clearCalledUp');
     await DB.put('gamePlayers', gp);
@@ -22013,14 +22325,18 @@ async function saveInjury(playerId, existingInjuryId) {
   try {
     await DB.put('injuries', record);
     document.getElementById('injuryModalOverlay')?.remove();
-    if (status === 'Injured') {
-      const removedCount = await removeUnavailablePlayerFromUpcomingGames(playerId, record.seasonId);
+    // Any of the five unavailable statuses (not just 'Injured') is a
+    // selection conflict for an upcoming match — see removeUnavailable...
+    // and the AVAILABILITY GATE comment above for why 'Not Injured' is
+    // still the one and only "available" value.
+    if (UNAVAILABLE_STATUSES.includes(status)) {
+      const removedCount = await removeUnavailablePlayerFromUpcomingGames({playerId}, record.seasonId);
       if (removedCount > 0) {
         const player = await DB.get('players', playerId);
         Toast.show(I18n.t('inj_conflict_removed', {name: shortName(player?.fullName||''), n: removedCount}));
         Sync.scheduleAutoSync();
       } else {
-        Toast.show(I18n.t('inj_marked_injured'));
+        Toast.show(I18n.t('inj_marked_injured', {status: availabilityStatusLabel(status)}));
       }
     } else {
       Toast.show(I18n.t('inj_marked_recovered'));
@@ -22721,11 +23037,11 @@ async function openPlayerActionMenu(playerId, btn) {
   const p = await DB.get('players', playerId);
   if (!p) return;
   // Reuse the app's own definitions rather than reimplementing them: an
-  // active injury is status === 'Injured' (matching the squad row's own
-  // highlighting), and match history is decided by hasAnyGameHistory(),
-  // the same function deletePlayer() itself guards on.
-  const injuries = await DB.getAll('injuries', 'playerId', playerId);
-  const injury = injuries.find(i => !i.isDeleted && i.status === 'Injured') || null;
+  // active unavailability record is any status in UNAVAILABLE_STATUSES
+  // (matching the squad row's own highlighting), and match history is
+  // decided by hasAnyGameHistory(), the same function deletePlayer()
+  // itself guards on.
+  const injury = await getPlayerAvailabilityRecord(playerId);
   const hasHistory = await hasAnyGameHistory(playerId);
 
   ActionMenu.open(buildPlayerActions(p, injury, hasHistory), btn, {
@@ -23356,26 +23672,36 @@ async function openGameActionMenu(gameId, btn) {
 async function deleteGame(id) {
   Confirm.show(I18n.t('game_confirm_delete_title'), I18n.t('game_confirm_delete_body'), () => {
     Confirm.show(I18n.t('game_confirm_delete_title2'), I18n.t('game_confirm_delete_body2'), async () => {
-      await Backup.create('before-delete');
-      await DB.softDelete('games', id);
-      // Every stats view (totals, W/D/L, GF/GA, home/away, form/streaks,
-      // appearances, Most Used Lineup, competition stats) recomputes live
-      // from DB.getAll(), which already excludes soft-deleted rows — so
-      // soft-deleting the game's own dependent records here is enough to
-      // correctly update every one of those views with no separate
-      // recalculation step. gamePlayers carries the call-ups, roles,
-      // goals/assists and positions for this game; playerGameStats
-      // carries the separate extended match stats (passes, tackles, etc.)
-      // — both must go, or a deleted game's numbers keep contributing to
-      // season totals that read playerGameStats directly by playerId
-      // without checking whether its game is still live.
-      const gps = await DB.getAll('gamePlayers','gameId',id);
-      for (const gp of gps) await DB.softDelete('gamePlayers', gp.gamePlayerId);
-      const pgs = await DB.getAll('playerGameStats','gameId',id);
-      for (const r of pgs) await DB.softDelete('playerGameStats', r.pgsId);
-      Toast.show(I18n.t('game_deleted'));
-      await Render.gamesList();
-      Sync.scheduleAutoSync();
+      try {
+        await Backup.create('before-delete');
+        await DB.softDelete('games', id);
+        // Every stats view (totals, W/D/L, GF/GA, home/away, form/streaks,
+        // appearances, Most Used Lineup, competition stats) recomputes live
+        // from DB.getAll(), which already excludes soft-deleted rows — so
+        // soft-deleting the game's own dependent records here is enough to
+        // correctly update every one of those views with no separate
+        // recalculation step. gamePlayers carries the call-ups, roles,
+        // goals/assists and positions for this game; playerGameStats
+        // carries the separate extended match stats (passes, tackles, etc.)
+        // — both must go, or a deleted game's numbers keep contributing to
+        // season totals that read playerGameStats directly by playerId
+        // without checking whether its game is still live.
+        const gps = await DB.getAll('gamePlayers','gameId',id);
+        for (const gp of gps) await DB.softDelete('gamePlayers', gp.gamePlayerId);
+        const pgs = await DB.getAll('playerGameStats','gameId',id);
+        for (const r of pgs) await DB.softDelete('playerGameStats', r.pgsId);
+        // Verify the soft-delete actually persisted rather than trusting the
+        // write silently: re-fetch the record and check isDeleted directly,
+        // so a swallowed IndexedDB error surfaces as a real error instead of
+        // a false "deleted" toast with the game still visible after refresh.
+        const check = await DB.get('games', id);
+        if (!check || !check.isDeleted) throw new Error('Deletion did not persist');
+        Toast.show(I18n.t('game_deleted'));
+        await Render.gamesList();
+        Sync.scheduleAutoSync();
+      } catch (err) {
+        Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
+      }
     });
   });
 }
@@ -23650,6 +23976,9 @@ async function renderSquadListTab(gameId) {
     const rawPlayers = window._gdPlayers;
     const existingGP = await DB.getAll('gamePlayers','gameId',gameId);
     const calledUpCount = uniqueGPIds(existingGP, r=>r.calledUp).size;
+    // One query for the whole squad's availability (section 3: grey out,
+    // show status, disable selection) rather than one per player.
+    const unavailableMap = await getUnavailablePlayerMap(State.currentSeasonId);
     gdDebugLog(`squad tab: ${rawPlayers.length} players, ${calledUpCount} called up`);
     // Goalkeepers → Defenders → Midfielders → Strikers, same grouping used
     // on the Squad screen and Starting XI selection. Shirt number within
@@ -23704,12 +24033,19 @@ async function renderSquadListTab(gameId) {
           const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
           const calledUp = !!gp.calledUp;
           const effNum = effectiveShirtNumber(p.shirtNumber, gp);
-          return `${_groupHeader}<div class="wp-row ${calledUp?'wp-active':''}" id="sql-${p.playerId}" onclick="simpleToggleSquad(${gameId},${p.playerId})">
+          const avail = unavailableMap.byPlayer[p.playerId];
+          // Unavailable players stay visible but greyed out, with their
+          // status shown and no shirt-number/position pickers wired up —
+          // the row's own onclick still runs simpleToggleSquad, which is
+          // what actually rejects the tap and shows the toast; this is
+          // only the visual half of that same gate (section 3).
+          return `${_groupHeader}<div class="wp-row ${calledUp?'wp-active':''} ${avail?'wp-unavailable':''}" id="sql-${p.playerId}" onclick="simpleToggleSquad(${gameId},${p.playerId})">
             <div class="wp-info">
-              <span class="wp-num" ${calledUp?`style="cursor:pointer" onclick="event.stopPropagation();openShirtNumberPickerForGame(${gameId},${p.playerId},null,'squad')"`:''}>${effNum??'—'}</span>
+              <span class="wp-num" ${(calledUp&&!avail)?`style="cursor:pointer" onclick="event.stopPropagation();openShirtNumberPickerForGame(${gameId},${p.playerId},null,'squad')"`:''}>${effNum??'—'}</span>
               <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor">${esc(p.trackingLabel||'★')}</span>`:''}</span>
-              ${calledUp ? `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},${p.playerId},null)">${esc(gp.positionPlayed || p.primaryPosition || '—')}</span>` : ''}
-              ${calledUp?'<span style="margin-left:6px;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
+              ${avail ? `<span class="wp-status-pill" title="${esc(avail.notes||'')}">${esc(availabilityStatusLabel(avail.status))}</span>`
+                : calledUp ? `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},${p.playerId},null)">${esc(gp.positionPlayed || p.primaryPosition || '—')}</span>` : ''}
+              ${(calledUp&&!avail)?'<span style="margin-left:6px;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
             </div>
           </div>`;
         }).join('')}
@@ -23721,12 +24057,14 @@ async function renderSquadListTab(gameId) {
           const gp = existingGP.find(r=>r.tempPlayerId===tp.tempPlayerId) || {};
           const calledUp = !!gp.calledUp;
           const effNum = effectiveShirtNumber(tp.shirtNumber, gp);
-          return `<div class="wp-row ${calledUp?'wp-active':''}" onclick="simpleToggleSquadTemp(${gameId},${tp.tempPlayerId})">
+          const avail = unavailableMap.byTemp[tp.tempPlayerId];
+          return `<div class="wp-row ${calledUp?'wp-active':''} ${avail?'wp-unavailable':''}" onclick="simpleToggleSquadTemp(${gameId},${tp.tempPlayerId})">
             <div class="wp-info">
-              <span class="wp-num" ${calledUp?`style="cursor:pointer" onclick="event.stopPropagation();openShirtNumberPickerForGame(${gameId},null,${tp.tempPlayerId},'squad')"`:''}>${effNum??'—'}</span>
+              <span class="wp-num" ${(calledUp&&!avail)?`style="cursor:pointer" onclick="event.stopPropagation();openShirtNumberPickerForGame(${gameId},null,${tp.tempPlayerId},'squad')"`:''}>${effNum??'—'}</span>
               <span class="wp-name" title="${esc(tp.name)}">${esc(tp.name)} <span class="pos-pill">${I18n.t('gd_guest_badge')}</span></span>
-              ${calledUp ? `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},null,${tp.tempPlayerId})">${esc(gp.positionPlayed || tp.preferredPosition || '—')}</span>` : ''}
-              ${calledUp?'<span style="margin-left:6px;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
+              ${avail ? `<span class="wp-status-pill" title="${esc(avail.notes||'')}">${esc(availabilityStatusLabel(avail.status))}</span>`
+                : calledUp ? `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},null,${tp.tempPlayerId})">${esc(gp.positionPlayed || tp.preferredPosition || '—')}</span>` : ''}
+              ${(calledUp&&!avail)?'<span style="margin-left:6px;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
             </div>
           </div>`;
         }).join('')}
@@ -23765,6 +24103,9 @@ async function copySquadFromPreviousGame(gameId, prevGameId) {
           // For a tournament squad, which often includes borrowed/guest
           // players, this meant "copy previous squad" quietly dropped
           // exactly the players most likely to be tournament-specific.
+          // Gated the same way as the permanent-player branch above —
+          // guests follow the same availability rule, not a separate one.
+          if (await isTempPlayerUnavailable(prev.tempPlayerId)) { skippedUnavailable++; continue; }
           const gp = await getOrCreateGPForTemp(gameId, prev.tempPlayerId);
           applySquadStateRules(gp, prev.role === 'Starter' ? 'setStarter' : 'setSub');
           await DB.put('gamePlayers', gp);
@@ -23822,6 +24163,13 @@ async function simpleToggleSquadTemp(gameId, tempPlayerId) {
   try {
     const gp = await getOrCreateGPForTemp(gameId, tempPlayerId);
     const turningOn = !gp.calledUp;
+    // Mirrors simpleToggleSquad's gate exactly — same validation function
+    // family, just the guest-keyed variant (section 5: guests use the
+    // same availability rules as permanent players).
+    if (turningOn && await isTempPlayerUnavailable(tempPlayerId)) {
+      Toast.error(I18n.t('gd_player_unavailable'));
+      return;
+    }
     applySquadStateRules(gp, turningOn ? 'setCalledUp' : 'clearCalledUp');
     if (turningOn && !gp.positionPlayed) {
       const tempPlayer = await DB.get('temporaryPlayers', tempPlayerId);
@@ -24007,6 +24355,10 @@ async function renderStartingXITab(gameId) {
     }
 
     const starterCount = uniqueGPIds(existingGP, r=>r.calledUp && r.role==='Starter').size;
+    // Belt-and-suspenders only — a calledUp player should never actually
+    // be unavailable here (see simpleToggleStarter), but the grey-out is
+    // still applied if one ever is, same as the Squad tab.
+    const unavailableMap = await getUnavailablePlayerMap(State.currentSeasonId);
 
     el.innerHTML = `
       <p style="font-size:12px;color:var(--muted);margin-bottom:10px">${I18n.t('gd_xi_hint')}</p>
@@ -24029,12 +24381,13 @@ async function renderStartingXITab(gameId) {
             ? `openShirtNumberPickerForGame(${gameId},null,${e.id},'xi')`
             : `openShirtNumberPickerForGame(${gameId},${e.id},null,'xi')`;
           const rowId = e.isTemp ? '' : ` id="xi-${e.id}"`;
-          return `${_groupHeader}<div class="wp-row ${isStarter?'wp-active':''}"${rowId} onclick="${toggleCall}">
+          const avail = e.isTemp ? unavailableMap.byTemp[e.id] : unavailableMap.byPlayer[e.id];
+          return `${_groupHeader}<div class="wp-row ${isStarter?'wp-active':''} ${avail?'wp-unavailable':''}"${rowId} onclick="${toggleCall}">
             <div class="wp-info">
-              <span class="wp-num" style="cursor:pointer" onclick="event.stopPropagation();${numPickerCall}">${effNum??'—'}</span>
+              <span class="wp-num" ${avail?'':`style="cursor:pointer" onclick="event.stopPropagation();${numPickerCall}"`}>${effNum??'—'}</span>
               <span class="wp-name" title="${esc(e.name)}">${esc(e.isTemp ? e.name : shortName(e.name))}${e.isTemp ? ` <span class="pos-pill">${I18n.t('gd_guest_badge')}</span>` : ''}</span>
-              ${effPos?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();${pickerCall}">${esc(effPos)}</span>`:''}
-              <span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:${effPos?'6px':'auto'}">${isStarter?I18n.t('gd_role_starter'):I18n.t('gd_role_sub')}</span>
+              ${avail ? `<span class="wp-status-pill">${esc(availabilityStatusLabel(avail.status))}</span>` : effPos?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();${pickerCall}">${esc(effPos)}</span>`:''}
+              ${avail?'':`<span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:${effPos?'6px':'auto'}">${isStarter?I18n.t('gd_role_starter'):I18n.t('gd_role_sub')}</span>`}
             </div>
           </div>`;
         }).join('')}
@@ -24058,6 +24411,18 @@ async function simpleToggleStarter(gameId, playerId) {
     if (gp.role === 'Starter') {
       applySquadStateRules(gp, 'setSub');
     } else {
+      // Defense in depth: an unavailable player should never actually
+      // reach this tab calledUp in the first place (simpleToggleSquad
+      // blocks the call-up, and removeUnavailablePlayerFromUpcomingGames
+      // clears anyone already called up the moment they're marked
+      // unavailable) — but promoting straight to Starter is still gated
+      // directly, the same as calling up, rather than relying only on
+      // those two paths staying in sync.
+      if (await isPlayerUnavailable(playerId)) {
+        gdDebugLog('REJECTED: player unavailable');
+        Toast.error(I18n.t('gd_player_unavailable'));
+        return;
+      }
       const starterCount = countStarters(allGP, playerId);
       if (starterCount >= 11) {
         gdDebugLog('REJECTED: 11 starters already');
@@ -24088,6 +24453,10 @@ async function simpleToggleStarterTemp(gameId, tempPlayerId) {
     if (gp.role === 'Starter') {
       applySquadStateRules(gp, 'setSub');
     } else {
+      if (await isTempPlayerUnavailable(tempPlayerId)) {
+        Toast.error(I18n.t('gd_player_unavailable'));
+        return;
+      }
       const starterCount = countStarters(allGP, undefined, tempPlayerId);
       if (starterCount >= 11) {
         Toast.error(I18n.t('gd_max_starters_error'));
