@@ -23246,11 +23246,29 @@ async function getOrCreateGPForTemp(gameId, tempPlayerId) {
   return gp;
 }
 
+// Counts UNIQUE players/guests matching `pred` among gamePlayers rows for
+// one game — never the raw row count. A duplicate `players`/`temporaryPlayers`
+// identity (same careerPlayerId re-imported under a different device_id,
+// see HANDOVER's standing rules) can leave two gamePlayers rows pointing at
+// the same playerId/tempPlayerId; counting rows directly double-counts that
+// one person. Collapsing by identity first is what keeps "Convocados X/Y"
+// and "Titulares X/11" honest regardless of how many duplicate rows exist
+// underneath, and is cheap enough to do on every render.
+function uniqueGPIds(allGP, pred) {
+  const seen = new Set();
+  for (const r of allGP) {
+    if (!pred(r)) continue;
+    const key = (r.tempPlayerId !== undefined && r.tempPlayerId !== null) ? ('T' + r.tempPlayerId) : ('P' + r.playerId);
+    seen.add(key);
+  }
+  return seen;
+}
+
 function countStarters(allGP, excludePlayerId, excludeTempPlayerId) {
-  return allGP.filter(r => r.role === 'Starter' && r.calledUp
+  return uniqueGPIds(allGP, r => r.role === 'Starter' && r.calledUp
     && r.playerId !== excludePlayerId
     && (excludeTempPlayerId === undefined || r.tempPlayerId !== excludeTempPlayerId)
-  ).length;
+  ).size;
 }
 
 // ── TAB SWITCHING ────────────────────────────────────────────────────────────
@@ -23283,7 +23301,7 @@ async function renderSquadListTab(gameId) {
     }
     const rawPlayers = window._gdPlayers;
     const existingGP = await DB.getAll('gamePlayers','gameId',gameId);
-    const calledUpCount = existingGP.filter(r=>r.calledUp).length;
+    const calledUpCount = uniqueGPIds(existingGP, r=>r.calledUp).size;
     gdDebugLog(`squad tab: ${rawPlayers.length} players, ${calledUpCount} called up`);
     // Goalkeepers → Defenders → Midfielders → Strikers, same grouping used
     // on the Squad screen and Starting XI selection. Shirt number within
@@ -23626,7 +23644,7 @@ async function renderStartingXITab(gameId) {
       return;
     }
 
-    const starterCount = existingGP.filter(r=>r.calledUp && r.role==='Starter').length;
+    const starterCount = uniqueGPIds(existingGP, r=>r.calledUp && r.role==='Starter').size;
 
     el.innerHTML = `
       <p style="font-size:12px;color:var(--muted);margin-bottom:10px">${I18n.t('gd_xi_hint')}</p>
