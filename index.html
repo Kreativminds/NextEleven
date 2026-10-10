@@ -824,6 +824,43 @@ async function getSeasonMap(force) {
 }
 function invalidateSeasonMap() { _seasonMapCache = null; }
 
+// ── AUTHORITATIVE SEASON GAMEPLAYERS LOOKUP ──────────────────────────────
+// Root cause of the Games page showing a different (lower) score than
+// Game Detail for the same match (e.g. SLO 7–1 Oriental showing as 4–1):
+// every stats view that needed "this season's gamePlayers" filtered the
+// gamePlayers STORE by its own seasonId field via DB.getAll('gamePlayers',
+// 'seasonId', ...) — but that field is stamped once, from whatever season
+// happened to be active in the UI the moment a row was first created
+// (getOrCreateGP / getOrCreateGPForTemp), and never corrected afterward.
+// A handful of rows across this app's history (season rollovers, SQL
+// imports, late-added substitute/goal corrections) ended up with a
+// seasonId that doesn't match the game they actually belong to — so any
+// consumer filtering on it directly silently dropped real goals,
+// appearances and call-ups for the affected games.
+//
+// Game Detail never had this bug: it fetches gamePlayers by gameId
+// (DB.getAll('gamePlayers','gameId',gameId)), which is always correct —
+// nothing in the app works at all if a row's own gameId is wrong. This
+// helper gives every other view that same guarantee: it derives season
+// membership from each GAME's own (reliable) seasonId — the field that
+// already puts the game on this season's list in the first place — and
+// then takes every gamePlayers row whose gameId belongs to one of those
+// games, ignoring the gamePlayers row's own seasonId tag entirely.
+//
+// This is now the one authoritative way to get "this season's
+// gamePlayers" — every call site that used to filter by the gamePlayers
+// seasonId index has been pointed here instead, so the same match can no
+// longer produce different goal/appearance counts depending on which
+// page is showing it.
+async function getSeasonGamePlayers(seasonId) {
+  const [games, allGP] = await Promise.all([
+    DB.getAll('games', 'seasonId', seasonId),
+    DB.getAll('gamePlayers'),
+  ]);
+  const gameIds = new Set(games.map(g => g.gameId));
+  return allGP.filter(r => gameIds.has(r.gameId));
+}
+
 // ── COMPETITION SPLIT ────────────────────────────────────────────────────
 // One rule for every stats page:
 //   tournament — linked to a tournament, or typed Tournament
@@ -5519,48 +5556,102 @@ const LINEUP_ROW_MAP = {
 };
 const MIN_APPEARANCES_FOR_LINEUP = 3;
 
-function buildMostUsedLineup(players, finishedGames, allGP) {
-  const activePlayers = players.filter(p => p.isActive);
-  // For each player, count appearances per recorded position (when called up & played)
-  const playerPositionCounts = {}; // playerId -> { position: count }
-  const playerTotalApps = {};
+// officialGames MUST already be filtered to League/Cup (splitGamesByCategory's
+// 'official' bucket) by the caller — this function trusts that boundary
+// completely rather than re-deciding competition eligibility itself, so
+// there is exactly one place in the app that decides what counts as
+// official (gameCategory()/splitGamesByCategory()). Passing finishedGames
+// (unfiltered) here was the root cause of friendly-only players like
+// William and Anthony showing up in the formation: every other board on
+// this same page (Top Scorer, Most Appearances, team totals) already used
+// split.official — only this one call still used the unfiltered list.
+//
+// tempPlayers adds guest/temporary players into the same candidate pool as
+// permanent players, on equal terms (section E of the ticket): a guest's
+// official-game appearances and recorded position count exactly like a
+// permanent player's. Identity is tracked as 'P<playerId>' / 'T<tempPlayerId>'
+// so a permanent player and a guest can never collide on the same numeric id,
+// and a guest's own historical appearances stay theirs even if a same-named
+// permanent player is created later — there is no guest→permanent conversion
+// feature in the app to retroactively merge them, so none is invented here.
+function buildMostUsedLineup(players, tempPlayers, officialGames, allGP) {
+  const activePlayers = (players || []).filter(p => p.isActive);
+  const guests = tempPlayers || [];
+  const officialGameIds = new Set((officialGames || []).map(g => g.gameId));
 
-  finishedGames.forEach(g => {
-    allGP.filter(r => r.gameId === g.gameId && r.calledUp).forEach(gp => {
-      if (!playerPositionCounts[gp.playerId]) playerPositionCounts[gp.playerId] = {};
-      playerTotalApps[gp.playerId] = (playerTotalApps[gp.playerId]||0) + 1;
-      if (gp.positionPlayed) {
-        playerPositionCounts[gp.playerId][gp.positionPlayed] = (playerPositionCounts[gp.playerId][gp.positionPlayed]||0) + 1;
-      }
-    });
+  const posCounts = {};    // identity -> { position: count }
+  const totalApps = {};    // identity -> count
+  const identityInfo = {}; // identity -> { kind: 'player'|'guest', record }
+
+  allGP.forEach(gp => {
+    if (!gp.calledUp || !officialGameIds.has(gp.gameId)) return;
+    const identity = (gp.tempPlayerId != null) ? ('T' + gp.tempPlayerId) : ('P' + gp.playerId);
+    totalApps[identity] = (totalApps[identity] || 0) + 1;
+    if (gp.positionPlayed) {
+      if (!posCounts[identity]) posCounts[identity] = {};
+      posCounts[identity][gp.positionPlayed] = (posCounts[identity][gp.positionPlayed] || 0) + 1;
+    }
   });
 
-  // Build a list of { player, position, count } for every player+position combo recorded
-  const candidates = [];
-  activePlayers.forEach(p => {
-    const apps = playerTotalApps[p.playerId] || 0;
-    if (apps < MIN_APPEARANCES_FOR_LINEUP) return;
-    const posCounts = playerPositionCounts[p.playerId] || {};
-    const bestPos = Object.entries(posCounts).sort((a,b)=>b[1]-a[1])[0];
-    const position = bestPos ? bestPos[0] : (p.primaryPosition || null);
+  activePlayers.forEach(p => { identityInfo['P' + p.playerId] = { kind: 'player', record: p }; });
+  guests.forEach(tp => { identityInfo['T' + tp.tempPlayerId] = { kind: 'guest', record: tp }; });
+
+  // Build a candidate for every identity with at least one real official
+  // appearance — never for a player/guest with zero official games, which
+  // is exactly how friendly-only and tournament-only participation stays
+  // excluded (their only appearances were never in officialGameIds to
+  // begin with, so they never accumulate an entry in totalApps at all).
+  const allCandidates = [];
+  Object.keys(totalApps).forEach(identity => {
+    const info = identityInfo[identity];
+    if (!info) return; // appearance recorded for someone no longer resolvable (e.g. hard-deleted) — skip rather than guess
+    const counts = posCounts[identity] || {};
+    const bestPos = Object.entries(counts).sort((a,b) => b[1] - a[1])[0];
+    // Match-recorded position wins; the profile's primary/preferred
+    // position is only ever a fallback when no position was logged for
+    // any official appearance (section D of the ticket).
+    const fallbackPos = info.kind === 'player' ? info.record.primaryPosition : info.record.preferredPosition;
+    const position = bestPos ? bestPos[0] : (fallbackPos || null);
     if (!position) return;
-    candidates.push({ player: p, position, count: bestPos ? bestPos[1] : 0, totalApps: apps });
+    allCandidates.push({ identity, info, position, bestCount: bestPos ? bestPos[1] : 0, apps: totalApps[identity] });
   });
 
-  // Greedily assign the most-used player to each position slot, one player per slot,
-  // picking the highest count first, skipping players already placed.
-  candidates.sort((a,b) => b.count - a.count || b.totalApps - a.totalApps);
+  // The minimum-appearances rule is a season-progress gate, not a fixed
+  // wall: with fewer official games played all season than the threshold
+  // itself, applying it would empty the whole formation in the season's
+  // first couple of matches, so it relaxes to "any real appearance" until
+  // the season has played enough games for the real threshold to mean
+  // anything (section C). Once it's active, a slot it leaves empty is
+  // backfilled from the next-best remaining candidates by appearances —
+  // never left blank just because fewer than 11 players cleared the bar,
+  // and the backfill pool still only ever contains official-game
+  // appearances, so it can never reach for a friendly-only player.
+  const effectiveMin = (officialGames || []).length < MIN_APPEARANCES_FOR_LINEUP ? 1 : MIN_APPEARANCES_FOR_LINEUP;
+  const byStrength = (a, b) => b.bestCount - a.bestCount || b.apps - a.apps;
+  const primary = allCandidates.filter(c => c.apps >= effectiveMin).sort(byStrength);
+  const secondary = allCandidates.filter(c => c.apps < effectiveMin).sort(byStrength);
+
   const used = new Set();
   const bySlot = { GK: [], DEF: [], MID: [], FWD: [] };
   const slotLimits = { GK: 1, DEF: 4, MID: 3, FWD: 3 }; // simple 4-3-3-ish default shape
 
-  candidates.forEach(c => {
-    if (used.has(c.player.playerId)) return;
+  const place = (c) => {
+    if (used.has(c.identity)) return;
     const row = LINEUP_ROW_MAP[c.position] || 'MID';
     if (bySlot[row].length >= slotLimits[row]) return;
-    bySlot[row].push({ player: c.player, position: c.position });
-    used.add(c.player.playerId);
-  });
+    // renderLineupPitch only ever reads .fullName and .shirtNumber off
+    // the player object — a guest's temporaryPlayers record uses .name
+    // instead of .fullName, so it's normalized into the same shape here
+    // rather than teaching the renderer two field conventions.
+    const p = (c.info.kind === 'player') ? c.info.record : {
+      playerId: null, tempPlayerId: c.info.record.tempPlayerId, isGuest: true,
+      fullName: c.info.record.name, shirtNumber: c.info.record.shirtNumber,
+    };
+    bySlot[row].push({ player: p, position: c.position });
+    used.add(c.identity);
+  };
+  primary.forEach(place);
+  secondary.forEach(place); // only ever reaches here once effectiveMin > 1 left slots unfilled
 
   return bySlot;
 }
@@ -5956,6 +6047,9 @@ const TR = {
     gd_lbl_goals:'Goals', gd_lbl_assists:'Assists',
     gd_added_to_squad:'Added to squad', gd_removed_from_squad:'Removed from squad',
     gd_could_not_save:'Could not save: {msg}',
+    gd_player_unavailable:'This player is marked unavailable (injured) and cannot be called up.',
+    gd_copy_skipped_unavailable:'{n} unavailable player(s) were not copied.',
+    inj_conflict_removed:'{name} is now unavailable and has been removed from {n} upcoming match(es).',
 
     // ── PLAYER FORM VALIDATION ──
     pf_err_name:'Player name is required.',
@@ -5986,7 +6080,9 @@ const TR = {
     game_err_date:'Date is required.',
     game_updated:'Game updated.', game_added:'Game added.',
     game_confirm_delete_title:'Delete Game',
-    game_confirm_delete_body:'Are you sure you want to delete this game? This cannot be undone.',
+    game_confirm_delete_body:'Are you sure you want to delete this game?',
+    game_confirm_delete_title2:'Confirm Deletion',
+    game_confirm_delete_body2:'This will permanently delete the game and its associated match data. This action cannot be undone. Confirm deletion?',
     game_deleted:'Game deleted.',
 
     // ── TRACKED PLAYER — OVERVIEW TAB ──
@@ -7313,6 +7409,9 @@ const TR = {
     gd_lbl_goals:'Golos', gd_lbl_assists:'Assistências',
     gd_added_to_squad:'Adicionado à convocatória', gd_removed_from_squad:'Removido da convocatória',
     gd_could_not_save:'Não foi possível guardar: {msg}',
+    gd_player_unavailable:'Este jogador está marcado como indisponível (lesionado) e não pode ser convocado.',
+    gd_copy_skipped_unavailable:'{n} jogador(es) indisponível(eis) não foram copiados.',
+    inj_conflict_removed:'{name} está agora indisponível e foi removido de {n} jogo(s) futuro(s).',
 
     // ── PLAYER FORM VALIDATION ──
     pf_err_name:'O nome do jogador é obrigatório.',
@@ -7343,7 +7442,9 @@ const TR = {
     game_err_date:'A data é obrigatória.',
     game_updated:'Jogo atualizado.', game_added:'Jogo adicionado.',
     game_confirm_delete_title:'Eliminar Jogo',
-    game_confirm_delete_body:'Tem a certeza que quer eliminar este jogo? Esta ação não pode ser desfeita.',
+    game_confirm_delete_body:'Tem a certeza que quer eliminar este jogo?',
+    game_confirm_delete_title2:'Confirmar Eliminação',
+    game_confirm_delete_body2:'Isto irá eliminar permanentemente o jogo e os dados associados. Esta ação não pode ser desfeita. Confirmar eliminação?',
     game_deleted:'Jogo eliminado.',
 
     // ── TRACKED PLAYER — OVERVIEW TAB ──
@@ -9080,10 +9181,16 @@ const Calc = (() => {
     };
   }
 
-  function playerSeasonStats(playerId, games, allGP) {
+  // tempPlayerId is optional and backward compatible — every existing call
+  // site passes only (playerId, games, allGP) and matches exactly as
+  // before. Passing a tempPlayerId switches matching to that guest's rows
+  // instead, so the same stat calculation serves permanent and guest
+  // players alike rather than guests needing a separate, parallel
+  // function (ticket: "use a common participation model").
+  function playerSeasonStats(playerId, games, allGP, tempPlayerId) {
     let calledUp=0,started=0,subbed=0,goals=0,assists=0,yellow=0,red=0,mom=0,fullGames=0,partial=0;
     games.forEach(g => {
-      const gp = allGP.find(r => r.gameId===g.gameId && r.playerId===playerId);
+      const gp = allGP.find(r => r.gameId===g.gameId && (tempPlayerId != null ? r.tempPlayerId===tempPlayerId : r.playerId===playerId));
       if (!gp||!gp.calledUp) return;
       calledUp++;
       if(gp.role==='Starter')started++;
@@ -12003,7 +12110,7 @@ async function handleReopenSeason() {
 async function renderHomeCompletedView(season) {
   const _seasonMap = await getSeasonMap(); // loaded once — never inside the loop
   const games = await DB.getAll('games','seasonId',season.seasonId);
-  const allGP = await DB.getAll('gamePlayers','seasonId',season.seasonId);
+  const allGP = await getSeasonGamePlayers(season.seasonId);
   const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
   const players = await DB.getAll('players','seasonId',season.seasonId);
   const activePlayers = players.filter(p => p.isActive);
@@ -12201,7 +12308,7 @@ async function renderTournamentGamesTab() {
   const tournaments = await getTournamentsForSeason(State.currentSeasonId);
   tournaments.sort((a,b) => new Date(b.startDate||0) - new Date(a.startDate||0));
   const allGames = await DB.getAll('games','seasonId',State.currentSeasonId);
-  const allGP = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
+  const allGP = await getSeasonGamePlayers(State.currentSeasonId);
   const allOpponents = await DB.getAll('opponents');
   const opponentLogoByName = {};
   allOpponents.forEach(o => { if (o.logoUrl) opponentLogoByName[(o.opponentName||'').toLowerCase()] = o.logoUrl; });
@@ -12671,7 +12778,7 @@ async function renderTournamentSummaryPage(tournamentIdRaw) {
   const [allGames, players, allGP, allTempPlayers] = await Promise.all([
     DB.getAll('games','seasonId',State.currentSeasonId),
     DB.getAll('players','seasonId',State.currentSeasonId),
-    DB.getAll('gamePlayers','seasonId',State.currentSeasonId),
+    getSeasonGamePlayers(State.currentSeasonId),
     getTemporaryPlayersForSeason(State.currentSeasonId),
   ]);
   const tGames = allGames.filter(g => g.tournamentId === tournamentId);
@@ -13984,7 +14091,7 @@ async function renderExtendedStats(playerId) {
   // future fixtures, or when games were complete but this player was
   // never called up. Uses the existing isGameResultVisible rule and the
   // real gamePlayers participation records — no new completion rule.
-  const allGPForStats = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
+  const allGPForStats = await getSeasonGamePlayers(State.currentSeasonId);
   const hasCompletedParticipation = games.some(g =>
     isGameResultVisible(g, _seasonMap) &&
     allGPForStats.some(gp => gp.gameId === g.gameId && gp.playerId === playerId && gp.calledUp)
@@ -14211,7 +14318,7 @@ async function renderMatchLog(playerId) {
   if (!player) return;
 
   const games = await DB.getAll('games','seasonId',State.currentSeasonId);
-  const allGP = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
+  const allGP = await getSeasonGamePlayers(State.currentSeasonId);
   const lorGP = allGP.filter(r => r.playerId === playerId);
 
   // A future call-up is not match history. Relevance requires a completed
@@ -16226,7 +16333,7 @@ async function renderPlayerPortalHome() {
   const offSeasonMessage = offSeasonMessages[Math.floor(Math.random() * offSeasonMessages.length)];
 
   const games = (await DB.getAll('games','seasonId', State.currentSeasonId)).filter(g => g.date);
-  const allGP = await DB.getAll('gamePlayers','seasonId', State.currentSeasonId);
+  const allGP = await getSeasonGamePlayers(State.currentSeasonId);
 
   // Uses the real kickoff+duration cutoff (isGameResultVisible), same as the
   // guardian Home page — not end-of-calendar-day, which would leave a
@@ -16307,7 +16414,7 @@ async function renderPlayerPortalStats() {
   if (!player) return;
 
   const games = (await DB.getAll('games','seasonId', State.currentSeasonId)).filter(g => g.date);
-  const allGP = await DB.getAll('gamePlayers','seasonId', State.currentSeasonId);
+  const allGP = await getSeasonGamePlayers(State.currentSeasonId);
   const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
   const playerGP = allGP.filter(r => r.playerId === playerId);
   const split = splitGamesByCategory(finishedGames);
@@ -16421,7 +16528,7 @@ async function renderPlayerPortalGames() {
   const el = document.getElementById('pp-sec-games');
   if (!el) return;
   const games = (await DB.getAll('games','seasonId', State.currentSeasonId)).filter(g => g.date);
-  const allGP = await DB.getAll('gamePlayers','seasonId', State.currentSeasonId);
+  const allGP = await getSeasonGamePlayers(State.currentSeasonId);
   games.sort((a,b) => gameSortKey(b) - gameSortKey(a));
 
   // Warm, specific off-season message — reuses the same real season-
@@ -16660,10 +16767,11 @@ async function renderPlayerPortalTeamSummary() {
   const el = document.getElementById('pp-sec-teamsummary');
   if (!el) return;
 
-  const [games, players, allGP] = await Promise.all([
+  const [games, players, allGP, tempPlayers] = await Promise.all([
     DB.getAll('games','seasonId',State.currentSeasonId),
     DB.getAll('players','seasonId',State.currentSeasonId),
-    DB.getAll('gamePlayers','seasonId',State.currentSeasonId)
+    getSeasonGamePlayers(State.currentSeasonId),
+    getTemporaryPlayersForSeason(State.currentSeasonId)
   ]);
 
   if (!games.length) {
@@ -16678,17 +16786,28 @@ async function renderPlayerPortalTeamSummary() {
   const pStats = players.filter(p=>p.isActive).map(p => ({
     ...p, ...Calc.playerSeasonStats(p.playerId, split.official, allGP)
   }));
+  // Guests counted on exactly the same terms as permanent players (ticket
+  // item 5) — their goals/assists/appearances already count toward the
+  // team totals above regardless; without this they just never showed up
+  // on these per-player leaderboards even when they led them.
+  const guestStats = (tempPlayers||[]).map(tp => ({
+    ...tp, fullName: tp.name, ...Calc.playerSeasonStats(null, split.official, allGP, tp.tempPlayerId)
+  }));
+  const allStats = [...pStats, ...guestStats];
   // Zero-value players are filtered out, matching mostApps and mostMoM
   // below and the coach-facing Team Summary. Without this a squad that
   // has scored nothing still showed a "Top Scorer" on 0 goals — the same
   // defect already corrected on the coach side. The shared leaderCard
   // helper and the layout are deliberately unchanged.
-  const topScorers = [...pStats].filter(p=>p.goals>0).sort((a,b)=>b.goals-a.goals).slice(0,5);
-  const topAssisters = [...pStats].filter(p=>p.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,5);
-  const mostApps = [...pStats].filter(p=>p.calledUp>0).sort((a,b)=>b.calledUp-a.calledUp).slice(0,5);
-  const mostMoM = [...pStats].sort((a,b)=>b.mom-a.mom).filter(p=>p.mom>0).slice(0,5);
+  const topScorers = [...allStats].filter(p=>p.goals>0).sort((a,b)=>b.goals-a.goals).slice(0,5);
+  const topAssisters = [...allStats].filter(p=>p.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,5);
+  const mostApps = [...allStats].filter(p=>p.calledUp>0).sort((a,b)=>b.calledUp-a.calledUp).slice(0,5);
+  const mostMoM = [...allStats].sort((a,b)=>b.mom-a.mom).filter(p=>p.mom>0).slice(0,5);
 
-  const mostUsedLineup = buildMostUsedLineup(players, finishedGames, allGP);
+  // split.official, not finishedGames — see buildMostUsedLineup's own
+  // comment: this was the one board on this page still built from every
+  // finished game instead of official (League/Cup) ones only.
+  const mostUsedLineup = buildMostUsedLineup(players, tempPlayers, split.official, allGP);
   const shirtColor = State.currentSeason?.shirtColor || '#B23333';
 
   el.innerHTML = `
@@ -17254,7 +17373,7 @@ const Render = (() => {
 
     // ── ACTIVE SEASON — existing day-to-day dashboard, unchanged ──────────
     const games = await DB.getAll('games','seasonId',State.currentSeasonId);
-    const allGP = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
+    const allGP = await getSeasonGamePlayers(State.currentSeasonId);
 
     // A game counts as "played" once its result is actually visible (kickoff
     // + match duration + buffer — see isGameResultVisible), not just once the
@@ -17443,7 +17562,7 @@ const Render = (() => {
     const [games, allPlayers, allGP] = await Promise.all([
       DB.getAll('games','seasonId',State.currentSeasonId),
       DB.getAll('players','seasonId',State.currentSeasonId),
-      DB.getAll('gamePlayers','seasonId',State.currentSeasonId),
+      getSeasonGamePlayers(State.currentSeasonId),
     ]);
 
     if (mySeq !== _dashRenderSeq) return; // a newer render started while we awaited
@@ -17886,7 +18005,7 @@ const Render = (() => {
       return;
     }
 
-    const allGP = await DB.getAll('gamePlayers','seasonId',State.currentSeasonId);
+    const allGP = await getSeasonGamePlayers(State.currentSeasonId);
     const allOpponents = await DB.getAll('opponents');
     if (mySeq !== _gamesRenderSeq) return;
     const opponentLogoByName = {};
@@ -17923,10 +18042,7 @@ const Render = (() => {
         <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);align-items:center" onclick="event.stopPropagation()">
           <button class="btn btn-secondary btn-sm" onclick="editGame(${g.gameId})">${I18n.t('common_edit')}</button>
           ${gVisible ? `
-            <button class="btn btn-secondary btn-sm" onclick="toggleGameMoreMenu(${g.gameId})" title="${I18n.t('games_more_options')}" style="padding:6px 10px">&#8942;</button>
-            <div id="gameMoreMenu-${g.gameId}" style="display:none;margin-left:auto">
-              <button class="btn btn-danger btn-sm" onclick="deleteGame(${g.gameId})">${I18n.t('common_delete')}</button>
-            </div>
+            <button class="btn btn-secondary btn-sm" onclick="openGameActionMenu(${g.gameId},this)" aria-haspopup="menu" aria-expanded="false" title="${I18n.t('games_more_options')}" style="padding:6px 10px;margin-left:auto">&#8942;</button>
           ` : `
             <button class="btn btn-danger btn-sm" onclick="deleteGame(${g.gameId})">${I18n.t('common_delete')}</button>
           `}
@@ -18097,7 +18213,7 @@ const Render = (() => {
     const [players, games, allGP] = await Promise.all([
       DB.getAll('players','seasonId',State.currentSeasonId),
       DB.getAll('games','seasonId',State.currentSeasonId),
-      DB.getAll('gamePlayers','seasonId',State.currentSeasonId),
+      getSeasonGamePlayers(State.currentSeasonId),
     ]);
 
     // Archived players are viewable. The isActive requirement here (plus
@@ -18283,10 +18399,11 @@ const Render = (() => {
     if (!State.currentSeason) { el.innerHTML = noSeason(); return; }
     sub.textContent = State.currentSeason.seasonName;
 
-    const [games, players, allGP] = await Promise.all([
+    const [games, players, allGP, tempPlayers] = await Promise.all([
       DB.getAll('games','seasonId',State.currentSeasonId),
       DB.getAll('players','seasonId',State.currentSeasonId),
-      DB.getAll('gamePlayers','seasonId',State.currentSeasonId)
+      getSeasonGamePlayers(State.currentSeasonId),
+      getTemporaryPlayersForSeason(State.currentSeasonId)
     ]);
 
     if (!games.length) {
@@ -18315,18 +18432,27 @@ const Render = (() => {
     const pStats = players.filter(p=>p.isActive).map(p => ({
       ...p, ...Calc.playerSeasonStats(p.playerId, split.official, allGP)
     }));
+    // Guests on equal terms with permanent players (ticket item 5) — their
+    // goals/assists/appearances already count toward the team totals
+    // above; without this they never appeared on these leaderboards even
+    // when they led them.
+    const guestStats = (tempPlayers||[]).map(tp => ({
+      ...tp, fullName: tp.name, ...Calc.playerSeasonStats(null, split.official, allGP, tp.tempPlayerId)
+    }));
+    const allStats = [...pStats, ...guestStats];
 
     // Zero-value players are filtered out of every board, so a squad that
     // has scored nothing can't show a "Top Scorer" on 0. Goals and assists
     // previously skipped this filter; Most Used and Player of the Match
     // already had it, and are unchanged.
-    const topScorers = [...pStats].filter(p=>p.goals>0).sort((a,b)=>b.goals-a.goals).slice(0,5);
-    const topAssisters = [...pStats].filter(p=>p.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,5);
-    const mostApps = [...pStats].filter(p=>p.calledUp>0).sort((a,b)=>b.calledUp-a.calledUp).slice(0,5);
-    const mostMoM = [...pStats].sort((a,b)=>b.mom-a.mom).filter(p=>p.mom>0).slice(0,5);
+    const topScorers = [...allStats].filter(p=>p.goals>0).sort((a,b)=>b.goals-a.goals).slice(0,5);
+    const topAssisters = [...allStats].filter(p=>p.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,5);
+    const mostApps = [...allStats].filter(p=>p.calledUp>0).sort((a,b)=>b.calledUp-a.calledUp).slice(0,5);
+    const mostMoM = [...allStats].sort((a,b)=>b.mom-a.mom).filter(p=>p.mom>0).slice(0,5);
 
-    // Most Used Lineup — best XI based on appearances per position this season
-    const mostUsedLineup = buildMostUsedLineup(players, finishedGames, allGP);
+    // Most Used Lineup — best XI based on appearances per position this
+    // season, official (League/Cup) games only — see buildMostUsedLineup.
+    const mostUsedLineup = buildMostUsedLineup(players, tempPlayers, split.official, allGP);
     const shirtColor = State.currentSeason?.shirtColor || '#B23333';
 
     // Squad-wide injury report for this season. Reuses the `players` array
@@ -21569,7 +21695,7 @@ async function openPlayerCardPopup(playerId) {
   if (State.currentSeasonId) {
     const [games, allGP] = await Promise.all([
       DB.getAll('games','seasonId',State.currentSeasonId),
-      DB.getAll('gamePlayers','seasonId',State.currentSeasonId),
+      getSeasonGamePlayers(State.currentSeasonId),
     ]);
     const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
     const split = splitGamesByCategory(finishedGames);
@@ -21626,6 +21752,22 @@ const INJURY_TYPE_KEYS = {
 };
 function injuryTypeLabel(value) {
   return INJURY_TYPE_KEYS[value] ? I18n.t(INJURY_TYPE_KEYS[value]) : (value || '');
+}
+
+// ── AVAILABILITY GATE ────────────────────────────────────────────────────
+// The injuries table is the only "is this player currently fit to play"
+// signal the app has (status: 'Injured' | 'Not Injured', with a reason
+// type/notes) — there is no separate illness/suspension/personal-leave
+// table. Marking a player 'Injured' here already functions as "mark
+// unavailable" in practice, so that single flag is what every selection
+// screen checks, whatever the real underlying reason the coach records in
+// its type/notes. Only covers permanent players — temporaryPlayers
+// (guests) have no availability record of any kind yet in this data
+// model, so a guest is never blocked here.
+async function isPlayerUnavailable(playerId) {
+  if (!playerId) return false;
+  const injuries = await DB.getAll('injuries', 'playerId', playerId);
+  return injuries.some(i => i.status === 'Injured');
 }
 
 // ── PORTAL PIN MANAGEMENT — Squad row, tracked players only ──────────────────
@@ -21819,6 +21961,36 @@ async function openInjuryHistoryModal(playerId) {
   document.body.appendChild(overlay);
 }
 
+// A player already called up — possibly already a Starter — for a game
+// that hasn't been played yet is a real conflict the moment they're
+// marked unavailable: the ticket requires detecting it, removing them
+// from that selection, and telling the coach, rather than leaving an
+// unavailable player sitting in an upcoming Convocatória/Starting XI
+// until someone happens to notice. Scoped to games in the SAME season as
+// the injury record (injuries are already season-scoped) and gated by
+// isGameResultVisible — the same completion rule every stats view already
+// uses — so a completed match is never touched, only upcoming/in-progress
+// ones. clearCalledUp also resets role/playedFullGame, so a removed
+// Starter doesn't leave a stale 'Starter' role sitting on a calledUp:false
+// row.
+async function removeUnavailablePlayerFromUpcomingGames(playerId, seasonId) {
+  const [games, seasonMap, allGP] = await Promise.all([
+    DB.getAll('games', 'seasonId', seasonId),
+    getSeasonMap(),
+    getSeasonGamePlayers(seasonId),
+  ]);
+  let removedCount = 0;
+  for (const g of games) {
+    if (isGameResultVisible(g, seasonMap)) continue; // historical — never modified
+    const gp = allGP.find(r => r.gameId === g.gameId && r.playerId === playerId && r.calledUp);
+    if (!gp) continue;
+    applySquadStateRules(gp, 'clearCalledUp');
+    await DB.put('gamePlayers', gp);
+    removedCount++;
+  }
+  return removedCount;
+}
+
 async function saveInjury(playerId, existingInjuryId) {
   const status = document.getElementById('inj-status').value;
   const startDate = document.getElementById('inj-start').value || new Date().toISOString().split('T')[0];
@@ -21841,7 +22013,18 @@ async function saveInjury(playerId, existingInjuryId) {
   try {
     await DB.put('injuries', record);
     document.getElementById('injuryModalOverlay')?.remove();
-    Toast.show(status === 'Injured' ? I18n.t('inj_marked_injured') : I18n.t('inj_marked_recovered'));
+    if (status === 'Injured') {
+      const removedCount = await removeUnavailablePlayerFromUpcomingGames(playerId, record.seasonId);
+      if (removedCount > 0) {
+        const player = await DB.get('players', playerId);
+        Toast.show(I18n.t('inj_conflict_removed', {name: shortName(player?.fullName||''), n: removedCount}));
+        Sync.scheduleAutoSync();
+      } else {
+        Toast.show(I18n.t('inj_marked_injured'));
+      }
+    } else {
+      Toast.show(I18n.t('inj_marked_recovered'));
+    }
     await Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||'');
   } catch(err) {
     Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
@@ -23144,22 +23327,56 @@ async function editGame(id) {
 // Reveals the Delete option for a played game, which is otherwise hidden
 // behind this extra tap by design — deleting a completed match with real
 // history behind it deserves more friction than deleting an upcoming
-// fixture, without needing a whole new confirmation flow.
-function toggleGameMoreMenu(gameId) {
-  const menu = document.getElementById(`gameMoreMenu-${gameId}`);
-  if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
+// fixture.
+//
+// Previously a bare inline toggle on a sibling div (display:none/''),
+// with no protection against the exact failure ActionMenu's own header
+// comment documents: on a phone, tapping anything can fire `resize`
+// (the URL bar hiding/showing) or `scroll` in the same frame, and any
+// listener that closes a menu on those events closes it before the
+// person ever sees it — "the three-dot menu does nothing". The inline
+// toggle itself had no such listener, but reused the exact markup
+// pattern already diagnosed and fixed for the Squad page's own More
+// menu; routing through the same shared ActionMenu component used there
+// (mobile bottom sheet / desktop anchored dropdown, both built to survive
+// that exact failure) makes this menu reliably open on mobile and
+// desktop, rather than guessing at a second cause.
+async function openGameActionMenu(gameId, btn) {
+  ActionMenu.open(
+    [{ icon:'&#128465;', label:I18n.t('common_delete'), fn:`deleteGame(${gameId})`, tone:'danger' }],
+    btn,
+    { ariaLabel: I18n.t('games_more_options') }
+  );
 }
 
+// Two-step confirmation, as required: the first dialog is a plain "are
+// you sure", the second spells out exactly what's irreversible. Only
+// reaches the actual deletion if both are accepted; cancelling either
+// one leaves the game, and everything derived from it, untouched.
 async function deleteGame(id) {
-  Confirm.show(I18n.t('game_confirm_delete_title'), I18n.t('game_confirm_delete_body'), async () => {
-    await Backup.create('before-delete');
-    await DB.softDelete('games', id);
-    // delete associated gamePlayers
-    const gps = await DB.getAll('gamePlayers','gameId',id);
-    for (const gp of gps) await DB.softDelete('gamePlayers', gp.gamePlayerId);
-    Toast.show(I18n.t('game_deleted'));
-    await Render.gamesList();
-    Sync.scheduleAutoSync();
+  Confirm.show(I18n.t('game_confirm_delete_title'), I18n.t('game_confirm_delete_body'), () => {
+    Confirm.show(I18n.t('game_confirm_delete_title2'), I18n.t('game_confirm_delete_body2'), async () => {
+      await Backup.create('before-delete');
+      await DB.softDelete('games', id);
+      // Every stats view (totals, W/D/L, GF/GA, home/away, form/streaks,
+      // appearances, Most Used Lineup, competition stats) recomputes live
+      // from DB.getAll(), which already excludes soft-deleted rows — so
+      // soft-deleting the game's own dependent records here is enough to
+      // correctly update every one of those views with no separate
+      // recalculation step. gamePlayers carries the call-ups, roles,
+      // goals/assists and positions for this game; playerGameStats
+      // carries the separate extended match stats (passes, tackles, etc.)
+      // — both must go, or a deleted game's numbers keep contributing to
+      // season totals that read playerGameStats directly by playerId
+      // without checking whether its game is still live.
+      const gps = await DB.getAll('gamePlayers','gameId',id);
+      for (const gp of gps) await DB.softDelete('gamePlayers', gp.gamePlayerId);
+      const pgs = await DB.getAll('playerGameStats','gameId',id);
+      for (const r of pgs) await DB.softDelete('playerGameStats', r.pgsId);
+      Toast.show(I18n.t('game_deleted'));
+      await Render.gamesList();
+      Sync.scheduleAutoSync();
+    });
   });
 }
 
@@ -23529,8 +23746,15 @@ async function copySquadFromPreviousGame(gameId, prevGameId) {
       const prevGP = await DB.getAll('gamePlayers','gameId', prevGameId);
       const calledUpPrev = prevGP.filter(r => r.calledUp);
       let copiedCount = 0;
+      let skippedUnavailable = 0;
       for (const prev of calledUpPrev) {
         if (prev.playerId) {
+          // Bulk-copying last game's squad is a second path that can call
+          // a player up — it must respect the same availability gate as
+          // the Squad tab's own toggle, or a player marked unavailable
+          // AFTER the previous game but BEFORE this copy runs would get
+          // selected anyway.
+          if (await isPlayerUnavailable(prev.playerId)) { skippedUnavailable++; continue; }
           const gp = await getOrCreateGP(gameId, prev.playerId);
           applySquadStateRules(gp, prev.role === 'Starter' ? 'setStarter' : 'setSub');
           await DB.put('gamePlayers', gp);
@@ -23547,7 +23771,7 @@ async function copySquadFromPreviousGame(gameId, prevGameId) {
           copiedCount++;
         }
       }
-      Toast.show(I18n.t('gd_copy_done', {n: copiedCount}));
+      Toast.show(I18n.t('gd_copy_done', {n: copiedCount}) + (skippedUnavailable ? ' ' + I18n.t('gd_copy_skipped_unavailable', {n: skippedUnavailable}) : ''));
       await renderSquadListTab(gameId);
       await refreshGameHeaderScore(gameId);
     } catch(err) {
@@ -23562,6 +23786,13 @@ async function simpleToggleSquad(gameId, playerId) {
   try {
     const gp = await getOrCreateGP(gameId, playerId);
     const turningOn = !gp.calledUp;
+    // Only the turning-on path is gated — taking someone OFF the squad
+    // must always be allowed, never trapped behind an availability check.
+    if (turningOn && await isPlayerUnavailable(playerId)) {
+      gdDebugLog('REJECTED: player unavailable');
+      Toast.error(I18n.t('gd_player_unavailable'));
+      return;
+    }
     applySquadStateRules(gp, turningOn ? 'setCalledUp' : 'clearCalledUp');
     if (turningOn && !gp.positionPlayed) {
       // Default positionPlayed to the player's own primaryPosition the
