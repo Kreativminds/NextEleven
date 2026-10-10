@@ -4034,6 +4034,7 @@ async function renderShareTeamCard() {
     const url = buildTeamShareUrl(existing.share_token);
     const nameMode = existing.show_name_mode || 'first_last';
     const showStats = existing.show_player_stats === true;
+    const showLiveDetails = existing.show_live_player_details === true;
     const previewName = nameMode === 'hidden' ? I18n.t('set_share_preview_hidden_example')
       : nameMode === 'initials' ? 'Lorenzo M.'
       : nameMode === 'initial_surname' ? 'L. Mabere'
@@ -4079,6 +4080,12 @@ async function renderShareTeamCard() {
           <span style="font-size:13px">${I18n.t('set_share_show_stats')}</span>
         </label>
         <p style="font-size:11px;color:var(--muted);margin:0 0 12px">${I18n.t('set_share_stats_hint')}</p>
+
+        <label style="display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;margin-bottom:6px">
+          <input type="checkbox" id="showLiveDetails-${season.seasonId}" ${showLiveDetails?'checked':''} style="width:18px;height:18px;flex-shrink:0">
+          <span style="font-size:13px">${I18n.t('set_share_show_live_details')}</span>
+        </label>
+        <p style="font-size:11px;color:var(--muted);margin:0 0 12px">${I18n.t('set_share_live_details_hint')}</p>
 
         <div id="privacyPreview-${season.seasonId}" style="font-size:11px;background:var(--bg,#f2f4f7);padding:8px 10px;border-radius:4px;margin-bottom:10px">
           ${I18n.t('set_share_preview_label')} <strong>${esc(previewName)}</strong> · ${showStats ? I18n.t('set_share_preview_stats_shown') : I18n.t('set_share_preview_stats_hidden')}
@@ -4153,9 +4160,10 @@ function handlePrivacyPreviewUpdate(seasonId) {
 async function handleSaveSharePrivacy(seasonId, btn) {
   const nameMode = document.querySelector(`input[name="nameMode-${seasonId}"]:checked`)?.value || 'first_last';
   const showStats = document.getElementById(`showStats-${seasonId}`)?.checked || false;
+  const showLiveDetails = document.getElementById(`showLiveDetails-${seasonId}`)?.checked || false;
   if (btn) { btn.disabled = true; btn.textContent = I18n.t('common_saving'); }
   try {
-    await Sync.updateTeamSharePrivacy(seasonId, nameMode, showStats);
+    await Sync.updateTeamSharePrivacy(seasonId, nameMode, showStats, showLiveDetails);
     Toast.show(I18n.t('set_share_privacy_saved'));
     await renderShareTeamCard();
   } catch(err) {
@@ -5805,7 +5813,7 @@ const TR = {
     gd_autosave_note:'Changes save automatically — no Save button needed.',
     gd_btn_back:'Back to Games',
     gd_squad_hint:"Tap a player to add them to the squad for this game. Use this as soon as you know who's available — before match day.",
-    gd_position_picker_title:'Position Played',
+    gd_position_picker_title:'Position Played', gd_shirt_picker_title:'Shirt Number (this game)',
     gd_squad_in_squad:'In squad:',
     gd_btn_copy_squad:'Copy Squad from {opponent} ({date})',
     gd_copy_confirm_title:'Copy Squad',
@@ -6456,6 +6464,8 @@ const TR = {
     set_share_name_initial_surname:'Initial + surname', set_share_name_hidden_opt:'Hide names',
     set_share_preview_hidden_example:'Player 1', set_share_show_stats:'Show player statistics',
     set_share_stats_hint:'Goals, assists, appearances, top scorers and similar player-level stats. Team results always stay visible.',
+    set_share_show_live_details:'Show individual details during live matches',
+    set_share_live_details_hint:'Game-specific goals next to each player while a match is live. Separate from the season stats setting above — the live aggregate score is always public either way.',
     set_share_preview_label:'Preview:', set_share_preview_stats_shown:'stats shown', set_share_preview_stats_hidden:'stats hidden',
     set_share_privacy_saved:'Privacy settings saved.',
     set_share_generated:'Share link ready.', set_share_enabled_toast:'Link enabled.', set_share_disabled_toast:'Link disabled.',
@@ -7160,7 +7170,7 @@ const TR = {
     gd_autosave_note:'As alterações são guardadas automaticamente — não é necessário gravar.',
     gd_btn_back:'Voltar aos Jogos',
     gd_squad_hint:'Toque num jogador para o adicionar à convocatória deste jogo. Use isto assim que souber quem está disponível — antes do dia do jogo.',
-    gd_position_picker_title:'Posição Jogada',
+    gd_position_picker_title:'Posição Jogada', gd_shirt_picker_title:'Número (neste jogo)',
     gd_squad_in_squad:'Convocados:',
     gd_btn_copy_squad:'Copiar Convocatória de {opponent} ({date})',
     gd_copy_confirm_title:'Copiar Convocatória',
@@ -7811,6 +7821,8 @@ const TR = {
     set_share_name_initial_surname:'Inicial + apelido', set_share_name_hidden_opt:'Ocultar nomes',
     set_share_preview_hidden_example:'Jogador 1', set_share_show_stats:'Mostrar estatísticas de jogadores',
     set_share_stats_hint:'Golos, assistências, presenças, melhores marcadores e estatísticas semelhantes por jogador. Os resultados da equipa mantêm-se sempre visíveis.',
+    set_share_show_live_details:'Mostrar detalhes individuais durante jogos ao vivo',
+    set_share_live_details_hint:'Golos individuais junto de cada jogador enquanto o jogo decorre. Separado da definição de estatísticas da época acima — o resultado ao vivo da equipa é sempre público de qualquer forma.',
     set_share_preview_label:'Pré-visualização:', set_share_preview_stats_shown:'estatísticas visíveis', set_share_preview_stats_hidden:'estatísticas ocultas',
     set_share_privacy_saved:'Definições de privacidade guardadas.',
     set_share_generated:'Link pronto.', set_share_enabled_toast:'Link ativado.', set_share_disabled_toast:'Link desativado.',
@@ -20042,7 +20054,7 @@ const Sync = (() => {
     return (rows && rows[0]) || null;
   }
 
-  async function updateTeamSharePrivacy(seasonId, showNameMode, showPlayerStats) {
+  async function updateTeamSharePrivacy(seasonId, showNameMode, showPlayerStats, showLivePlayerDetails) {
     if (isDemoMode()) throw new Error('Demo Mode: cloud access is disabled.');
     if (!isConfigured()) throw new Error('Sync not configured.');
     if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
@@ -20054,7 +20066,7 @@ const Sync = (() => {
         'Authorization': 'Bearer ' + Auth.getAccessToken(),
         'Content-Type':  'application/json',
       },
-      body: JSON.stringify({ p_season_id: seasonId, p_show_name_mode: showNameMode, p_show_player_stats: showPlayerStats }),
+      body: JSON.stringify({ p_season_id: seasonId, p_show_name_mode: showNameMode, p_show_player_stats: showPlayerStats, p_show_live_player_details: showLivePlayerDetails || false }),
     });
     if (!res.ok) {
       const err = await res.text();
@@ -23276,7 +23288,16 @@ async function renderSquadListTab(gameId) {
     // Goalkeepers → Defenders → Midfielders → Strikers, same grouping used
     // on the Squad screen and Starting XI selection. Shirt number within
     // each group (this screen has no column-sort to preserve).
-    const _squadGroups = groupPlayersByPosition(rawPlayers, p => p.primaryPosition);
+    const _squadNumSort = (a, b) => {
+      const na = effectiveShirtNumber(a.shirtNumber, existingGP.find(r=>r.playerId===a.playerId));
+      const nb = effectiveShirtNumber(b.shirtNumber, existingGP.find(r=>r.playerId===b.playerId));
+      const hasA = na !== null && na !== undefined, hasB = nb !== null && nb !== undefined;
+      if (hasA && hasB) return na - nb;
+      if (hasA) return -1;
+      if (hasB) return 1;
+      return 0;
+    };
+    const _squadGroups = groupPlayersByPosition(rawPlayers, p => p.primaryPosition, _squadNumSort);
     const players = POSITION_GROUP_ORDER.flatMap(g => _squadGroups[g]);
 
     // Find the previous game to offer a squad copy from. For a tournament
@@ -23316,9 +23337,10 @@ async function renderSquadListTab(gameId) {
             : '';
           const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
           const calledUp = !!gp.calledUp;
+          const effNum = effectiveShirtNumber(p.shirtNumber, gp);
           return `${_groupHeader}<div class="wp-row ${calledUp?'wp-active':''}" id="sql-${p.playerId}" onclick="simpleToggleSquad(${gameId},${p.playerId})">
             <div class="wp-info">
-              <span class="wp-num">${p.shirtNumber||'—'}</span>
+              <span class="wp-num" ${calledUp?`style="cursor:pointer" onclick="event.stopPropagation();openShirtNumberPickerForGame(${gameId},${p.playerId},null,'squad')"`:''}>${effNum??'—'}</span>
               <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor">${esc(p.trackingLabel||'★')}</span>`:''}</span>
               ${calledUp ? `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},${p.playerId},null)">${esc(gp.positionPlayed || p.primaryPosition || '—')}</span>` : ''}
               ${calledUp?'<span style="margin-left:6px;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
@@ -23332,9 +23354,10 @@ async function renderSquadListTab(gameId) {
         ${window._gdTempPlayers.map(tp => {
           const gp = existingGP.find(r=>r.tempPlayerId===tp.tempPlayerId) || {};
           const calledUp = !!gp.calledUp;
+          const effNum = effectiveShirtNumber(tp.shirtNumber, gp);
           return `<div class="wp-row ${calledUp?'wp-active':''}" onclick="simpleToggleSquadTemp(${gameId},${tp.tempPlayerId})">
             <div class="wp-info">
-              <span class="wp-num">${tp.shirtNumber||'—'}</span>
+              <span class="wp-num" ${calledUp?`style="cursor:pointer" onclick="event.stopPropagation();openShirtNumberPickerForGame(${gameId},null,${tp.tempPlayerId},'squad')"`:''}>${effNum??'—'}</span>
               <span class="wp-name" title="${esc(tp.name)}">${esc(tp.name)} <span class="pos-pill">${I18n.t('gd_guest_badge')}</span></span>
               ${calledUp ? `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},null,${tp.tempPlayerId})">${esc(gp.positionPlayed || tp.preferredPosition || '—')}</span>` : ''}
               ${calledUp?'<span style="margin-left:6px;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
@@ -23443,6 +23466,73 @@ async function simpleToggleSquadTemp(gameId, tempPlayerId) {
 // must land back on whichever one the coach was actually looking at.
 // Defaults to 'squad' so every existing call site (unchanged, not
 // passing this new argument) keeps behaving exactly as before.
+// Effective shirt number for a game: the game-specific value if one's
+// been set, else the player/guest's own default. Never writes back to
+// that default — purely a read-time fallback chain, same spirit as
+// position's positionPlayed -> primaryPosition chain.
+function effectiveShirtNumber(defaultNum, gp) {
+  return (gp && gp.shirtNumberPlayed !== null && gp.shirtNumberPlayed !== undefined) ? gp.shirtNumberPlayed : defaultNum;
+}
+
+// Shared comparator for two already-resolved effective numbers — numbered
+// players first (ascending), unnumbered ones pushed to the end. Same rule
+// the Squad and Starting XI tabs already apply inline; factored out here
+// so the Goals and Penalties tabs can order by the effective number too,
+// instead of inheriting whatever order the squad array happened to be in.
+function compareEffectiveNums(na, nb) {
+  const hasA = na !== null && na !== undefined, hasB = nb !== null && nb !== undefined;
+  if (hasA && hasB) return na - nb;
+  if (hasA) return -1;
+  if (hasB) return 1;
+  return 0;
+}
+
+// sourceTab tells this which of the four match screens to refresh
+// after saving — Squad, Starting XI, Goals, or Penalties — same
+// pattern as the position picker, extended to one more screen pair.
+async function openShirtNumberPickerForGame(gameId, playerId, tempPlayerId, sourceTab) {
+  if (!checkGameEditableOrWarn()) return;
+  sourceTab = sourceTab || 'squad';
+  const gp = playerId
+    ? await getOrCreateGP(gameId, playerId)
+    : await getOrCreateGPForTemp(gameId, tempPlayerId);
+  const defaultNum = playerId
+    ? (await DB.get('players', playerId))?.shirtNumber
+    : (await DB.get('temporaryPlayers', tempPlayerId))?.shirtNumber;
+  const currentVal = effectiveShirtNumber(defaultNum, gp);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'rm-form-overlay open';
+  overlay.innerHTML = `
+    <div class="rm-form" style="max-width:300px">
+      <h3 style="margin-bottom:14px">${I18n.t('gd_shirt_picker_title')}</h3>
+      <input type="number" id="shirtNumInput" min="0" max="99" value="${currentVal!=null?esc(currentVal):''}" style="width:100%;font-size:22px;text-align:center;padding:10px;border:1px solid var(--border);border-radius:6px;box-sizing:border-box">
+      <div class="form-actions" style="margin-top:16px">
+        <button class="btn btn-secondary" onclick="this.closest('.rm-form-overlay').remove()">${I18n.t('common_cancel')}</button>
+        <button class="btn btn-primary" onclick="handleSetShirtNumberPlayed(${gameId},${playerId||'null'},${tempPlayerId||'null'},document.getElementById('shirtNumInput').value,'${sourceTab}')">${I18n.t('common_save')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('shirtNumInput')?.focus();
+}
+
+async function handleSetShirtNumberPlayed(gameId, playerId, tempPlayerId, value, sourceTab) {
+  const gp = playerId
+    ? await getOrCreateGP(gameId, playerId)
+    : await getOrCreateGPForTemp(gameId, tempPlayerId);
+  const n = parseInt(value, 10);
+  // Changes THIS game's record only — never the player's or guest's
+  // own default shirtNumber.
+  gp.shirtNumberPlayed = isNaN(n) ? null : n;
+  await DB.put('gamePlayers', gp);
+  document.querySelector('.rm-form-overlay')?.remove();
+  if (sourceTab === 'xi') await renderStartingXITab(gameId);
+  else if (sourceTab === 'goals') await renderSimpleGoalsTab(gameId);
+  else if (sourceTab === 'penalties') await renderPenaltiesTab(gameId);
+  else await renderSquadListTab(gameId);
+  Sync.scheduleAutoSync();
+}
+
 async function openPositionPickerForGame(gameId, playerId, tempPlayerId, sourceTab) {
   if (!checkGameEditableOrWarn()) return;
   sourceTab = sourceTab || 'squad';
@@ -23516,7 +23606,19 @@ async function renderStartingXITab(gameId) {
       ? (existingGP.find(r => r.tempPlayerId === e.id) || {})
       : (existingGP.find(r => r.playerId === e.id) || {});
     const effectivePos = e => findGP(e).positionPlayed || e.defaultPos;
-    const _xiGroups = groupPlayersByPosition(combinedXI, effectivePos);
+    // Sort within each group by EFFECTIVE number (game-specific first,
+    // falling back to the default) — not the static shirtNumber the
+    // default sort would otherwise use.
+    const _xiNumSort = (a, b) => {
+      const na = effectiveShirtNumber(a.shirtNumber, findGP(a));
+      const nb = effectiveShirtNumber(b.shirtNumber, findGP(b));
+      const hasA = na !== null && na !== undefined, hasB = nb !== null && nb !== undefined;
+      if (hasA && hasB) return na - nb;
+      if (hasA) return -1;
+      if (hasB) return 1;
+      return 0;
+    };
+    const _xiGroups = groupPlayersByPosition(combinedXI, effectivePos, _xiNumSort);
     const groupedXI = POSITION_GROUP_ORDER.flatMap(g => _xiGroups[g]);
 
     if (!squad.length && !tempSquad.length) {
@@ -23538,14 +23640,18 @@ async function renderStartingXITab(gameId) {
           const gp = findGP(e);
           const isStarter = gp.role === 'Starter';
           const effPos = effectivePos(e);
+          const effNum = effectiveShirtNumber(e.shirtNumber, gp);
           const toggleCall = e.isTemp ? `simpleToggleStarterTemp(${gameId},${e.id})` : `simpleToggleStarter(${gameId},${e.id})`;
           const pickerCall = e.isTemp
             ? `openPositionPickerForGame(${gameId},null,${e.id},'xi')`
             : `openPositionPickerForGame(${gameId},${e.id},null,'xi')`;
+          const numPickerCall = e.isTemp
+            ? `openShirtNumberPickerForGame(${gameId},null,${e.id},'xi')`
+            : `openShirtNumberPickerForGame(${gameId},${e.id},null,'xi')`;
           const rowId = e.isTemp ? '' : ` id="xi-${e.id}"`;
           return `${_groupHeader}<div class="wp-row ${isStarter?'wp-active':''}"${rowId} onclick="${toggleCall}">
             <div class="wp-info">
-              <span class="wp-num">${e.shirtNumber||'—'}</span>
+              <span class="wp-num" style="cursor:pointer" onclick="event.stopPropagation();${numPickerCall}">${effNum??'—'}</span>
               <span class="wp-name" title="${esc(e.name)}">${esc(e.isTemp ? e.name : shortName(e.name))}${e.isTemp ? ` <span class="pos-pill">${I18n.t('gd_guest_badge')}</span>` : ''}</span>
               ${effPos?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();${pickerCall}">${esc(effPos)}</span>`:''}
               <span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:${effPos?'6px':'auto'}">${isStarter?I18n.t('gd_role_starter'):I18n.t('gd_role_sub')}</span>
@@ -23635,6 +23741,15 @@ async function renderSimpleGoalsTab(gameId) {
       const gp = existingGP.find(r=>r.tempPlayerId===tp.tempPlayerId);
       return gp && gp.calledUp;
     });
+    // Order by effective (game-specific-first) shirt number, same rule as
+    // Squad and Starting XI — a guest whose number for this game differs
+    // from their default should not sit out of place in the goal-entry list.
+    squad.sort((a,b) => compareEffectiveNums(
+      effectiveShirtNumber(a.shirtNumber, existingGP.find(r=>r.playerId===a.playerId)),
+      effectiveShirtNumber(b.shirtNumber, existingGP.find(r=>r.playerId===b.playerId))));
+    tempSquad.sort((a,b) => compareEffectiveNums(
+      effectiveShirtNumber(a.shirtNumber, existingGP.find(r=>r.tempPlayerId===a.tempPlayerId)),
+      effectiveShirtNumber(b.shirtNumber, existingGP.find(r=>r.tempPlayerId===b.tempPlayerId))));
     gdDebugLog(`goals tab: squad size=${squad.length}, temp squad size=${tempSquad.length}`);
 
     const oppScoreField = `
@@ -23667,9 +23782,10 @@ async function renderSimpleGoalsTab(gameId) {
       <div class="goals-list">
         ${squad.map(p => {
           const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
+          const effNum = effectiveShirtNumber(p.shirtNumber, gp);
           return `<div class="goal-row" id="gl-${p.playerId}">
             <div class="goal-info">
-              <span class="wp-num">${p.shirtNumber||'—'}</span>
+              <span class="wp-num" style="cursor:pointer" onclick="openShirtNumberPickerForGame(${gameId},${p.playerId},null,'goals')">${effNum??'—'}</span>
               <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))}</span>
             </div>
             <div class="wp-stats-row" style="padding:0">
@@ -23686,9 +23802,10 @@ async function renderSimpleGoalsTab(gameId) {
         }).join('')}
         ${tempSquad.map(tp => {
           const gp = existingGP.find(r=>r.tempPlayerId===tp.tempPlayerId) || {};
+          const effNum = effectiveShirtNumber(tp.shirtNumber, gp);
           return `<div class="goal-row">
             <div class="goal-info">
-              <span class="wp-num">${tp.shirtNumber||'—'}</span>
+              <span class="wp-num" style="cursor:pointer" onclick="openShirtNumberPickerForGame(${gameId},null,${tp.tempPlayerId},'goals')">${effNum??'—'}</span>
               <span class="wp-name" title="${esc(tp.name)}">${esc(tp.name)} <span class="pos-pill">${I18n.t('gd_guest_badge')}</span></span>
             </div>
             <div class="wp-stats-row" style="padding:0">
@@ -23865,6 +23982,13 @@ async function renderPenaltiesTab(gameId) {
       const gp = existingGP.find(r=>r.tempPlayerId===tp.tempPlayerId);
       return gp && gp.calledUp;
     });
+    // Same effective-number ordering as Squad, Starting XI and Goals.
+    squad.sort((a,b) => compareEffectiveNums(
+      effectiveShirtNumber(a.shirtNumber, existingGP.find(r=>r.playerId===a.playerId)),
+      effectiveShirtNumber(b.shirtNumber, existingGP.find(r=>r.playerId===b.playerId))));
+    tempSquad.sort((a,b) => compareEffectiveNums(
+      effectiveShirtNumber(a.shirtNumber, existingGP.find(r=>r.tempPlayerId===a.tempPlayerId)),
+      effectiveShirtNumber(b.shirtNumber, existingGP.find(r=>r.tempPlayerId===b.tempPlayerId))));
 
     const ourPenaltyTotal = existingGP.reduce((s,r) => s + (parseInt(r.penaltyGoals)||0), 0);
     const theirPenaltyTotal = parseInt(game.penaltiesForThem) || 0;
@@ -23887,9 +24011,10 @@ async function renderPenaltiesTab(gameId) {
       <div class="goals-list">
         ${squad.map(p => {
           const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
+          const effNum = effectiveShirtNumber(p.shirtNumber, gp);
           return `<div class="goal-row">
             <div class="goal-info">
-              <span class="wp-num">${p.shirtNumber||'—'}</span>
+              <span class="wp-num" style="cursor:pointer" onclick="openShirtNumberPickerForGame(${gameId},${p.playerId},null,'penalties')">${effNum??'—'}</span>
               <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))}</span>
             </div>
             <div class="wp-stats-row" style="padding:0">
@@ -23902,9 +24027,10 @@ async function renderPenaltiesTab(gameId) {
         }).join('')}
         ${tempSquad.map(tp => {
           const gp = existingGP.find(r=>r.tempPlayerId===tp.tempPlayerId) || {};
+          const effNum = effectiveShirtNumber(tp.shirtNumber, gp);
           return `<div class="goal-row">
             <div class="goal-info">
-              <span class="wp-num">${tp.shirtNumber||'—'}</span>
+              <span class="wp-num" style="cursor:pointer" onclick="openShirtNumberPickerForGame(${gameId},null,${tp.tempPlayerId},'penalties')">${effNum??'—'}</span>
               <span class="wp-name" title="${esc(tp.name)}">${esc(tp.name)} <span class="pos-pill">${I18n.t('gd_guest_badge')}</span></span>
             </div>
             <div class="wp-stats-row" style="padding:0">
