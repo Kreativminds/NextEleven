@@ -95,6 +95,16 @@ nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--nav
 .home-activity-empty{display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:0}
 .card-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px}
 
+/* ── HOME NEXT-GAME CAROUSEL (swipe) ─────────────────────────────────────────
+   pan-y: the browser keeps handling vertical scrolling/panning on its own
+   (requirement: page scroll must keep working normally); horizontal
+   movement is left for HomeCarousel's own pointer/wheel handling instead
+   of becoming a native horizontal pan, so a swipe doesn't fight the page. */
+.home-carousel-card{touch-action:pan-y;user-select:none}
+.home-carousel-card.swiping{cursor:grabbing}
+@keyframes homeCarouselIn{from{opacity:0;transform:translateX(var(--hc-from,12px))}to{opacity:1;transform:translateX(0)}}
+.home-carousel-anim{animation:homeCarouselIn .18s ease-out}
+
 /* ── STAT CARDS ───────────────────────────────────────────────────────────── */
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;margin-bottom:16px}
 .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);text-align:center}

@@ -958,16 +958,21 @@ function isGameEditable(game, season) {
 // ── NEXT GAME(S) CAROUSEL — shared by guardian and player Home pages ────────
 // Single upcoming game → renders exactly the same static card as before,
 // zero visual change. Two or more → up to the next 5 become a lightweight
-// tap-through carousel (arrows + dot indicators, no touch-drag), so this
-// stays reliable across devices per the same reasoning that led to Move
-// Up/Down buttons over drag-and-drop elsewhere in Training. No new data
-// model, no storage — this only changes how already-loaded upcoming games
-// are displayed on Home.
+// carousel: arrows + dot indicators, plus touch/trackpad swipe (via
+// HomeCarousel below) — so this stays reliable across devices per the same
+// reasoning that led to Move Up/Down buttons over drag-and-drop elsewhere in
+// Training, while still supporting the gesture people expect on a card
+// stack. No new data model, no storage — this only changes how already-
+// loaded upcoming games are displayed on Home.
 //
 // showArrivalTime: guardian Home shows an "Arrive By" badge the player
 // Home doesn't — the only real content difference between the two cards,
 // kept as a flag rather than duplicating the whole card markup twice.
 let _homeCarouselIndex = { guardian: 0, player: 0 };
+// Direction of the most recent shift (+1 next / -1 prev / 0 none yet) —
+// only used to pick which side the brief slide-in animation enters from;
+// purely cosmetic, never read for navigation logic.
+let _homeCarouselDir = { guardian: 0, player: 0 };
 function renderNextGameCarousel(upcomingGames, containerId, showArrivalTime, actionButtonHtml) {
   const games = (upcomingGames || []).slice(0, 5);
   if (!games.length) {
@@ -983,9 +988,18 @@ function renderNextGameCarousel(upcomingGames, containerId, showArrivalTime, act
   const scope = containerId; // 'guardian' or 'player' — keeps each page's carousel position independent
   const idx = Math.min(_homeCarouselIndex[scope] || 0, games.length - 1);
   const game = games[idx];
+  const dir = _homeCarouselDir[scope] || 0;
+  const animClass = dir ? ' home-carousel-anim' : '';
+  const animVar = dir ? `--hc-from:${dir > 0 ? '16px' : '-16px'};` : '';
   return `
-    <div class="card" style="border:2px solid #111">
-      ${renderSingleNextGameCard(game, showArrivalTime, true)}
+    <div class="card home-carousel-card${animClass}" style="border:2px solid #111;${animVar}"
+         id="homeCarousel-${scope}"
+         onpointerdown="HomeCarousel.start(event,'${scope}')"
+         onpointermove="HomeCarousel.move(event,'${scope}')"
+         onpointerup="HomeCarousel.end(event,'${scope}',${games.length})"
+         onpointercancel="HomeCarousel.cancel(event,'${scope}')"
+         onwheel="HomeCarousel.wheel(event,'${scope}',${games.length})">
+      ${renderSingleNextGameCard(game, showArrivalTime, true, scope)}
       ${actionButtonHtml ? `<div class="btn-group" style="margin-top:14px">${actionButtonHtml}</div>` : ''}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
         <button type="button" onclick="shiftHomeCarousel('${scope}',-1,${games.length})" ${idx===0?'disabled':''} style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:#fff;font-size:16px;cursor:pointer;${idx===0?'opacity:.3':''}" aria-label="${I18n.t('home_carousel_prev')}">&#8249;</button>
@@ -1000,8 +1014,10 @@ function renderNextGameCarousel(upcomingGames, containerId, showArrivalTime, act
 
 // innerCardOnly=true skips the outer .card wrapper — used when the caller
 // (the carousel) already provides its own wrapper, so the border/padding
-// isn't doubled up.
-function renderSingleNextGameCard(nextGame, showArrivalTime, innerCardOnly) {
+// isn't doubled up. carouselScope is only set when this card sits inside
+// the swipeable carousel (renderNextGameCarousel) — it guards the tap so a
+// swipe that ends inside the card doesn't also open the game underneath it.
+function renderSingleNextGameCard(nextGame, showArrivalTime, innerCardOnly, carouselScope) {
   // showArrivalTime distinguishes guardian (true, sees Arrive By + opens the
   // full editable Game Detail) from player portal (false, sees a simpler
   // card + opens the existing read-only game viewer popup already used
@@ -1009,8 +1025,15 @@ function renderSingleNextGameCard(nextGame, showArrivalTime, innerCardOnly) {
   const tapHandler = showArrivalTime
     ? `goToGameDetail(${nextGame.gameId})`
     : `openPortalGameViewer(${nextGame.gameId})`;
+  // Swiping ends with a pointerup on the same element a tap would use, so
+  // without this guard every swipe would also fire the click underneath it
+  // and open the game. HomeCarousel.consumeSwipe() is only true for the one
+  // click immediately following a real swipe, then resets itself.
+  const guardedTap = carouselScope
+    ? `if(!HomeCarousel.consumeSwipe('${carouselScope}')){${tapHandler}}`
+    : tapHandler;
   const inner = `
-      <div onclick="${tapHandler}" style="cursor:pointer">
+      <div onclick="${guardedTap}" style="cursor:pointer">
         <div class="card-title">&#9917; ${I18n.t('home_card_next_game')}</div>
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
           <div>
@@ -1031,10 +1054,101 @@ function renderSingleNextGameCard(nextGame, showArrivalTime, innerCardOnly) {
 
 function shiftHomeCarousel(scope, delta, total) {
   const current = _homeCarouselIndex[scope] || 0;
-  _homeCarouselIndex[scope] = Math.max(0, Math.min(total - 1, current + delta));
+  const next = Math.max(0, Math.min(total - 1, current + delta));
+  // Only animate when the index actually moved — at either end of the
+  // list delta still gets called (arrow/swipe past the last card) but
+  // clamps to the same index, and animating a no-op shift just flickers.
+  _homeCarouselDir[scope] = (next !== current) ? delta : 0;
+  _homeCarouselIndex[scope] = next;
   if (scope === 'guardian') Render.home();
   else if (scope === 'player') renderPlayerPortalHome();
 }
+
+// ── HOME CAROUSEL SWIPE ──────────────────────────────────────────────────
+// Pointer Events cover touch and mouse drag with one code path (no
+// separate touchstart/mousedown handling). A genuine two-finger trackpad
+// swipe arrives as a `wheel` event with deltaX, not a pointer event, so
+// that gets its own small handler below. Reuses shiftHomeCarousel exactly
+// as the arrow buttons do — same clamping, same re-render, same "card
+// swap" transition — so swipe behaves identically on the Games (player)
+// and Parents/guardian Home carousels, since both share this one widget.
+const HomeCarousel = (() => {
+  const drag = {};     // per-scope in-progress gesture: {x, y, locked}
+  const swiped = {};   // per-scope: true for exactly the one click right after a real swipe
+  const wheelDx = {};  // per-scope accumulated trackpad deltaX
+  const wheelTimer = {};
+  const SWIPE_PX = 40;      // minimum horizontal travel to count as an intentional swipe
+  const AXIS_LOCK_PX = 6;   // movement needed before deciding "this is horizontal, not a vertical scroll"
+  const WHEEL_PX = 50;      // accumulated trackpad deltaX needed to trigger one step
+
+  function start(e, scope) {
+    if (!e.isPrimary) return;
+    drag[scope] = { x: e.clientX, y: e.clientY, locked: null, id: e.pointerId };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {} // keeps move/up events coming even if the finger drifts off the card
+    e.currentTarget.classList.add('swiping');
+    // A swipe re-renders the card immediately on pointerup, which can
+    // detach the element before the browser gets to fire the trailing
+    // click — meaning consumeSwipe() below is never called to clear the
+    // flag. Clearing it here too means a stale flag never outlives more
+    // than one extra gesture, so it can never wrongly swallow a later,
+    // genuine tap.
+    swiped[scope] = false;
+  }
+
+  function move(e, scope) {
+    const d = drag[scope];
+    if (!d || e.pointerId !== d.id) return;
+    const dx = e.clientX - d.x, dy = e.clientY - d.y;
+    if (d.locked === null && (Math.abs(dx) > AXIS_LOCK_PX || Math.abs(dy) > AXIS_LOCK_PX)) {
+      // Decided once per gesture: a mostly-vertical drag is left alone so
+      // the page keeps scrolling normally; only a mostly-horizontal one is
+      // claimed as a swipe from here on.
+      d.locked = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+    }
+    if (d.locked === 'h') e.preventDefault();
+  }
+
+  function end(e, scope, total) {
+    const d = drag[scope];
+    e.currentTarget.classList.remove('swiping');
+    if (!d || e.pointerId !== d.id) { delete drag[scope]; return; }
+    delete drag[scope];
+    if (d.locked !== 'h') return; // vertical scroll or a plain tap — let the click through
+    const dx = e.clientX - d.x;
+    if (Math.abs(dx) < SWIPE_PX) return; // moved horizontally, but not far enough to count as a swipe
+    swiped[scope] = true; // consumed by this same card's onclick guard, once, on the next click
+    shiftHomeCarousel(scope, dx < 0 ? 1 : -1, total); // swipe left → next card, swipe right → previous
+  }
+
+  function cancel(e, scope) {
+    delete drag[scope];
+    e.currentTarget.classList.remove('swiping');
+  }
+
+  function wheel(e, scope, total) {
+    // A vertical mouse wheel fires deltaY, not deltaX — only react when the
+    // horizontal component actually dominates, so normal page scrolling
+    // with a mouse wheel is never hijacked.
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    e.preventDefault();
+    wheelDx[scope] = (wheelDx[scope] || 0) + e.deltaX;
+    clearTimeout(wheelTimer[scope]);
+    wheelTimer[scope] = setTimeout(() => { wheelDx[scope] = 0; }, 250); // a pause resets the gesture instead of carrying tiny leftover deltas into the next one
+    if (Math.abs(wheelDx[scope]) >= WHEEL_PX) {
+      const delta = wheelDx[scope] > 0 ? 1 : -1;
+      wheelDx[scope] = 0;
+      shiftHomeCarousel(scope, delta, total);
+    }
+  }
+
+  function consumeSwipe(scope) {
+    const was = !!swiped[scope];
+    swiped[scope] = false;
+    return was;
+  }
+
+  return { start, move, end, cancel, wheel, consumeSwipe };
+})();
 
 // Stored values for competitionType and homeAway are always saved in English
 // (League/Cup/Friendly/Tournament/Trial, Home/Away/Neutral) regardless of the
