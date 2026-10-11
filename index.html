@@ -17875,8 +17875,11 @@ async function renderPlayerPortalStats() {
   const split = splitGamesByCategory(finishedGames);
   const s = Calc.lorenzoStats(split.official, playerGP);
 
-  const sortedGames = [...games].sort((a,b) => gameSortKey(b) - gameSortKey(a));
-  const last5 = sortedGames.slice(0,5);
+  // "Recent form" means the last games actually PLAYED, not just the last 5
+  // games on the calendar — a season with its full fixture list entered up
+  // front would otherwise show 5 upcoming games here instead of results.
+  const playedGamesForForm = games.filter(g => isGameResultVisible(g, _seasonMap));
+  const last5 = [...playedGamesForForm].sort((a,b) => gameSortKey(b) - gameSortKey(a)).slice(0,5);
   const posEntries = Object.entries(s.positionBreakdown).sort((a,b) => b[1]-a[1]);
 
   el.innerHTML = `
@@ -19733,8 +19736,11 @@ const Render = (() => {
       return `<th class="${extraClass}" style="cursor:pointer;user-select:none" onclick="overviewMatchSort(${playerId},'${key}')">${label}${arrow}</th>`;
     }
 
-    const sortedGames = [...games].sort((a,b)=>gameSortKey(b)-gameSortKey(a));
-    const last5 = sortedGames.slice(0,5);
+    // "Recent form" means the last games actually PLAYED, not just the last
+    // 5 games on the calendar — a season with its full fixture list entered
+    // up front would otherwise show 5 upcoming games here instead of results.
+    const playedGamesForForm = games.filter(g => isGameResultVisible(g, _seasonMap));
+    const last5 = [...playedGamesForForm].sort((a,b)=>gameSortKey(b)-gameSortKey(a)).slice(0,5);
 
     // position breakdown
     const posEntries = Object.entries(s.positionBreakdown).sort((a,b)=>b[1]-a[1]);
@@ -25414,7 +25420,7 @@ async function renderSquadListTab(gameId) {
               <span class="wp-num" ${(calledUp&&!avail)?`style="cursor:pointer" onclick="event.stopPropagation();openShirtNumberPickerForGame(${gameId},${p.playerId},null,'squad')"`:''}>${effNum??'—'}</span>
               <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor">${esc(p.trackingLabel||'★')}</span>`:''}</span>
               ${avail ? `<span class="wp-status-pill" title="${esc(avail.notes||'')}">${esc(availabilityStatusLabel(avail.status))}</span>`
-                : calledUp ? `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},${p.playerId},null)">${esc(gp.positionPlayed || p.primaryPosition || '—')}</span>` : ''}
+                : calledUp ? (()=>{ const _pos = gp.positionPlayed || p.primaryPosition || '—'; return `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" title="${esc(_pos)}" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},${p.playerId},null)">${esc(POSITION_ABBR[_pos] || _pos)}</span>`; })() : ''}
               ${(calledUp&&!avail)?'<span style="margin-left:6px;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
             </div>
           </div>`;
@@ -25433,7 +25439,7 @@ async function renderSquadListTab(gameId) {
               <span class="wp-num" ${(calledUp&&!avail)?`style="cursor:pointer" onclick="event.stopPropagation();openShirtNumberPickerForGame(${gameId},null,${tp.tempPlayerId},'squad')"`:''}>${effNum??'—'}</span>
               <span class="wp-name" title="${esc(tp.name)}">${esc(tp.name)} <span class="pos-pill">${I18n.t('gd_guest_badge')}</span></span>
               ${avail ? `<span class="wp-status-pill" title="${esc(avail.notes||'')}">${esc(availabilityStatusLabel(avail.status))}</span>`
-                : calledUp ? `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},null,${tp.tempPlayerId})">${esc(gp.positionPlayed || tp.preferredPosition || '—')}</span>` : ''}
+                : calledUp ? (()=>{ const _pos = gp.positionPlayed || tp.preferredPosition || '—'; return `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" title="${esc(_pos)}" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},null,${tp.tempPlayerId})">${esc(POSITION_ABBR[_pos] || _pos)}</span>`; })() : ''}
               ${(calledUp&&!avail)?'<span style="margin-left:6px;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
             </div>
           </div>`;
@@ -25760,7 +25766,7 @@ async function renderStartingXITab(gameId) {
             <div class="wp-info">
               <span class="wp-num" ${avail?'':`style="cursor:pointer" onclick="event.stopPropagation();${numPickerCall}"`}>${effNum??'—'}</span>
               <span class="wp-name" title="${esc(e.name)}">${esc(e.isTemp ? e.name : shortName(e.name))}${e.isTemp ? ` <span class="pos-pill">${I18n.t('gd_guest_badge')}</span>` : ''}</span>
-              ${avail ? `<span class="wp-status-pill">${esc(availabilityStatusLabel(avail.status))}</span>` : effPos?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();${pickerCall}">${esc(effPos)}</span>`:''}
+              ${avail ? `<span class="wp-status-pill">${esc(availabilityStatusLabel(avail.status))}</span>` : effPos?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" title="${esc(effPos)}" onclick="event.stopPropagation();${pickerCall}">${esc(POSITION_ABBR[effPos] || effPos)}</span>`:''}
               ${avail?'':`<button type="button" class="wp-cap-btn ${isCaptain?'wp-cap-active':''}" style="margin-left:${effPos?'8px':'auto'}" title="${esc(I18n.t('tp_stat_captain'))}" aria-pressed="${isCaptain}" onclick="event.stopPropagation();${capToggleCall}">C</button>`}
               ${avail?'':`<span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:6px">${isStarter?I18n.t('gd_role_starter'):I18n.t('gd_role_sub')}</span>`}
             </div>

@@ -212,7 +212,7 @@ tr:hover td{background:var(--highlight)}
 .wp-row.wp-active{border-color:var(--black);background:#fbf3f3}
 .wp-row.wp-unavailable{opacity:.55;background:var(--bg)}
 .wp-row.wp-unavailable .wp-info{cursor:not-allowed}
-.wp-status-pill{flex-shrink:0;margin-left:auto;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;background:#fde8e8;color:#b03030}
+.wp-status-pill{flex-shrink:0;white-space:nowrap;margin-left:auto;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;background:#fde8e8;color:#b03030}
 .wp-info{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;user-select:none}
 .wp-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#eee;font-size:12px;font-weight:700;flex-shrink:0}
 .wp-row.wp-active .wp-num{background:var(--black);color:#fff}
@@ -221,7 +221,7 @@ tr:hover td{background:var(--highlight)}
 .wp-role-toggle{display:flex;gap:6px;padding:0 14px 12px}
 .wp-role-btn{flex:1;padding:8px;border:1px solid var(--border);border-radius:5px;background:#fff;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
 .wp-role-btn.wp-role-active{background:var(--black);color:#fff;border-color:var(--black)}
-.wp-role-pill{flex-shrink:0;padding:4px 10px;border-radius:12px;font-size:10px;font-weight:700;border:none;cursor:pointer;margin-left:auto}
+.wp-role-pill{flex-shrink:0;white-space:nowrap;padding:4px 10px;border-radius:12px;font-size:10px;font-weight:700;border:none;cursor:pointer;margin-left:auto}
 .wp-role-starter{background:var(--black);color:#fff}
 .wp-role-sub{background:#e8e8e8;color:#555}
 /* Captain armband toggle on the Starting XI row — a tappable circle next
@@ -230,6 +230,13 @@ tr:hover td{background:var(--highlight)}
    simpleToggleCaptainTemp), same rule as MoM. */
 .wp-cap-btn{flex-shrink:0;width:28px;height:28px;border-radius:50%;border:2px solid #d9a700;background:#fff;color:#b38600;font-size:13px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1}
 .wp-cap-btn.wp-cap-active{background:#f0b400;border-color:#b38600;color:#2a1d00;box-shadow:0 0 0 3px rgba(240,180,0,.25)}
+/* Squad List / Starting XI rows only — the position/status pill must never
+   shrink or wrap here, or the row grows a second line and every row's
+   shirt-number/captain-button/role-pill column stops lining up with the
+   ones above and below it. Scoped to .wp-info so the many other .pos-pill
+   uses elsewhere in the app (durations, categories, age groups) are
+   untouched. */
+.wp-info .pos-pill,.wp-info .wp-status-pill{flex-shrink:0}
 .wp-stats-row{display:flex;gap:10px;padding:0 14px 12px;align-items:flex-end}
 .wp-stat-field{display:flex;flex-direction:column;gap:3px}
 .wp-stat-field label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
@@ -535,7 +542,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .info-tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--border-dark,#bbb);background:none;color:var(--muted,#777);font-size:10px;font-weight:700;font-family:inherit;line-height:1;cursor:pointer;padding:0;vertical-align:middle;margin-left:4px}
 .info-tip:hover,.info-tip:focus{background:#f0f0f0;color:#333}
 .info-tip-bubble{position:absolute;z-index:3000;max-width:260px;background:#0F1E2E;color:#fff;font-size:11px;font-weight:400;line-height:1.5;padding:9px 11px;border-radius:6px;box-shadow:0 3px 12px rgba(0,0,0,.28)}
-.pos-pill{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;background:#f0f0f0;color:#555;text-transform:uppercase;letter-spacing:.5px}
+.pos-pill{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;background:#f0f0f0;color:#555;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
 
 /* ── LOADING ──────────────────────────────────────────────────────────────── */
 #loading{position:fixed;inset:0;background:#fff;display:flex;align-items:center;justify-content:center;z-index:999;flex-direction:column;gap:12px}
