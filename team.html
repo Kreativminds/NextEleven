@@ -699,7 +699,10 @@ function renderSeasonLeaders(players, finishedGames, gamePlayers) {
   }
 
   const rows = [
-    leaderRow('Most Appearances', 'calledUp'),
+    // Ranked by starts, not call-ups — being named in the squad (bench
+    // included) isn't "having played"; only starting the match counts
+    // towards this leaderboard, matching the main app's own 'started' stat.
+    leaderRow('Most Appearances', 'started'),
     leaderRow('Top Scorer', 'goals'),
     leaderRow('Most Assists', 'assists'),
   ].filter(r => r);
@@ -1131,7 +1134,8 @@ function renderRecap(el, data) {
   }
   const topScorer = leader('goals');
   const topAssists = leader('assists');
-  const mostApps = leader('calledUp');
+  // Starts, not call-ups — same rule as renderSeasonLeaders() above.
+  const mostApps = leader('started');
 
   const backUrl = window.location.pathname + window.location.search.replace(/&?view=recap/, '');
 

@@ -97,18 +97,21 @@ function teamSeasonStats(games, allGP) {
   return s;
 }
 
-// Trimmed public version — appearances/goals/assists only, matching
+// Trimmed public version — appearances/starts/goals/assists only, matching
 // exactly what get_public_team_data's gamePlayers rows contain. Does NOT
 // compute minutes, cards, or MOTM (those fields are not returned by the
 // public RPC and are out of scope for the public page per approved spec).
+// 'started' mirrors the main app's playerSeasonStats exactly: role==='Starter'
+// on a calledUp row — a bench/unused call-up never counts, same as there.
 function playerPublicStats(playerId, games, allGP) {
-  let calledUp=0, goals=0, assists=0;
+  let calledUp=0, started=0, goals=0, assists=0;
   const positionCounts = {};
   const positionMostRecentKey = {};
   games.forEach(g => {
     const gp = allGP.find(r => r.gameId===g.gameId && r.playerId===playerId);
     if (!gp || !gp.calledUp) return;
     calledUp++;
+    if (gp.role === 'Starter') started++;
     goals += parseInt(gp.goals)||0;
     assists += parseInt(gp.assists)||0;
     if (gp.positionPlayed) {
@@ -129,7 +132,7 @@ function playerPublicStats(playerId, games, allGP) {
     }
   });
 
-  return { calledUp, goals, assists, mostPlayedPosition };
+  return { calledUp, started, goals, assists, mostPlayedPosition };
 }
 
 // Adapted from the main app's async getTournamentOutcome(tournament),

@@ -12281,7 +12281,10 @@ async function renderHomeCompletedView(season) {
   }
   const topScorer = leader('goals');
   const topAssists = leader('assists');
-  const mostApps = leader('calledUp');
+  // Starts, not call-ups — being named in the squad isn't "having played";
+  // only starting the match counts, consistent with every other "most
+  // used/most games" leaderboard in the app.
+  const mostApps = leader('started');
   const hasAnyStats = topScorer || topAssists || mostApps;
 
   // Competitions & Achievements — hidden entirely if none exist
@@ -17084,7 +17087,9 @@ async function renderPlayerPortalTeamSummary() {
   // helper and the layout are deliberately unchanged.
   const topScorers = [...allStats].filter(p=>p.goals>0).sort((a,b)=>b.goals-a.goals).slice(0,5);
   const topAssisters = [...allStats].filter(p=>p.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,5);
-  const mostApps = [...allStats].filter(p=>p.calledUp>0).sort((a,b)=>b.calledUp-a.calledUp).slice(0,5);
+  // Starts, not call-ups — the squad list ("convocatória") isn't the same
+  // as having played; only starting the match counts towards Most Used.
+  const mostApps = [...allStats].filter(p=>p.started>0).sort((a,b)=>b.started-a.started).slice(0,5);
   const mostMoM = [...allStats].sort((a,b)=>b.mom-a.mom).filter(p=>p.mom>0).slice(0,5);
 
   // split.official, not finishedGames — see buildMostUsedLineup's own
@@ -17126,7 +17131,7 @@ async function renderPlayerPortalTeamSummary() {
       ${leaderCard(I18n.t('ts_top_assisters'), topAssisters, 'assists', I18n.t('ts_stat_assists'))}
     </div>
     <div class="leader-grid">
-      ${leaderCard(I18n.t('ts_most_used'), mostApps, 'calledUp', I18n.t('ts_stat_apps'))}
+      ${leaderCard(I18n.t('ts_most_used'), mostApps, 'started', I18n.t('ts_stat_apps'))}
       ${mostMoM.length ? leaderCard(I18n.t('ts_player_of_match'), mostMoM, 'mom', I18n.t('ts_stat_mom')) : '<div></div>'}
     </div>
   `;
@@ -18730,7 +18735,9 @@ const Render = (() => {
     // already had it, and are unchanged.
     const topScorers = [...allStats].filter(p=>p.goals>0).sort((a,b)=>b.goals-a.goals).slice(0,5);
     const topAssisters = [...allStats].filter(p=>p.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,5);
-    const mostApps = [...allStats].filter(p=>p.calledUp>0).sort((a,b)=>b.calledUp-a.calledUp).slice(0,5);
+    // Starts, not call-ups — the squad list ("convocatória") isn't the same
+    // as having played; only starting the match counts towards Most Used.
+    const mostApps = [...allStats].filter(p=>p.started>0).sort((a,b)=>b.started-a.started).slice(0,5);
     const mostMoM = [...allStats].sort((a,b)=>b.mom-a.mom).filter(p=>p.mom>0).slice(0,5);
 
     // Most Used Lineup — best XI based on appearances per position this
@@ -18810,7 +18817,7 @@ const Render = (() => {
         const cards = [
           leaderCard(I18n.t('ts_top_scorers'), topScorers, 'goals', I18n.t('ts_stat_goals')),
           leaderCard(I18n.t('ts_top_assisters'), topAssisters, 'assists', I18n.t('ts_stat_assists')),
-          leaderCard(I18n.t('ts_most_used'), mostApps, 'calledUp', I18n.t('ts_stat_apps')),
+          leaderCard(I18n.t('ts_most_used'), mostApps, 'started', I18n.t('ts_stat_apps')),
           leaderCard(I18n.t('ts_player_of_match'), mostMoM, 'mom', I18n.t('ts_stat_mom')),
         ].filter(html => html && html !== '<div></div>');
         return cards.length ? `<div class="leader-grid">${cards.join('')}</div>` : '';
