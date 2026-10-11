@@ -12223,11 +12223,24 @@ const Classification = (() => {
     return Number.isFinite(n) ? n : null;
   }
 
+  // Some sources (a styled HTML standings table with a crest/short-code
+  // shown next to the full name, for example) copy as plain text with the
+  // name effectively doubled — "Palmense Palmense" or "SL Olivais SL
+  // Olivais B" instead of "Palmense" / "SL Olivais B". Collapses an exact,
+  // consecutive repeat of the leading phrase; a genuinely distinct name is
+  // never touched, since the backreference only matches a true duplicate.
+  function cleanTeamName(name) {
+    const s = String(name || '').trim().replace(/\s+/g, ' ');
+    const m = s.match(/^(.+?) \1(?: (.+))?$/);
+    if (m) return m[2] ? `${m[1]} ${m[2]}` : m[1];
+    return s;
+  }
+
   // ---- core row builder -----------------------------------------------------
   function buildRow(fieldMap) {
     const row = {
       position: toIntOrNull(fieldMap.position),
-      teamName: (fieldMap.team || '').trim(),
+      teamName: cleanTeamName(fieldMap.team || ''),
       points: toIntOrNull(fieldMap.points),
       played: toIntOrNull(fieldMap.played),
       wins: toIntOrNull(fieldMap.wins),
@@ -12440,7 +12453,7 @@ const Classification = (() => {
   }
 
   return {
-    normalizeName, scopeKey, recognizeHeader, parseText, parseCSV, validate, diff, reconcile, matchAlias,
+    normalizeName, scopeKey, recognizeHeader, parseText, parseCSV, validate, diff, reconcile, matchAlias, cleanTeamName,
     DEFAULT_ORDER,
   };
 })();
@@ -12657,7 +12670,7 @@ function clsRenderTable(rows, editable) {
     }
     return `<tr${hiStyle}>
       <td>${r.position ?? '—'}</td>
-      <td>${esc(r.teamName || '')}${r.isOurTeam ? ` <span class="badge-warn" style="background:var(--black);color:#fff">${esc(I18n.t('cls_our_team_badge'))}</span>` : ''}</td>
+      <td>${esc(Classification.cleanTeamName(r.teamName || ''))}${r.isOurTeam ? ` <span class="badge-warn" style="background:var(--black);color:#fff">${esc(I18n.t('cls_our_team_badge'))}</span>` : ''}</td>
       <td>${r.points ?? '—'}</td><td>${r.played ?? '—'}</td><td>${r.wins ?? '—'}</td><td>${r.draws ?? '—'}</td><td>${r.losses ?? '—'}</td>
       <td>${r.goalsFor ?? '—'}</td><td>${r.goalsAgainst ?? '—'}</td><td>${r.goalDiff ?? '—'}</td>
     </tr>`;

@@ -140,13 +140,20 @@
      at small sizes without adding visual noise. */
   .cls-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:4px}
   .classification-table{width:100%;border-collapse:collapse;font-size:11px;min-width:460px}
-  .classification-table th{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;text-align:center;padding:6px 4px;border-bottom:1px solid var(--border);white-space:nowrap}
+  .classification-table th{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;text-align:center;padding:6px 4px;border-bottom:1px solid var(--border);white-space:nowrap;background:var(--surface)}
   .classification-table th:nth-child(2){text-align:left}
-  .classification-table td{padding:6px 4px;text-align:center;border-bottom:1px solid var(--border);white-space:nowrap}
-  .classification-table td:nth-child(2){text-align:left;font-weight:600;white-space:normal;min-width:108px}
+  .classification-table td{padding:6px 4px;text-align:center;border-bottom:1px solid var(--border);white-space:nowrap;background:var(--surface)}
+  .classification-table td:nth-child(2){text-align:left;font-weight:600;white-space:normal}
   .classification-table .cls-pos{font-weight:700;color:var(--muted)}
   .classification-table .cls-pts{font-weight:800}
-  .classification-table tr.cls-own{background:var(--amber-bg)}
+  .classification-table tr.cls-own td{background:var(--amber-bg)}
+  /* Position and Team stay pinned while the rest of the table scrolls
+     horizontally, so a name never disappears off-screen on a narrow
+     phone. Both columns get a fixed width so the second column's `left`
+     offset lines up exactly with the first column's width; the border
+     on the second column marks the seam with the scrolling columns. */
+  .classification-table th:nth-child(1), .classification-table td:nth-child(1){position:sticky;left:0;z-index:2;width:30px;min-width:30px;max-width:30px}
+  .classification-table th:nth-child(2), .classification-table td:nth-child(2){position:sticky;left:30px;z-index:2;width:112px;min-width:112px;max-width:112px;border-right:1px solid var(--border)}
   .cls-meta{font-size:11px;color:var(--muted);margin:0 0 6px}
   .cls-warning{font-size:11px;color:var(--amber);background:var(--amber-bg);padding:7px 10px;border-radius:6px;margin-bottom:8px}
 </style>
@@ -200,6 +207,21 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 function esc(s) {
   if (s === null || s === undefined) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+// Mirrors Classification.cleanTeamName() in the admin app (index.html).
+// Some sources copy their standings table as plain text with the team
+// name effectively doubled — "Palmense Palmense", "SL Olivais SL Olivais
+// B" — e.g. a crest/short-code shown next to the full name gets copied
+// along with it. This collapses an exact, consecutive repeat of the
+// leading phrase; a genuinely distinct name is left untouched. Duplicated
+// here (not imported) because team.html is a standalone, dependency-free
+// page — applied only at display time, so it also cleans up a snapshot
+// that was already published before this fix, without needing a re-import.
+function cleanTeamName(name) {
+  const s = String(name || '').trim().replace(/\s+/g, ' ');
+  const m = s.match(/^(.+?) \1(?: (.+))?$/);
+  if (m) return m[2] ? `${m[1]} ${m[2]}` : m[1];
+  return s;
 }
 function fmtDate(d) {
   if (!d) return '—';
@@ -1428,7 +1450,7 @@ function renderClassificationTable(classification) {
   const rowsHtml = classification.rows.map(r => `
     <tr class="${r.isOurTeam ? 'cls-own' : ''}">
       <td class="cls-pos">${r.position ?? '—'}</td>
-      <td>${esc(r.teamName || '')}</td>
+      <td>${esc(cleanTeamName(r.teamName || ''))}</td>
       <td class="cls-pts">${r.points ?? '—'}</td>
       <td>${r.played ?? '—'}</td>
       <td>${r.wins ?? '—'}</td>
