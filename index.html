@@ -8835,6 +8835,32 @@ const DB = (() => {
     });
   }
 
+  // Same as getAll but WITHOUT the isDeleted filter — soft-deleted rows
+  // included. Every ordinary app screen must use getAll() so a deleted
+  // record disappears from the UI; but Sync needs the opposite: push()
+  // has to see a soft-deleted row in order to propagate its deletion to
+  // Supabase's deleted_at column at all. Before this existed, Sync read
+  // through the filtering getAll() too, so a soft-deleted record was
+  // invisible to push() from the moment it was deleted — the deletion
+  // could never reach Supabase, any other device, or the public
+  // Parents/Team page, no matter how many times sync ran. Reserved for
+  // Sync's internal push/uploadAll/getPendingCount — not for general use.
+  function getAllRaw(store, indexName, key) {
+    return new Promise((resolve) => {
+      if (!_db.objectStoreNames.contains(store)) { resolve([]); return; }
+      try {
+        const t = tx(store);
+        const s = t.objectStore(store);
+        const req = indexName ? s.index(indexName).getAll(key) : s.getAll();
+        req.onsuccess = e => resolve(e.target.result || []);
+        req.onerror = e => { console.error('[DB.getAllRaw] error', store, e.target.error); resolve([]); };
+      } catch(err) {
+        console.error('[DB.getAllRaw] threw synchronously for store', store, err);
+        resolve([]);
+      }
+    });
+  }
+
   function put(store, obj) {
     return new Promise((resolve, reject) => {
       if (!_db.objectStoreNames.contains(store)) {
@@ -8879,6 +8905,15 @@ const DB = (() => {
     if (!record) return;
     record.isDeleted = true;
     record.deletedAt = new Date().toISOString();
+    // This must flip syncStatus itself: softDelete calls this module's own
+    // put() directly (a closure reference), not the external DB.put — so
+    // the DB-put-wrapper that normally promotes synced->modified for sync
+    // never runs for a soft delete. Without this, a record that was
+    // already synced keeps syncStatus:'synced' after being soft-deleted,
+    // push() never selects it (it only ever sends 'local'/'modified' rows),
+    // and the deletion silently never reaches Supabase.
+    if (!record.syncStatus) record.syncStatus = 'local';
+    else if (record.syncStatus === 'synced') record.syncStatus = 'modified';
     return put(store, record);
   }
 
@@ -8993,7 +9028,7 @@ const DB = (() => {
     try { if (_db) { _db.close(); _db = null; } } catch(e) { console.error('[DB] close failed', e); }
   }
 
-  return { open, get, getAll, put, del, softDelete, clear, putManyAtomic, getAllFromAllStores, restoreAllStores, hasStore, clearAllRealStores, closeConnection };
+  return { open, get, getAll, getAllRaw, put, del, softDelete, clear, putManyAtomic, getAllFromAllStores, restoreAllStores, hasStore, clearAllRealStores, closeConnection };
 })();
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -21069,8 +21104,12 @@ const Sync = (() => {
     for (const store of SYNC_STORES) {
       if (capturedEpoch !== Auth.getSessionEpoch() || capturedUserId !== Auth.getUserId()) return pushed;
 
+      // getAllRaw, not getAll — getAll filters out soft-deleted rows (correct
+      // for every normal app screen), which previously meant push() could
+      // never see a soft-deleted record in order to propagate its deletion
+      // to Supabase. See DB.getAllRaw / DB.softDelete for the full story.
       let records;
-      try { records = await DB.getAll(store); } catch(e) {
+      try { records = await DB.getAllRaw(store); } catch(e) {
         log(`Push skipped store "${store}" — ${e.message || 'store unavailable, may need an app reload to apply a pending database upgrade'}`);
         continue;
       }
@@ -21547,10 +21586,16 @@ const Sync = (() => {
   async function uploadAll() {
     if (!isConfigured() || !isOnline()) { Toast.error(I18n.t('sync_err_not_configured_or_offline')); return; }
     log('Uploading all local data...');
-    // Mark everything as modified first
+    // Mark everything as modified first. getAllRaw, not getAll — this is
+    // also the repair path for any record that was soft-deleted before the
+    // getAllRaw fix existed and so got permanently stuck as syncStatus
+    // 'synced' with its deletion never pushed (e.g. a game deleted locally
+    // that kept showing on the public Parents/Team page). Using the
+    // filtering getAll() here would skip exactly those stuck rows and
+    // leave them stuck forever even after a full "Upload All".
     for (const store of SYNC_STORES) {
       try {
-        const all = await DB.getAll(store);
+        const all = await DB.getAllRaw(store);
         for (const r of all) {
           if (!r.syncStatus || r.syncStatus === 'synced') {
             r.syncStatus = 'modified';
@@ -21588,7 +21633,10 @@ const Sync = (() => {
     let count = 0;
     for (const store of SYNC_STORES) {
       try {
-        const all = await DB.getAll(store);
+        // getAllRaw — a pending deletion (soft-deleted, not yet pushed)
+        // must still be counted, or this figure undercounts exactly the
+        // records push() most needs to send.
+        const all = await DB.getAllRaw(store);
         count += all.filter(r => r.syncStatus === 'local' || r.syncStatus === 'modified').length;
       } catch(e) {}
     }
