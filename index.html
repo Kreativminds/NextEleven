@@ -6084,6 +6084,7 @@ const TR = {
     gd_tab_squad:'Squad List', gd_tab_xi:'Starting XI', gd_tab_goals:'Goals', gd_tab_penalties:'Penalties',
     gd_readonly_notice:'This game is now read-only.', gd_btn_edit:'Edit', gd_err_readonly:'This game is read-only. Tap Edit to make changes.',
     gd_edit_mode_notice:'This game is currently in Edit mode.', gd_btn_lock:'Lock',
+    gd_captain_set:'{name} is now captain', gd_captain_cleared:'Captain removed',
     gd_autosave_note:'Changes save automatically — no Save button needed.',
     gd_btn_back:'Back to Games',
     gd_squad_hint:"Tap a player to add them to the squad for this game. Use this as soon as you know who's available — before match day.",
@@ -7511,6 +7512,7 @@ const TR = {
     gd_tab_squad:'Convocados', gd_tab_xi:'Onze Inicial', gd_tab_goals:'Golos', gd_tab_penalties:'Grandes Penalidades',
     gd_readonly_notice:'Este jogo está agora só de leitura.', gd_btn_edit:'Editar', gd_err_readonly:'Este jogo está só de leitura. Toque em Editar para fazer alterações.',
     gd_edit_mode_notice:'Este jogo está atualmente em modo de Edição.', gd_btn_lock:'Bloquear',
+    gd_captain_set:'{name} é agora o capitão', gd_captain_cleared:'Capitão removido',
     gd_autosave_note:'As alterações são guardadas automaticamente — não é necessário gravar.',
     gd_btn_back:'Voltar aos Jogos',
     gd_squad_hint:'Toque num jogador para o adicionar à convocatória deste jogo. Use isto assim que souber quem está disponível — antes do dia do jogo.',
@@ -25759,7 +25761,7 @@ async function renderStartingXITab(gameId) {
               <span class="wp-num" ${avail?'':`style="cursor:pointer" onclick="event.stopPropagation();${numPickerCall}"`}>${effNum??'—'}</span>
               <span class="wp-name" title="${esc(e.name)}">${esc(e.isTemp ? e.name : shortName(e.name))}${e.isTemp ? ` <span class="pos-pill">${I18n.t('gd_guest_badge')}</span>` : ''}</span>
               ${avail ? `<span class="wp-status-pill">${esc(availabilityStatusLabel(avail.status))}</span>` : effPos?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();${pickerCall}">${esc(effPos)}</span>`:''}
-              ${avail?'':`<button type="button" class="wp-cap-btn ${isCaptain?'wp-cap-active':''}" style="margin-left:${effPos?'6px':'auto'}" title="${esc(I18n.t('tp_stat_captain'))}" aria-pressed="${isCaptain}" onclick="event.stopPropagation();${capToggleCall}">C</button>`}
+              ${avail?'':`<button type="button" class="wp-cap-btn ${isCaptain?'wp-cap-active':''}" style="margin-left:${effPos?'8px':'auto'}" title="${esc(I18n.t('tp_stat_captain'))}" aria-pressed="${isCaptain}" onclick="event.stopPropagation();${capToggleCall}">C</button>`}
               ${avail?'':`<span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:6px">${isStarter?I18n.t('gd_role_starter'):I18n.t('gd_role_sub')}</span>`}
             </div>
           </div>`;
@@ -25851,9 +25853,10 @@ async function simpleToggleStarterTemp(gameId, tempPlayerId) {
 // toggling the current captain OFF just clears their own flag.
 async function simpleToggleCaptain(gameId, playerId) {
   if (!checkGameEditableOrWarn()) return;
+  gdDebugLog(`CLICK captain btn player=${playerId}`);
   try {
     const gp = await getOrCreateGP(gameId, playerId);
-    if (!gp.calledUp) return;
+    if (!gp.calledUp) { gdDebugLog('skipped: not in squad'); return; }
     const turningOn = !gp.captain;
     if (turningOn) {
       const allGP = await DB.getAll('gamePlayers', 'gameId', gameId);
@@ -25865,8 +25868,16 @@ async function simpleToggleCaptain(gameId, playerId) {
       }
     }
     gp.captain = turningOn;
-    await DB.put('gamePlayers', gp);
+    const key = await DB.put('gamePlayers', gp);
+    gdDebugLog(`DB.put OK key=${key} captain now=${gp.captain}`);
+    if (turningOn) {
+      const p = await DB.get('players', playerId);
+      Toast.show(I18n.t('gd_captain_set', {name: p ? p.fullName : ''}));
+    } else {
+      Toast.show(I18n.t('gd_captain_cleared'));
+    }
   } catch(err) {
+    gdDebugLog(`ERROR: ${err.message}`);
     Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
   } finally {
     await renderStartingXITab(gameId);
@@ -25874,9 +25885,10 @@ async function simpleToggleCaptain(gameId, playerId) {
 }
 async function simpleToggleCaptainTemp(gameId, tempPlayerId) {
   if (!checkGameEditableOrWarn()) return;
+  gdDebugLog(`CLICK captain btn temp=${tempPlayerId}`);
   try {
     const gp = await getOrCreateGPForTemp(gameId, tempPlayerId);
-    if (!gp.calledUp) return;
+    if (!gp.calledUp) { gdDebugLog('skipped: not in squad'); return; }
     const turningOn = !gp.captain;
     if (turningOn) {
       const allGP = await DB.getAll('gamePlayers', 'gameId', gameId);
@@ -25888,8 +25900,16 @@ async function simpleToggleCaptainTemp(gameId, tempPlayerId) {
       }
     }
     gp.captain = turningOn;
-    await DB.put('gamePlayers', gp);
+    const key = await DB.put('gamePlayers', gp);
+    gdDebugLog(`DB.put OK key=${key} captain now=${gp.captain}`);
+    if (turningOn) {
+      const tp = await DB.get('temporaryPlayers', tempPlayerId);
+      Toast.show(I18n.t('gd_captain_set', {name: tp ? tp.name : ''}));
+    } else {
+      Toast.show(I18n.t('gd_captain_cleared'));
+    }
   } catch(err) {
+    gdDebugLog(`ERROR: ${err.message}`);
     Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
   } finally {
     await renderStartingXITab(gameId);

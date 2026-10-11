@@ -228,8 +228,8 @@ tr:hover td{background:var(--highlight)}
    to the shirt number/role pill, same size family as .wp-num. Only one
    player per game can be captain (enforced in simpleToggleCaptain /
    simpleToggleCaptainTemp), same rule as MoM. */
-.wp-cap-btn{flex-shrink:0;width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:#fff;color:var(--muted);font-size:10px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
-.wp-cap-btn.wp-cap-active{background:#555;border-color:#555;color:#fff}
+.wp-cap-btn{flex-shrink:0;width:28px;height:28px;border-radius:50%;border:2px solid #d9a700;background:#fff;color:#b38600;font-size:13px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1}
+.wp-cap-btn.wp-cap-active{background:#f0b400;border-color:#b38600;color:#2a1d00;box-shadow:0 0 0 3px rgba(240,180,0,.25)}
 .wp-stats-row{display:flex;gap:10px;padding:0 14px 12px;align-items:flex-end}
 .wp-stat-field{display:flex;flex-direction:column;gap:3px}
 .wp-stat-field label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
