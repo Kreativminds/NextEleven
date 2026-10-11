@@ -21154,7 +21154,19 @@ const Sync = (() => {
         // record just silently vanishing from Supabase with no trace. Pull
         // already reads deleted_at correctly on the way back down — this
         // is the missing half that actually populates it.
-        if (record.isDeleted) cloudRow.deleted_at = record.deletedAt || new Date().toISOString();
+        //
+        // The else branch matters just as much: a genuinely live record
+        // (record.isDeleted falsy) must explicitly send deleted_at: null,
+        // not simply omit the field. PATCH only changes fields present in
+        // the body — omitting it leaves whatever deleted_at the cloud row
+        // already had. A record whose cloudId pointed at a row some other
+        // operation had soft-deleted (a prior cleanup pass, a duplicate
+        // merge, anything) would then get genuinely new data PATCHed onto
+        // it while staying permanently "deleted" server-side — invisible
+        // everywhere that filters deleted_at is null, including the
+        // public Parents/Team page, even though the local app correctly
+        // shows it as a normal, live record.
+        cloudRow.deleted_at = record.isDeleted ? (record.deletedAt || new Date().toISOString()) : null;
         // Only include id when updating an existing cloud row
         if (isUpdate) cloudRow.id = record.cloudId;
 
