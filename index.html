@@ -7116,6 +7116,7 @@ const TR = {
     ts_top_scorers:'Top Scorers', ts_top_assisters:'Top Assisters',
     ts_most_used:'Most Starts', ts_player_of_match:'Player of the Match',
     ts_stat_goals:'GOALS', ts_stat_assists:'ASSISTS', ts_stat_apps:'STARTS', ts_stat_mom:'MOM',
+    ts_joint_lead:'Joint 1st place with {n} players', ts_no_starts_yet:'No starts recorded yet',
   },
   PT:{
     nav_import:'Importar', nav_dashboard:'Início', nav_squad:'Plantel', nav_games:'Jogos', nav_lorenzo:'Lorenzo', nav_team:'Resumo Equipa', nav_achievements:'Conquistas', nav_history:'Historial', nav_settings:'Definições', settings_language:'Idioma', lbl_language:'Idioma',
@@ -8493,6 +8494,7 @@ const TR = {
     ts_top_scorers:'Melhores Marcadores', ts_top_assisters:'Melhores Assistentes',
     ts_most_used:'Mais Titularidades', ts_player_of_match:'Melhor em Campo',
     ts_stat_goals:'GOLOS', ts_stat_assists:'ASSISTÊNCIAS', ts_stat_apps:'TITULARIDADES', ts_stat_mom:'MVP',
+    ts_joint_lead:'1.º lugar partilhado por {n} jogadores', ts_no_starts_yet:'Ainda sem titularidades registadas',
   },
   IT:{
     nav_import:'Importa', nav_dashboard:'Dashboard', nav_squad:'Rosa', nav_games:'Partite', nav_lorenzo:'Lorenzo', nav_team:'Squadra', nav_achievements:'Traguardi', nav_history:'Storia', nav_settings:'Impostazioni', settings_language:'Lingua', lbl_language:'Lingua',
@@ -17087,9 +17089,10 @@ async function renderPlayerPortalTeamSummary() {
   // helper and the layout are deliberately unchanged.
   const topScorers = [...allStats].filter(p=>p.goals>0).sort((a,b)=>b.goals-a.goals).slice(0,5);
   const topAssisters = [...allStats].filter(p=>p.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,5);
-  // Starts, not call-ups — the squad list ("convocatória") isn't the same
-  // as having played; only starting the match counts towards Most Used.
-  const mostApps = [...allStats].filter(p=>p.started>0).sort((a,b)=>b.started-a.started).slice(0,5);
+  // Most Starts ranking + daily rotation now handled by
+  // renderStartsLeaderCard/computeStartsLeaderboard below — allStats is
+  // passed through as-is (fair ranking needs every qualifying player, not
+  // a pre-sorted top-5 slice).
   const mostMoM = [...allStats].sort((a,b)=>b.mom-a.mom).filter(p=>p.mom>0).slice(0,5);
 
   // split.official, not finishedGames — see buildMostUsedLineup's own
@@ -17131,7 +17134,7 @@ async function renderPlayerPortalTeamSummary() {
       ${leaderCard(I18n.t('ts_top_assisters'), topAssisters, 'assists', I18n.t('ts_stat_assists'))}
     </div>
     <div class="leader-grid">
-      ${leaderCard(I18n.t('ts_most_used'), mostApps, 'started', I18n.t('ts_stat_apps'))}
+      ${renderStartsLeaderCard(I18n.t('ts_most_used'), allStats, I18n.t('ts_stat_apps'))}
       ${mostMoM.length ? leaderCard(I18n.t('ts_player_of_match'), mostMoM, 'mom', I18n.t('ts_stat_mom')) : '<div></div>'}
     </div>
   `;
@@ -18735,9 +18738,10 @@ const Render = (() => {
     // already had it, and are unchanged.
     const topScorers = [...allStats].filter(p=>p.goals>0).sort((a,b)=>b.goals-a.goals).slice(0,5);
     const topAssisters = [...allStats].filter(p=>p.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,5);
-    // Starts, not call-ups — the squad list ("convocatória") isn't the same
-    // as having played; only starting the match counts towards Most Used.
-    const mostApps = [...allStats].filter(p=>p.started>0).sort((a,b)=>b.started-a.started).slice(0,5);
+    // Most Starts ranking + daily rotation now handled by
+    // renderStartsLeaderCard/computeStartsLeaderboard — allStats is passed
+    // through as-is (fair ranking needs every qualifying player, not a
+    // pre-sorted top-5 slice).
     const mostMoM = [...allStats].sort((a,b)=>b.mom-a.mom).filter(p=>p.mom>0).slice(0,5);
 
     // Most Used Lineup — best XI based on appearances per position this
@@ -18817,7 +18821,7 @@ const Render = (() => {
         const cards = [
           leaderCard(I18n.t('ts_top_scorers'), topScorers, 'goals', I18n.t('ts_stat_goals')),
           leaderCard(I18n.t('ts_top_assisters'), topAssisters, 'assists', I18n.t('ts_stat_assists')),
-          leaderCard(I18n.t('ts_most_used'), mostApps, 'started', I18n.t('ts_stat_apps')),
+          renderStartsLeaderCard(I18n.t('ts_most_used'), allStats, I18n.t('ts_stat_apps')),
           leaderCard(I18n.t('ts_player_of_match'), mostMoM, 'mom', I18n.t('ts_stat_mom')),
         ].filter(html => html && html !== '<div></div>');
         return cards.length ? `<div class="leader-grid">${cards.join('')}</div>` : '';
@@ -18828,9 +18832,51 @@ const Render = (() => {
     await renderSeasonResources(State.currentSeasonId);
   }
 
+  // ── STARTS LEADERBOARD — standard competition ranking + deterministic
+  // daily rotation among tied leaders ─────────────────────────────────────
+  // Ties must never be artificially broken (no captaincy/alphabetical/
+  // goals/assists/calledUp tiebreakers) — every player sharing the top
+  // value shares rank 1, per standard competition ranking (1,1,1,4,5…).
+  // The single player featured in the red highlight card rotates once per
+  // UTC calendar day among the tied leaders, in a stable identity order
+  // (never by goals/name/anything else), so every tied player gets equal
+  // exposure over the rotation cycle. UTC (not the viewer's local date) is
+  // used specifically so every visitor sees the same highlighted player on
+  // the same day regardless of their own timezone. This is a pure, static
+  // function of (stats, today) — purely a display choice that never
+  // changes who qualifies as a leader or what rank anyone holds, and it
+  // naturally stays correct across month/year boundaries since it's just
+  // a day counter, not calendar-aware logic.
+  function computeStartsLeaderboard(statsArr, referenceDate) {
+    const qualifying = (statsArr || []).filter(p => (p.started || 0) > 0);
+    if (!qualifying.length) return { ranked: [], leaders: [], highlighted: null, tieCount: 0 };
+
+    const identity = p => p.playerId != null ? ('P' + p.playerId) : ('T' + p.tempPlayerId);
+    const byIdentity = (a, b) => identity(a) < identity(b) ? -1 : identity(a) > identity(b) ? 1 : 0;
+
+    const sorted = [...qualifying].sort((a, b) => (b.started - a.started) || byIdentity(a, b));
+    const ranked = sorted.map(p => ({ ...p, rank: 1 + sorted.filter(q => q.started > p.started).length }));
+    const leaders = ranked.filter(p => p.rank === 1).sort(byIdentity);
+
+    const ref = referenceDate || new Date();
+    const dayIndex = Math.floor(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), ref.getUTCDate()) / 86400000);
+    const highlighted = leaders[((dayIndex % leaders.length) + leaders.length) % leaders.length];
+
+    return { ranked, leaders, highlighted, tieCount: leaders.length };
+  }
+
   // ── LEADER CARD — featured top player + short ranked list, single stat ──────
-  function leaderCard(title, players, statKey, statLabel) {
+  // opts.ranks (optional): real competition rank per entry in `players`,
+  // parallel to it — used by renderStartsLeaderCard below so tied players
+  // all show "1" instead of 2/3/4. Omitted by every other caller (Top
+  // Scorers, Top Assisters, Player of the Match), which keep their exact
+  // original behaviour (implicit rank = list position + 2).
+  // opts.tieMessage (optional): short text shown under the featured
+  // player's stat when they're sharing the top spot with others.
+  function leaderCard(title, players, statKey, statLabel, opts) {
     if (!players.length) return '<div></div>';
+    opts = opts || {};
+    const ranks = opts.ranks || null;
     const leader = players[0];
     const rest = players.slice(1, 5);
     const initials = (leader.fullName||'').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
@@ -18843,6 +18889,7 @@ const Render = (() => {
               <div class="leader-name">${esc(shortName(leader.fullName))}</div>
               <div class="leader-stat-val">${leader[statKey]||0}</div>
               <div class="leader-stat-lbl">${statLabel}</div>
+              ${opts.tieMessage ? `<div style="font-size:9px;font-weight:600;opacity:.8;margin-top:4px;line-height:1.3">${esc(opts.tieMessage)}</div>` : ''}
             </div>
             <div class="leader-feature-photo">
               ${leader.photoUrl
@@ -18855,12 +18902,34 @@ const Render = (() => {
         <div class="card leader-list-card">
           ${rest.map((p,i) => `
             <div class="leader-row">
-              <span class="leader-rank">${i+2}</span>
+              <span class="leader-rank">${ranks ? ranks[i+1] : i+2}</span>
               <span class="leader-row-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))}</span>
               <span class="leader-row-val">${p[statKey]||0}</span>
             </div>`).join('')}
         </div>` : ''}
       </div>`;
+  }
+
+  // ── MOST STARTS LEADER CARD — wraps leaderCard with fair ranking + the
+  // day's rotated highlight. The only caller-visible difference from a
+  // plain leaderCard() call: pass the full stats array (not a pre-sorted
+  // top-5 slice) and this handles ranking, rotation and the tie message.
+  function renderStartsLeaderCard(title, allStats, statLabel) {
+    const { ranked, highlighted, tieCount } = computeStartsLeaderboard(allStats);
+    if (!highlighted) {
+      return `<div class="leader-col">
+        <div class="leader-col-title">${title.toUpperCase()}</div>
+        <div class="card" style="padding:16px"><p style="font-size:12px;color:var(--muted);margin:0">${I18n.t('ts_no_starts_yet')}</p></div>
+      </div>`;
+    }
+    // The rotated player leads the card; everyone else keeps their real
+    // rank (so another player tied at 1 still shows "1", never "2"),
+    // capped at the same 5-total capacity the card always had.
+    const others = ranked.filter(p => p !== highlighted);
+    const displayPlayers = [highlighted, ...others].slice(0, 5);
+    const ranks = displayPlayers.map(p => p.rank);
+    const tieMessage = tieCount > 1 ? I18n.t('ts_joint_lead', {n: tieCount}) : null;
+    return leaderCard(title, displayPlayers, 'started', statLabel, {ranks, tieMessage});
   }
 
   function playerTable(tableId, title, players, fields, headers) {
