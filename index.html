@@ -635,6 +635,11 @@ function activeDbName() {
 // CONFIG.POSITIONS exactly; anything else (missing, legacy, corrupted)
 // falls into 'other' rather than being dropped.
 const POSITION_GROUP_ORDER = ['goalkeeper','defender','midfielder','striker','other'];
+// Same 5 groups, opposite walk order — used only by the Goals tab, where
+// strikers and midfielders score far more often than defenders or
+// goalkeepers, so putting them first means less scrolling for the common
+// case while marking a goal.
+const GOALS_TAB_GROUP_ORDER = ['striker','midfielder','defender','goalkeeper','other'];
 const POSITION_TO_GROUP = {
   'Goalkeeper': 'goalkeeper',
   'Centre Back': 'defender', 'Right Back': 'defender', 'Left Back': 'defender',
@@ -24538,15 +24543,23 @@ async function renderSimpleGoalsTab(gameId) {
       const gp = existingGP.find(r=>r.tempPlayerId===tp.tempPlayerId);
       return gp && gp.calledUp;
     });
-    // Order by effective (game-specific-first) shirt number, same rule as
-    // Squad and Starting XI — a guest whose number for this game differs
-    // from their default should not sit out of place in the goal-entry list.
-    squad.sort((a,b) => compareEffectiveNums(
+    // Grouped striker → midfielder → defender → goalkeeper (GOALS_TAB_GROUP_ORDER
+    // — the reverse of the Squad/Starting XI walk order), since the player who
+    // scored is far more likely to be an attacker or midfielder than a
+    // defender or goalkeeper. Effective (game-specific-first) shirt number,
+    // same rule as Squad and Starting XI, still orders players within each
+    // group — a guest whose number for this game differs from their default
+    // should not sit out of place there.
+    const goalsSquadNumSort = (a,b) => compareEffectiveNums(
       effectiveShirtNumber(a.shirtNumber, existingGP.find(r=>r.playerId===a.playerId)),
-      effectiveShirtNumber(b.shirtNumber, existingGP.find(r=>r.playerId===b.playerId))));
-    tempSquad.sort((a,b) => compareEffectiveNums(
+      effectiveShirtNumber(b.shirtNumber, existingGP.find(r=>r.playerId===b.playerId)));
+    const goalsTempNumSort = (a,b) => compareEffectiveNums(
       effectiveShirtNumber(a.shirtNumber, existingGP.find(r=>r.tempPlayerId===a.tempPlayerId)),
-      effectiveShirtNumber(b.shirtNumber, existingGP.find(r=>r.tempPlayerId===b.tempPlayerId))));
+      effectiveShirtNumber(b.shirtNumber, existingGP.find(r=>r.tempPlayerId===b.tempPlayerId)));
+    const goalsSquadGroups = groupPlayersByPosition(squad, p => p.primaryPosition, goalsSquadNumSort);
+    const goalsTempGroups = groupPlayersByPosition(tempSquad, tp => tp.preferredPosition, goalsTempNumSort);
+    const orderedSquad = GOALS_TAB_GROUP_ORDER.flatMap(g => goalsSquadGroups[g]);
+    const orderedTempSquad = GOALS_TAB_GROUP_ORDER.flatMap(g => goalsTempGroups[g]);
     gdDebugLog(`goals tab: squad size=${squad.length}, temp squad size=${tempSquad.length}`);
 
     const oppScoreField = `
@@ -24577,7 +24590,7 @@ async function renderSimpleGoalsTab(gameId) {
       ${oppScoreField}
       <p style="font-size:12px;color:var(--muted);margin-bottom:14px">${I18n.t('gd_goals_hint')}</p>
       <div class="goals-list">
-        ${squad.map(p => {
+        ${orderedSquad.map(p => {
           const gp = existingGP.find(r=>r.playerId===p.playerId) || {};
           const effNum = effectiveShirtNumber(p.shirtNumber, gp);
           return `<div class="goal-row" id="gl-${p.playerId}">
@@ -24597,7 +24610,7 @@ async function renderSimpleGoalsTab(gameId) {
             </div>
           </div>`;
         }).join('')}
-        ${tempSquad.map(tp => {
+        ${orderedTempSquad.map(tp => {
           const gp = existingGP.find(r=>r.tempPlayerId===tp.tempPlayerId) || {};
           const effNum = effectiveShirtNumber(tp.shirtNumber, gp);
           return `<div class="goal-row">
