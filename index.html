@@ -6093,9 +6093,13 @@ const TR = {
     gd_goals_hint:'Enter goals and assists for anyone in the squad — Starter or Sub.',
     gd_goals_no_squad_desc:'Go to "Squad List" first.',
     gd_their_score:'Their Score',
+    gd_our_score:'Our Score',
+    gd_our_score_hint:'Only needed if not every goal is credited to a player below — leave blank to use the total of player goals.',
+    gd_our_score_auto_placeholder:'Auto: {n}',
+    gd_our_score_clear:'Use total below',
     gd_reset_scores_btn:'Reset all scores to zero',
     gd_reset_scores_confirm_title:'Reset all scores?',
-    gd_reset_scores_confirm_body:'Their score, own goals, and every player\'s goals and assists on this game will be set back to zero. This cannot be undone.',
+    gd_reset_scores_confirm_body:'Their score, our score override, own goals, and every player\'s goals and assists on this game will be set back to zero (our score back to automatic). This cannot be undone.',
     gd_reset_scores_done:'All scores reset to zero.',
     gd_own_goal_hint:'If the opponent scored an own goal (counts for us), add it here — not on any of our players.',
     gd_shootout_title:'Penalty Shootout', gd_shootout_hint:'Tap each of our players who scored their penalty. This does not change the match score or player goal stats.',
@@ -7467,9 +7471,13 @@ const TR = {
     gd_goals_hint:'Introduza golos e assistências de qualquer jogador convocado — Titular ou Suplente.',
     gd_goals_no_squad_desc:'Vá primeiro a "Convocados".',
     gd_their_score:'Resultado Adversário',
+    gd_our_score:'Resultado da Nossa Equipa',
+    gd_our_score_hint:'Só é necessário se nem todos os golos estiverem atribuídos a um jogador abaixo — deixe em branco para usar o total dos golos dos jogadores.',
+    gd_our_score_auto_placeholder:'Automático: {n}',
+    gd_our_score_clear:'Usar total abaixo',
     gd_reset_scores_btn:'Repor todos os resultados a zero',
     gd_reset_scores_confirm_title:'Repor todos os resultados?',
-    gd_reset_scores_confirm_body:'O resultado do adversário, os autogolos e os golos e assistências de todos os jogadores neste jogo voltam a zero. Não pode ser desfeito.',
+    gd_reset_scores_confirm_body:'O resultado do adversário, a substituição manual do nosso resultado, os autogolos e os golos e assistências de todos os jogadores neste jogo voltam a zero (o nosso resultado volta a automático). Não pode ser desfeito.',
     gd_reset_scores_done:'Todos os resultados repostos a zero.',
     gd_own_goal_hint:'Se o adversário marcou um autogolo (conta a nosso favor), adicione aqui — não em nenhum dos nossos jogadores.',
     gd_shootout_title:'Grande Penalidades', gd_shootout_hint:'Toque em cada jogador nosso que marcou o seu penálti. Isto não altera o resultado do jogo nem as estatísticas de golos dos jogadores.',
@@ -9122,6 +9130,18 @@ const Calc = (() => {
   // player-attributed sum, since an own goal is never credited to any
   // specific player.
   function teamGoals(gpRecords, game) {
+    // An explicit game.ourScore (set via the "Our Score" field on the
+    // Goals tab) is authoritative and wins outright — it exists
+    // specifically for the case where not every goal in a real result is
+    // attributed to a player (an unknown/uncredited scorer, a goal
+    // entered from the final result before lineup details were filled
+    // in, etc). The player-goals + own-goals sum below is still the
+    // right answer, and the ONLY answer, whenever ourScore hasn't been
+    // set — which is every game created before this field existed, so
+    // nothing already-correct changes.
+    if (game && game.ourScore !== undefined && game.ourScore !== null && game.ourScore !== '') {
+      return parseInt(game.ourScore) || 0;
+    }
     const playerGoals = gpRecords.filter(r => r.calledUp).reduce((s,r) => s + (parseInt(r.goals)||0), 0);
     const ownGoals = game ? (parseInt(game.ownGoalsForUs)||0) : 0;
     return playerGoals + ownGoals;
@@ -24574,9 +24594,27 @@ async function renderSimpleGoalsTab(gameId) {
     const orderedTempSquad = GOALS_TAB_GROUP_ORDER.flatMap(g => goalsTempGroups[g]);
     gdDebugLog(`goals tab: squad size=${squad.length}, temp squad size=${tempSquad.length}`);
 
+    // What "our" score would be WITHOUT an override — sum of every called-up
+    // player's (and guest's) goals, plus own-goals-for-us. Shown as the
+    // "Our Score" field's placeholder so the coach can see at a glance
+    // whether it already matches the real result, before deciding whether
+    // an override is even needed.
+    const autoOurScore = existingGP.filter(r => r.calledUp).reduce((s,r) => s + (parseInt(r.goals)||0), 0) + (parseInt(game?.ownGoalsForUs)||0);
+    const hasOurScoreOverride = game?.ourScore !== undefined && game?.ourScore !== null && game?.ourScore !== '';
+
     const oppScoreField = `
       <div class="card" style="margin-bottom:14px;padding:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:700;font-size:13px">${I18n.t('gd_our_score')}</div>
+            <div style="font-size:10px;color:var(--muted)">${I18n.t('gd_our_score_hint')}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="number" min="0" max="50" value="${hasOurScoreOverride ? esc(String(game.ourScore)) : ''}" placeholder="${esc(I18n.t('gd_our_score_auto_placeholder', {n: autoOurScore}))}" style="width:64px;font-size:18px;font-weight:700;text-align:center;border:1px solid ${hasOurScoreOverride?'var(--navy)':'var(--border)'};border-radius:6px;padding:6px" onchange="simpleSetOurScore(${gameId},this.value)">
+          </div>
+        </div>
+        ${hasOurScoreOverride ? `<div style="margin-top:6px;text-align:right"><button type="button" onclick="simpleSetOurScore(${gameId},'')" style="background:none;border:none;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:2px 0">${I18n.t('gd_our_score_clear')}</button></div>` : ''}
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
           <div>
             <div style="font-weight:700;font-size:13px">${esc(game?.opponent||I18n.t('games_lbl_opponent'))}</div>
             <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${I18n.t('gd_their_score')}</div>
@@ -24715,6 +24753,30 @@ async function simpleSetOpponentScore(gameId, value) {
   }
 }
 
+// Explicit override for "our" score (see Calc.teamGoals) — only needed
+// when not every goal in the real result is attributed to a specific
+// player. An empty value clears the override entirely (game.ourScore set
+// to null, not 0 — 0 is a real score and must never be confused with "no
+// override set"), restoring the normal player-goals + own-goals total
+// everywhere that reads it (this screen's own header, game list, season
+// stats, and the public Parents/Team page once synced).
+async function simpleSetOurScore(gameId, value) {
+  if (!checkGameEditableOrWarn()) return;
+  gdDebugLog(`CHANGE ourScore value=${value}`);
+  try {
+    const game = await DB.get('games', gameId);
+    if (!game) return;
+    game.ourScore = (value === '' || value === null || value === undefined) ? null : (parseInt(value) || 0);
+    const key = await DB.put('games', game);
+    gdDebugLog(`DB.put OK key=${key} ourScore now=${game.ourScore}`);
+    await refreshGameHeaderScore(gameId);
+    await renderSimpleGoalsTab(gameId);
+  } catch(err) {
+    gdDebugLog(`ERROR: ${err.message}`);
+    Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
+  }
+}
+
 // An own goal scored BY THE OPPONENT counts FOR our team — the ball went
 // into their own net. It has no correct home in the per-player goals list
 // (crediting any of our players would be factually wrong, since none of
@@ -24751,6 +24813,7 @@ async function resetGameGoals(gameId) {
       if (game) {
         game.opponentScore = 0;
         game.ownGoalsForUs = 0;
+        game.ourScore = null;
         await DB.put('games', game);
       }
       const allGP = await DB.getAll('gamePlayers', 'gameId', gameId);
