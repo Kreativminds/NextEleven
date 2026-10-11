@@ -702,7 +702,10 @@ function renderSeasonLeaders(players, finishedGames, gamePlayers) {
     // Ranked by starts, not call-ups — being named in the squad (bench
     // included) isn't "having played"; only starting the match counts
     // towards this leaderboard, matching the main app's own 'started' stat.
-    leaderRow('Most Appearances', 'started'),
+    // Label goes through tr('most_apps') — this card previously hardcoded
+    // the English string here even in PT mode; the recap view below
+    // already used tr() for the same stat, so this just closes that gap.
+    leaderRow(tr('most_apps'), 'started'),
     leaderRow('Top Scorer', 'goals'),
     leaderRow('Most Assists', 'assists'),
   ].filter(r => r);
@@ -781,7 +784,7 @@ const STRINGS = {
     upcoming_note:'Note: Dates, times and venues may change. Always confirm the information with the club\'s official match call-up.',
     no_official:'No League or Cup games played yet.',
     season_leaders:'Season Leaders · League & Cup', top_scorer:'Top Scorer', most_assists:'Most Assists',
-    most_apps:'Most Appearances', players_tied:'{n} players tied', most_played:'most played',
+    most_apps:'Most Starts', players_tied:'{n} players tied', most_played:'most played',
     recent_results:'Recent Results', tournament:'Tournament', matches_played:'{n} matches played',
     match_played:'1 match played',
     availability:'Player Availability', available:'Available', unavailable:'Unavailable',
@@ -842,7 +845,7 @@ const STRINGS = {
     upcoming_note:'Nota: Datas, horários e locais podem sofrer alterações. Confirma sempre a informação na convocatória oficial do clube.',
     no_official:'Ainda sem jogos de Campeonato ou Taça.',
     season_leaders:'Destaques da Época · Campeonato e Taça', top_scorer:'Melhor Marcador', most_assists:'Mais Assistências',
-    most_apps:'Mais Jogos', players_tied:'{n} jogadores empatados', most_played:'mais jogada',
+    most_apps:'Mais Titularidades', players_tied:'{n} jogadores empatados', most_played:'mais jogada',
     recent_results:'Últimos Resultados', tournament:'Torneio', matches_played:'{n} jogos realizados',
     match_played:'1 jogo realizado',
     availability:'Disponibilidade', available:'Disponíveis', unavailable:'Indisponíveis',
