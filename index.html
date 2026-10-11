@@ -21156,6 +21156,31 @@ const Sync = (() => {
         delete payloadClean.portalBootstrapRecord;
         delete payloadClean.portalOwnerUserId;
 
+        // Authoritative "Our Score" protection. This key only exists on a
+        // local game record once someone has explicitly set or cleared it
+        // in the Goals tab (simpleSetOurScore / resetGameGoals). A local
+        // copy that predates this field, or simply hasn't touched it, has
+        // no 'ourScore' key at all — pushing that as-is (including via a
+        // forced Upload All, which re-pushes every record regardless of
+        // what actually changed) would silently blow away an authoritative
+        // score already confirmed on the cloud row, reverting a corrected
+        // match result back to the under-counted player-goal sum. Only an
+        // explicit local value — including an explicit clear, which still
+        // carries the key as null — is allowed to change or remove it; a
+        // key that's simply absent locally never does.
+        if (store === 'games' && isUpdate && !('ourScore' in payloadClean)) {
+          try {
+            const existingCloud = await supabaseRequest('GET', storeToTable(store), null,
+              { id: 'eq.' + record.cloudId, select: 'payload' });
+            const existingOurScore = existingCloud?.[0]?.payload?.ourScore;
+            if (existingOurScore !== undefined && existingOurScore !== null) {
+              payloadClean.ourScore = existingOurScore;
+            }
+          } catch (e) {
+            log('Could not verify existing ourScore before push, store:' + store + ' | ' + (e.message || e));
+          }
+        }
+
         // family_id is retired — user_id is the sole ownership boundary
         // (confirmed via direct schema/RLS investigation: zero policies,
         // functions, or views reference family_id anywhere). The column
