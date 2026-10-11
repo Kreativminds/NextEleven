@@ -25748,6 +25748,10 @@ async function renderStartingXITab(gameId) {
           const numPickerCall = e.isTemp
             ? `openShirtNumberPickerForGame(${gameId},null,${e.id},'xi')`
             : `openShirtNumberPickerForGame(${gameId},${e.id},null,'xi')`;
+          const capToggleCall = e.isTemp
+            ? `simpleToggleCaptainTemp(${gameId},${e.id})`
+            : `simpleToggleCaptain(${gameId},${e.id})`;
+          const isCaptain = !!gp.captain;
           const rowId = e.isTemp ? '' : ` id="xi-${e.id}"`;
           const avail = e.isTemp ? unavailableMap.byTemp[e.id] : unavailableMap.byPlayer[e.id];
           return `${_groupHeader}<div class="wp-row ${isStarter?'wp-active':''} ${avail?'wp-unavailable':''}"${rowId} onclick="${toggleCall}">
@@ -25755,7 +25759,8 @@ async function renderStartingXITab(gameId) {
               <span class="wp-num" ${avail?'':`style="cursor:pointer" onclick="event.stopPropagation();${numPickerCall}"`}>${effNum??'—'}</span>
               <span class="wp-name" title="${esc(e.name)}">${esc(e.isTemp ? e.name : shortName(e.name))}${e.isTemp ? ` <span class="pos-pill">${I18n.t('gd_guest_badge')}</span>` : ''}</span>
               ${avail ? `<span class="wp-status-pill">${esc(availabilityStatusLabel(avail.status))}</span>` : effPos?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" onclick="event.stopPropagation();${pickerCall}">${esc(effPos)}</span>`:''}
-              ${avail?'':`<span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:${effPos?'6px':'auto'}">${isStarter?I18n.t('gd_role_starter'):I18n.t('gd_role_sub')}</span>`}
+              ${avail?'':`<button type="button" class="wp-cap-btn ${isCaptain?'wp-cap-active':''}" style="margin-left:${effPos?'6px':'auto'}" title="${esc(I18n.t('tp_stat_captain'))}" aria-pressed="${isCaptain}" onclick="event.stopPropagation();${capToggleCall}">C</button>`}
+              ${avail?'':`<span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:6px">${isStarter?I18n.t('gd_role_starter'):I18n.t('gd_role_sub')}</span>`}
             </div>
           </div>`;
         }).join('')}
@@ -25832,6 +25837,57 @@ async function simpleToggleStarterTemp(gameId, tempPlayerId) {
       }
       applySquadStateRules(gp, 'setStarter');
     }
+    await DB.put('gamePlayers', gp);
+  } catch(err) {
+    Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
+  } finally {
+    await renderStartingXITab(gameId);
+  }
+}
+
+// Captain armband — only one player per game can hold it (same rule the
+// in-app Help text already states). Toggling a player ON clears anyone
+// else's flag first, across both season players and temp/guest players;
+// toggling the current captain OFF just clears their own flag.
+async function simpleToggleCaptain(gameId, playerId) {
+  if (!checkGameEditableOrWarn()) return;
+  try {
+    const gp = await getOrCreateGP(gameId, playerId);
+    if (!gp.calledUp) return;
+    const turningOn = !gp.captain;
+    if (turningOn) {
+      const allGP = await DB.getAll('gamePlayers', 'gameId', gameId);
+      for (const other of allGP) {
+        if (other.captain && other.playerId !== playerId) {
+          other.captain = false;
+          await DB.put('gamePlayers', other);
+        }
+      }
+    }
+    gp.captain = turningOn;
+    await DB.put('gamePlayers', gp);
+  } catch(err) {
+    Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
+  } finally {
+    await renderStartingXITab(gameId);
+  }
+}
+async function simpleToggleCaptainTemp(gameId, tempPlayerId) {
+  if (!checkGameEditableOrWarn()) return;
+  try {
+    const gp = await getOrCreateGPForTemp(gameId, tempPlayerId);
+    if (!gp.calledUp) return;
+    const turningOn = !gp.captain;
+    if (turningOn) {
+      const allGP = await DB.getAll('gamePlayers', 'gameId', gameId);
+      for (const other of allGP) {
+        if (other.captain && other.tempPlayerId !== tempPlayerId) {
+          other.captain = false;
+          await DB.put('gamePlayers', other);
+        }
+      }
+    }
+    gp.captain = turningOn;
     await DB.put('gamePlayers', gp);
   } catch(err) {
     Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
