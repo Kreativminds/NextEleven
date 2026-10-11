@@ -161,6 +161,7 @@
     <button class="nav-link" data-section="games" data-nav-icon="games"><span data-nav-label>Games</span></button>
     <span id="trackedNavLinks"></span>
     <button class="nav-link" data-section="teamSummary" data-nav-icon="team-summary"><span data-nav-label>Team Summary</span></button>
+    <button class="nav-link" data-section="classification" data-nav-icon="classification"><span data-nav-label>Classification</span></button>
     <button class="nav-link" data-section="tournSummary" data-nav-icon="team-summary"><span data-nav-label>Tournament Summary</span></button>
     <button class="nav-link" data-section="settings" data-nav-icon="settings"><span data-nav-label>Settings</span></button>
     <button class="nav-link" data-section="help" data-nav-icon="help"><span data-nav-label>Help</span></button>
@@ -179,6 +180,7 @@
   <button class="nav-link" data-section="games" data-nav-icon="games"><span data-nav-label>Games</span></button>
   <span id="trackedMobileLinks"></span>
   <button class="nav-link" data-section="teamSummary" data-nav-icon="team-summary"><span data-nav-label>Team Summary</span></button>
+  <button class="nav-link" data-section="classification" data-nav-icon="classification"><span data-nav-label>Classification</span></button>
   <button class="nav-link" data-section="tournSummary" data-nav-icon="team-summary"><span data-nav-label>Tournament Summary</span></button>
   <button class="nav-link" data-section="settings" data-nav-icon="settings"><span data-nav-label>Settings</span></button>
   <button class="nav-link" data-section="help" data-nav-icon="help"><span data-nav-label>Help</span></button>
@@ -454,6 +456,14 @@
     <div id="teamSummaryContent"></div>
   </div>
 
+  <!-- LEAGUE CLASSIFICATION -->
+  <div class="section" id="sec-classification">
+    <div class="page-header">
+      <div><h1 data-i18n="cls_title">League Classification</h1><div class="page-header-sub" data-i18n="cls_subtitle">Full standings for your competition, updated by hand from a trusted source.</div></div>
+    </div>
+    <div id="classificationContent"></div>
+  </div>
+
   <!-- TOURNAMENT SUMMARY -->
   <div class="section" id="sec-tournSummary">
     <div class="page-header">
@@ -673,7 +683,7 @@ function groupPlayersByPosition(players, getPosition, sortWithinGroup) {
 
 const CONFIG = {
   APP_VERSION: '1.2.1', // human-readable label only — staleness detection no longer depends on this matching anything
-  SCHEMA_VERSION: 20,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability)
+  SCHEMA_VERSION: 21,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability); 21 = classificationSnapshots/teamAliasMappings (League Classification)
   DB_NAME: 'footballSquadTrackerDB',
   // Demo Mode lives in a SEPARATE IndexedDB database. Isolation is physical,
   // not a flag on shared rows: production data is in another database that the
@@ -5768,6 +5778,7 @@ const TR = {
 
     // ── NAV ──
     nav_home:'Home', nav_teamSummary:'Team Summary', nav_help:'Help', nav_admin:'Admin',
+    nav_classification:'Classification',
 
     // ── HOME PAGE ──
     home_welcome_title:'Welcome to NextEleven',
@@ -7117,6 +7128,53 @@ const TR = {
     ts_most_used:'Most Starts', ts_player_of_match:'Player of the Match',
     ts_stat_goals:'GOALS', ts_stat_assists:'ASSISTS', ts_stat_apps:'STARTS', ts_stat_mom:'MOM',
     ts_joint_lead:'Joint 1st place with {n} players', ts_no_starts_yet:'No starts recorded yet',
+
+    // ── LEAGUE CLASSIFICATION ──
+    cls_title:'League Classification', cls_subtitle:'Full standings for your competition, updated by hand from a trusted source.',
+    cls_section_header:'LEAGUE STANDINGS',
+    cls_btn_import_new:'Import New Classification', cls_btn_history:'History',
+    cls_current_label:'Current Published Classification', cls_empty_state:'No classification has been published yet.',
+    cls_updated_on:'Updated on {date}', cls_source_label:'Source: {source}', cls_no_source:'source not recorded',
+    cls_stale_warning:'This classification may not include the latest results.',
+    cls_col_pos:'Pos', cls_col_team:'Team', cls_col_pts:'Pts', cls_col_played:'P', cls_col_wins:'W', cls_col_draws:'D', cls_col_losses:'L', cls_col_gf:'GF', cls_col_ga:'GA', cls_col_gd:'GD',
+    cls_scope_title:'Competition',
+    cls_scope_season:'Season', cls_scope_competition:'Competition', cls_scope_phase:'Phase', cls_scope_series:'Series',
+    cls_scope_competition_ph:'e.g. AF Lisboa Juniores C1, 3.ª Divisão', cls_scope_phase_ph:'e.g. 1.ª Fase (optional)', cls_scope_series_ph:'e.g. Série 3 (optional)',
+    cls_scope_none_detected:'No League competition found yet for this season — add one or type it in below.',
+    cls_wizard_title:'Import Classification',
+    cls_step_method:'1. Choose import method', cls_method_text:'Paste Text', cls_method_csv:'CSV File', cls_method_image:'Screenshot',
+    cls_method_text_placeholder:'Paste the classification table here (copied from a spreadsheet, website, or typed by hand)…',
+    cls_method_csv_hint:'Upload a .csv file — comma, semicolon and tab separators are all supported.',
+    cls_image_notice:'NextEleven does not have automatic image-reading (OCR) built in, and adding a reliable one safely (without exposing an API key in this app) is a larger piece of work on its own. For now: upload the screenshot below for your own reference, then type or paste what it shows into the text box — the same import logic used for pasted text applies from there. This usually takes about a minute.',
+    cls_image_upload_label:'Screenshot (kept with this import for reference only — not read automatically)',
+    cls_btn_parse:'Parse', cls_btn_reparse:'Re-parse',
+    cls_preview_title:'2. Preview & Validate', cls_preview_hint:'Correct any cell directly below before publishing.',
+    cls_source_name:'Source name', cls_source_name_ph:'e.g. Zerozero, AF Lisboa', cls_source_url:'Source URL (optional)', cls_source_date:'Source publication date (optional)',
+    cls_label_optional:'Label (optional)', cls_label_ph:'e.g. Jornada 6',
+    cls_validation_blocking_title:'Blocking issues — must be fixed before publishing',
+    cls_validation_warnings_title:'Warnings — review before publishing',
+    cls_validation_info_title:'Informational',
+    cls_validation_none:'No issues found.',
+    cls_diff_title:'Changes since the current published classification',
+    cls_diff_none:'No position changes since the last published classification.',
+    cls_diff_improved:'{team}: {prev} → {new} (up {n})', cls_diff_dropped:'{team}: {prev} → {new} (down {n})',
+    cls_diff_new_team:'New: {team}', cls_diff_gone_team:'No longer listed: {team}',
+    cls_reconcile_title:'Compared with NextEleven\'s own match results',
+    cls_reconcile_match:'Matches NextEleven\'s own records.',
+    cls_reconcile_diff:'Differs from NextEleven\'s own records — this does not automatically mean either source is wrong.',
+    cls_reconcile_note:'Possible explanations: the imported table is older or newer than NextEleven\'s own data, a match hasn\'t been played or published yet, the source has since been corrected, there is a federation adjustment/penalty, or there is a genuine error on one side. Review before publishing — neither source is changed automatically.',
+    cls_reconcile_no_own_team:'Mark a row as your own team below to compare it with NextEleven\'s results.',
+    cls_mark_our_team:'Mark as our team', cls_our_team_badge:'Our team',
+    cls_btn_confirm_publish:'Confirm and Publish', cls_btn_edit:'Edit', cls_btn_cancel:'Cancel',
+    cls_publish_blocked_hint:'Fix the blocking issues above before publishing.',
+    cls_no_change_notice:'This is identical to the currently published classification — nothing new was published.',
+    cls_published_toast:'Classification published.', cls_restored_toast:'Classification restored.',
+    cls_history_title:'Snapshot History', cls_history_empty:'No previous snapshots for this competition yet.',
+    cls_btn_restore:'Restore', cls_restore_confirm:'Publish this snapshot\'s classification again as the current one? Newer snapshots are kept, not deleted.',
+    cls_snapshot_meta:'{date} · {source} · {method}',
+    cls_method_label_text:'Pasted text', cls_method_label_csv:'CSV file', cls_method_label_image:'Screenshot + text',
+    cls_err_no_rows:'No rows could be read from this input.', cls_err_parse_failed:'Could not read this file.',
+    cls_rows_count:'{n} teams',
   },
   PT:{
     nav_import:'Importar', nav_dashboard:'Início', nav_squad:'Plantel', nav_games:'Jogos', nav_lorenzo:'Lorenzo', nav_team:'Resumo Equipa', nav_achievements:'Conquistas', nav_history:'Historial', nav_settings:'Definições', settings_language:'Idioma', lbl_language:'Idioma',
@@ -7147,6 +7205,7 @@ const TR = {
 
     // ── NAV ──
     nav_home:'Início', nav_teamSummary:'Resumo da Equipa', nav_help:'Ajuda', nav_admin:'Admin',
+    nav_classification:'Classificação',
 
     // ── HOME PAGE ──
     home_welcome_title:'Bem-vindo ao NextEleven',
@@ -8495,6 +8554,53 @@ const TR = {
     ts_most_used:'Mais Titularidades', ts_player_of_match:'Melhor em Campo',
     ts_stat_goals:'GOLOS', ts_stat_assists:'ASSISTÊNCIAS', ts_stat_apps:'TITULARIDADES', ts_stat_mom:'MVP',
     ts_joint_lead:'1.º lugar partilhado por {n} jogadores', ts_no_starts_yet:'Ainda sem titularidades registadas',
+
+    // ── CLASSIFICAÇÃO ──
+    cls_title:'Classificação', cls_subtitle:'Classificação completa da competição, atualizada manualmente a partir de uma fonte fiável.',
+    cls_section_header:'CLASSIFICAÇÃO',
+    cls_btn_import_new:'Importar Nova Classificação', cls_btn_history:'Histórico',
+    cls_current_label:'Classificação Publicada Atual', cls_empty_state:'Ainda não foi publicada nenhuma classificação.',
+    cls_updated_on:'Atualizado em {date}', cls_source_label:'Fonte: {source}', cls_no_source:'fonte não registada',
+    cls_stale_warning:'Esta classificação pode não incluir os resultados mais recentes.',
+    cls_col_pos:'Pos', cls_col_team:'Equipa', cls_col_pts:'Pts', cls_col_played:'J', cls_col_wins:'V', cls_col_draws:'E', cls_col_losses:'D', cls_col_gf:'GM', cls_col_ga:'GS', cls_col_gd:'DG',
+    cls_scope_title:'Competição',
+    cls_scope_season:'Época', cls_scope_competition:'Competição', cls_scope_phase:'Fase', cls_scope_series:'Série',
+    cls_scope_competition_ph:'ex. AF Lisboa Juniores C1, 3.ª Divisão', cls_scope_phase_ph:'ex. 1.ª Fase (opcional)', cls_scope_series_ph:'ex. Série 3 (opcional)',
+    cls_scope_none_detected:'Ainda não foi encontrada nenhuma competição de Campeonato nesta época — adicione uma ou indique-a abaixo.',
+    cls_wizard_title:'Importar Classificação',
+    cls_step_method:'1. Escolha o método de importação', cls_method_text:'Colar Texto', cls_method_csv:'Ficheiro CSV', cls_method_image:'Captura de Ecrã',
+    cls_method_text_placeholder:'Cole aqui a tabela de classificação (copiada de uma folha de cálculo, website, ou escrita manualmente)…',
+    cls_method_csv_hint:'Carregue um ficheiro .csv — são suportados separadores por vírgula, ponto e vírgula ou tabulação.',
+    cls_image_notice:'O NextEleven não tem leitura automática de imagens (OCR) incorporada, e adicionar uma de forma fiável e segura (sem expor uma chave de API nesta aplicação) é um trabalho maior por si só. Por agora: carregue a captura de ecrã abaixo apenas como referência e depois escreva ou cole o que ela mostra na caixa de texto — a partir daí aplica-se a mesma lógica de importação do texto colado. Isto demora normalmente cerca de um minuto.',
+    cls_image_upload_label:'Captura de ecrã (guardada com esta importação apenas como referência — não é lida automaticamente)',
+    cls_btn_parse:'Processar', cls_btn_reparse:'Processar de novo',
+    cls_preview_title:'2. Pré-visualizar e Validar', cls_preview_hint:'Corrija qualquer célula diretamente abaixo antes de publicar.',
+    cls_source_name:'Nome da fonte', cls_source_name_ph:'ex. Zerozero, AF Lisboa', cls_source_url:'URL da fonte (opcional)', cls_source_date:'Data de publicação da fonte (opcional)',
+    cls_label_optional:'Etiqueta (opcional)', cls_label_ph:'ex. Jornada 6',
+    cls_validation_blocking_title:'Problemas bloqueantes — têm de ser corrigidos antes de publicar',
+    cls_validation_warnings_title:'Avisos — reveja antes de publicar',
+    cls_validation_info_title:'Informativo',
+    cls_validation_none:'Não foram encontrados problemas.',
+    cls_diff_title:'Alterações desde a classificação publicada atual',
+    cls_diff_none:'Sem alterações de posição desde a última classificação publicada.',
+    cls_diff_improved:'{team}: {prev} → {new} (subiu {n})', cls_diff_dropped:'{team}: {prev} → {new} (desceu {n})',
+    cls_diff_new_team:'Nova: {team}', cls_diff_gone_team:'Já não consta: {team}',
+    cls_reconcile_title:'Comparação com os resultados do próprio NextEleven',
+    cls_reconcile_match:'Corresponde aos registos do próprio NextEleven.',
+    cls_reconcile_diff:'Difere dos registos do próprio NextEleven — isto não significa automaticamente que uma das fontes esteja errada.',
+    cls_reconcile_note:'Possíveis explicações: a tabela importada é mais antiga ou mais recente do que os dados do NextEleven, um jogo ainda não foi realizado ou publicado, a fonte foi corrigida, existe um ajuste/penalização da federação, ou existe um erro genuíno de um dos lados. Reveja antes de publicar — nenhuma das fontes é alterada automaticamente.',
+    cls_reconcile_no_own_team:'Marque uma linha como a sua equipa abaixo para a comparar com os resultados do NextEleven.',
+    cls_mark_our_team:'Marcar como a nossa equipa', cls_our_team_badge:'A nossa equipa',
+    cls_btn_confirm_publish:'Confirmar e Publicar', cls_btn_edit:'Corrigir', cls_btn_cancel:'Cancelar',
+    cls_publish_blocked_hint:'Corrija os problemas bloqueantes acima antes de publicar.',
+    cls_no_change_notice:'Isto é idêntico à classificação atualmente publicada — nada de novo foi publicado.',
+    cls_published_toast:'Classificação publicada.', cls_restored_toast:'Classificação restaurada.',
+    cls_history_title:'Histórico de Classificações', cls_history_empty:'Ainda não existem classificações anteriores para esta competição.',
+    cls_btn_restore:'Restaurar', cls_restore_confirm:'Publicar novamente a classificação desta versão como a atual? As versões mais recentes são mantidas, não são eliminadas.',
+    cls_snapshot_meta:'{date} · {source} · {method}',
+    cls_method_label_text:'Texto colado', cls_method_label_csv:'Ficheiro CSV', cls_method_label_image:'Captura de ecrã + texto',
+    cls_err_no_rows:'Não foi possível ler nenhuma linha a partir desta informação.', cls_err_parse_failed:'Não foi possível ler este ficheiro.',
+    cls_rows_count:'{n} equipas',
   },
   IT:{
     nav_import:'Importa', nav_dashboard:'Dashboard', nav_squad:'Rosa', nav_games:'Partite', nav_lorenzo:'Lorenzo', nav_team:'Squadra', nav_achievements:'Traguardi', nav_history:'Storia', nav_settings:'Impostazioni', settings_language:'Lingua', lbl_language:'Lingua',
@@ -8784,6 +8890,24 @@ const DB = (() => {
         if (!db.objectStoreNames.contains('externalResources')) {
           db.createObjectStore('externalResources', { keyPath: 'resourceId', autoIncrement: true });
         }
+        // League Classification (Phase 1) — one record per confirmed/published
+        // import. Immutable once published: a correction or a newer source
+        // table always creates a NEW snapshot rather than mutating an old
+        // one, so history and restore both just mean "which snapshot is the
+        // current one", never rewriting a past row.
+        if (!db.objectStoreNames.contains('classificationSnapshots')) {
+          const cs = db.createObjectStore('classificationSnapshots', { keyPath: 'snapshotId', autoIncrement: true });
+          cs.createIndex('seasonId', 'seasonId', { unique: false });
+        }
+        // Reusable external-team-name → "is this our team" mapping, scoped
+        // per competition, so a confirmed match (e.g. "SL Olivais B" = us)
+        // is remembered for every future import of that same competition
+        // without asking again. Never fuzzy — only an admin-confirmed exact
+        // alias is ever auto-applied.
+        if (!db.objectStoreNames.contains('teamAliasMappings')) {
+          const tam = db.createObjectStore('teamAliasMappings', { keyPath: 'aliasId', autoIncrement: true });
+          tam.createIndex('seasonId', 'seasonId', { unique: false });
+        }
       };
       req.onsuccess = e => { _db = e.target.result; resolve(_db); };
       req.onerror = e => {
@@ -9007,7 +9131,7 @@ const DB = (() => {
     'injuries','trainingSessions','customDrills','drillFavourites',
     'trainingPacks','trainingPackVersions','trainingSeries','trainingSeriesExceptions',
     'trainingSeriesPauses','tournaments','temporaryPlayers','clubTeams',
-    'externalResources',
+    'externalResources','classificationSnapshots','teamAliasMappings',
   ];
 
   async function getAllFromAllStores() {
@@ -9366,7 +9490,7 @@ const NAV_LABEL_MAP = {
   home: 'nav_home', dashboard: 'nav_dashboard', squad: 'nav_squad', games: 'nav_games',
   importSection: 'nav_import', lorenzo: 'nav_lorenzo', teamSummary: 'nav_teamSummary',
   achievements: 'nav_achievements', clubHistory: 'nav_history', settings: 'nav_settings',
-  help: 'nav_help', admin: 'nav_admin',
+  help: 'nav_help', admin: 'nav_admin', classification: 'nav_classification',
 };
 
 function applyNavLabels() {
@@ -11953,6 +12077,9 @@ const NAVIGATION_ICONS = {
   calendar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 9.5h16"/><path d="M8 3.5v3M16 3.5v3"/></svg>`,
   // Simple boot outline — used on the Player Card for preferred foot.
   boot: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.5v6.2l-4.3 3.6A2 2 0 0 0 4 14.8V19a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2.2a2 2 0 0 0-1.1-1.8L13 12.5V3.5Z"/><path d="M9 9.7h4"/></svg>`,
+  // Ranked list — three dots with lines, reads as "standings/table", kept
+  // visually distinct from the dashboard bar-chart and team-summary clipboard.
+  classification: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="1.3" fill="currentColor" stroke="none"/><path d="M9 6h11"/><circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none"/><path d="M9 12h11"/><circle cx="5" cy="18" r="1.3" fill="currentColor" stroke="none"/><path d="M9 18h11"/></svg>`,
 };
 
 function navIcon(key, size) {
@@ -11971,6 +12098,1031 @@ function applyNavigationIcons() {
     const key = btn.getAttribute('data-nav-icon');
     if (btn.querySelector('svg')) return; // never inject twice
     btn.insertAdjacentHTML('afterbegin', navIcon(key));
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// LEAGUE CLASSIFICATION — Phase 1 (manual smart import)
+//
+// Pure, framework-free logic: parsing (paste-text / CSV), validation,
+// snapshot diffing, reconciliation against NextEleven's own match results,
+// and team-alias matching. No DOM, no DB, no Supabase — everything here
+// takes plain data in and returns plain data out, so it can be exercised
+// directly by a test harness exactly like computeStartsLeaderboard() was.
+//
+// Scope reminder (per the ticket): the imported POSITION column is the
+// source's own authoritative ranking and is stored/displayed verbatim —
+// this module never recalculates or renumbers positions. "Fair ranking"
+// (standard competition ranking) is a different feature (Most Starts) and
+// does not apply here.
+// ══════════════════════════════════════════════════════════════════════════
+const Classification = (() => {
+
+  // ---- name normalization (matching only — never used for display) -------
+  function normalizeName(name) {
+    return String(name || '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '') // strip accents
+      .toLowerCase()
+      .replace(/[.,'"()]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function scopeKey(scope) {
+    return [
+      scope.seasonId,
+      scope.competitionType || '',
+      normalizeName(scope.competitionName || ''),
+      normalizeName(scope.phase || ''),
+      normalizeName(scope.series || ''),
+    ].join('::');
+  }
+
+  // ---- header recognition (PT-PT + EN) -------------------------------------
+  // Column order in a real header row disambiguates the single-letter
+  // tokens that overlap between the two languages (e.g. a lone "P" is
+  // Posição when it's the first column, Pontos when it follows the team
+  // column) — recognizeHeader() below applies that positional rule.
+  const HEADER_ALIASES = {
+    position: ['pos', 'posicao', 'posição', 'rk', 'rank', '#'],
+    team: ['equipa', 'team', 'clube', 'club', 'teams'],
+    points: ['pts', 'pontos', 'points'],
+    played: ['j', 'jj', 'pj', 'jogos', 'played', 'mp', 'gp'],
+    wins: ['v', 'vitorias', 'vitórias', 'wins', 'w'],
+    draws: ['e', 'empates', 'draws'],
+    losses: ['d', 'derrotas', 'losses', 'l'],
+    goalsFor: ['gm', 'golosmarcados', 'goalsfor', 'gf', 'gs_f'],
+    goalsAgainst: ['gs', 'golossofridos', 'goalsagainst', 'ga'],
+    goalDiff: ['dg', 'diferencadegolos', 'diferençadegolos', 'goaldiff', 'gd'],
+  };
+
+  // The default column order used by this module's own fallback parsing —
+  // matches the ticket's own worked example exactly:
+  //   "1 Palmense 6 2 2 0 0 18 3"  →  Pos, Team, Pts, J, V, E, D, GM, GS
+  const DEFAULT_ORDER = ['position', 'team', 'points', 'played', 'wins', 'draws', 'losses', 'goalsFor', 'goalsAgainst'];
+
+  function recognizeHeader(tokens) {
+    const norm = tokens.map(t => normalizeName(t).replace(/\s+/g, ''));
+    const fields = new Array(norm.length).fill(null);
+    let recognizedCount = 0;
+    let teamColIdx = -1;
+
+    norm.forEach((tok, i) => {
+      for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
+        if (aliases.includes(tok)) {
+          if (field === 'team') teamColIdx = i;
+          fields[i] = field;
+          recognizedCount++;
+          return;
+        }
+      }
+    });
+
+    // Disambiguate lone "p": position if it's the first column (or before
+    // the team column), points if it comes after the team column.
+    norm.forEach((tok, i) => {
+      if (tok !== 'p') return;
+      if (teamColIdx === -1 || i < teamColIdx) { fields[i] = 'position'; }
+      else { fields[i] = 'points'; }
+      recognizedCount++;
+    });
+
+    if (recognizedCount < 3 || teamColIdx === -1) return null; // not a real header row
+    return fields;
+  }
+
+  function splitRow(line) {
+    // Tab-separated first (copied spreadsheet/HTML-table text keeps tabs);
+    // otherwise collapse runs of 2+ spaces, then fall back to single spaces
+    // only once the team-name words have been re-joined by splitByFields.
+    if (line.includes('\t')) return line.split('\t').map(s => s.trim()).filter(s => s !== '');
+    if (/ {2,}/.test(line)) return line.split(/ {2,}/).map(s => s.trim()).filter(s => s !== '');
+    return line.trim().split(/\s+/);
+  }
+
+  // For the no-header, single-space-separated case, the team name is one
+  // or more non-numeric tokens between the leading position number and the
+  // trailing run of numeric columns — never assumed to be exactly one word.
+  function splitPositionTeamAndNumbers(tokens) {
+    if (!tokens.length) return null;
+    if (!/^\d+$/.test(tokens[0])) return null; // first token must be the position
+    const position = tokens[0];
+    let i = 1;
+    const nameTokens = [];
+    while (i < tokens.length && !/^-?\d+(\.\d+)?$/.test(tokens[i])) { nameTokens.push(tokens[i]); i++; }
+    if (!nameTokens.length) return null;
+    const numbers = tokens.slice(i);
+    return { position, team: nameTokens.join(' '), numbers };
+  }
+
+  function toIntOrNull(v) {
+    if (v === undefined || v === null || v === '') return null;
+    const s = String(v).trim().replace(',', '.');
+    if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
+    const n = Math.round(parseFloat(s));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // ---- core row builder -----------------------------------------------------
+  function buildRow(fieldMap) {
+    const row = {
+      position: toIntOrNull(fieldMap.position),
+      teamName: (fieldMap.team || '').trim(),
+      points: toIntOrNull(fieldMap.points),
+      played: toIntOrNull(fieldMap.played),
+      wins: toIntOrNull(fieldMap.wins),
+      draws: toIntOrNull(fieldMap.draws),
+      losses: toIntOrNull(fieldMap.losses),
+      goalsFor: toIntOrNull(fieldMap.goalsFor),
+      goalsAgainst: toIntOrNull(fieldMap.goalsAgainst),
+    };
+    row.goalDiff = (row.goalsFor != null && row.goalsAgainst != null) ? (row.goalsFor - row.goalsAgainst) : null;
+    return row;
+  }
+
+  // ---- paste-text / HTML-table-text parser -----------------------------------
+  function parseText(raw) {
+    const warnings = [];
+    const lines = String(raw || '').replace(/\r\n/g, '\n').split('\n').map(l => l.trim()).filter(l => l !== '');
+    if (!lines.length) return { rows: [], warnings: ['empty_input'], headerDetected: false };
+
+    let dataLines = lines;
+    let header = null;
+    const firstTokens = splitRow(lines[0]);
+    const maybeHeader = recognizeHeader(firstTokens);
+    if (maybeHeader) {
+      header = maybeHeader;
+      dataLines = lines.slice(1);
+    }
+
+    const rows = [];
+    for (const line of dataLines) {
+      const tokens = splitRow(line);
+      let fieldMap = {};
+      if (header) {
+        header.forEach((field, i) => { if (field) fieldMap[field] = tokens[i]; });
+      } else {
+        const parsed = splitPositionTeamAndNumbers(tokens);
+        if (!parsed) { warnings.push('unparsed_line: ' + line); continue; }
+        fieldMap.position = parsed.position;
+        fieldMap.team = parsed.team;
+        DEFAULT_ORDER.slice(2).forEach((field, i) => { fieldMap[field] = parsed.numbers[i]; });
+      }
+      if (!fieldMap.team) { warnings.push('missing_team: ' + line); continue; }
+      rows.push(buildRow(fieldMap));
+    }
+    return { rows, warnings, headerDetected: !!header };
+  }
+
+  // ---- CSV parser -------------------------------------------------------------
+  function detectDelimiter(firstLine) {
+    const counts = { ',': (firstLine.match(/,/g) || []).length, ';': (firstLine.match(/;/g) || []).length, '\t': (firstLine.match(/\t/g) || []).length };
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+  }
+
+  function parseCSVLine(line, delim) {
+    // Minimal RFC4180 handling — quoted fields may contain the delimiter.
+    const out = [];
+    let cur = '', inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (inQuotes) {
+        if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else { inQuotes = false; } }
+        else cur += c;
+      } else if (c === '"') inQuotes = true;
+      else if (c === delim) { out.push(cur); cur = ''; }
+      else cur += c;
+    }
+    out.push(cur);
+    return out.map(s => s.trim());
+  }
+
+  function parseCSV(raw) {
+    const warnings = [];
+    // Strip a UTF-8 BOM if present, then normalize line endings.
+    const cleaned = String(raw || '').replace(/^﻿/, '').replace(/\r\n/g, '\n');
+    const lines = cleaned.split('\n').map(l => l.trim()).filter(l => l !== '');
+    if (!lines.length) return { rows: [], warnings: ['empty_input'], headerDetected: false };
+
+    const delim = detectDelimiter(lines[0]);
+    const firstTokens = parseCSVLine(lines[0], delim);
+    const header = recognizeHeader(firstTokens);
+    const dataLines = header ? lines.slice(1) : lines;
+
+    const rows = [];
+    for (const line of dataLines) {
+      const tokens = parseCSVLine(line, delim);
+      let fieldMap = {};
+      if (header) {
+        header.forEach((field, i) => { if (field) fieldMap[field] = tokens[i]; });
+      } else {
+        // No recognizable header in the CSV — fall back to the same
+        // default column order as the no-header text case.
+        DEFAULT_ORDER.forEach((field, i) => { fieldMap[field] = tokens[i]; });
+      }
+      if (!fieldMap.team) { warnings.push('missing_team: ' + line); continue; }
+      rows.push(buildRow(fieldMap));
+    }
+    return { rows, warnings, headerDetected: !!header };
+  }
+
+  // ---- validation -------------------------------------------------------------
+  // Returns { blocking: [...], warnings: [...], info: [...] }, each entry
+  // { code, message, teamName? }. Publication is only disabled by `blocking`.
+  function validate(rows, opts) {
+    opts = opts || {};
+    const pointsRule = opts.pointsRule || { win: 3, draw: 1, loss: 0 };
+    const blocking = [], warnings = [], info = [];
+
+    if (!rows.length) {
+      blocking.push({ code: 'empty', message: 'No rows to publish.' });
+      return { blocking, warnings, info };
+    }
+
+    const seenNames = new Map(); // normalized -> first teamName seen
+    const posCount = new Map();
+
+    rows.forEach((r, idx) => {
+      const label = r.teamName || `Row ${idx + 1}`;
+
+      if (!r.teamName) {
+        blocking.push({ code: 'missing_team', message: `Row ${idx + 1} has no team name.` });
+      } else {
+        const norm = normalizeName(r.teamName);
+        if (seenNames.has(norm)) {
+          blocking.push({ code: 'duplicate_team', teamName: r.teamName, message: `"${r.teamName}" appears more than once.` });
+        }
+        seenNames.set(norm, r.teamName);
+      }
+
+      if (r.position == null || r.position <= 0) {
+        blocking.push({ code: 'missing_position', teamName: label, message: `${label}: position is missing or invalid.` });
+      } else {
+        posCount.set(r.position, (posCount.get(r.position) || 0) + 1);
+      }
+
+      ['points', 'played', 'wins', 'draws', 'losses', 'goalsFor', 'goalsAgainst'].forEach(f => {
+        if (r[f] != null && r[f] < 0) {
+          blocking.push({ code: 'negative_value', teamName: label, message: `${label}: ${f} cannot be negative.` });
+        }
+      });
+
+      if (r.played != null && r.wins != null && r.draws != null && r.losses != null) {
+        if (r.played !== r.wins + r.draws + r.losses) {
+          blocking.push({ code: 'played_mismatch', teamName: label, message: `${label}: played (${r.played}) does not equal wins+draws+losses (${r.wins + r.draws + r.losses}).` });
+        }
+      } else {
+        info.push({ code: 'incomplete_row', teamName: label, message: `${label}: not all columns were recognised — some figures are missing.` });
+      }
+      if (r.goalsFor == null || r.goalsAgainst == null) {
+        info.push({ code: 'incomplete_row', teamName: label, message: `${label}: goals for/against were not recognised.` });
+      }
+
+      if (r.points != null && r.wins != null && r.draws != null) {
+        const expectedPoints = r.wins * pointsRule.win + r.draws * pointsRule.draw + (r.losses || 0) * pointsRule.loss;
+        if (r.points !== expectedPoints) {
+          warnings.push({ code: 'points_rule_mismatch', teamName: label, message: `${label}: ${r.points} points does not match ${r.wins}W/${r.draws}D under the assumed ${pointsRule.win}/${pointsRule.draw}/${pointsRule.loss} points rule — this competition may use different rules.` });
+        }
+      }
+    });
+
+    posCount.forEach((count, pos) => {
+      if (count > 1) warnings.push({ code: 'shared_position', message: `Position ${pos} is shared by ${count} teams — treated as a genuine tie.` });
+    });
+
+    if (!rows.some(r => r.isOurTeam)) {
+      warnings.push({ code: 'no_own_team', message: 'No row has been marked as your own team yet.' });
+    }
+
+    return { blocking, warnings, info };
+  }
+
+  // ---- diff against the currently published snapshot -------------------------
+  function diff(prevRows, newRows) {
+    if (!prevRows || !prevRows.length) return { changes: [], newTeams: newRows.map(r => r.teamName), goneTeams: [] };
+    const prevByName = new Map(prevRows.map(r => [normalizeName(r.teamName), r]));
+    const newByName = new Map(newRows.map(r => [normalizeName(r.teamName), r]));
+    const changes = [];
+    newByName.forEach((row, norm) => {
+      const prev = prevByName.get(norm);
+      if (prev && prev.position !== row.position) {
+        changes.push({ teamName: row.teamName, prevPosition: prev.position, newPosition: row.position, delta: prev.position - row.position });
+      }
+    });
+    const newTeams = [...newByName.keys()].filter(n => !prevByName.has(n)).map(n => newByName.get(n).teamName);
+    const goneTeams = [...prevByName.keys()].filter(n => !newByName.has(n)).map(n => prevByName.get(n).teamName);
+    return { changes, newTeams, goneTeams };
+  }
+
+  // ---- reconciliation against NextEleven's own match results -----------------
+  // internalStats: { played, wins, draws, losses, goalsFor, goalsAgainst, points }
+  // (points may be null if the points rule isn't known).
+  function reconcile(ourRow, internalStats) {
+    if (!ourRow) return null;
+    const fields = ['played', 'wins', 'draws', 'losses', 'goalsFor', 'goalsAgainst'];
+    if (internalStats.points != null && ourRow.points != null) fields.push('points');
+    const comparison = fields.map(f => ({
+      field: f,
+      imported: ourRow[f],
+      internal: internalStats[f],
+      match: ourRow[f] == null || internalStats[f] == null ? null : ourRow[f] === internalStats[f],
+    }));
+    const hasDifference = comparison.some(c => c.match === false);
+    return { comparison, hasDifference };
+  }
+
+  // ---- team-alias matching -----------------------------------------------------
+  // aliasRecords: [{ aliasId, seasonId, competitionType, competitionName, phase, series, aliases: [normalizedNames...] }]
+  function matchAlias(teamName, aliasRecords, scope) {
+    const key = scopeKey(scope);
+    const norm = normalizeName(teamName);
+    return (aliasRecords || []).find(a => scopeKey(a) === key && (a.aliases || []).includes(norm)) || null;
+  }
+
+  return {
+    normalizeName, scopeKey, recognizeHeader, parseText, parseCSV, validate, diff, reconcile, matchAlias,
+    DEFAULT_ORDER,
+  };
+})();
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LEAGUE CLASSIFICATION — admin state, data loading, rendering, handlers
+// ══════════════════════════════════════════════════════════════════════════════
+// Scope = {seasonId, competitionType:'League', competitionName, phase, series}.
+// Never derived from a hardcoded list — competitionName always comes from the
+// season's own League games (or free text typed by the admin), and phase/series
+// are optional, classification-only fields that are never written back onto
+// a game record. Every classificationSnapshots record is "published" the
+// moment it is created (there is no separate draft table) — "current" is
+// simply the record with the latest publishedAt for a given scope, and
+// "restore" is just publishing a clone of an old one as a new, later version.
+// Nothing here ever mutates or deletes an existing snapshot.
+let _cls = {
+  seasonId: null,
+  games: [],
+  allGP: [],
+  seasonMap: null,
+  competitions: [],       // distinct League competitionName values found in this season's games
+  snapshots: [],          // every classificationSnapshots record for this season (all scopes)
+  aliasRecords: [],       // every teamAliasMappings record for this season (all scopes)
+  scope: null,            // the currently selected scope, or null until a competition is chosen
+  scopeDraft: { competitionName: '', competitionNameCustom: '', phase: '', series: '' },
+  stage: 'closed',        // 'closed' | 'importing' | 'preview'
+  method: null,           // 'text' | 'csv' | 'image'
+  sourceDraft: { sourceName: '', sourceUrl: '', sourceDate: '', label: '' },
+  rawInput: '',
+  imageDataUrl: null,
+  loadedFileName: '',
+  draftRows: null,
+  showHistory: false,
+  expandedHistoryId: null,
+};
+
+async function clsReload(seasonId) {
+  if (_cls.seasonId !== seasonId) {
+    // A scope picked under a different season means nothing here.
+    _cls.scope = null;
+    _cls.stage = 'closed';
+    _cls.scopeDraft = { competitionName: '', competitionNameCustom: '', phase: '', series: '' };
+    _cls.showHistory = false;
+  }
+  _cls.seasonId = seasonId;
+  const [games, allGP, seasonMap, snapshots, aliasRecords] = await Promise.all([
+    DB.getAll('games', 'seasonId', seasonId),
+    getSeasonGamePlayers(seasonId),
+    getSeasonMap(),
+    DB.getAll('classificationSnapshots', 'seasonId', seasonId),
+    DB.getAll('teamAliasMappings', 'seasonId', seasonId),
+  ]);
+  _cls.games = games;
+  _cls.allGP = allGP;
+  _cls.seasonMap = seasonMap;
+  _cls.snapshots = snapshots;
+  _cls.aliasRecords = aliasRecords;
+
+  const names = new Map(); // normalized -> first-seen original casing
+  games.filter(g => g.competitionType === 'League' && g.competitionName).forEach(g => {
+    const key = g.competitionName.trim().toLowerCase();
+    if (!names.has(key)) names.set(key, g.competitionName.trim());
+  });
+  _cls.competitions = [...names.values()].sort((a, b) => a.localeCompare(b));
+
+  if (!_cls.scopeDraft.competitionName && !_cls.scopeDraft.competitionNameCustom && _cls.competitions.length) {
+    _cls.scopeDraft.competitionName = _cls.competitions[0];
+    _cls.scope = {
+      seasonId, competitionType: 'League', competitionName: _cls.competitions[0],
+      phase: _cls.scopeDraft.phase || '', series: _cls.scopeDraft.series || '',
+    };
+  }
+}
+
+function clsSnapshotsForScope(scope) {
+  if (!scope) return [];
+  const key = Classification.scopeKey(scope);
+  return _cls.snapshots
+    .filter(s => Classification.scopeKey(s) === key)
+    .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+}
+function clsCurrentPublished(scope) {
+  const list = clsSnapshotsForScope(scope);
+  return list.length ? list[0] : null;
+}
+function clsHistoryForScope(scope) {
+  return clsSnapshotsForScope(scope).slice(1); // every snapshot except the current one
+}
+function clsAliasRecordsForScope(scope) {
+  if (!scope) return [];
+  const key = Classification.scopeKey(scope);
+  return _cls.aliasRecords.filter(a => Classification.scopeKey(a) === key);
+}
+
+// Our own team's season record for this exact scope, built the same way the
+// rest of the app computes team stats (Calc.teamSeasonStats, which already
+// applies the ourScore-aware goal logic and the isGameResultVisible
+// completion rule). Returns null when there is nothing to compare yet —
+// the reconciliation panel treats that as "nothing to reconcile", not as
+// a discrepancy.
+function clsInternalStatsForScope(scope) {
+  if (!scope) return null;
+  const relevant = _cls.games.filter(g =>
+    g.competitionType === scope.competitionType &&
+    (g.competitionName || '').trim().toLowerCase() === (scope.competitionName || '').trim().toLowerCase() &&
+    isGameResultVisible(g, _cls.seasonMap)
+  );
+  if (!relevant.length) return null;
+  const t = Calc.teamSeasonStats(relevant, _cls.allGP);
+  const pointsRule = { win: 3, draw: 1, loss: 0 }; // default rule, used only for the reconciliation comparison
+  const points = t.wins * pointsRule.win + t.draws * pointsRule.draw + t.losses * pointsRule.loss;
+  return {
+    played: t.played, wins: t.wins, draws: t.draws, losses: t.losses,
+    goalsFor: t.goalsFor, goalsAgainst: t.goalsAgainst, goalDiff: t.goalDiff, points,
+  };
+}
+
+function fieldLabel(f) {
+  const map = { played: 'cls_col_played', wins: 'cls_col_wins', draws: 'cls_col_draws', losses: 'cls_col_losses', goalsFor: 'cls_col_gf', goalsAgainst: 'cls_col_ga', points: 'cls_col_pts' };
+  return map[f] ? I18n.t(map[f]) : f;
+}
+
+// ── Rendering ────────────────────────────────────────────────────────────
+function clsRerender() {
+  const el = document.getElementById('classificationContent');
+  if (el) el.innerHTML = clsRenderScreen();
+}
+// Re-renders only the section below the scope picker, so typing in the
+// phase/series fields (or anywhere in the import wizard) never rebuilds —
+// and never steals focus from — the input the admin is actively using.
+function clsRerenderBelow() {
+  const el = document.getElementById('clsBelowScope');
+  if (el) el.innerHTML = clsRenderBelowScope();
+  else clsRerender();
+}
+
+function clsRenderScreen() {
+  return clsRenderScopePicker() + `<div id="clsBelowScope">${clsRenderBelowScope()}</div>`;
+}
+
+function clsRenderBelowScope() {
+  if (!_cls.scope) return '';
+  if (_cls.stage === 'importing') return clsRenderImportForm();
+  if (_cls.stage === 'preview') return clsRenderPreview();
+  return clsRenderPublishedCard() + clsRenderHistorySection();
+}
+
+function clsRenderScopePicker() {
+  const opts = _cls.competitions.map(c =>
+    `<option value="${esc(c)}" ${(!_cls.scopeDraft.competitionNameCustom && _cls.scopeDraft.competitionName === c) ? 'selected' : ''}>${esc(c)}</option>`
+  ).join('');
+  const hint = !_cls.competitions.length
+    ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">${I18n.t('cls_scope_none_detected')}</div>` : '';
+  return `
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title">${I18n.t('cls_scope_title')}</div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>${I18n.t('cls_scope_season')}</label>
+      <input type="text" value="${esc(State.currentSeason?.seasonName || '')}" disabled>
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>${I18n.t('cls_scope_competition')}</label>
+      ${_cls.competitions.length ? `<select onchange="clsSetScopeField('competitionName', this.value)">${opts}</select>` : ''}
+      <input type="text" placeholder="${esc(I18n.t('cls_scope_competition_ph'))}" value="${esc(_cls.scopeDraft.competitionNameCustom || '')}" oninput="clsSetScopeField('competitionNameCustom', this.value)" style="margin-top:6px">
+      ${hint}
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>${I18n.t('cls_scope_phase')}</label>
+      <input type="text" placeholder="${esc(I18n.t('cls_scope_phase_ph'))}" value="${esc(_cls.scopeDraft.phase || '')}" oninput="clsSetScopeField('phase', this.value)">
+    </div>
+    <div class="form-group">
+      <label>${I18n.t('cls_scope_series')}</label>
+      <input type="text" placeholder="${esc(I18n.t('cls_scope_series_ph'))}" value="${esc(_cls.scopeDraft.series || '')}" oninput="clsSetScopeField('series', this.value)">
+    </div>
+  </div>`;
+}
+
+function clsSetScopeField(field, value) {
+  _cls.scopeDraft[field] = value;
+  const compName = (_cls.scopeDraft.competitionNameCustom || _cls.scopeDraft.competitionName || '').trim();
+  const newScope = compName ? {
+    seasonId: _cls.seasonId, competitionType: 'League', competitionName: compName,
+    phase: (_cls.scopeDraft.phase || '').trim(), series: (_cls.scopeDraft.series || '').trim(),
+  } : null;
+  const changed = Classification.scopeKey(newScope || {}) !== Classification.scopeKey(_cls.scope || {});
+  _cls.scope = newScope;
+  if (changed) {
+    _cls.stage = 'closed';
+    _cls.draftRows = null;
+    _cls.showHistory = false;
+    _cls.expandedHistoryId = null;
+  }
+  clsRerenderBelow();
+}
+
+function clsRenderTable(rows, editable) {
+  const body = (rows || []).map((r, i) => {
+    const hiStyle = r.isOurTeam ? ' style="background:#fff7e6"' : '';
+    if (editable) {
+      return `<tr${hiStyle}>
+        <td><input type="number" value="${r.position ?? ''}" oninput="clsEditCell(${i},'position',this.value)" style="width:44px"></td>
+        <td><input type="text" value="${esc(r.teamName || '')}" oninput="clsEditCell(${i},'teamName',this.value)" style="width:150px"></td>
+        <td><input type="number" value="${r.points ?? ''}" oninput="clsEditCell(${i},'points',this.value)" style="width:44px"></td>
+        <td><input type="number" value="${r.played ?? ''}" oninput="clsEditCell(${i},'played',this.value)" style="width:44px"></td>
+        <td><input type="number" value="${r.wins ?? ''}" oninput="clsEditCell(${i},'wins',this.value)" style="width:44px"></td>
+        <td><input type="number" value="${r.draws ?? ''}" oninput="clsEditCell(${i},'draws',this.value)" style="width:44px"></td>
+        <td><input type="number" value="${r.losses ?? ''}" oninput="clsEditCell(${i},'losses',this.value)" style="width:44px"></td>
+        <td><input type="number" value="${r.goalsFor ?? ''}" oninput="clsEditCell(${i},'goalsFor',this.value)" style="width:44px"></td>
+        <td><input type="number" value="${r.goalsAgainst ?? ''}" oninput="clsEditCell(${i},'goalsAgainst',this.value)" style="width:44px"></td>
+        <td>${r.goalDiff ?? '—'}</td>
+        <td><button class="btn" style="padding:3px 8px;font-size:11px${r.isOurTeam ? ';background:var(--black);color:#fff' : ''}" onclick="clsToggleOurTeam(${i})">${r.isOurTeam ? esc(I18n.t('cls_our_team_badge')) : esc(I18n.t('cls_mark_our_team'))}</button></td>
+      </tr>`;
+    }
+    return `<tr${hiStyle}>
+      <td>${r.position ?? '—'}</td>
+      <td>${esc(r.teamName || '')}${r.isOurTeam ? ` <span class="badge-warn" style="background:var(--black);color:#fff">${esc(I18n.t('cls_our_team_badge'))}</span>` : ''}</td>
+      <td>${r.points ?? '—'}</td><td>${r.played ?? '—'}</td><td>${r.wins ?? '—'}</td><td>${r.draws ?? '—'}</td><td>${r.losses ?? '—'}</td>
+      <td>${r.goalsFor ?? '—'}</td><td>${r.goalsAgainst ?? '—'}</td><td>${r.goalDiff ?? '—'}</td>
+    </tr>`;
+  }).join('');
+  const head = `<tr>
+    <th>${I18n.t('cls_col_pos')}</th><th>${I18n.t('cls_col_team')}</th><th>${I18n.t('cls_col_pts')}</th>
+    <th>${I18n.t('cls_col_played')}</th><th>${I18n.t('cls_col_wins')}</th><th>${I18n.t('cls_col_draws')}</th><th>${I18n.t('cls_col_losses')}</th>
+    <th>${I18n.t('cls_col_gf')}</th><th>${I18n.t('cls_col_ga')}</th><th>${I18n.t('cls_col_gd')}</th>
+    ${editable ? '<th></th>' : ''}
+  </tr>`;
+  return `<div class="table-wrap"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+
+function clsRenderPublishedCard() {
+  const scope = _cls.scope;
+  const snap = clsCurrentPublished(scope);
+  let html = `<div class="card" style="margin-bottom:14px">
+    <div class="card-title">${I18n.t('cls_current_label')}</div>`;
+  if (!snap) {
+    html += `<div class="empty"><p>${I18n.t('cls_empty_state')}</p></div>`;
+  } else {
+    const ourRow = (snap.rows || []).find(r => r.isOurTeam);
+    const internal = clsInternalStatsForScope(scope);
+    const dateStr = fmtDate(snap.sourceDate || (snap.publishedAt || '').slice(0, 10));
+    html += `<div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+      ${I18n.t('cls_updated_on', { date: dateStr })} · ${I18n.t('cls_source_label', { source: esc(snap.sourceName || I18n.t('cls_no_source')) })} · ${I18n.t('cls_rows_count', { n: (snap.rows || []).length })}
+    </div>`;
+    // Stale/incomplete-data warning — only raised when our own completed
+    // matches already outnumber what the published snapshot shows for us,
+    // never claimed unless the comparison actually supports it.
+    if (ourRow && internal && internal.played > (ourRow.played || 0)) {
+      html += `<div style="margin-bottom:8px;padding:8px 10px;border:1px solid #b8860b;border-radius:var(--radius);background:#fff8e1;font-size:12px;color:#92650a">${I18n.t('cls_stale_warning')}</div>`;
+    }
+    html += clsRenderTable(snap.rows || [], false);
+  }
+  html += `<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-primary" onclick="clsOpenWizard()">${I18n.t('cls_btn_import_new')}</button>
+    <button class="btn" onclick="clsToggleHistory()">${I18n.t('cls_btn_history')}</button>
+  </div>`;
+  html += `</div>`;
+  return html;
+}
+
+function clsRenderHistorySection() {
+  if (!_cls.showHistory) return '';
+  const hist = clsHistoryForScope(_cls.scope);
+  let html = `<div class="card"><div class="card-title">${I18n.t('cls_history_title')}</div>`;
+  if (!hist.length) {
+    html += `<div class="empty" style="padding:20px"><p>${I18n.t('cls_history_empty')}</p></div>`;
+  } else {
+    const methodKeyMap = { text: 'cls_method_label_text', csv: 'cls_method_label_csv', image: 'cls_method_label_image', restore: 'cls_btn_restore' };
+    html += hist.map(snap => {
+      const methodLabel = methodKeyMap[snap.importMethod] ? I18n.t(methodKeyMap[snap.importMethod]) : (snap.importMethod || '');
+      const meta = I18n.t('cls_snapshot_meta', {
+        date: fmtDate((snap.publishedAt || '').slice(0, 10)),
+        source: esc(snap.sourceName || I18n.t('cls_no_source')),
+        method: esc(methodLabel),
+      });
+      const expanded = _cls.expandedHistoryId === snap.snapshotId;
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="font-size:12px;cursor:pointer" onclick="clsToggleHistoryItem(${snap.snapshotId})">${meta} · ${I18n.t('cls_rows_count', { n: (snap.rows || []).length })}</div>
+          <button class="btn" style="padding:3px 8px;font-size:11px" onclick="clsRestoreSnapshot(${snap.snapshotId})">${I18n.t('cls_btn_restore')}</button>
+        </div>
+        ${expanded ? clsRenderTable(snap.rows || [], false) : ''}
+      </div>`;
+    }).join('');
+  }
+  html += `</div>`;
+  return html;
+}
+
+function clsToggleHistory() { _cls.showHistory = !_cls.showHistory; clsRerenderBelow(); }
+function clsToggleHistoryItem(snapshotId) {
+  _cls.expandedHistoryId = (_cls.expandedHistoryId === snapshotId) ? null : snapshotId;
+  clsRerenderBelow();
+}
+
+// ── Import wizard ────────────────────────────────────────────────────────
+function clsOpenWizard() {
+  _cls.stage = 'importing';
+  _cls.method = null;
+  _cls.rawInput = '';
+  _cls.imageDataUrl = null;
+  _cls.loadedFileName = '';
+  _cls.draftRows = null;
+  _cls.sourceDraft = { sourceName: '', sourceUrl: '', sourceDate: '', label: '' };
+  clsRerenderBelow();
+}
+function clsCancelImport() {
+  _cls.stage = 'closed';
+  _cls.method = null;
+  _cls.rawInput = '';
+  _cls.imageDataUrl = null;
+  _cls.loadedFileName = '';
+  _cls.draftRows = null;
+  clsRerenderBelow();
+}
+function clsBackToEdit() {
+  _cls.stage = 'importing';
+  clsRerenderBelow();
+}
+function clsSetMethod(m) {
+  _cls.method = m;
+  _cls.rawInput = '';
+  _cls.imageDataUrl = null;
+  _cls.loadedFileName = '';
+  clsRerenderBelow();
+}
+function clsSetSourceField(field, value) { _cls.sourceDraft[field] = value; } // no rerender — keeps focus while typing
+function clsSetRawInput(value) { _cls.rawInput = value; }                     // no rerender — keeps focus while typing
+
+function clsHandleImageFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  _cls.loadedFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = () => { _cls.imageDataUrl = reader.result; clsRerenderBelow(); };
+  reader.onerror = () => { Toast.error(I18n.t('cls_err_parse_failed')); };
+  reader.readAsDataURL(file);
+}
+function clsHandleCSVFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  _cls.loadedFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = () => { _cls.rawInput = String(reader.result || ''); clsRerenderBelow(); };
+  reader.onerror = () => { Toast.error(I18n.t('cls_err_parse_failed')); };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function clsRenderImportForm() {
+  const methodBtn = (m, label) => `<button class="btn${_cls.method === m ? ' btn-primary' : ''}" onclick="clsSetMethod('${m}')">${esc(label)}</button>`;
+  let html = `<div class="card">
+    <div class="card-title">${I18n.t('cls_wizard_title')}</div>
+    <div class="form-group" style="margin-bottom:10px"><label>${I18n.t('cls_source_name')}</label><input type="text" placeholder="${esc(I18n.t('cls_source_name_ph'))}" value="${esc(_cls.sourceDraft.sourceName)}" oninput="clsSetSourceField('sourceName',this.value)"></div>
+    <div class="form-group" style="margin-bottom:10px"><label>${I18n.t('cls_source_url')}</label><input type="text" value="${esc(_cls.sourceDraft.sourceUrl)}" oninput="clsSetSourceField('sourceUrl',this.value)"></div>
+    <div class="form-group" style="margin-bottom:10px"><label>${I18n.t('cls_source_date')}</label><input type="date" value="${esc(_cls.sourceDraft.sourceDate)}" oninput="clsSetSourceField('sourceDate',this.value)"></div>
+    <div class="form-group" style="margin-bottom:10px"><label>${I18n.t('cls_label_optional')}</label><input type="text" placeholder="${esc(I18n.t('cls_label_ph'))}" value="${esc(_cls.sourceDraft.label)}" oninput="clsSetSourceField('label',this.value)"></div>
+
+    <div style="margin:14px 0 8px"><strong style="font-size:12px">${I18n.t('cls_step_method')}</strong></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      ${methodBtn('text', I18n.t('cls_method_text'))}
+      ${methodBtn('csv', I18n.t('cls_method_csv'))}
+      ${methodBtn('image', I18n.t('cls_method_image'))}
+    </div>`;
+
+  if (_cls.method === 'image') {
+    html += `<div class="form-group" style="margin-bottom:10px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${I18n.t('cls_image_notice')}</div>
+      <label>${I18n.t('cls_image_upload_label')}</label>
+      <input type="file" accept="image/png,image/jpeg,image/webp" onchange="clsHandleImageFile(this)">
+      ${_cls.imageDataUrl ? `<img src="${_cls.imageDataUrl}" style="max-width:220px;margin-top:8px;border:1px solid var(--border);border-radius:var(--radius)">` : ''}
+    </div>
+    <div class="form-group"><label>${I18n.t('cls_method_text')}</label>
+      <textarea rows="8" placeholder="${esc(I18n.t('cls_method_text_placeholder'))}" oninput="clsSetRawInput(this.value)">${esc(_cls.rawInput)}</textarea>
+    </div>`;
+  } else if (_cls.method === 'csv') {
+    html += `<div class="form-group" style="margin-bottom:10px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${I18n.t('cls_method_csv_hint')}</div>
+      <input type="file" accept=".csv" onchange="clsHandleCSVFile(this)">
+      ${_cls.loadedFileName ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(_cls.loadedFileName)}</div>` : ''}
+    </div>
+    <div class="form-group"><label>${I18n.t('cls_method_csv')}</label>
+      <textarea rows="8" oninput="clsSetRawInput(this.value)">${esc(_cls.rawInput)}</textarea>
+    </div>`;
+  } else if (_cls.method === 'text') {
+    html += `<div class="form-group">
+      <textarea rows="10" placeholder="${esc(I18n.t('cls_method_text_placeholder'))}" oninput="clsSetRawInput(this.value)">${esc(_cls.rawInput)}</textarea>
+    </div>`;
+  }
+
+  if (_cls.method) {
+    const parseLabel = _cls.draftRows ? I18n.t('cls_btn_reparse') : I18n.t('cls_btn_parse');
+    html += `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="clsParse()">${parseLabel}</button>
+      <button class="btn" onclick="clsCancelImport()">${I18n.t('cls_btn_cancel')}</button>
+    </div>`;
+  } else {
+    html += `<div style="margin-top:10px"><button class="btn" onclick="clsCancelImport()">${I18n.t('cls_btn_cancel')}</button></div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function clsParse() {
+  const text = (_cls.rawInput || '').trim();
+  if (!text) { Toast.error(I18n.t('cls_err_no_rows')); return; }
+  let result;
+  try {
+    result = _cls.method === 'csv' ? Classification.parseCSV(text) : Classification.parseText(text);
+  } catch (e) {
+    console.error('[classification] parse failed', e);
+    Toast.error(I18n.t('cls_err_parse_failed'));
+    return;
+  }
+  if (!result || !result.rows || !result.rows.length) {
+    Toast.error(I18n.t('cls_err_no_rows'));
+    return;
+  }
+  // Re-parsing (after correcting the raw text) keeps whichever row was
+  // already marked as our team, matched by name, rather than losing it.
+  const prevOur = _cls.draftRows ? _cls.draftRows.find(r => r.isOurTeam) : null;
+  _cls.draftRows = result.rows.map(r => ({
+    ...r,
+    isOurTeam: prevOur ? Classification.normalizeName(r.teamName) === Classification.normalizeName(prevOur.teamName) : false,
+  }));
+  _cls.stage = 'preview';
+  clsRerenderBelow();
+}
+
+function clsEditCell(idx, field, value) {
+  const row = _cls.draftRows && _cls.draftRows[idx];
+  if (!row) return;
+  if (field === 'teamName') {
+    row.teamName = value;
+  } else {
+    row[field] = value === '' ? null : parseInt(value, 10);
+    if (field === 'goalsFor' || field === 'goalsAgainst') {
+      row.goalDiff = (row.goalsFor != null && row.goalsAgainst != null) ? (row.goalsFor - row.goalsAgainst) : null;
+    }
+  }
+  clsRefreshPanels();
+}
+function clsToggleOurTeam(idx) {
+  if (!_cls.draftRows) return;
+  _cls.draftRows.forEach((r, i) => { r.isOurTeam = (i === idx) ? !r.isOurTeam : false; });
+  clsRerenderBelow();
+}
+
+function clsRefreshPanels() {
+  const v = document.getElementById('clsValidationPanel'); if (v) v.innerHTML = clsRenderValidationPanel();
+  const d = document.getElementById('clsDiffPanel'); if (d) d.innerHTML = clsRenderDiffPanel();
+  const r = document.getElementById('clsReconcilePanel'); if (r) r.innerHTML = clsRenderReconcilePanel();
+  const btn = document.getElementById('clsPublishBtn');
+  if (btn) btn.disabled = Classification.validate(_cls.draftRows || []).blocking.length > 0;
+}
+
+function clsRenderPreview() {
+  const rows = _cls.draftRows || [];
+  const val = Classification.validate(rows);
+  let html = `<div class="card">
+    <div class="card-title">${I18n.t('cls_preview_title')}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${I18n.t('cls_preview_hint')}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      ${esc(_cls.sourceDraft.sourceName || I18n.t('cls_no_source'))}${_cls.sourceDraft.sourceUrl ? ' · ' + esc(_cls.sourceDraft.sourceUrl) : ''}${_cls.sourceDraft.sourceDate ? ' · ' + fmtDate(_cls.sourceDraft.sourceDate) : ''} · ${I18n.t('cls_rows_count', { n: rows.length })}
+    </div>`;
+  html += clsRenderTable(rows, true);
+  html += `<div id="clsValidationPanel">${clsRenderValidationPanel()}</div>`;
+  html += `<div id="clsDiffPanel">${clsRenderDiffPanel()}</div>`;
+  html += `<div id="clsReconcilePanel">${clsRenderReconcilePanel()}</div>`;
+  html += `<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+    <button id="clsPublishBtn" class="btn btn-primary" onclick="clsConfirmPublish()" ${val.blocking.length ? 'disabled' : ''}>${I18n.t('cls_btn_confirm_publish')}</button>
+    <button class="btn" onclick="clsBackToEdit()">${I18n.t('cls_btn_edit')}</button>
+    <button class="btn" onclick="clsCancelImport()">${I18n.t('cls_btn_cancel')}</button>
+  </div>`;
+  if (val.blocking.length) html += `<div style="font-size:12px;color:#c0392b;margin-top:6px">${I18n.t('cls_publish_blocked_hint')}</div>`;
+  html += `</div>`;
+  return html;
+}
+
+function clsRenderValidationPanel() {
+  const val = Classification.validate(_cls.draftRows || []);
+  let html = '';
+  if (val.blocking.length) {
+    html += `<div style="margin-top:10px;padding:10px;border:1px solid #c0392b;border-radius:var(--radius);background:#fdecea">
+      <strong style="font-size:12px;color:#c0392b">${I18n.t('cls_validation_blocking_title')}</strong>
+      <ul style="margin:6px 0 0 18px;font-size:12px;color:#c0392b">${val.blocking.map(b => `<li>${esc(b.message)}${b.teamName ? ' — ' + esc(b.teamName) : ''}</li>`).join('')}</ul>
+    </div>`;
+  }
+  if (val.warnings.length) {
+    html += `<div style="margin-top:10px;padding:10px;border:1px solid #b8860b;border-radius:var(--radius);background:#fff8e1">
+      <strong style="font-size:12px;color:#92650a">${I18n.t('cls_validation_warnings_title')}</strong>
+      <ul style="margin:6px 0 0 18px;font-size:12px;color:#92650a">${val.warnings.map(w => `<li>${esc(w.message)}${w.teamName ? ' — ' + esc(w.teamName) : ''}</li>`).join('')}</ul>
+    </div>`;
+  }
+  if (val.info.length) {
+    html += `<div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:var(--radius);background:#f5f5f5">
+      <strong style="font-size:12px;color:var(--muted)">${I18n.t('cls_validation_info_title')}</strong>
+      <ul style="margin:6px 0 0 18px;font-size:12px;color:var(--muted)">${val.info.map(x => `<li>${esc(x.message)}${x.teamName ? ' — ' + esc(x.teamName) : ''}</li>`).join('')}</ul>
+    </div>`;
+  }
+  if (!val.blocking.length && !val.warnings.length && !val.info.length) {
+    html += `<div style="margin-top:10px;font-size:12px;color:#2d7d46">${I18n.t('cls_validation_none')}</div>`;
+  }
+  return html;
+}
+
+function clsRenderDiffPanel() {
+  const current = clsCurrentPublished(_cls.scope);
+  if (!current) return '';
+  const d = Classification.diff(current.rows || [], _cls.draftRows || []);
+  let html = `<div style="margin-top:14px"><strong style="font-size:12px">${I18n.t('cls_diff_title')}</strong>`;
+  if (!d.changes.length && !d.newTeams.length && !d.goneTeams.length) {
+    html += `<div style="font-size:12px;color:var(--muted);margin-top:6px">${I18n.t('cls_diff_none')}</div>`;
+  } else {
+    html += `<ul style="margin:6px 0 0 18px;font-size:12px">`;
+    d.changes.forEach(c => {
+      const key = c.delta > 0 ? 'cls_diff_improved' : 'cls_diff_dropped';
+      html += `<li>${I18n.t(key, { team: esc(c.teamName), prev: c.prevPosition, new: c.newPosition, n: Math.abs(c.delta) })}</li>`;
+    });
+    d.newTeams.forEach(t => html += `<li>${I18n.t('cls_diff_new_team', { team: esc(t) })}</li>`);
+    d.goneTeams.forEach(t => html += `<li>${I18n.t('cls_diff_gone_team', { team: esc(t) })}</li>`);
+    html += `</ul>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function clsRenderReconcilePanel() {
+  const ourRow = (_cls.draftRows || []).find(r => r.isOurTeam);
+  let html = `<div style="margin-top:14px"><strong style="font-size:12px">${I18n.t('cls_reconcile_title')}</strong>`;
+  const internal = ourRow ? clsInternalStatsForScope(_cls.scope) : null;
+  if (!ourRow || !internal) {
+    html += `<div style="font-size:12px;color:var(--muted);margin-top:6px">${I18n.t('cls_reconcile_no_own_team')}</div></div>`;
+    return html;
+  }
+  const rec = Classification.reconcile(ourRow, internal);
+  if (!rec.hasDifference) {
+    html += `<div style="font-size:12px;color:#2d7d46;margin-top:6px">${I18n.t('cls_reconcile_match')}</div>`;
+  } else {
+    html += `<div style="font-size:12px;color:#92650a;margin-top:6px">${I18n.t('cls_reconcile_diff')}</div>`;
+    html += `<div class="table-wrap" style="margin-top:8px"><table><thead><tr><th></th><th>${esc(_cls.sourceDraft.sourceName || I18n.t('cls_source_name'))}</th><th>NextEleven</th></tr></thead><tbody>`;
+    rec.comparison.forEach(c => {
+      const mismatch = c.match === false;
+      html += `<tr${mismatch ? ' style="background:#fff8e1"' : ''}><td>${esc(fieldLabel(c.field))}</td><td>${c.imported ?? '—'}</td><td>${c.internal ?? '—'}</td></tr>`;
+    });
+    html += `</tbody></table></div>`;
+    html += `<div style="font-size:11px;color:var(--muted);margin-top:6px">${I18n.t('cls_reconcile_note')}</div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function clsRowsEqual(a, b) {
+  if ((a || []).length !== (b || []).length) return false;
+  const norm = r => JSON.stringify({
+    position: r.position, teamName: (r.teamName || '').trim().toLowerCase(), points: r.points,
+    played: r.played, wins: r.wins, draws: r.draws, losses: r.losses,
+    goalsFor: r.goalsFor, goalsAgainst: r.goalsAgainst, isOurTeam: !!r.isOurTeam,
+  });
+  const as = a.map(norm).sort(), bs = b.map(norm).sort();
+  return JSON.stringify(as) === JSON.stringify(bs);
+}
+
+async function clsConfirmPublish() {
+  const rows = _cls.draftRows || [];
+  const val = Classification.validate(rows);
+  if (val.blocking.length) { Toast.error(I18n.t('cls_publish_blocked_hint')); return; }
+
+  const scope = _cls.scope;
+  const current = clsCurrentPublished(scope);
+
+  // Never create a duplicate snapshot for an import that is identical to
+  // what's already published.
+  if (current && clsRowsEqual(current.rows || [], rows)) {
+    Toast.show(I18n.t('cls_no_change_notice'));
+    _cls.stage = 'closed';
+    clsRerenderBelow();
+    return;
+  }
+
+  const existingForScope = clsSnapshotsForScope(scope);
+  const nextVersion = existingForScope.reduce((m, s) => Math.max(m, s.version || 0), 0) + 1;
+  const now = new Date().toISOString();
+
+  const cleanRows = rows.map((r, i) => ({
+    position: r.position != null && r.position !== '' ? parseInt(r.position, 10) : (i + 1),
+    teamName: (r.teamName || '').trim(),
+    points: r.points != null && r.points !== '' ? parseInt(r.points, 10) : null,
+    played: r.played != null && r.played !== '' ? parseInt(r.played, 10) : null,
+    wins: r.wins != null && r.wins !== '' ? parseInt(r.wins, 10) : null,
+    draws: r.draws != null && r.draws !== '' ? parseInt(r.draws, 10) : null,
+    losses: r.losses != null && r.losses !== '' ? parseInt(r.losses, 10) : null,
+    goalsFor: r.goalsFor != null && r.goalsFor !== '' ? parseInt(r.goalsFor, 10) : null,
+    goalsAgainst: r.goalsAgainst != null && r.goalsAgainst !== '' ? parseInt(r.goalsAgainst, 10) : null,
+    goalDiff: (r.goalsFor != null && r.goalsFor !== '' && r.goalsAgainst != null && r.goalsAgainst !== '')
+      ? (parseInt(r.goalsFor, 10) - parseInt(r.goalsAgainst, 10)) : null,
+    isOurTeam: !!r.isOurTeam,
+  }));
+
+  const snapshot = {
+    seasonId: scope.seasonId,
+    competitionType: scope.competitionType,
+    competitionName: scope.competitionName,
+    phase: scope.phase || '',
+    series: scope.series || '',
+    sourceName: (_cls.sourceDraft.sourceName || '').trim() || null,
+    sourceUrl: (_cls.sourceDraft.sourceUrl || '').trim() || null,
+    sourceDate: _cls.sourceDraft.sourceDate || null,
+    label: (_cls.sourceDraft.label || '').trim() || null,
+    importMethod: _cls.method,
+    importTimestamp: now,
+    importedBy: (typeof Auth !== 'undefined' && Auth.getEmail && Auth.getEmail()) || null,
+    validationStatus: val.warnings.length ? 'warnings' : 'validated',
+    publicationStatus: 'published',
+    publishedAt: now,
+    version: nextVersion,
+    rows: cleanRows,
+  };
+
+  try {
+    const snapshotId = await DB.put('classificationSnapshots', snapshot);
+    snapshot.snapshotId = snapshotId;
+    _cls.snapshots.push(snapshot);
+
+    // The admin explicitly marking a row as "our team" IS the verified
+    // mapping the ticket requires — record it so future imports (and the
+    // Parents Page highlight) recognise this external name automatically.
+    const ourRow = cleanRows.find(r => r.isOurTeam);
+    if (ourRow) {
+      const norm = Classification.normalizeName(ourRow.teamName);
+      const existingAlias = clsAliasRecordsForScope(scope)[0];
+      if (!existingAlias) {
+        const aliasRec = { seasonId: scope.seasonId, competitionType: scope.competitionType, competitionName: scope.competitionName, phase: scope.phase || '', series: scope.series || '', aliases: [norm] };
+        const aliasId = await DB.put('teamAliasMappings', aliasRec);
+        aliasRec.aliasId = aliasId;
+        _cls.aliasRecords.push(aliasRec);
+      } else if (!(existingAlias.aliases || []).includes(norm)) {
+        existingAlias.aliases = [...(existingAlias.aliases || []), norm];
+        await DB.put('teamAliasMappings', existingAlias);
+      }
+    }
+
+    Sync.scheduleAutoSync();
+    Toast.show(I18n.t('cls_published_toast'));
+    _cls.stage = 'closed';
+    _cls.method = null; _cls.rawInput = ''; _cls.draftRows = null; _cls.imageDataUrl = null;
+    clsRerenderBelow();
+  } catch (e) {
+    console.error('[classification] publish failed', e);
+    Toast.error(e.message || I18n.t('cls_err_parse_failed'));
+    // The currently published snapshot above is untouched — a failed
+    // import never affects what's already live.
+  }
+}
+
+function clsRestoreSnapshot(snapshotId) {
+  const snap = _cls.snapshots.find(s => s.snapshotId === snapshotId);
+  if (!snap) return;
+  Confirm.show(I18n.t('cls_btn_restore'), I18n.t('cls_restore_confirm'), async () => {
+    const existingForScope = clsSnapshotsForScope(_cls.scope);
+    const nextVersion = existingForScope.reduce((m, s) => Math.max(m, s.version || 0), 0) + 1;
+    const now = new Date().toISOString();
+    const restored = {
+      seasonId: snap.seasonId, competitionType: snap.competitionType, competitionName: snap.competitionName,
+      phase: snap.phase || '', series: snap.series || '',
+      sourceName: snap.sourceName, sourceUrl: snap.sourceUrl, sourceDate: snap.sourceDate, label: snap.label,
+      importMethod: 'restore', importTimestamp: now,
+      importedBy: (typeof Auth !== 'undefined' && Auth.getEmail && Auth.getEmail()) || null,
+      validationStatus: snap.validationStatus, publicationStatus: 'published',
+      publishedAt: now, version: nextVersion,
+      rows: (snap.rows || []).map(r => ({ ...r })), // clone — the source snapshot is never mutated
+    };
+    try {
+      const newId = await DB.put('classificationSnapshots', restored);
+      restored.snapshotId = newId;
+      _cls.snapshots.push(restored);
+      Sync.scheduleAutoSync();
+      Toast.show(I18n.t('cls_restored_toast'));
+      clsRerenderBelow();
+    } catch (e) {
+      console.error('[classification] restore failed', e);
+      Toast.error(e.message || I18n.t('cls_err_parse_failed'));
+    }
   });
 }
 
@@ -17445,7 +18597,7 @@ async function handleSyncDownload() {
 // DB PUT WRAPPER — marks records as modified for sync
 // ══════════════════════════════════════════════════════════════════════════════
 const _origPut = DB.put.bind(DB);
-const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','trainingPackVersions','trainingSeries','trainingSeriesExceptions','trainingSeriesPauses','tournaments','temporaryPlayers','clubTeams','externalResources']);
+const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','trainingPackVersions','trainingSeries','trainingSeriesExceptions','trainingSeriesPauses','tournaments','temporaryPlayers','clubTeams','externalResources','classificationSnapshots','teamAliasMappings']);
 
 DB.put = async function(store, obj) {
   if (SYNC_STORES_SET.has(store) && obj) {
@@ -19516,6 +20668,19 @@ const Render = (() => {
     return `<div class="empty"><strong>${I18n.t('no_season_title')}</strong><p>${I18n.t('no_season_desc')}</p><button class="btn btn-primary" onclick="Nav.go('settings')">${I18n.t('btn_go_settings')}</button></div>`;
   }
 
+  // ── LEAGUE CLASSIFICATION ────────────────────────────────────────────────
+  // Thin render entry point — all state, parsing, validation and markup
+  // live in the cls_* globals defined above (next to the Classification
+  // pure-logic module), the same split used by every other screen in this
+  // file (Render.X() loads + delegates, the heavy lifting lives outside).
+  async function classification() {
+    const el = document.getElementById('classificationContent');
+    if (!el) return;
+    if (!State.currentSeason) { el.innerHTML = noSeason(); return; }
+    await clsReload(State.currentSeasonId);
+    el.innerHTML = clsRenderScreen();
+  }
+
   // ── HELP ──────────────────────────────────────────────────────────────────
   function help() {
     const el = document.getElementById('helpContent');
@@ -19557,7 +20722,7 @@ const Render = (() => {
       </div>`;
   }
 
-  return { home, dashboard, squad, gamesList, gameDetail, trackedPlayer, teamSummary, achievements, clubHistory, settings, help };
+  return { home, dashboard, squad, gamesList, gameDetail, trackedPlayer, teamSummary, classification, achievements, clubHistory, settings, help };
 })();
 
 // Global wrapper — onclick handlers run in global scope, Render.teamSummary lives in the closure
@@ -19663,6 +20828,7 @@ const Nav = (() => {
       case 'squad':        await Render.squad(document.getElementById('squadSearch')?.value||'', document.getElementById('squadFilter')?.value||''); break;
       case 'games':        await Render.gamesList(document.getElementById('gamesSearch')?.value||'', document.getElementById('gamesFilter')?.value||''); break;
       case 'teamSummary':  await Render.teamSummary(); break;
+      case 'classification': await Render.classification(); break;
       case 'tournSummary': await tournSummary(); break;
       case 'settings':     await Render.settings(); break;
       case 'help':         Render.help(); break;
@@ -20481,6 +21647,8 @@ const Sync = (() => {
       temporaryPlayers: 'temporary_players',
       clubTeams: 'club_teams',
       externalResources: 'external_resources',
+      classificationSnapshots: 'classification_snapshots',
+      teamAliasMappings: 'team_alias_mappings',
     };
     return map[store] || store;
   }
@@ -21791,6 +22959,7 @@ const Sync = (() => {
       trainingPacks:'packId', trainingPackVersions:'packVersionId',
       trainingSeries:'seriesId', trainingSeriesExceptions:'exceptionId', trainingSeriesPauses:'pauseId',
       tournaments:'tournamentId', temporaryPlayers:'tempPlayerId', clubTeams:'clubTeamId',
+      classificationSnapshots:'snapshotId', teamAliasMappings:'aliasId',
     };
     return keys[store] || 'id';
   }

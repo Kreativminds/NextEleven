@@ -133,6 +133,22 @@
   .live-banner .dot{width:8px;height:8px;background:#fff;border-radius:50%;animation:live-pulse 1.5s ease-in-out infinite}
   @keyframes live-pulse{0%,100%{opacity:1}50%{opacity:.3}}
   @media (prefers-reduced-motion: reduce){.live-banner .dot{animation:none}}
+  /* League Classification — read-only table inside the Team tab (section 11
+     of the classification ticket). Horizontally scrollable so every column
+     stays reachable on a narrow phone without shrinking text below legible
+     size; the own-team row is tinted instead of bordered so it reads clearly
+     at small sizes without adding visual noise. */
+  .cls-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:4px}
+  .classification-table{width:100%;border-collapse:collapse;font-size:11px;min-width:460px}
+  .classification-table th{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;text-align:center;padding:6px 4px;border-bottom:1px solid var(--border);white-space:nowrap}
+  .classification-table th:nth-child(2){text-align:left}
+  .classification-table td{padding:6px 4px;text-align:center;border-bottom:1px solid var(--border);white-space:nowrap}
+  .classification-table td:nth-child(2){text-align:left;font-weight:600;white-space:normal;min-width:108px}
+  .classification-table .cls-pos{font-weight:700;color:var(--muted)}
+  .classification-table .cls-pts{font-weight:800}
+  .classification-table tr.cls-own{background:var(--amber-bg)}
+  .cls-meta{font-size:11px;color:var(--muted);margin:0 0 6px}
+  .cls-warning{font-size:11px;color:var(--amber);background:var(--amber-bg);padding:7px 10px;border-radius:6px;margin-bottom:8px}
 </style>
 </head>
 <body>
@@ -804,6 +820,11 @@ const STRINGS = {
     skip:'Skip to main content', loading:'Loading…',
     last_updated:'Last updated: {time}', refresh_failed:'Refresh failed — showing last update.',
     lang_label:'Language',
+    cls_section_header:'LEAGUE STANDINGS',
+    cls_empty:'No classification has been published yet.',
+    cls_updated_on:'Updated on {date}', cls_source_label:'Source: {source}',
+    cls_stale_warning:'This classification may not include the latest results.',
+    cls_col_pos:'Pos', cls_col_team:'Team', cls_col_pts:'Pts', cls_col_played:'P', cls_col_wins:'W', cls_col_draws:'D', cls_col_losses:'L', cls_col_gf:'GF', cls_col_ga:'GA', cls_col_gd:'GD',
   },
   pt: {
     live:'AO VIVO', home:'Casa', away:'Fora', kickoff:'Início',
@@ -865,6 +886,11 @@ const STRINGS = {
     skip:'Saltar para o conteúdo', loading:'A carregar…',
     last_updated:'Última atualização: {time}', refresh_failed:'Falha ao atualizar — a mostrar os últimos dados.',
     lang_label:'Idioma',
+    cls_section_header:'CLASSIFICAÇÃO',
+    cls_empty:'Ainda não foi publicada nenhuma classificação.',
+    cls_updated_on:'Atualizado em {date}', cls_source_label:'Fonte: {source}',
+    cls_stale_warning:'Esta classificação pode não incluir os resultados mais recentes.',
+    cls_col_pos:'Pos', cls_col_team:'Equipa', cls_col_pts:'Pts', cls_col_played:'J', cls_col_wins:'V', cls_col_draws:'E', cls_col_losses:'D', cls_col_gf:'GM', cls_col_ga:'GS', cls_col_gd:'DG',
   },
 };
 // Language switcher — shown on every view, in the footer.
@@ -1380,6 +1406,56 @@ function updateLiveBarVisibility() {
   document.body.classList.toggle('live-bar-on', show);
 }
 
+// League Classification — read-only table for the Team tab (ticket section
+// 11). `classification` is the single latest-published snapshot the RPC
+// already selected server-side (or null/undefined when none exists yet),
+// shaped exactly like an admin classificationSnapshots record: { rows:
+// [{position, teamName, points, played, wins, draws, losses, goalsFor,
+// goalsAgainst, goalDiff, isOurTeam}], competitionName, phase, series,
+// sourceName, publishedAt, ... } plus a `stale` flag computed by the
+// caller from this page's own match data. Only dates/sources actually
+// present on the snapshot are ever shown — nothing here is claimed to be
+// live or official beyond what the snapshot itself records.
+function renderClassificationTable(classification) {
+  const header = `<h2 class="card-title" style="margin-top:0;font-size:11px">${tr('cls_section_header')}</h2>`;
+  if (!classification || !Array.isArray(classification.rows) || !classification.rows.length) {
+    return `<div class="card">${header}<p class="split-note">${tr('cls_empty')}</p></div>`;
+  }
+  const metaParts = [];
+  if (classification.publishedAt) metaParts.push(tr('cls_updated_on', { date: fmtDate(String(classification.publishedAt).slice(0, 10)) }));
+  if (classification.sourceName) metaParts.push(tr('cls_source_label', { source: esc(classification.sourceName) }));
+  const scopeBits = [classification.competitionName, classification.phase, classification.series].filter(Boolean).map(esc);
+  const rowsHtml = classification.rows.map(r => `
+    <tr class="${r.isOurTeam ? 'cls-own' : ''}">
+      <td class="cls-pos">${r.position ?? '—'}</td>
+      <td>${esc(r.teamName || '')}</td>
+      <td class="cls-pts">${r.points ?? '—'}</td>
+      <td>${r.played ?? '—'}</td>
+      <td>${r.wins ?? '—'}</td>
+      <td>${r.draws ?? '—'}</td>
+      <td>${r.losses ?? '—'}</td>
+      <td>${r.goalsFor ?? '—'}</td>
+      <td>${r.goalsAgainst ?? '—'}</td>
+      <td>${r.goalDiff ?? '—'}</td>
+    </tr>`).join('');
+  return `<div class="card">
+    ${header}
+    ${scopeBits.length ? `<div class="cls-meta">${scopeBits.join(' · ')}</div>` : ''}
+    ${metaParts.length ? `<div class="cls-meta">${metaParts.join(' · ')}</div>` : ''}
+    ${classification.stale ? `<div class="cls-warning">${tr('cls_stale_warning')}</div>` : ''}
+    <div class="cls-scroll">
+      <table class="classification-table">
+        <thead><tr>
+          <th>${tr('cls_col_pos')}</th><th>${tr('cls_col_team')}</th><th>${tr('cls_col_pts')}</th>
+          <th>${tr('cls_col_played')}</th><th>${tr('cls_col_wins')}</th><th>${tr('cls_col_draws')}</th><th>${tr('cls_col_losses')}</th>
+          <th>${tr('cls_col_gf')}</th><th>${tr('cls_col_ga')}</th><th>${tr('cls_col_gd')}</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
 function render(el, data) {
   applyTeamPageBranding(data.appBranding);
 
@@ -1412,6 +1488,21 @@ function render(el, data) {
   const officialGames = split.official;
 
   const stats = computeTeamStats(officialGames);
+
+  // League Classification (ticket section 11) — the RPC already selected
+  // the single latest-published snapshot for this season, scoped and
+  // validated on the admin side; this page only displays it read-only.
+  // Staleness is judged the same way the admin screen judges it: if our
+  // own completed League matches for this exact competition already
+  // outnumber what the snapshot shows for our row, the snapshot predates
+  // at least one result we already have.
+  const classification = data.classification || null;
+  if (classification) {
+    const ourClsRow = (classification.rows || []).find(r => r.isOurTeam);
+    const clsCompName = (classification.competitionName || '').trim().toLowerCase();
+    const clsScopeGames = finishedGames.filter(g => g.competitionType === 'League' && (g.competitionName || '').trim().toLowerCase() === clsCompName);
+    classification.stale = !!(ourClsRow && clsScopeGames.length > (ourClsRow.played || 0));
+  }
 
   // Recent Results lists every finished game (tagged by type); the form
   // strip in Season Summary is League & Cup only.
@@ -1531,6 +1622,7 @@ function render(el, data) {
     </div>
 
     ${renderSeasonLeaders(players, officialGames, gamePlayers)}
+    ${renderClassificationTable(classification)}
     </div>
 
     <div class="pane" data-tab="matches">
