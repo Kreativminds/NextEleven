@@ -156,6 +156,19 @@
   .classification-table th:nth-child(2), .classification-table td:nth-child(2){position:sticky;left:30px;z-index:2;width:112px;min-width:112px;max-width:112px;border-right:1px solid var(--border)}
   .cls-meta{font-size:11px;color:var(--muted);margin:0 0 6px}
   .cls-warning{font-size:11px;color:var(--amber);background:var(--amber-bg);padding:7px 10px;border-radius:6px;margin-bottom:8px}
+  /* Venue list zebra-striping (parents' "hard to tell rows apart" fix) —
+     scoped to .venue-row specifically, never to the plain .row class
+     shared by birthdays/unavailable-players/etc elsewhere on this page. */
+  .venue-row{border-radius:4px}
+  .venue-row.venue-row-alt{background:var(--red-bg)}
+  /* Directions app-chooser — a small bottom sheet, not a full dialog,
+     since there are only ever 2-3 choices (Google Maps, Waze, Cancel). */
+  .dir-sheet-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1300}
+  .dir-sheet{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-radius:14px 14px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));z-index:1301;box-shadow:0 -4px 20px rgba(0,0,0,.18);max-width:520px;margin:0 auto}
+  .dir-sheet-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;text-align:center}
+  .dir-sheet-btn{display:block;width:100%;padding:13px;margin-bottom:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-family:inherit;font-size:14px;font-weight:700;color:var(--dark);cursor:pointer}
+  .dir-sheet-btn:last-child{margin-bottom:0}
+  .dir-sheet-cancel{background:var(--bg);color:var(--muted);font-weight:600}
 </style>
 </head>
 <body>
@@ -428,16 +441,100 @@ function categoryLabel(k) {
 // and a small competition tag. Deliberately no fixture-status (confirmed
 // / to-confirm) wording here — that's coach-app-only; the disclaimer
 // below the list already covers "this may change."
-function renderUpcomingMatchRow(g) {
+// idx is a CONTINUOUS position across the whole upcoming-matches list
+// (not reset per render chunk) — the zebra-stripe only looks right if
+// row 6 (first row of the "show more" chunk) continues the alternation
+// from row 5, instead of restarting at 0.
+function renderUpcomingMatchRow(g, idx) {
   const dateLabel = fmtDate(g.date); // the one real date formatter already used elsewhere on this page
   const haLabel = g.homeAway === 'Home' ? tr('home') : tr('away');
   const compLabel = g.competitionName || compTypeTag(g.competitionType);
-  return `<div class="row" style="flex-wrap:wrap;row-gap:2px">
+  const stripeClass = (idx % 2 === 1) ? ' venue-row-alt' : '';
+  const dirHtml = directionsLinkHtml(g.opponentMapUrl, g.venue || g.opponent);
+  return `<div class="row venue-row${stripeClass}" style="flex-wrap:wrap;row-gap:2px">
     <span class="row-name" style="flex-basis:100%">${esc(g.opponent)}</span>
     <span class="row-meta">${esc(dateLabel)} · ${esc(g.gameTime || '')}</span>
     <span class="row-meta">${haLabel}${g.venue ? ' · ' + esc(g.venue) : ''}</span>
     ${compLabel ? `<span class="comp-tag">${esc(compLabel)}</span>` : ''}
+    ${dirHtml ? `<span class="row-meta" style="flex-basis:100%">${dirHtml}</span>` : ''}
   </div>`;
+}
+
+// ── DIRECTIONS / NAVIGATION APP CHOOSER ─────────────────────────────────
+// Only a single Google Maps link is stored per opponent (no raw lat/lng
+// or address), so a Waze deep link can't be derived from it — Waze gets
+// a name-based text search instead. When there's no curated mapUrl at
+// all (e.g. a venue nobody has looked up yet), Google Maps falls back to
+// the same kind of text search, so every venue gets a working directions
+// action, not just the ones with a saved link.
+let _dirTargets = [];
+function registerDirectionsTarget(mapUrl, name) {
+  _dirTargets.push({ mapUrl: mapUrl || null, name: name || '' });
+  return _dirTargets.length - 1;
+}
+function directionsLinkHtml(mapUrl, name) {
+  if (!mapUrl && !name) return '';
+  const idx = registerDirectionsTarget(mapUrl, name);
+  return `<a href="#" onclick="openDirectionsChooser(${idx});return false;" style="color:var(--black);font-weight:700;text-decoration:none;white-space:nowrap">${esc(tr('get_directions'))} &#8594;</a>`;
+}
+function openDirectionsChooser(idx) {
+  const t = _dirTargets[idx];
+  if (!t) return;
+  const query = t.name ? encodeURIComponent(t.name) : '';
+  const googleUrl = t.mapUrl || (query ? `https://www.google.com/maps/search/?api=1&query=${query}` : '');
+  const wazeUrl = query ? `https://waze.com/ul?q=${query}&navigate=yes` : '';
+  if (!googleUrl && !wazeUrl) return;
+  // Only one real option (e.g. a name with no plausible Waze match) —
+  // skip the chooser and just go straight there.
+  if (googleUrl && !wazeUrl) { window.open(googleUrl, '_blank', 'noopener'); return; }
+  if (!googleUrl && wazeUrl) { window.open(wazeUrl, '_blank', 'noopener'); return; }
+  showDirectionsSheet(googleUrl, wazeUrl);
+}
+function closeDirectionsSheet() {
+  const el = document.getElementById('dirSheet');
+  if (el) el.remove();
+}
+function showDirectionsSheet(googleUrl, wazeUrl) {
+  closeDirectionsSheet();
+  const wrap = document.createElement('div');
+  wrap.id = 'dirSheet';
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'dir-sheet-backdrop';
+  backdrop.addEventListener('click', closeDirectionsSheet);
+  wrap.appendChild(backdrop);
+
+  const sheet = document.createElement('div');
+  sheet.className = 'dir-sheet';
+  sheet.setAttribute('role', 'dialog');
+  sheet.setAttribute('aria-modal', 'true');
+
+  const title = document.createElement('div');
+  title.className = 'dir-sheet-title';
+  title.textContent = tr('choose_nav_app');
+  sheet.appendChild(title);
+
+  function addBtn(url, emoji, label) {
+    if (!url) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'dir-sheet-btn';
+    btn.textContent = `${emoji} ${label}`;
+    btn.addEventListener('click', () => { window.open(url, '_blank', 'noopener'); closeDirectionsSheet(); });
+    sheet.appendChild(btn);
+  }
+  addBtn(googleUrl, '🗺️', tr('open_google_maps'));
+  addBtn(wazeUrl, '🚗', tr('open_waze'));
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'dir-sheet-btn dir-sheet-cancel';
+  cancelBtn.textContent = tr('cancel');
+  cancelBtn.addEventListener('click', closeDirectionsSheet);
+  sheet.appendChild(cancelBtn);
+
+  wrap.appendChild(sheet);
+  document.body.appendChild(wrap);
 }
 
 function toggleUpcomingMatches() {
@@ -785,6 +882,7 @@ const STRINGS = {
     live_note:'Updating every 15 seconds while the game is on. Counted in the season record once the game ends.',
     own_goal:'Own goal',
     next_match:'Next Match', today:'Today', tomorrow:'Tomorrow', days_remaining:'{n} days remaining', get_directions:'Directions',
+    choose_nav_app:'Open directions in', open_google_maps:'Google Maps', open_waze:'Waze', cancel:'Cancel',
     next_birthday:'Next Birthday', birthdays_this_week:'Birthday This Week', birthdays_this_week_pl:'Birthdays This Week',
     happy_birthday:'Happy Birthday, {name}!', turning:'Turning {n}', turning_today:'Turning {n} today',
     in_days:'In {n} days', in_days_low:'in {n} days', tomorrow_low:'tomorrow',
@@ -853,6 +951,7 @@ const STRINGS = {
     live_note:'Atualiza a cada 15 segundos durante o jogo. Entra no registo da época quando o jogo terminar.',
     own_goal:'Autogolo',
     next_match:'Próximo Jogo', today:'Hoje', tomorrow:'Amanhã', days_remaining:'Faltam {n} dias', get_directions:'Direções',
+    choose_nav_app:'Abrir direções em', open_google_maps:'Google Maps', open_waze:'Waze', cancel:'Cancelar',
     next_birthday:'Próximo Aniversário', birthdays_this_week:'Aniversário Esta Semana', birthdays_this_week_pl:'Aniversários Esta Semana',
     happy_birthday:'Parabéns, {name}!', turning:'Faz {n} anos', turning_today:'Faz {n} anos hoje',
     in_days:'Daqui a {n} dias', in_days_low:'daqui a {n} dias', tomorrow_low:'amanhã',
@@ -1479,6 +1578,9 @@ function renderClassificationTable(classification) {
 }
 
 function render(el, data) {
+  // Reset so re-renders (language switch, the 15-60s live poll) don't pile
+  // up stale entries in this array for the lifetime of the page.
+  _dirTargets = [];
   applyTeamPageBranding(data.appBranding);
 
   const params = new URLSearchParams(window.location.search);
@@ -1547,7 +1649,7 @@ function render(el, data) {
       <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('next_match')}</h2>
       <div style="font-weight:700;font-size:15px">${esc(next.opponent)}</div>
       <div style="font-size:12px;color:var(--muted);margin-top:3px">${fmtDate(next.date)}${next.gameTime ? ' · ' + next.gameTime : ''}${next.competitionName ? ' · ' + esc(next.competitionName) : ''}</div>
-      ${next.venue ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">📍 ${esc(next.venue)}${next.opponentMapUrl ? ` · <a href="${esc(next.opponentMapUrl)}" target="_blank" rel="noopener" style="color:var(--black);font-weight:700;text-decoration:none">${tr('get_directions')} &#8594;</a>` : ''}</div>` : ''}
+      ${next.venue ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">📍 ${esc(next.venue)} · ${directionsLinkHtml(next.opponentMapUrl, next.venue || next.opponent)}</div>` : ''}
       ${(() => {
         const kickoff = new Date(`${next.date}T${next.gameTime || '00:00'}`);
         const daysLeft = Math.round((kickoff - new Date()) / (1000*60*60*24));
@@ -1671,11 +1773,11 @@ function render(el, data) {
       <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('upcoming_matches')}</h2>
       ${upcomingGames.length ? `
       <div id="upcoming-matches-list">
-        ${upcomingGames.slice(0, 5).map(g => renderUpcomingMatchRow(g)).join('')}
+        ${upcomingGames.slice(0, 5).map((g, i) => renderUpcomingMatchRow(g, i)).join('')}
       </div>
       ${upcomingGames.length > 5 ? `
       <div id="upcoming-matches-rest" style="display:none">
-        ${upcomingGames.slice(5).map(g => renderUpcomingMatchRow(g)).join('')}
+        ${upcomingGames.slice(5).map((g, i) => renderUpcomingMatchRow(g, i + 5)).join('')}
       </div>
       <button type="button" id="upcoming-matches-toggle" class="link-button"
               style="background:none;border:none;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:6px 0;display:block"
