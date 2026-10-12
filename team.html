@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Team Season</title>
 <meta name="robots" content="noindex, nofollow">
+<!-- PWA: lets a parent "Add to Home Screen" for a real app icon. The
+     manifest href below is a static fallback; loadTeamPage() swaps it
+     for a per-family version (same content, start_url carries their own
+     ?token=) as soon as the token is known — see setupPwaManifest(). -->
+<link rel="manifest" id="webAppManifest" href="team-manifest.json">
+<meta name="theme-color" content="#0F1E2E">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NextEleven">
+<meta name="mobile-web-app-capable" content="yes">
 <style>
   :root{
     --black:#B23333;
@@ -687,6 +699,53 @@ let _liveGameOnPage = false;
 const POLL_LIVE_MS = 15000;
 const POLL_IDLE_MS = 60000;
 
+// ── PWA: "Add to Home Screen" ───────────────────────────────────────────
+// Entirely optional for the person reading this page — nothing here
+// changes what they see if they never tap it. Two pieces:
+//
+// 1. A per-family manifest. The static team-manifest.json in <head> is
+//    just a fallback (no token, so start_url alone would land on the
+//    "No link provided" screen). Once this family's real ?token= is
+//    known, swap the manifest for a Blob built with the SAME content but
+//    a start_url that carries their token, so installing actually opens
+//    their team's data, not an empty error page.
+// 2. A service worker that caches only the static app shell (this file,
+//    the icons, the manifest) — never Supabase responses. A cached score
+//    would be worse than no offline support at all, so every live-data
+//    fetch bypasses it entirely (see sw.js).
+function setupPwaManifest() {
+  try {
+    const link = document.getElementById('webAppManifest');
+    if (!link) return;
+    const manifest = {
+      name: 'NextEleven — Parents Page',
+      short_name: 'NextEleven',
+      description: 'Live team schedule, results and stats for parents — read-only.',
+      start_url: window.location.pathname + window.location.search,
+      scope: '.',
+      display: 'standalone',
+      orientation: 'portrait',
+      background_color: '#F2F4F7',
+      theme_color: '#0F1E2E',
+      icons: [
+        { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: 'icons/icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+        { src: 'icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ],
+    };
+    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+    link.href = URL.createObjectURL(blob);
+  } catch (e) { /* not fatal — the page works fine without an install prompt */ }
+}
+function registerServiceWorker() {
+  try {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  } catch (e) { /* not fatal */ }
+}
+
 async function loadTeamPage() {
   const contentEl = document.getElementById('content');
   const params = new URLSearchParams(window.location.search);
@@ -696,6 +755,9 @@ async function loadTeamPage() {
     contentEl.innerHTML = `<div class="empty"><div class="icon">🔗</div><strong>${tr('no_link')}</strong><p>${tr('no_link_body')}</p></div>`;
     return;
   }
+
+  setupPwaManifest();
+  registerServiceWorker();
 
   document.documentElement.lang = getLang();
   paintLangSwitch();
