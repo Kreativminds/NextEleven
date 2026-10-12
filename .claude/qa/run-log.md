@@ -8,6 +8,26 @@ Newest entry on top.
 
 ---
 
+## 2026-10-12 — Scheduled nightly run
+
+- lastInspectedCommit: 3b06d40
+- Trigger: scheduled nightly run (first real run; trial started today).
+- Scope: commits since 37052b9 touched team.html (PWA/Parents Page, venue
+  layout) — zero-AI early exit did not fire, so triage ran.
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse).
+  - `check-i18n-parity.js` → 1 finding (before fix): `integ_fix_review`
+    missing in EN. OK (after fix).
+- Triage (haiku): only concrete candidate was the known `integ_fix_review`
+  i18n gap. No P0/P1/P2 found; team.html/PWA/icons/sw.js/manifest commits
+  are new features with no visible defect, not flagged.
+- Fixed (1/2 of cap used):
+  - `integ_fix_review` missing EN translation — added EN string matching
+    existing PT text. Commit 2752e9c on `maintenance/nightly-2026-10-12`
+    (version bump 3ae384e). PR: https://github.com/Kreativminds/NextEleven/pull/1
+- Needs approval: none.
+- Pending (not reached, cap not binding — only 1 candidate existed): none.
+
 ## 2026-10-12 — Setup / dry run (manual, not a scheduled run)
 
 - lastInspectedCommit: 37052b9
@@ -26,5 +46,4 @@ Newest entry on top.
 ## Known Unresolved
 (carried forward between runs so they aren't re-analyzed from scratch)
 
-- `integ_fix_review` missing EN translation — see 2026-10-12 entry above.
-  Low risk, single-string fix (P3). Candidate for the first scheduled run.
+(none — `integ_fix_review` resolved in the 2026-10-12 scheduled run above)

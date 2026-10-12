@@ -9,17 +9,16 @@ How this works:
 
 ## Open
 
-### Missing English translation for "possible duplicate game" review note
-- Reported: 2026-10-12 (found by the nightly QA dry run, not by Victor)
-- Status: Open
-- Where: Data Integrity checker, "possible duplicate game" row.
-- Detail: `integ_fix_review` is defined in the Portuguese translation
-  block but missing from English. English-language users see a raw/
-  missing string instead of "X similar games — NOT merged. Check
-  whether they're really the same game." there.
-- Priority: P3 (cosmetic, single missing string, no data impact).
+(none)
 
 ## Resolved
+
+### Missing English translation for "possible duplicate game" review note
+- Reported: 2026-10-12 (found by the nightly QA dry run, not by Victor)
+- Status: Fixed (commit 2752e9c, PR https://github.com/Kreativminds/NextEleven/pull/1)
+- Fix: added the missing `integ_fix_review` EN string, matching the
+  existing PT text: "{n} similar games — NOT merged. Check whether
+  they are really the same game."
 
 <!-- Example format once entries start moving here:
 ### Captain button does nothing when tapped
