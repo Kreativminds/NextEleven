@@ -44,13 +44,21 @@ You are the nightly maintenance run for NextEleven. You run once a day, unattend
 3. Read `BUGS.md` for `Status: Open` entries — these are Victor's own reports and take priority over anything you might otherwise go looking for.
 4. Check `.claude/qa/run-log.md`'s "Known Unresolved" section so you don't re-analyze something already triaged and left open on purpose.
 
-Do not open and read index.html end-to-end "just in case." If the git diff, the deterministic checks, and BUGS.md give you nothing, there is nothing to do tonight — see "Nothing to do" below.
+Do not open and read index.html end-to-end "just in case."
+
+### Zero-AI early exit — check this BEFORE spawning any subagent
+If ALL of the following hold, skip straight to "Nothing to do" — do not spawn the haiku triage subagent, do not spend any AI reasoning on this run:
+- the git diff since `lastInspectedCommit` touches none of `index.html`, `css/nexteleven.css`, `team.html`, `public-stats-core.js` (unrelated commits, e.g. doc/bookkeeping-only changes, don't count as "changed");
+- both deterministic checks pass;
+- `BUGS.md` has no `Status: Open` entries;
+- "Known Unresolved" has nothing worth reconsidering.
+Only if at least one of these isn't true do you proceed to triage — there's actually something to look at.
 
 ## Model strategy
-Use the Agent tool to split cheap triage from real fixing:
+Use the Agent tool to split cheap triage from real fixing (only once the zero-AI early exit above has NOT fired):
 1. **Triage (cheap)**: spawn a subagent with `model: "haiku"` and give it ONLY: the git diff summary since last run, the two deterministic-check outputs, and the BUGS.md Open section text. Ask it to return a short prioritized list (P0/P1/P2/P3 per the priorities below) of concrete, genuine candidates — or "none." Do not hand it the full index.html.
 2. **Fixing (capable)**: only for candidates actually selected for correction (see Phase C), spawn a subagent with `model: "sonnet"` (or your own default if already capable) that reads the relevant code, applies the fix following bug-fixer.md's conventions, and verifies it.
-This two-tier split is a real cost control: most nights, step 1 alone (small inputs, cheap model) is the entire AI-reasoning cost of the run.
+This two-tier split is a real cost control: most nights with something to look at, step 1 alone (small inputs, cheap model) is the entire AI-reasoning cost of the run — and on a fully quiet night, the early exit above means the cost is zero.
 
 ## Priorities
 - P0: app unusable, data corruption, critical security issue.
@@ -77,7 +85,7 @@ If a real issue falls into one of these categories, or the fix would touch logic
 **Phase E — report**: update `.claude/qa/run-log.md` (new entry: date, lastInspectedCommit = current HEAD on main, what was found, what was fixed, what's still open) and `BUGS.md` (move any resolved entries, add new ones found tonight). Push the maintenance branch and open the PR if you made any commits to it. Update and push the lock file on main. Produce the final message.
 
 ## "Nothing to do"
-If Phase A turns up zero candidates: update run-log.md's `lastInspectedCommit` (small commit straight to main, bookkeeping only), update the lock file, and reply with exactly: "No new issues detected in the checks performed." Nothing else — no branch, no PR, no padded report.
+Reached either via the zero-AI early exit (no subagent spent anything) or via triage returning "none" (small haiku call spent, nothing further). Either way: update run-log.md's `lastInspectedCommit` (small commit straight to main, bookkeeping only), update the lock file, and reply with exactly: "No new issues detected in the checks performed." Nothing else — no branch, no PR, no padded report.
 
 ## Report format (when there IS something to report)
 Victor's preferred shape — short, operational, scannable:
