@@ -9,7 +9,15 @@ How this works:
 
 ## Open
 
-(none right now)
+### Missing English translation for "possible duplicate game" review note
+- Reported: 2026-10-12 (found by the nightly QA dry run, not by Victor)
+- Status: Open
+- Where: Data Integrity checker, "possible duplicate game" row.
+- Detail: `integ_fix_review` is defined in the Portuguese translation
+  block but missing from English. English-language users see a raw/
+  missing string instead of "X similar games — NOT merged. Check
+  whether they're really the same game." there.
+- Priority: P3 (cosmetic, single missing string, no data impact).
 
 ## Resolved
 
