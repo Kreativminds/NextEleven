@@ -454,9 +454,8 @@ function renderUpcomingMatchRow(g, idx) {
   return `<div class="row venue-row${stripeClass}" style="flex-wrap:wrap;row-gap:2px">
     <span class="row-name" style="flex-basis:100%">${esc(g.opponent)}</span>
     <span class="row-meta">${esc(dateLabel)} · ${esc(g.gameTime || '')}</span>
-    <span class="row-meta">${haLabel}${g.venue ? ' · ' + esc(g.venue) : ''}</span>
+    <span class="row-meta">${haLabel}${g.venue ? ' · ' + esc(g.venue) : ''}${dirHtml ? ' · ' + dirHtml : ''}</span>
     ${compLabel ? `<span class="comp-tag">${esc(compLabel)}</span>` : ''}
-    ${dirHtml ? `<span class="row-meta" style="flex-basis:100%">${dirHtml}</span>` : ''}
   </div>`;
 }
 
