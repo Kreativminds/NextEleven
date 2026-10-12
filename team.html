@@ -158,8 +158,10 @@
   .cls-warning{font-size:11px;color:var(--amber);background:var(--amber-bg);padding:7px 10px;border-radius:6px;margin-bottom:8px}
   /* Venue list zebra-striping (parents' "hard to tell rows apart" fix) —
      scoped to .venue-row specifically, never to the plain .row class
-     shared by birthdays/unavailable-players/etc elsewhere on this page. */
-  .venue-row{border-radius:4px}
+     shared by birthdays/unavailable-players/etc elsewhere on this page.
+     Horizontal padding applies to every row, striped or not, so the text
+     sits the same distance in either way — only the background changes. */
+  .venue-row{border-radius:4px;padding:9px 10px}
   .venue-row.venue-row-alt{background:var(--red-bg)}
   /* Directions app-chooser — a small bottom sheet, not a full dialog,
      since there are only ever 2-3 choices (Google Maps, Waze, Cancel). */
@@ -454,8 +456,9 @@ function renderUpcomingMatchRow(g, idx) {
   return `<div class="row venue-row${stripeClass}" style="flex-wrap:wrap;row-gap:2px">
     <span class="row-name" style="flex-basis:100%">${esc(g.opponent)}</span>
     <span class="row-meta">${esc(dateLabel)} · ${esc(g.gameTime || '')}</span>
-    <span class="row-meta">${haLabel}${g.venue ? ' · ' + esc(g.venue) : ''}${dirHtml ? ' · ' + dirHtml : ''}</span>
+    <span class="row-meta">${haLabel}${g.venue ? ' · ' + esc(g.venue) : ''}</span>
     ${compLabel ? `<span class="comp-tag">${esc(compLabel)}</span>` : ''}
+    ${dirHtml ? `<span class="row-meta" style="flex-basis:100%">${dirHtml}</span>` : ''}
   </div>`;
 }
 
