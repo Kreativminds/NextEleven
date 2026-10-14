@@ -8,6 +8,39 @@ Newest entry on top.
 
 ---
 
+## 2026-10-14 — Scheduled nightly run
+
+- lastInspectedCommit: 0d5fe9d
+- Trigger: scheduled nightly run.
+- Scope: diff since 4a8c3c2 (last run's recorded lastInspectedCommit)
+  touched index.html, css/nexteleven.css and team.html (7 commits: blue
+  accent color added to admin UI, CSS cache-bust bump, round number shown
+  across all game references in team.html, Home carousel height/arrival-box
+  fixes, PWA icon replacement). Zero-AI early exit did not fire (app code
+  changed), so triage ran.
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse), before and after fix.
+  - `check-i18n-parity.js` → OK (1919/1919 keys, no gaps), before and after fix.
+- Triage (haiku, 2 passes — first pass sent an empty diff by mistake and was
+  re-run with the actual diff included): identified the blue-accent CSS
+  rule as the one concrete candidate; a second, speculative concern about
+  sticky-column width was raised but self-flagged as unconfirmed/pre-existing
+  and not pursued (verified: inline `min-width:60px` on `.col-sticky-num`
+  predates tonight's diff — only the cell's text content changed).
+- Fixed (1/2 of cap used):
+  - Blue left-accent strip (added by commit 1745e3f tonight) only rendered
+    on `.card` — the other 7 target selectors (`.stat-card`, `.table-wrap`,
+    `.timeline-item`, `.form-panel`, `.goal-row`, `.game-header`,
+    `.game-detail-table-wrap`) each have their own later `border:1px solid
+    var(--border)` base rule that reset `border-left` back to gray after
+    the accent rule, same specificity, later source order wins. Moved the
+    accent rule to the end of the stylesheet, after all 8 target base
+    rules, so it reliably wins for all of them. CSS-only, no selectors/colors
+    changed. Commit ba4037e (version bump 659cfa1) on
+    `maintenance/nightly-2026-10-14`. PR: https://github.com/Kreativminds/NextEleven/pull/2
+- Needs approval: none.
+- Pending (not reached, cap not binding — only 1 candidate existed): none.
+
 ## 2026-10-13 — Scheduled nightly run
 
 - lastInspectedCommit: 4a8c3c2
