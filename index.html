@@ -682,7 +682,7 @@ function groupPlayersByPosition(players, getPosition, sortWithinGroup) {
 }
 
 const CONFIG = {
-  APP_VERSION: '1.2.4', // human-readable label only — staleness detection no longer depends on this matching anything
+  APP_VERSION: '1.2.5', // human-readable label only — staleness detection no longer depends on this matching anything
   SCHEMA_VERSION: 21,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability); 21 = classificationSnapshots/teamAliasMappings (League Classification)
   DB_NAME: 'footballSquadTrackerDB',
   // Demo Mode lives in a SEPARATE IndexedDB database. Isolation is physical,
@@ -1094,10 +1094,10 @@ function renderSingleNextGameCard(nextGame, showArrivalTime, innerCardOnly, caro
             <div style="font-size:13px;margin-top:8px">${roundLabel(nextGame)?roundLabel(nextGame)+' · ':''}${fmtDate(nextGame.date)}${nextGame.gameTime?(showArrivalTime?' · Kick-off '+nextGame.gameTime:' · '+nextGame.gameTime):''}</div>
             <div style="margin-top:4px">${fixtureStatusBadge(nextGame)}</div>
           </div>
-          ${showArrivalTime && nextGame.arrivalTime?`
-          <div style="background:var(--black);color:#fff;padding:10px 16px;border-radius:4px;text-align:center">
+          ${showArrivalTime?`
+          <div style="background:var(--black);color:#fff;padding:10px 16px;border-radius:4px;text-align:center${nextGame.arrivalTime?'':';visibility:hidden'}">
             <div style="font-size:9px;text-transform:uppercase;letter-spacing:.8px;opacity:.7">${I18n.t('home_arrive_by')}</div>
-            <div style="font-size:20px;font-weight:700">${nextGame.arrivalTime}</div>
+            <div style="font-size:20px;font-weight:700">${nextGame.arrivalTime||'–'}</div>
           </div>`:''}
         </div>
       </div>`;
