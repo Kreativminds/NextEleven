@@ -94,11 +94,6 @@ nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--nav
 
 /* ── CARDS ────────────────────────────────────────────────────────────────── */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);margin-bottom:16px}
-/* Blue left-accent strip — every card-like container gets a brand-color
-   cue on its leading edge instead of being gray on every side. Keeps the
-   red family for primary actions/active states, adds blue as the
-   structural accent so the UI isn't flat gray-on-gray. */
-.card,.stat-card,.table-wrap,.timeline-item,.form-panel,.goal-row,.game-header,.game-detail-table-wrap{border-left:4px solid var(--blue)}
 /* Home: Next Game + Next Training. Two balanced columns when there's room,
    automatically stacking to one column on narrow/mobile widths — no media
    query needed, since auto-fit collapses the grid on its own. */
@@ -561,3 +556,16 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 #loading p{font-size:13px;color:var(--muted)}
 .spinner{width:32px;height:32px;border:3px solid #ccc;border-top-color:var(--black);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* Blue left-accent strip — every card-like container gets a brand-color
+   cue on its leading edge instead of being gray on every side. Keeps the
+   red family for primary actions/active states, adds blue as the
+   structural accent so the UI isn't flat gray-on-gray.
+   Placed last in the file (rather than up near .card, where it was first
+   added) because every one of these selectors has its own base rule with
+   a `border:1px solid var(--border)` shorthand — same specificity, so
+   whichever rule is LATER in source order wins. With the accent rule
+   only after .card's own rule, every other selector's later base rule
+   was clobbering border-left back to gray and the accent never showed
+   except on .card. */
+.card,.stat-card,.table-wrap,.timeline-item,.form-panel,.goal-row,.game-header,.game-detail-table-wrap{border-left:4px solid var(--blue)}
