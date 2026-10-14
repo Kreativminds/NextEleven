@@ -1,6 +1,6 @@
 /* ── RESET & BASE ─────────────────────────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;width:100%;font-family:'Montserrat',Arial,sans-serif;font-size:14px;background:#F2F4F7;color:#111;overflow-x:hidden;max-width:100vw;overscroll-behavior-x:none}
+html,body{height:100%;width:100%;font-family:'Montserrat',Arial,sans-serif;font-size:14px;background:#EEF2F8;color:#111;overflow-x:hidden;max-width:100vw;overscroll-behavior-x:none}
 button{font-family:'Montserrat',Arial,sans-serif;cursor:pointer}
 input,select,textarea{font-family:'Montserrat',Arial,sans-serif;font-size:13px}
 a{color:#111;text-decoration:none}
@@ -11,12 +11,19 @@ a{color:#111;text-decoration:none}
   --black:#B23333;
   --black-dark:#8f2828;
   --navy:#0F1E2E;
+  /* Formalizes the blue that was previously only hardcoded ad hoc in a
+     handful of badges (starter, assist, in-progress, syncing). Now also
+     the app's general structural accent — card strips, secondary buttons,
+     table headers — so the UI isn't red/gray only. */
+  --blue:#1a56c4;
+  --blue-dark:#123f94;
+  --blue-bg:#e8f0fe;
   --dark:#333333;
   --mid:#6B7280;
   --muted:#999999;
   --border:#dddddd;
   --border-dark:#bbbbbb;
-  --bg:#F2F4F7;
+  --bg:#EEF2F8;
   --surface:#ffffff;
   --highlight:#f5e9e9;
   --radius:3px;
@@ -87,6 +94,11 @@ nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--nav
 
 /* ── CARDS ────────────────────────────────────────────────────────────────── */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);margin-bottom:16px}
+/* Blue left-accent strip — every card-like container gets a brand-color
+   cue on its leading edge instead of being gray on every side. Keeps the
+   red family for primary actions/active states, adds blue as the
+   structural accent so the UI isn't flat gray-on-gray. */
+.card,.stat-card,.table-wrap,.timeline-item,.form-panel,.goal-row,.game-header,.game-detail-table-wrap{border-left:3px solid var(--blue)}
 /* Home: Next Game + Next Training. Two balanced columns when there's room,
    automatically stacking to one column on narrow/mobile widths — no media
    query needed, since auto-fit collapses the grid on its own. */
@@ -115,8 +127,8 @@ nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--nav
 /* ── TABLES ───────────────────────────────────────────────────────────────── */
 .table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:auto;box-shadow:var(--shadow);margin-bottom:16px}
 table{width:100%;border-collapse:collapse;min-width:400px}
-th{background:#f2f2f2;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--mid);padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
-th:hover{background:#ebebeb}
+th{background:var(--blue-bg);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--blue-dark);padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+th:hover{background:#dbe7fb}
 th.sort-asc::after{content:" ▲";font-size:9px}
 th.sort-desc::after{content:" ▼";font-size:9px}
 td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;color:var(--dark);vertical-align:middle}
@@ -143,7 +155,7 @@ tr:hover td{background:var(--highlight)}
 .btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:var(--radius);font-size:12px;font-weight:700;border:none;cursor:pointer;transition:opacity .15s;white-space:nowrap}
 .btn:hover{opacity:.85}
 .btn-primary{background:var(--black);color:#fff}
-.btn-secondary{background:none;border:1px solid var(--border-dark);color:var(--dark)}
+.btn-secondary{background:none;border:1px solid var(--blue);color:var(--blue)}
 .btn-danger{background:none;border:1px solid #ddd;color:#b03030;font-size:11px;padding:5px 10px}
 .btn-sm{padding:4px 9px;font-size:11px}
 .btn-icon{padding:5px 8px;font-size:13px}
@@ -256,11 +268,11 @@ tr:hover td{background:var(--highlight)}
 .stepper-count{font-size:18px;font-weight:700;min-width:24px;text-align:center}
 .game-detail-table{width:100%;border-collapse:collapse;min-width:760px}
 .game-detail-table th,.game-detail-table td{padding:7px 8px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:middle;white-space:nowrap}
-.game-detail-table th{background:#f2f2f2;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--mid)}
+.game-detail-table th{background:var(--blue-bg);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--blue-dark)}
 .game-detail-table tr:last-child td{border-bottom:none}
 .game-detail-table tr:hover td{background:var(--highlight)}
-.col-sticky-num{position:sticky;left:0;z-index:2;background:#f2f2f2;border-right:1px solid var(--border);width:26px;min-width:26px;max-width:26px;text-align:center;padding:6px 3px!important}
-.col-sticky-name{position:sticky;left:26px;z-index:2;background:#f2f2f2;border-right:2px solid var(--border-dark);min-width:90px;max-width:120px}
+.col-sticky-num{position:sticky;left:0;z-index:2;background:var(--blue-bg);border-right:1px solid var(--border);width:26px;min-width:26px;max-width:26px;text-align:center;padding:6px 3px!important}
+.col-sticky-name{position:sticky;left:26px;z-index:2;background:var(--blue-bg);border-right:2px solid var(--border-dark);min-width:90px;max-width:120px}
 td.col-sticky-num{background:var(--surface);font-weight:700;padding:6px 3px!important}
 td.col-sticky-name{background:var(--surface);font-weight:600}
 tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highlight)}
@@ -520,7 +532,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .badge-warn{background:#fff3cd;color:#856404;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700;display:inline-block}
 .badge-err{background:#fde8e8;color:#b03030;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700;display:inline-block}
 .import-preview-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
-.import-preview-table th{background:#f2f2f2;padding:5px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#666;border-bottom:1px solid #ddd}
+.import-preview-table th{background:var(--blue-bg);padding:5px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--blue-dark);border-bottom:1px solid #ddd}
 .import-preview-table td{padding:5px 8px;border-bottom:1px solid #eee}
 .row-ok{background:#f0faf2}.row-warn{background:#fffbe6}.row-skip{opacity:.6}.row-err{background:#fff0f0}
 
