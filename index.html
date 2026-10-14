@@ -682,7 +682,7 @@ function groupPlayersByPosition(players, getPosition, sortWithinGroup) {
 }
 
 const CONFIG = {
-  APP_VERSION: '1.2.3', // human-readable label only — staleness detection no longer depends on this matching anything
+  APP_VERSION: '1.2.4', // human-readable label only — staleness detection no longer depends on this matching anything
   SCHEMA_VERSION: 21,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability); 21 = classificationSnapshots/teamAliasMappings (League Classification)
   DB_NAME: 'footballSquadTrackerDB',
   // Demo Mode lives in a SEPARATE IndexedDB database. Isolation is physical,
@@ -13483,8 +13483,8 @@ async function renderHomeCompletedView(season) {
   ${(firstMatch || lastMatch) ? `
   <div class="card">
     <div class="card-title">${I18n.t('home_completed_timeline')}</div>
-    ${firstMatch ? `<div class="info-row"><span class="ir-label">${I18n.t('home_completed_first_match')}</span><span class="ir-value">${fmtDate(firstMatch.date)} · ${esc(firstMatch.opponent)}</span></div>` : ''}
-    ${lastMatch ? `<div class="info-row"><span class="ir-label">${I18n.t('home_completed_last_match')}</span><span class="ir-value">${fmtDate(lastMatch.date)} · ${esc(lastMatch.opponent)}</span></div>` : ''}
+    ${firstMatch ? `<div class="info-row"><span class="ir-label">${I18n.t('home_completed_first_match')}</span><span class="ir-value">${roundLabel(firstMatch)?roundLabel(firstMatch)+' · ':''}${fmtDate(firstMatch.date)} · ${esc(firstMatch.opponent)}</span></div>` : ''}
+    ${lastMatch ? `<div class="info-row"><span class="ir-label">${I18n.t('home_completed_last_match')}</span><span class="ir-value">${roundLabel(lastMatch)?roundLabel(lastMatch)+' · ':''}${fmtDate(lastMatch.date)} · ${esc(lastMatch.opponent)}</span></div>` : ''}
   </div>` : ''}
 
   ${finalThree.length ? `
@@ -13498,7 +13498,7 @@ async function renderHomeCompletedView(season) {
       return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="goToGameDetail(${g.gameId})">
         <div>
           <div style="font-weight:700;font-size:13px">${esc(g.opponent)} <span style="font-weight:400;color:var(--muted);font-size:11px">${homeAwayLabel(g.homeAway)}</span></div>
-          <div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(g.date)}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:1px">${roundLabel(g)?roundLabel(g)+' · ':''}${fmtDate(g.date)}</div>
         </div>
         <div style="text-align:right">
           <span class="badge badge-${gRes}">${gRes}</span>
@@ -15623,7 +15623,7 @@ async function renderExtendedStats(playerId) {
           <div style="border:1px solid var(--border);border-radius:3px;margin-bottom:8px;overflow:hidden">
             <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:${hasData?'#f0faf2':'#f8f8f8'};cursor:pointer" onclick="toggleExtStatForm(${playerId},${g.gameId})">
               <div>
-                <span style="font-weight:700;font-size:12px">${g.date?fmtDate(g.date):'—'} vs ${esc(g.opponent)}</span>
+                <span style="font-weight:700;font-size:12px">${roundLabel(g)?roundLabel(g)+' · ':''}${g.date?fmtDate(g.date):'—'} vs ${esc(g.opponent)}</span>
                 <span style="font-size:11px;color:var(--muted);margin-left:8px">${homeAwayLabel(g.homeAway)}</span>
               </div>
               <div style="display:flex;gap:8px;align-items:center">
@@ -15850,13 +15850,14 @@ async function renderMatchLog(playerId) {
           <tbody>
           ${enriched.map(({game:g, gp, _our:our, _their:their, _res:res}) => {
             const resultVisible = isGameResultVisible(g, _seasonMap);
+            const gDateCell = `${roundLabel(g)?roundLabel(g)+' · ':''}${g.date?fmtDate(g.date):'—'}`;
             if (!gp||!gp.calledUp) return `<tr>
-              <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
+              <td class="col-sticky-num" style="min-width:60px">${gDateCell}</td>
               <td class="col-sticky-name">${esc(g.opponent)}</td>
               <td>${resultVisible?`<span class="badge badge-${res}">${res}</span>`:`<span class="td-muted" style="font-size:11px">${I18n.t('tp_form_upcoming')}</span>`}</td>
               <td colspan="9" class="td-muted">${I18n.t('tp_not_called_up')}</td></tr>`;
             return `<tr>
-              <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
+              <td class="col-sticky-num" style="min-width:60px">${gDateCell}</td>
               <td class="col-sticky-name">${esc(g.opponent)}</td>
               <td>${resultVisible?`<span class="badge badge-${res}">${res}</span> <small class="td-muted">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their,g.neutralSide);return s.home+'-'+s.away;})()}</small>`:`<span class="td-muted" style="font-size:11px">${I18n.t('tp_form_upcoming')}</span>`}</td>
               <td><span class="badge ${gp.role==='Starter'?'badge-starter':'badge-sub'}">${gp.role==='Starter'?I18n.t('gd_role_starter'):(gp.role==='Sub'?I18n.t('gd_role_sub'):(gp.role||'—'))}</span></td>
@@ -17848,7 +17849,7 @@ async function renderPlayerPortalHome() {
         return `<div onclick="openPortalGameViewer(${g.gameId})" style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer">
           <div>
             <div style="font-weight:700;font-size:13px">${esc(g.opponent)} <span style="font-weight:400;color:var(--muted);font-size:11px">${homeAwayLabel(g.homeAway)}</span></div>
-            <div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(g.date)}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:1px">${roundLabel(g)?roundLabel(g)+' · ':''}${fmtDate(g.date)}</div>
           </div>
           <div style="text-align:right;flex-shrink:0">
             ${gVisible ? `<span class="badge badge-${gRes}">${gRes}</span> <span style="font-size:15px;font-weight:700;margin-left:6px">${(()=>{const s=Calc.homeAwayScore(g.homeAway,gOurs,gTheirs,g.neutralSide);return s.home+'–'+s.away;})()}</span>${gHasPens?` <span style="font-size:10px;color:var(--muted);font-weight:700">${g.ourPenaltyGoals}-${g.penaltiesForThem} P</span>`:''}` : `<span class="td-muted" style="font-size:11px">${I18n.t('home_in_progress')}</span>`}
@@ -18012,7 +18013,7 @@ async function renderPlayerPortalGames() {
           <div class="wp-info">
             <span class="wp-num">${gVisible?gRes:'—'}</span>
             <span class="wp-name">${esc(g.opponent)}</span>
-            <span class="pos-pill" style="margin-left:auto">${fmtDate(g.date)}</span>
+            <span class="pos-pill" style="margin-left:auto">${roundLabel(g)?roundLabel(g)+' · ':''}${fmtDate(g.date)}</span>
             <span style="margin-left:6px;font-size:12px;font-weight:700">${gVisible?(()=>{const s=Calc.homeAwayScore(g.homeAway,gOurs,gTheirs,g.neutralSide);return s.home+'–'+s.away;})():I18n.t('games_status_upcoming')}</span>
             ${!gVisible ? `<span style="margin-left:4px">${fixtureStatusSymbol(g)}</span>` : ''}
           </div>
@@ -18062,6 +18063,7 @@ async function openPortalGameViewer(gameId) {
         <button onclick="document.getElementById('portalGameViewerOverlay').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;padding:0 4px" aria-label="Close">&#10005;</button>
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin:6px 0 14px;flex-wrap:wrap">
+        ${roundLabel(game)?`<span class="pos-pill">${esc(roundLabel(game))}</span>`:''}
         <span class="pos-pill">${fmtDate(game.date)}</span>
         <span style="font-size:11px;color:var(--muted)">${homeAwayLabel(game.homeAway)}</span>
         ${!visible ? fixtureStatusBadge(game) : ''}
@@ -18951,7 +18953,7 @@ const Render = (() => {
           <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="goToGameDetail(${g.gameId})">
             <div>
               <div style="font-weight:700;font-size:13px">${esc(g.opponent)} <span style="font-weight:400;color:var(--muted);font-size:11px">${homeAwayLabel(g.homeAway)}</span></div>
-              <div style="font-size:10px;color:var(--muted);margin-top:1px">${fmtDate(g.date)}${g.competitionType?' · '+compTypeLabel(g.competitionType):''}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:1px">${roundLabel(g)?roundLabel(g)+' · ':''}${fmtDate(g.date)}${g.competitionType?' · '+compTypeLabel(g.competitionType):''}</div>
             </div>
             <div style="text-align:right;flex-shrink:0">
               ${gVisible ? `
@@ -19083,7 +19085,7 @@ const Render = (() => {
               const res = Calc.result(Calc.teamGoals(gps, g), g.opponentScore||0, g);
               const col = res==='W'?'#e6f4ea':res==='D'?'#fff8e1':'#fde8e8';
               const tc = res==='W'?'#2a7a3b':res==='D'?'#b07a00':'#b03030';
-              return `<span title="vs ${esc(g.opponent||'')} · ${fmtDate(g.date)}" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;font-size:11px;font-weight:700;background:${col};color:${tc}">${res}</span>`;
+              return `<span title="${roundLabel(g)?roundLabel(g)+' · ':''}vs ${esc(g.opponent||'')} · ${fmtDate(g.date)}" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;font-size:11px;font-weight:700;background:${col};color:${tc}">${res}</span>`;
             }).join('')}
           </div>
         </div>` : ''}
@@ -19832,10 +19834,11 @@ const Render = (() => {
             <tbody>
             ${ovEnriched.map(({game:g, gp, _our:our, _their:their, _res:res})=>{
               const resultVisible = isGameResultVisible(g, _seasonMap);
-              if (!resultVisible) return `<tr><td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td><td class="col-sticky-name">${esc(g.opponent)}</td><td><span class="td-muted" style="font-size:11px">${I18n.t('tp_form_upcoming')}</span></td><td colspan="9" class="td-muted">—</td></tr>`;
-              if (!gp||!gp.calledUp) return `<tr><td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td><td class="col-sticky-name">${esc(g.opponent)}</td><td><span class="badge badge-${res}">${res}</span></td><td colspan="9" class="td-muted">${I18n.t('tp_not_called_up')}</td></tr>`;
+              const gDateCell = `${roundLabel(g)?roundLabel(g)+' · ':''}${g.date?fmtDate(g.date):'—'}`;
+              if (!resultVisible) return `<tr><td class="col-sticky-num" style="min-width:60px">${gDateCell}</td><td class="col-sticky-name">${esc(g.opponent)}</td><td><span class="td-muted" style="font-size:11px">${I18n.t('tp_form_upcoming')}</span></td><td colspan="9" class="td-muted">—</td></tr>`;
+              if (!gp||!gp.calledUp) return `<tr><td class="col-sticky-num" style="min-width:60px">${gDateCell}</td><td class="col-sticky-name">${esc(g.opponent)}</td><td><span class="badge badge-${res}">${res}</span></td><td colspan="9" class="td-muted">${I18n.t('tp_not_called_up')}</td></tr>`;
               return `<tr>
-                <td class="col-sticky-num" style="min-width:60px">${g.date?fmtDate(g.date):'—'}</td>
+                <td class="col-sticky-num" style="min-width:60px">${gDateCell}</td>
                 <td class="col-sticky-name">${esc(g.opponent)}</td>
                 <td><span class="badge badge-${res}">${res}</span> <small class="td-muted">${(()=>{const s=Calc.homeAwayScore(g.homeAway,our,their,g.neutralSide);return s.home+'-'+s.away;})()}</small></td>
                 <td><span class="badge ${gp.role==='Starter'?'badge-starter':'badge-sub'}">${gp.role==='Starter'?I18n.t('gd_role_starter'):(gp.role==='Sub'?I18n.t('gd_role_sub'):(gp.role||'—'))}</span></td>
