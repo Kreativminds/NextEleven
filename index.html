@@ -682,7 +682,7 @@ function groupPlayersByPosition(players, getPosition, sortWithinGroup) {
 }
 
 const CONFIG = {
-  APP_VERSION: '1.2.5', // human-readable label only — staleness detection no longer depends on this matching anything
+  APP_VERSION: '1.2.6', // human-readable label only — staleness detection no longer depends on this matching anything
   SCHEMA_VERSION: 21,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability); 21 = classificationSnapshots/teamAliasMappings (League Classification)
   DB_NAME: 'footballSquadTrackerDB',
   // Demo Mode lives in a SEPARATE IndexedDB database. Isolation is physical,
@@ -11940,20 +11940,20 @@ function showImagePreview(imageUrl) {
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-label', 'Image preview');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10000;display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(255,255,255,.96);z-index:10000;display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out';
   overlay.onclick = (e) => { if (e.target === overlay) closeImagePreview(); };
 
   const img = document.createElement('img');
   img.src = imageUrl;
   img.alt = '';
-  img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;border-radius:4px;box-shadow:0 8px 30px rgba(0,0,0,.4);cursor:default';
+  img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;border-radius:4px;box-shadow:0 8px 30px rgba(0,0,0,.18);cursor:default';
   img.onclick = (e) => e.stopPropagation(); // clicking the image itself never closes it, only the darkened background does
   img.onerror = () => {
     // Never show a broken-image icon — swap to the app's existing
     // fallback (a plain soccer-ball glyph, matching the pattern already
     // used for club/team logos elsewhere tonight) and label it clearly.
     img.replaceWith(Object.assign(document.createElement('div'), {
-      style: 'width:200px;height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;border-radius:8px;color:var(--muted);font-size:13px;gap:8px',
+      style: 'width:200px;height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:13px;gap:8px',
       innerHTML: '<span style="font-size:40px">&#9917;</span><span>Image could not be loaded</span>',
     }));
   };
@@ -11962,7 +11962,7 @@ function showImagePreview(imageUrl) {
   closeBtn.type = 'button';
   closeBtn.setAttribute('aria-label', 'Close preview');
   closeBtn.textContent = '✕';
-  closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.15);color:#fff;border:none;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center';
+  closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:40px;height:40px;border-radius:50%;background:#fff;color:var(--dark);border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center';
   closeBtn.onclick = closeImagePreview;
 
   overlay.appendChild(img);
