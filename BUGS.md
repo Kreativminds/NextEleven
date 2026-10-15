@@ -13,6 +13,27 @@ How this works:
 
 ## Resolved
 
+### Kick-off time could be clipped on the Home carousel card
+- Reported: 2026-10-15 (found by the nightly QA run, not by Victor)
+- Status: Fixed (commit fe43e0b, PR https://github.com/Kreativminds/NextEleven/pull/3)
+- Fix: the carousel-height fix from the night before (226b5d3) made the
+  round/date/kick-off line single-line + ellipsis along with the
+  opponent/venue lines. That line's trailing text is the match kick-off
+  time, which could get silently clipped on a narrow screen with a round
+  label set and the Arrive By box shown. Removed the truncation from
+  that line only — it can wrap to a 2nd line in the rare case it's too
+  long, rather than hiding the kick-off time. Opponent/venue lines keep
+  their single-line truncation (that's what actually fixed the original
+  height-variance bug).
+
+### Truncated opponent/venue text unreadable on the Home carousel card
+- Reported: 2026-10-15 (found by the nightly QA run, not by Victor)
+- Status: Fixed (commit 80c54bc, PR https://github.com/Kreativminds/NextEleven/pull/3)
+- Fix: added a `title=` attribute with the full text to the opponent
+  name and venue line (both single-line/ellipsis-truncated since
+  226b5d3), matching the app's existing pattern of pairing
+  truncated/abbreviated text with a full-text `title=`.
+
 ### Blue accent strip not visible on most cards/tables (only showed on plain `.card`)
 - Reported: 2026-10-14 (found by the nightly QA run, not by Victor)
 - Status: Fixed (commit ba4037e, PR https://github.com/Kreativminds/NextEleven/pull/2)

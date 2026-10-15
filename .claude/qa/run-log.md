@@ -8,6 +8,47 @@ Newest entry on top.
 
 ---
 
+## 2026-10-15 — Scheduled nightly run
+
+- lastInspectedCommit: c9f4798
+- Trigger: scheduled nightly run.
+- Scope: diff since 0d5fe9d (last run's recorded lastInspectedCommit)
+  touched index.html via one commit, 226b5d3 ("Lock the Home carousel
+  card to one consistent layout and height"), made directly to main
+  outside this agent (no `nightly-qa:` prefix, no maintenance branch —
+  looks like an interactive bug-fixer session). Zero-AI early exit did
+  not fire (app code changed), so triage ran.
+  - Note: today's scheduled prompt claimed BUGS.md had one Open entry
+    (`integ_fix_review`, i18n). That was stale — it was already
+    resolved on 2026-10-12 (see below) and the actual Open section is
+    empty. Went with the real repo state, not the stale prompt text.
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse), before and after
+    each fix.
+  - `check-i18n-parity.js` → OK (1919/1919 keys, no gaps), before and
+    after each fix.
+- Triage (haiku): one concrete candidate (P2, kick-off time clippable)
+  plus two P3s, one speculative/unconfirmed (see "Known Unresolved").
+- Fixed (2/2 of cap used):
+  - P2 — the round/date/kick-off line on the Home carousel card became
+    `nowrap`+ellipsis in 226b5d3 along with the opponent/venue lines;
+    unlike those, its trailing content is the match kick-off time, which
+    could get silently clipped on a narrow viewport with a round label
+    set and the Arrive By box shown. Removed nowrap/ellipsis from that
+    line only (it can wrap to a 2nd line in the rare case it's too long);
+    opponent/venue lines keep their truncation since that's what actually
+    fixed last night's height-variance bug. Commit fe43e0b (version bump
+    31790cc) on `maintenance/nightly-2026-10-15`.
+  - P3 — truncated opponent/venue text had no way to be read in full.
+    Added `title=` with the full text to both, matching the existing
+    app convention (e.g. position-pill `title=` elsewhere). Commit
+    80c54bc (version bump 06bf8b4) on `maintenance/nightly-2026-10-15`.
+  - PR: https://github.com/Kreativminds/NextEleven/pull/3
+- Needs approval: none.
+- Pending (not reached, cap was binding): the third candidate below is
+  carried to "Known Unresolved" rather than counted as "pending",
+  since it's unconfirmed, not a cap-cut concrete fix.
+
 ## 2026-10-14 — Scheduled nightly run
 
 - lastInspectedCommit: 0d5fe9d
@@ -98,4 +139,9 @@ Newest entry on top.
 ## Known Unresolved
 (carried forward between runs so they aren't re-analyzed from scratch)
 
-(none — `integ_fix_review` resolved in the 2026-10-12 scheduled run above)
+- Home carousel card `min-height:118px` (set in 226b5d3) is a floor, not
+  a guarantee — if real content ever exceeds it (e.g. the fixture-status
+  badge wrapping on a long label, or a larger user text scale), slides
+  could still differ in height. Speculative, not confirmed against real
+  content as of 2026-10-15 — don't re-triage from scratch, but worth a
+  quick look if Victor or a future run sees carousel height jitter again.
