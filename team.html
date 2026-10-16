@@ -525,8 +525,21 @@ function openDirectionsChooser(idx) {
   if (!t) return;
   const searchText = t.address || t.name;
   const query = searchText ? encodeURIComponent(searchText) : '';
-  const googleUrl = t.mapUrl || (query ? `https://www.google.com/maps/search/?api=1&query=${query}` : '');
   const latlng = extractLatLngFromMapUrl(t.mapUrl);
+  // Google's own documented "universal" maps link
+  // (maps.google.com/maps/search/?api=1&query=...) resolves a known
+  // address or coordinate pair reliably on web and in the native app
+  // alike. A curated mapUrl — especially a short maps.app.goo.gl link —
+  // depends on the OS's own app-link handoff instead, which has shown
+  // itself unreliable in practice: it can open the Maps app with a
+  // garbled, unresolved token in the search box rather than the real
+  // place. So a known address/coordinate now wins over the raw link;
+  // the link itself is only used when neither is available.
+  const googleUrl = latlng
+    ? `https://www.google.com/maps/search/?api=1&query=${latlng.lat},${latlng.lng}`
+    : (t.address
+        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`
+        : (t.mapUrl || (query ? `https://www.google.com/maps/search/?api=1&query=${query}` : '')));
   const wazeUrl = latlng
     ? `https://waze.com/ul?ll=${latlng.lat},${latlng.lng}&navigate=yes`
     : (query ? `https://waze.com/ul?q=${query}&navigate=yes` : '');
