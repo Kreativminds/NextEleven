@@ -682,7 +682,7 @@ function groupPlayersByPosition(players, getPosition, sortWithinGroup) {
 }
 
 const CONFIG = {
-  APP_VERSION: '1.2.8', // human-readable label only — staleness detection no longer depends on this matching anything
+  APP_VERSION: '1.2.9', // human-readable label only — staleness detection no longer depends on this matching anything
   SCHEMA_VERSION: 21,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability); 21 = classificationSnapshots/teamAliasMappings (League Classification)
   DB_NAME: 'footballSquadTrackerDB',
   // Demo Mode lives in a SEPARATE IndexedDB database. Isolation is physical,
@@ -25325,9 +25325,20 @@ function uniqueGPIds(allGP, pred) {
   return seen;
 }
 
+// excludePlayerId/excludeTempPlayerId default to undefined when the caller
+// only knows one side of the identity (simpleToggleStarterTemp passes just
+// a tempPlayerId, simpleToggleStarter just a playerId). An un-guarded
+// `r.playerId !== excludePlayerId` breaks for every guest row when called
+// from the temp side: a guest gamePlayers row never has `playerId` set, so
+// `r.playerId` is `undefined` on EVERY guest row, not just the one being
+// toggled — `undefined !== undefined` is false, so the comparison silently
+// excluded every other already-Starter guest from the tally, not just the
+// guest currently being toggled. That let the 11-starter cap be bypassed
+// whenever two or more guests were both marked Starter. Both exclusions
+// are now only applied when the matching id was actually supplied.
 function countStarters(allGP, excludePlayerId, excludeTempPlayerId) {
   return uniqueGPIds(allGP, r => r.role === 'Starter' && r.calledUp
-    && r.playerId !== excludePlayerId
+    && (excludePlayerId === undefined || r.playerId !== excludePlayerId)
     && (excludeTempPlayerId === undefined || r.tempPlayerId !== excludeTempPlayerId)
   ).size;
 }
