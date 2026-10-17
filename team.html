@@ -287,11 +287,15 @@ function gameSortKey(game) {
 // ── SAME RULES AS THE MAIN APP ─────────────────────────────────────────
 // Completion: kick-off + match duration + 15 min buffer (the app's
 // isGameResultVisible). No kick-off time: counts once the day has ended.
+// actualKickoffAt — set in the admin app via the "Game Starting Now"
+// button when the real kickoff runs late — is the true start time when
+// present, kept in sync with isGameResultVisible/isGameLive in index.html
+// by hand (this file shares no module system with that one).
 function isGameFinished(g, season) {
   if (!g || !g.date) return false;
   const now = new Date();
-  if (!g.gameTime) return now > new Date(`${g.date}T23:59:59`);
-  const kickoff = new Date(`${g.date}T${g.gameTime}`);
+  if (!g.gameTime && !g.actualKickoffAt) return now > new Date(`${g.date}T23:59:59`);
+  const kickoff = g.actualKickoffAt ? new Date(g.actualKickoffAt) : new Date(`${g.date}T${g.gameTime}`);
   if (isNaN(kickoff)) return false;
   const mins = (parseInt(g.matchDurationMins) || parseInt(season && season.defaultMatchDurationMins) || 90) + 15;
   return now >= new Date(kickoff.getTime() + mins * 60000);
@@ -393,9 +397,11 @@ function renderClubWatermark(season) {
 }
 
 function isGameLive(g, season) {
-  if (!g || !g.date || !g.gameTime) return false;
-  const kickoff = new Date(`${g.date}T${g.gameTime}`);
-  if (isNaN(kickoff)) return false;
+  if (!g || !g.date) return false;
+  // actualKickoffAt wins over the scheduled gameTime when set — see
+  // isGameFinished above. A game with neither has no live window at all.
+  const kickoff = g.actualKickoffAt ? new Date(g.actualKickoffAt) : (g.gameTime ? new Date(`${g.date}T${g.gameTime}`) : null);
+  if (!kickoff || isNaN(kickoff)) return false;
   return new Date() >= kickoff && !isGameFinished(g, season);
 }
 // Competition split: official = League/Cup (and untyped), friendly =

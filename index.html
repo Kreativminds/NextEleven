@@ -682,7 +682,7 @@ function groupPlayersByPosition(players, getPosition, sortWithinGroup) {
 }
 
 const CONFIG = {
-  APP_VERSION: '1.2.10', // human-readable label only — staleness detection no longer depends on this matching anything
+  APP_VERSION: '1.2.11', // human-readable label only — staleness detection no longer depends on this matching anything
   SCHEMA_VERSION: 21,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability); 21 = classificationSnapshots/teamAliasMappings (League Classification)
   DB_NAME: 'footballSquadTrackerDB',
   // Demo Mode lives in a SEPARATE IndexedDB database. Isolation is physical,
@@ -801,12 +801,18 @@ function gameSortKey(game) {
 function isGameResultVisible(game, seasonMap) {
   if (!game || !game.date) return false;
   const now = new Date();
-  const gameDateTime = new Date(`${game.date}T${game.gameTime || '00:00'}`);
+  // actualKickoffAt (set via the "Game Starting Now" button on a late
+  // kickoff) is the true start time when present — anchoring the cutoff
+  // on the scheduled time instead would count a delayed match as finished
+  // too early, or a game that started early as still in progress too long.
+  const gameDateTime = game.actualKickoffAt
+    ? new Date(game.actualKickoffAt)
+    : new Date(`${game.date}T${game.gameTime || '00:00'}`);
   if (isNaN(gameDateTime)) return false;
   // If no kick-off time was set, fall back to end-of-day for that date —
   // i.e. once the calendar day has passed, treat it as playable/visible.
   // Unchanged behaviour, deliberately preserved.
-  if (!game.gameTime) {
+  if (!game.gameTime && !game.actualKickoffAt) {
     const endOfDay = new Date(`${game.date}T23:59:59`);
     return now > endOfDay;
   }
@@ -6090,6 +6096,10 @@ const TR = {
     gd_tab_squad:'Squad List', gd_tab_xi:'Starting XI', gd_tab_goals:'Goals', gd_tab_penalties:'Penalties',
     gd_readonly_notice:'This game is now read-only.', gd_btn_edit:'Edit', gd_err_readonly:'This game is read-only. Tap Edit to make changes.',
     gd_edit_mode_notice:'This game is currently in Edit mode.', gd_btn_lock:'Lock',
+    gd_btn_start_game:'Game Starting Now', gd_started_at:'Kicked off at {time}', gd_btn_undo_start:'Undo',
+    gd_started_confirm_title:'Confirm Kickoff', gd_started_confirm_body:'Mark this game as starting right now? The Parents Page will immediately show it as live.',
+    gd_undo_start_confirm_title:'Undo Kickoff', gd_undo_start_confirm_body:'Clear the actual kickoff time? The Parents Page will go back to using the scheduled kick-off time.',
+    gd_start_set:'Game marked as started.', gd_start_cleared:'Kickoff time cleared.',
     gd_captain_set:'{name} is now captain', gd_captain_cleared:'Captain removed',
     gd_autosave_note:'Changes save automatically — no Save button needed.',
     gd_btn_back:'Back to Games',
@@ -7520,6 +7530,10 @@ const TR = {
     gd_tab_squad:'Convocados', gd_tab_xi:'Onze Inicial', gd_tab_goals:'Golos', gd_tab_penalties:'Grandes Penalidades',
     gd_readonly_notice:'Este jogo está agora só de leitura.', gd_btn_edit:'Editar', gd_err_readonly:'Este jogo está só de leitura. Toque em Editar para fazer alterações.',
     gd_edit_mode_notice:'Este jogo está atualmente em modo de Edição.', gd_btn_lock:'Bloquear',
+    gd_btn_start_game:'Jogo a Começar Agora', gd_started_at:'Início às {time}', gd_btn_undo_start:'Anular',
+    gd_started_confirm_title:'Confirmar Início', gd_started_confirm_body:'Marcar este jogo como a começar agora? A Página dos Encarregados vai mostrar imediatamente como "Ao Vivo".',
+    gd_undo_start_confirm_title:'Anular Início', gd_undo_start_confirm_body:'Limpar a hora real de início? A Página dos Encarregados volta a usar a hora de início agendada.',
+    gd_start_set:'Jogo marcado como iniciado.', gd_start_cleared:'Hora de início anulada.',
     gd_captain_set:'{name} é agora o capitão', gd_captain_cleared:'Capitão removido',
     gd_autosave_note:'As alterações são guardadas automaticamente — não é necessário gravar.',
     gd_btn_back:'Voltar aos Jogos',
@@ -19639,6 +19653,12 @@ const Render = (() => {
         ${(game.fixtureStatus === 'to_confirm' && game.lastUpdated) ? `<div style="margin-top:8px;font-size:10px;color:var(--muted)">${I18n.t('games_last_updated', {date: fmtDate(game.lastUpdated.slice(0,10))})}</div>` : ''}
       </div>
 
+      ${!isGameResultVisible(game, new Map([[game.seasonId, season]])) ? `
+      <div class="card" style="margin-bottom:14px;padding:12px;display:flex;align-items:center;justify-content:${game.actualKickoffAt?'space-between':'flex-end'};gap:10px">
+        ${game.actualKickoffAt ? `<div style="font-size:12px;color:var(--muted)">&#9201; ${I18n.t('gd_started_at', {time: new Date(game.actualKickoffAt).toLocaleTimeString(I18n.get()==='PT'?'pt-PT':'en-GB', {hour:'2-digit',minute:'2-digit'})})}</div>` : ''}
+        <button type="button" class="btn ${game.actualKickoffAt?'btn-secondary':'btn-primary'} btn-sm" onclick="${game.actualKickoffAt?`undoGameStart(${gameId})`:`startGameNow(${gameId})`}">${game.actualKickoffAt?I18n.t('gd_btn_undo_start'):'&#9654; '+I18n.t('gd_btn_start_game')}</button>
+      </div>` : ''}
+
       <div class="card" style="margin-bottom:14px;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:${isEditable?'#e6f4ea':'#faf7f0'}">
         <div style="font-size:12px;color:${isEditable?'#2a7a4e':'var(--muted)'}">${isEditable?`&#9998; ${I18n.t('gd_edit_mode_notice')}`:`&#128274; ${I18n.t('gd_readonly_notice')}`}</div>
         <button type="button" class="btn btn-secondary btn-sm" onclick="toggleGameEditMode(${gameId})">${isEditable?I18n.t('gd_btn_lock'):I18n.t('gd_btn_edit')}</button>
@@ -24762,6 +24782,51 @@ function toggleGameEditMode(gameId) {
   Render.gameDetail(gameId);
 }
 
+// Real-world kickoff can run late (ref delay, pitch handover, traffic).
+// Both this app's own "is this game finished" cutoff (isGameResultVisible)
+// and the Parents Page's "is this game live right now" check default to
+// the SCHEDULED kick-off time, which reads as live the instant that clock
+// time passes — true or not. actualKickoffAt is the explicit override: set
+// it the moment the match genuinely starts, and every live/finished
+// calculation that reads it (both here and in team.html, kept in sync by
+// hand since the two files share no module system) anchors off this
+// instead of the scheduled time. Leaving it unset preserves today's
+// schedule-based behavior exactly, so games nobody bothers to tap for are
+// unaffected.
+function startGameNow(gameId) {
+  if (!checkGameEditableOrWarn()) return;
+  Confirm.show(I18n.t('gd_started_confirm_title'), I18n.t('gd_started_confirm_body'), async () => {
+    try {
+      const game = await DB.get('games', gameId);
+      if (!game) return;
+      game.actualKickoffAt = new Date().toISOString();
+      await DB.put('games', game);
+      Toast.show(I18n.t('gd_start_set'));
+    } catch(err) {
+      Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
+    } finally {
+      await Render.gameDetail(gameId);
+    }
+  });
+}
+
+function undoGameStart(gameId) {
+  if (!checkGameEditableOrWarn()) return;
+  Confirm.show(I18n.t('gd_undo_start_confirm_title'), I18n.t('gd_undo_start_confirm_body'), async () => {
+    try {
+      const game = await DB.get('games', gameId);
+      if (!game) return;
+      game.actualKickoffAt = null;
+      await DB.put('games', game);
+      Toast.show(I18n.t('gd_start_cleared'));
+    } catch(err) {
+      Toast.error(I18n.t('gd_could_not_save', {msg: err.message}));
+    } finally {
+      await Render.gameDetail(gameId);
+    }
+  });
+}
+
 // Reads a duration select+custom pair and returns the actual minute value,
 // or null if left as the default (meaning "use the season default" for a
 // game, or "use the system default of 90" for a season).
@@ -24953,6 +25018,12 @@ async function saveGame() {
       // The canonical identity NEVER changes on edit. A legacy game with no
       // UUID is backfilled here rather than left permanently unidentifiable.
       game.gameUuid = (existingGame && existingGame.gameUuid) || generateGameUuid();
+      // actualKickoffAt (set via the "Game Starting Now" button, see
+      // startGameNow) isn't a form field — same reason opponentScore,
+      // createdAt and gameUuid above need explicit preservation: this
+      // literal otherwise replaces the whole stored record, so an edit
+      // made mid-match would silently erase the real kickoff time.
+      game.actualKickoffAt = (existingGame && existingGame.actualKickoffAt) || null;
       // If this game's own gamePlayers rows exist and the season is being
       // corrected, move them along too, same reasoning as the tournament
       // fix — a game and its player records must stay in the same season.
