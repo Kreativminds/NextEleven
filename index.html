@@ -682,7 +682,7 @@ function groupPlayersByPosition(players, getPosition, sortWithinGroup) {
 }
 
 const CONFIG = {
-  APP_VERSION: '1.2.9', // human-readable label only — staleness detection no longer depends on this matching anything
+  APP_VERSION: '1.2.10', // human-readable label only — staleness detection no longer depends on this matching anything
   SCHEMA_VERSION: 21,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability); 21 = classificationSnapshots/teamAliasMappings (League Classification)
   DB_NAME: 'footballSquadTrackerDB',
   // Demo Mode lives in a SEPARATE IndexedDB database. Isolation is physical,
@@ -25757,6 +25757,12 @@ async function renderStartingXITab(gameId) {
     // be unavailable here (see simpleToggleStarter), but the grey-out is
     // still applied if one ever is, same as the Squad tab.
     const unavailableMap = await getUnavailablePlayerMap(State.currentSeasonId);
+    // Once a captain is set, the C button is only shown on the captain's
+    // own row — every other row's button is hidden rather than just left
+    // un-highlighted, so there's no confusion about who's tappable while
+    // a captain is already picked. Clearing the captain (tapping their
+    // own C button again) brings the button back on every row.
+    const anyCaptainSet = existingGP.some(r => r.captain);
 
     el.innerHTML = `
       <p style="font-size:12px;color:var(--muted);margin-bottom:10px">${I18n.t('gd_xi_hint')}</p>
@@ -25789,7 +25795,7 @@ async function renderStartingXITab(gameId) {
               <span class="wp-num" ${avail?'':`style="cursor:pointer" onclick="event.stopPropagation();${numPickerCall}"`}>${effNum??'—'}</span>
               <span class="wp-name" title="${esc(e.name)}">${esc(e.isTemp ? e.name : shortName(e.name))}${e.isTemp ? ` <span class="pos-pill">${I18n.t('gd_guest_badge')}</span>` : ''}</span>
               ${avail ? `<span class="wp-status-pill">${esc(availabilityStatusLabel(avail.status))}</span>` : effPos?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" title="${esc(effPos)}" onclick="event.stopPropagation();${pickerCall}">${esc(POSITION_ABBR[effPos] || effPos)}</span>`:''}
-              ${avail?'':`<button type="button" class="wp-cap-btn ${isCaptain?'wp-cap-active':''}" style="margin-left:${effPos?'8px':'auto'}" title="${esc(I18n.t('tp_stat_captain'))}" aria-pressed="${isCaptain}" onclick="event.stopPropagation();${capToggleCall}">C</button>`}
+              ${(!avail && (isCaptain || !anyCaptainSet))?`<button type="button" class="wp-cap-btn ${isCaptain?'wp-cap-active':''}" style="margin-left:${effPos?'8px':'auto'}" title="${esc(I18n.t('tp_stat_captain'))}" aria-pressed="${isCaptain}" onclick="event.stopPropagation();${capToggleCall}">C</button>`:''}
               ${avail?'':`<span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:6px">${isStarter?I18n.t('gd_role_starter'):I18n.t('gd_role_sub')}</span>`}
             </div>
           </div>`;
