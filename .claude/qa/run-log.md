@@ -8,6 +8,83 @@ Newest entry on top.
 
 ---
 
+## 2026-10-17 — Scheduled nightly run
+
+- lastInspectedCommit: fcc36cd
+- Trigger: scheduled nightly run.
+- Scope: diff since f760e82 (last run's recorded lastInspectedCommit)
+  touched index.html and team.html via 6 commits (35c398d, affd8/affb9d8,
+  b12da41, 1ef1b08, 2fcd004, 59cee92 — 11-starter-cap guest fix, "hide C
+  button on other rows once captain set," manual kickoff override +
+  editable kickoff-time dialog, Parents Page live-card kickoff display,
+  per-goal timestamp log), made directly to main outside this agent today
+  (no `nightly-qa:` prefix, no maintenance branch — interactive bug-fixer
+  session, same pattern as previous nights). Zero-AI early exit did not
+  fire (app code changed), so triage ran.
+  - Note: today's scheduled prompt again claimed BUGS.md had an Open
+    entry (`integ_fix_review`, i18n). Same stale claim as the last two
+    nights — it was resolved on 2026-10-12 and the real Open section is
+    empty. Went with the real repo state. Third night running the prompt
+    text hasn't been refreshed — flagging again that this should be
+    fixed at the source (whatever generates the scheduled prompt).
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse), before and after
+    the fix.
+  - `check-i18n-parity.js` → OK (1932/1932 keys, no gaps), before and
+    after the fix (no new keys added by tonight's fix).
+- Triage (haiku): reviewed the 6-commit diff to index.html/team.html.
+  Returned several candidates; orchestrator verified each against the
+  actual (non-diff) code before acting — most didn't hold up:
+  - False positives, confirmed not real: team.html getLang()/roundLabel
+    concern (transcription artifact in the triage prompt, not an actual
+    diff — both already exist and work); getLang() lowercase vs
+    I18n.get() uppercase casing "mismatch" (each file consistently uses
+    its own established convention); goalEvents gameId index "may not
+    exist" (it was created with the store, pre-existing, unrelated to
+    tonight's diff); soft-delete/tombstone re-deletion in
+    logGoalEventsForDelta's decrease path (DB.getAll already filters
+    isDeleted rows by design, confirmed in DB.softDelete's own comment);
+    Supabase goal_events payload-shape risk (uses the same generic
+    JSONB-payload cloudRow as every other store, no per-field columns,
+    and push() already has per-record try/catch + duplicate-key recovery
+    so one bad row can't stall the queue); Parents Page not receiving
+    actualKickoffAt (games already sync their whole record as one JSONB
+    payload, same as every other field added to games historically — no
+    evidence of an explicit column allowlist anywhere in the pull path).
+  - Real but not pursued as a fix tonight (see "Needs approval" and
+    "Pending" below): captain-button stuck-hidden edge case; goalEvents
+    not cleaned up by resetGameGoals.
+  - Real and fixed: see below.
+- Fixed (1/2 of cap used):
+  - P2 — `openKickoffTimeDialog`/`confirmKickoffTime` (index.html, new
+    tonight in 59cee92) took the dialog's calendar date from
+    `toISOString().slice(0,10)` (UTC date) while hour/minute were local —
+    in a timezone where local/UTC fall on different calendar days at tap
+    time (Brazil evenings, UTC-3; Portugal just after midnight in summer,
+    UTC+1), `actualKickoffAt` got the right time but the wrong day.
+    Fixed by building the date from local getFullYear/getMonth/getDate
+    via the existing `dISO({y,m,d})` helper, in both the dialog-open path
+    and the confirm-time fallback. Scoped to exactly those two spots.
+    Commit `68c56c3` (version bump `7359c07`) on
+    `maintenance/nightly-2026-10-17`.
+  - PR: https://github.com/Kreativminds/NextEleven/pull/4
+- Needs approval:
+  - Captain ("C") button (`renderStartingXITab`, from today's affb9d8)
+    can end up hidden on every row with no UI path to clear/reassign
+    captaincy, if the current captain's own row ever becomes `avail`
+    (unavailable) while still called up. The adjacent existing comment
+    says a called-up player "should never actually be unavailable here"
+    under today's rules, so not reachable in normal use right now — but
+    this is core Starting XI/captain logic shared by multiple features,
+    so left for Victor's call rather than touched unattended. Proposal if
+    wanted: always show the captain's own C button regardless of `avail`.
+- Pending (not reached — cap not binding, only 1 fix cleared the bar):
+  - `resetGameGoals` zeroes `gamePlayers.goals`/`.assists` directly,
+    bypassing `logGoalEventsForDelta` (added tonight) — a reset leaves
+    orphaned `goalEvents` rows. Zero current observable impact (nothing
+    reads `goalEvents` back into any UI yet). Worth a look once something
+    actually consumes `goalEvents`.
+
 ## 2026-10-16 — Scheduled nightly run
 
 - lastInspectedCommit: f760e82
@@ -171,6 +248,25 @@ Newest entry on top.
 
 ## Known Unresolved
 (carried forward between runs so they aren't re-analyzed from scratch)
+
+- Captain ("C") button (index.html, `renderStartingXITab`, from
+  2026-10-17's affb9d8) can end up hidden on every row, with no UI path
+  to clear or reassign captaincy, if the current captain's own row ever
+  becomes `avail` (marked unavailable) while still called up — the
+  button is gated on `!avail && (isCaptain || !anyCaptainSet)`. Not
+  reachable under today's app rules (the adjacent comment states a
+  called-up player "should never actually be unavailable here"), so
+  flagged rather than fixed — touches core Starting XI/captain logic
+  shared by multiple features. Revisit if Victor wants a defensive
+  fallback (always show the captain's own button regardless of `avail`),
+  or if the "never unavailable while called up" invariant ever changes.
+
+- `resetGameGoals` (index.html) zeroes `gamePlayers.goals`/`.assists`
+  directly, bypassing `logGoalEventsForDelta` (added 2026-10-17) — a
+  reset leaves orphaned `goalEvents` rows for that game. Zero current
+  observable impact since nothing reads `goalEvents` back into any UI
+  yet (portal included). Worth a look once something actually consumes
+  `goalEvents`.
 
 - Home carousel card `min-height:118px` (set in 226b5d3) is a floor, not
   a guarantee — if real content ever exceeds it (e.g. the fixture-status

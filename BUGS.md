@@ -13,6 +13,20 @@ How this works:
 
 ## Resolved
 
+### "Game Starting Now" kickoff time saved on the wrong calendar day in some timezones
+- Reported: 2026-10-17 (found by the nightly QA run, not by Victor)
+- Status: Fixed (commit 68c56c3, PR https://github.com/Kreativminds/NextEleven/pull/4)
+- Fix: the new editable-kickoff dialog (`openKickoffTimeDialog`/
+  `confirmKickoffTime`, added earlier the same day) took its calendar
+  date from `toISOString().slice(0,10)` (UTC date) while the hour/minute
+  shown and applied were local. In a timezone where local and UTC fall
+  on different calendar days at the moment of the tap (Brazil evenings,
+  UTC-3; Portugal just after midnight in summer, UTC+1), the saved
+  kickoff time got the right hour/minute but the wrong day. Now builds
+  the date from local getFullYear/getMonth/getDate via the existing
+  `dISO()` helper, in both the dialog-open path and the confirm-time
+  fallback.
+
 ### Kick-off time could be clipped on the Home carousel card
 - Reported: 2026-10-15 (found by the nightly QA run, not by Victor)
 - Status: Fixed (commit fe43e0b, PR https://github.com/Kreativminds/NextEleven/pull/3)
