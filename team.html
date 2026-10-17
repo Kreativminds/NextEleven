@@ -256,6 +256,15 @@ function fmtDate(d) {
   if (parts.length===3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
   return d;
 }
+// Local HH:MM for an ISO timestamp (actualKickoffAt), matching the
+// locale convention already used for the admin app's own kickoff-time
+// display (index.html, startGameNow/undoGameStart button).
+function fmtTimeHM(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return d.toLocaleTimeString(getLang()==='pt'?'pt-PT':'en-GB', {hour:'2-digit',minute:'2-digit'});
+}
 function roundLabel(game) {
   return game && game.round ? tr('round_label', { n: game.round }) : '';
 }
@@ -369,7 +378,7 @@ function renderLiveCard(g, season, players, gamePlayers) {
         <div class="live-score" role="status" aria-live="polite">${sc.home} - ${sc.away}</div>
         <div class="live-team">${esc(awayName)}</div>
       </div>
-      <div class="live-meta">${roundLabel(g) ? esc(roundLabel(g)) + ' · ' : ''}${g.homeAway === 'Home' ? tr('home') : tr('away')}${g.venue ? ' · ' + esc(g.venue) : ''} · ${tr('kickoff')} ${esc(g.gameTime||'')}</div>
+      <div class="live-meta">${roundLabel(g) ? esc(roundLabel(g)) + ' · ' : ''}${g.homeAway === 'Home' ? tr('home') : tr('away')}${g.venue ? ' · ' + esc(g.venue) : ''} · ${tr('kickoff')} ${esc(g.actualKickoffAt ? fmtTimeHM(g.actualKickoffAt) : (g.gameTime||''))}</div>
       ${(scorers.length || ownGoals) ? `
       <div class="live-scorers">
         ${scorers.map(x => `<div><span aria-hidden="true">⚽</span> <span class="who">${esc(x.name)}</span>${x.goals > 1 ? ` ×${x.goals}` : ''}</div>`).join('')}
