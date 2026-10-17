@@ -24866,7 +24866,7 @@ function openKickoffTimeDialog(gameId, existingIso) {
   // Preserve the original calendar date when adjusting an already-set
   // kickoff (e.g. correcting it the next day) instead of always re-stamping
   // today — only a brand-new "starting now" tap should default to today.
-  dlg.dataset.baseDate = base.toISOString().slice(0, 10);
+  dlg.dataset.baseDate = dISO({y: base.getFullYear(), m: base.getMonth()+1, d: base.getDate()});
   dlg.classList.add('open');
 }
 
@@ -24884,7 +24884,8 @@ async function confirmKickoffTime() {
     const game = await DB.get('games', gameId);
     if (!game) return;
     const [h, m] = timeVal.split(':').map(Number);
-    const dateStr = dlg.dataset.baseDate || new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const dateStr = dlg.dataset.baseDate || dISO({y: now.getFullYear(), m: now.getMonth()+1, d: now.getDate()});
     const dt = new Date(`${dateStr}T00:00:00`);
     dt.setHours(h, m, 0, 0);
     game.actualKickoffAt = dt.toISOString();
