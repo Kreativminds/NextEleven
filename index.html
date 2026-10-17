@@ -682,7 +682,7 @@ function groupPlayersByPosition(players, getPosition, sortWithinGroup) {
 }
 
 const CONFIG = {
-  APP_VERSION: '1.2.11', // human-readable label only — staleness detection no longer depends on this matching anything
+  APP_VERSION: '1.2.12', // human-readable label only — staleness detection no longer depends on this matching anything
   SCHEMA_VERSION: 21,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability); 21 = classificationSnapshots/teamAliasMappings (League Classification)
   DB_NAME: 'footballSquadTrackerDB',
   // Demo Mode lives in a SEPARATE IndexedDB database. Isolation is physical,
@@ -22165,7 +22165,9 @@ const Sync = (() => {
   // which server-side re-validates Account Code + PIN together, issues an
   // expiring portal session token, and returns a PLAYER-SCOPED dataset in
   // the same {id, payload} shape pull() consumes. goalEvents is deliberately
-  // excluded — confirmed dead store, zero reads.
+  // excluded — it now logs per-goal timestamps (see logGoalEventsForDelta),
+  // but nothing reads it back into any UI yet, portal included; revisit
+  // this exclusion if/when the portal ever needs to surface goal timelines.
   //
   // Stores holding records private to one player. Every row in these must
   // belong to the matched player (or a season-sibling sharing their
@@ -26156,14 +26158,48 @@ async function renderSimpleGoalsTab(gameId) {
   }
 }
 
+// Per-goal timestamp log (goalEvents IndexedDB store, synced to Supabase's
+// goal_events table). gamePlayers.goals is only ever a running total, so its
+// own row only ever preserves the time of its LAST edit — it can't answer
+// "what time was each goal actually scored". This logs one real event per
+// goal, separate from that running total:
+//  - an INCREASE logs `delta` new rows stamped with "now" (one per goal
+//    just entered, since the plain number input can jump by more than 1
+//    in a single change, e.g. typing "3" straight after "0").
+//  - a DECREASE (a typo correction) removes the `-delta` MOST RECENTLY
+//    logged rows for that same scorer in this game, via the same soft-delete
+//    the rest of the app uses, so the correction also reaches Supabase.
+// scorerType disambiguates the id space, since a season player's playerId
+// and a guest's tempPlayerId are independent sequences that can collide.
+async function logGoalEventsForDelta(gameId, seasonId, scorerId, scorerType, oldGoals, newGoals) {
+  const delta = newGoals - oldGoals;
+  if (!delta) return;
+  if (delta > 0) {
+    const now = new Date().toISOString();
+    for (let i = 0; i < delta; i++) {
+      await DB.put('goalEvents', { gameId, seasonId, scorerId, scorerType, scoredAt: now });
+    }
+  } else {
+    const mine = (await DB.getAll('goalEvents', 'gameId', gameId))
+      .filter(e => e.scorerId === scorerId && e.scorerType === scorerType)
+      .sort((a, b) => new Date(b.scoredAt) - new Date(a.scoredAt));
+    const toRemove = Math.min(-delta, mine.length);
+    for (let i = 0; i < toRemove; i++) {
+      await DB.softDelete('goalEvents', mine[i].goalEventId);
+    }
+  }
+}
+
 async function simpleSetField(gameId, playerId, field, value) {
   if (!checkGameEditableOrWarn()) return;
   gdDebugLog(`CHANGE ${field} player=${playerId} value=${value}`);
   try {
     const gp = await getOrCreateGP(gameId, playerId);
+    const oldGoals = gp.goals || 0;
     gp[field] = parseInt(value) || 0;
     const key = await DB.put('gamePlayers', gp);
     gdDebugLog(`DB.put OK key=${key} ${field} now=${gp[field]}`);
+    if (field === 'goals') await logGoalEventsForDelta(gameId, gp.seasonId, playerId, 'player', oldGoals, gp.goals);
     if (field === 'penaltyGoals') await recalcOurPenaltyTotal(gameId);
     await refreshGameHeaderScore(gameId);
   } catch(err) {
@@ -26192,8 +26228,10 @@ async function simpleSetFieldTemp(gameId, tempPlayerId, field, value) {
   if (!checkGameEditableOrWarn()) return;
   try {
     const gp = await getOrCreateGPForTemp(gameId, tempPlayerId);
+    const oldGoals = gp.goals || 0;
     gp[field] = parseInt(value) || 0;
     await DB.put('gamePlayers', gp);
+    if (field === 'goals') await logGoalEventsForDelta(gameId, gp.seasonId, tempPlayerId, 'temp', oldGoals, gp.goals);
     if (field === 'penaltyGoals') await recalcOurPenaltyTotal(gameId);
     await refreshGameHeaderScore(gameId);
   } catch(err) {
