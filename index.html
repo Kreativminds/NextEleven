@@ -2031,6 +2031,13 @@ async function firstTimeWizardSaveAndExit() {
 }
 
 function renderFirstTimeWizardStep() {
+  // The overlay starts life as display:none in the static markup. The old
+  // step-1 screen (dropped by the Team/Season/Squad consolidation) used to
+  // be the only thing that ever made it visible — so this dispatcher now
+  // shows it itself, on every call, regardless of which step or which of
+  // the two entry points got here.
+  const el = document.getElementById('firstTimeWizardOverlay');
+  if (el) el.style.display = 'block';
   const step = _firstTimeWizardState.step;
   if (step === 1) return renderFTWStepClub();
   if (step === 2) return renderFTWStepSeason();
@@ -2206,12 +2213,12 @@ function renderFTWStepSquad() {
             <button class="btn btn-danger btn-sm" onclick="ftwRemoveManualPlayer(${i})">${I18n.t('common_delete')}</button>
           </div>`).join('')}
         </div>
-        <div class="form-group"><label>${I18n.t('pf_lbl_name')}</label><input id="ftw-player-name" type="text"></div>
-        <div class="form-group"><label>${I18n.t('pf_lbl_shirt_num')}</label><input id="ftw-player-num" type="number" min="1" max="99"></div>
-        <div class="form-group"><label>${I18n.t('pf_lbl_position')}</label>
+        <div class="form-group"><label>${I18n.t('squad_lbl_fullname')}</label><input id="ftw-player-name" type="text"></div>
+        <div class="form-group"><label>${I18n.t('squad_lbl_shirt')}</label><input id="ftw-player-num" type="number" min="1" max="99"></div>
+        <div class="form-group"><label>${I18n.t('squad_lbl_pos1')}</label>
           <select id="ftw-player-pos">${renderPositionOptions('')}</select>
         </div>
-        <div class="form-group"><label>${I18n.t('pf_lbl_dob')}</label><input id="ftw-player-dob" type="date"></div>
+        <div class="form-group"><label>${I18n.t('squad_lbl_dob')}</label><input id="ftw-player-dob" type="date"></div>
         <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:14px" onclick="ftwAddManualPlayer()">+ ${I18n.t('ftw_btn_add_player')}</button>
         ` : squad.mode === 'import' ? `
         <p style="font-size:13px;color:var(--muted);margin-bottom:10px">${I18n.t('ftw_import_players_hint')}</p>
