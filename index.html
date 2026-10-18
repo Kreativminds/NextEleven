@@ -1458,10 +1458,21 @@ async function wizardSelectExistingClub() {
   await renderWizardStepYear();
 }
 
+// Same normalize-and-reuse rule as the Settings Create/Edit Season forms
+// (btnCreateSeason / btnSaveSeasonEdit): find an existing clubTeams record
+// with the same name (diacritic/case/whitespace-insensitive) before
+// creating a new one. Previously this always created a brand-new row, even
+// for a name that already existed — the real cause of the duplicate club
+// records that duplicate_clubteam_repaired exists to clean up.
 async function wizardCreateNewClub() {
   const name = document.getElementById('wiz-new-club-name')?.value.trim();
   if (!name) { Toast.error(I18n.t('wiz_err_club_name_required')); return; }
-  const clubTeamId = await DB.put('clubTeams', { name, createdAt: new Date().toISOString() });
+  const normalize = s => (s||'').trim().toLowerCase().replace(/\s+/g,' ').normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const existingClubTeams = await DB.getAll('clubTeams');
+  let clubTeamId = existingClubTeams.find(c => normalize(c.name) === normalize(name))?.clubTeamId;
+  if (!clubTeamId) {
+    clubTeamId = await DB.put('clubTeams', { name, createdAt: new Date().toISOString() });
+  }
   _seasonWizardState.clubTeamId = clubTeamId;
   _seasonWizardState.clubName = name;
   await renderWizardStepYear();
@@ -1830,7 +1841,15 @@ async function wizardCreateSeason() {
 // local-only and excluded from sync (see SYNC_STORES_SET), so an
 // incomplete setup draft can never leak to the cloud or a second device
 // half-finished.
-const FIRST_TIME_WIZARD_STEPS = 8;
+// Consolidated from the original 8-step flow (Welcome/Club/Season/Squad/
+// Opponents/Resources/Review/Complete) down to the 3 screens that actually
+// gate first use: Team, Season, Squad. Welcome added nothing but a click;
+// Opponents and Resources were both fully optional and are better reached
+// from the Getting Started checklist than as blocking steps; Review added
+// a 4th screen for data that's editable later anyway. The step-render
+// functions for the dropped steps are left in place, unused, rather than
+// deleted — see renderFirstTimeWizardStep below.
+const FIRST_TIME_WIZARD_STEPS = 3;
 let _firstTimeWizardState = null;
 
 // ── STARTUP CONCURRENCY GUARD ────────────────────────────────────────────────
@@ -1976,6 +1995,11 @@ async function applyResolvedSeasonToUi() {
 async function openFirstTimeWizard() {
   const draft = await loadFirstTimeWizardDraft();
   _firstTimeWizardState = draft || { step: 1, club: {}, season: {}, squad: { mode: null, players: [] }, opponentsMode: null, opponents: [] };
+  // A draft saved under the old 8-step flow could have step 4-8 (Squad
+  // onward). Team/Season/Squad data already collected by such a draft is
+  // still valid under the new 3-step flow — only the step pointer needs
+  // clamping, since steps 4+ no longer exist as their own screens.
+  if (_firstTimeWizardState.step > FIRST_TIME_WIZARD_STEPS) _firstTimeWizardState.step = FIRST_TIME_WIZARD_STEPS;
   renderFirstTimeWizardStep();
 }
 
@@ -2007,15 +2031,17 @@ async function firstTimeWizardSaveAndExit() {
 }
 
 function renderFirstTimeWizardStep() {
+  // The overlay starts life as display:none in the static markup. The old
+  // step-1 screen (dropped by the Team/Season/Squad consolidation) used to
+  // be the only thing that ever made it visible — so this dispatcher now
+  // shows it itself, on every call, regardless of which step or which of
+  // the two entry points got here.
+  const el = document.getElementById('firstTimeWizardOverlay');
+  if (el) el.style.display = 'block';
   const step = _firstTimeWizardState.step;
-  if (step === 1) return renderFTWStepWelcome();
-  if (step === 2) return renderFTWStepClub();
-  if (step === 3) return renderFTWStepSeason();
-  if (step === 4) return renderFTWStepSquad();
-  if (step === 5) return renderFTWStepOpponents();
-  if (step === 6) return renderFTWStepResources();
-  if (step === 7) return renderFTWStepReview();
-  if (step === 8) return renderFTWStepComplete();
+  if (step === 1) return renderFTWStepClub();
+  if (step === 2) return renderFTWStepSeason();
+  if (step === 3) return renderFTWStepSquad();
 }
 
 // ── STEP 1 — WELCOME ─────────────────────────────────────────────────────
@@ -2041,7 +2067,10 @@ async function ftwGoToStep(step) {
   renderFirstTimeWizardStep();
 }
 
-// ── STEP 2 — CLUB/TEAM ───────────────────────────────────────────────────
+// ── STEP 1 — TEAM ─────────────────────────────────────────────────────────
+// Required: name, age group, country. Everything else (logo, home ground,
+// shirt colour) stays optional, exactly as before — all editable later
+// from Settings. First screen of the flow, so there is no Back button.
 function renderFTWStepClub() {
   const el = document.getElementById('firstTimeWizardOverlay');
   if (!el) return;
@@ -2049,16 +2078,20 @@ function renderFTWStepClub() {
   el.innerHTML = `
     <div class="rm-form-overlay open">
       <div class="rm-form" style="max-width:440px">
-        ${firstTimeWizardProgressHtml(2, I18n.t('ftw_step_club_label'))}
+        ${firstTimeWizardProgressHtml(1, I18n.t('ftw_step_club_label'))}
         <h3 style="margin-bottom:16px">${I18n.t('ftw_step_club_title')}</h3>
 
         <div class="form-group">
-          <label>${I18n.t('set_lbl_club_name')} *</label>
+          <label>${I18n.t('ftw_lbl_team_name')} *</label>
           <input id="ftw-club-name" type="text" placeholder="e.g. SL Olivais" value="${esc(c.name||'')}">
         </div>
         <div class="form-group">
-          <label>${I18n.t('set_lbl_age_group')}</label>
+          <label>${I18n.t('set_lbl_age_group')} *</label>
           ${renderAgeGroupField('ftw-club-category', 'ftw-club-category-other', c.category||'')}
+        </div>
+        <div class="form-group">
+          <label>${I18n.t('ftw_lbl_country')} *</label>
+          ${renderCountryField('ftw-club-country', 'ftw-club-country-other', c.country||'')}
         </div>
         <div class="form-group">
           <label>${I18n.t('ftw_lbl_logo_url')}</label>
@@ -2075,7 +2108,6 @@ function renderFTWStepClub() {
 
         <div class="form-actions" style="margin-top:16px">
           <button class="btn btn-primary" onclick="ftwConfirmClub()">${I18n.t('wiz_btn_next')}</button>
-          <button class="btn btn-secondary" onclick="ftwGoToStep(1)">${I18n.t('wiz_btn_back')}</button>
         </div>
       </div>
     </div>`;
@@ -2084,17 +2116,22 @@ function renderFTWStepClub() {
 async function ftwConfirmClub() {
   const name = document.getElementById('ftw-club-name')?.value.trim();
   if (!name) { Toast.error(I18n.t('wiz_err_club_name_required')); return; }
+  const category = readAgeGroupField('ftw-club-category', 'ftw-club-category-other');
+  if (!category) { Toast.error(I18n.t('ftw_err_age_group_required')); return; }
+  const country = readCountryField('ftw-club-country', 'ftw-club-country-other');
+  if (!country) { Toast.error(I18n.t('ftw_err_country_required')); return; }
   _firstTimeWizardState.club = {
     name,
-    category: readAgeGroupField('ftw-club-category', 'ftw-club-category-other'),
+    category,
+    country,
     logoUrl: document.getElementById('ftw-club-logo')?.value.trim() || null,
     homeGround: document.getElementById('ftw-club-ground')?.value.trim() || null,
     shirtColor: document.getElementById('ftw-club-shirt')?.value || '#B23333',
   };
-  await ftwGoToStep(3);
+  await ftwGoToStep(2);
 }
 
-// ── STEP 3 — SEASON ──────────────────────────────────────────────────────
+// ── STEP 2 — SEASON ──────────────────────────────────────────────────────
 function renderFTWStepSeason() {
   const el = document.getElementById('firstTimeWizardOverlay');
   if (!el) return;
@@ -2105,7 +2142,7 @@ function renderFTWStepSeason() {
   el.innerHTML = `
     <div class="rm-form-overlay open">
       <div class="rm-form" style="max-width:440px">
-        ${firstTimeWizardProgressHtml(3, I18n.t('ftw_step_season_label'))}
+        ${firstTimeWizardProgressHtml(2, I18n.t('ftw_step_season_label'))}
         <h3 style="margin-bottom:16px">${I18n.t('ftw_step_season_title')}</h3>
 
         <div class="form-group">
@@ -2127,7 +2164,7 @@ function renderFTWStepSeason() {
 
         <div class="form-actions" style="margin-top:16px">
           <button class="btn btn-primary" onclick="ftwConfirmSeason()">${I18n.t('wiz_btn_next')}</button>
-          <button class="btn btn-secondary" onclick="ftwGoToStep(2)">${I18n.t('wiz_btn_back')}</button>
+          <button class="btn btn-secondary" onclick="ftwGoToStep(1)">${I18n.t('wiz_btn_back')}</button>
         </div>
       </div>
     </div>`;
@@ -2149,10 +2186,10 @@ async function ftwConfirmSeason() {
     ageGroup: readAgeGroupField('ftw-season-age', 'ftw-season-age-other'),
     defaultMatchDurationMins: parseInt(document.getElementById('ftw-season-duration')?.value) || null,
   };
-  await ftwGoToStep(4);
+  await ftwGoToStep(3);
 }
 
-// ── STEP 4 — SQUAD ───────────────────────────────────────────────────────
+// ── STEP 3 — SQUAD ───────────────────────────────────────────────────────
 function renderFTWStepSquad() {
   const el = document.getElementById('firstTimeWizardOverlay');
   if (!el) return;
@@ -2160,7 +2197,7 @@ function renderFTWStepSquad() {
   el.innerHTML = `
     <div class="rm-form-overlay open">
       <div class="rm-form" style="max-width:460px">
-        ${firstTimeWizardProgressHtml(4, I18n.t('ftw_step_squad_label'))}
+        ${firstTimeWizardProgressHtml(3, I18n.t('ftw_step_squad_label'))}
         <h3 style="margin-bottom:16px">${I18n.t('ftw_step_squad_title')}</h3>
 
         ${!squad.mode ? `
@@ -2176,12 +2213,12 @@ function renderFTWStepSquad() {
             <button class="btn btn-danger btn-sm" onclick="ftwRemoveManualPlayer(${i})">${I18n.t('common_delete')}</button>
           </div>`).join('')}
         </div>
-        <div class="form-group"><label>${I18n.t('pf_lbl_name')}</label><input id="ftw-player-name" type="text"></div>
-        <div class="form-group"><label>${I18n.t('pf_lbl_shirt_num')}</label><input id="ftw-player-num" type="number" min="1" max="99"></div>
-        <div class="form-group"><label>${I18n.t('pf_lbl_position')}</label>
-          <select id="ftw-player-pos"><option value="">—</option><option>GK</option><option>DF</option><option>MF</option><option>FW</option></select>
+        <div class="form-group"><label>${I18n.t('squad_lbl_fullname')}</label><input id="ftw-player-name" type="text"></div>
+        <div class="form-group"><label>${I18n.t('squad_lbl_shirt')}</label><input id="ftw-player-num" type="number" min="1" max="99"></div>
+        <div class="form-group"><label>${I18n.t('squad_lbl_pos1')}</label>
+          <select id="ftw-player-pos">${renderPositionOptions('')}</select>
         </div>
-        <div class="form-group"><label>${I18n.t('pf_lbl_dob')}</label><input id="ftw-player-dob" type="date"></div>
+        <div class="form-group"><label>${I18n.t('squad_lbl_dob')}</label><input id="ftw-player-dob" type="date"></div>
         <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:14px" onclick="ftwAddManualPlayer()">+ ${I18n.t('ftw_btn_add_player')}</button>
         ` : squad.mode === 'import' ? `
         <p style="font-size:13px;color:var(--muted);margin-bottom:10px">${I18n.t('ftw_import_players_hint')}</p>
@@ -2211,8 +2248,8 @@ function renderFTWStepSquad() {
         `}
 
         <div class="form-actions" style="margin-top:16px">
-          ${squad.mode ? `<button class="btn btn-primary" onclick="ftwConfirmSquad()">${I18n.t('wiz_btn_next')}</button>` : ''}
-          <button class="btn btn-secondary" onclick="ftwGoToStep(3)">${I18n.t('wiz_btn_back')}</button>
+          ${squad.mode ? `<button class="btn btn-primary" onclick="ftwConfirmSquad()">${I18n.t('ftw_btn_finish_setup')}</button>` : ''}
+          <button class="btn btn-secondary" onclick="ftwGoToStep(2)">${I18n.t('wiz_btn_back')}</button>
         </div>
       </div>
     </div>`;
@@ -2328,8 +2365,12 @@ function ftwRemoveManualPlayer(index) {
   renderFTWStepSquad();
 }
 
+// Squad is the last of the 3 screens — no separate Review step. Everything
+// collected is editable later from Settings/Squad anyway, so an extra
+// confirmation screen would only add a 4th click without protecting
+// anything real.
 async function ftwConfirmSquad() {
-  await ftwGoToStep(5);
+  await ftwFinalizeSetup();
 }
 
 // ── STEP 5 — OPPONENTS (optional) ────────────────────────────────────────
@@ -2489,6 +2530,7 @@ async function ftwFinalizeSetup() {
 
     clubTeamId = await DB.put('clubTeams', {
       name: s.club.name,
+      country: s.club.country || null,
       logoUrl: s.club.logoUrl || null,
       shirtColor: s.club.shirtColor || null,
       location: s.club.homeGround || null,
@@ -2642,6 +2684,7 @@ async function getGettingStartedItems() {
   const tournaments = State.currentSeasonId ? await getTournamentsForSeason(State.currentSeasonId) : [];
   let shareLink = null;
   try { shareLink = State.currentSeasonId ? await Sync.getTeamShareLink(State.currentSeasonId) : null; } catch(e) {}
+  const settingsVisited = !!(await DB.get('appMeta', 'gettingStartedSettingsVisited'))?.value;
 
   return [
     { key: 'club', label: I18n.t('gs_item_club'), done: clubTeams.length > 0 },
@@ -2649,11 +2692,13 @@ async function getGettingStartedItems() {
     { key: 'squad', label: I18n.t('gs_item_squad'), done: players.length > 0 },
     { key: 'game', label: I18n.t('gs_item_game'), done: games.length > 0 },
     { key: 'tournament', label: I18n.t('gs_item_tournament'), done: tournaments.length > 0 },
-    // Deliberately always false — the real Resources feature doesn't
-    // exist yet in this codebase, so this item genuinely cannot be
-    // completed. Kept visible as a forward-looking item, not marked done
-    // by a workaround.
-    { key: 'resources', label: I18n.t('gs_item_resources'), done: false },
+    // Repurposed from a placeholder "Add Resources" item that tracked a
+    // Season Resources feature which doesn't exist in this codebase (it
+    // was always false, with no action attached). Real content: a clickable
+    // item that takes the coach into Settings — where Import, Sharing and
+    // Diagnostics actually live — and marks itself done the first time they
+    // visit, read from a real appMeta flag rather than a fixed false.
+    { key: 'resources', label: I18n.t('gs_item_resources'), done: settingsVisited, action: 'settings' },
     { key: 'share', label: I18n.t('gs_item_share'), done: !!shareLink },
   ];
 }
@@ -2682,11 +2727,31 @@ async function renderGettingStartedCard() {
         <div class="card-title" style="margin-bottom:0">${I18n.t('gs_title')}</div>
         <button type="button" style="background:none;border:none;font-size:11px;color:var(--muted);text-decoration:underline;cursor:pointer" onclick="dismissGettingStarted()">${I18n.t('gs_btn_dismiss')}</button>
       </div>
-      ${items.map(i => `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px">
+      ${items.map(i => {
+        const textStyle = i.done ? 'color:var(--muted);text-decoration:line-through' : (i.action ? 'text-decoration:underline' : '');
+        return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;${i.action?'cursor:pointer':''}" ${i.action?`onclick="Nav.go('${i.action}')"`:''}>
         <span>${i.done ? '&#9989;' : '&#11036;'}</span>
-        <span style="${i.done?'color:var(--muted);text-decoration:line-through':''}">${esc(i.label)}</span>
-      </div>`).join('')}
+        <span style="${textStyle}">${esc(i.label)}</span>
+      </div>`;
+      }).join('')}
     </div>`;
+}
+
+// ── SHARED POSITION OPTIONS ──────────────────────────────────────────────────
+// The canonical 10-value taxonomy (CONFIG.POSITIONS / POSITION_TO_GROUP /
+// POSITION_ABBR), as option markup. Added so the First-Time Wizard's quick-add
+// player form can reuse the exact same list as the standalone Add-Player form
+// instead of its own incompatible GK/DF/MF/FW mini-list, which silently wrote
+// primaryPosition values the rest of the app (lineup builder, position pills,
+// filters) didn't recognize.
+const POSITION_I18N_KEYS = {
+  'Goalkeeper':'pos_gk', 'Centre Back':'pos_cb', 'Right Back':'pos_rb', 'Left Back':'pos_lb',
+  'Defensive Midfielder':'pos_dm', 'Central Midfielder':'pos_cm', 'Attacking Midfielder':'pos_am',
+  'Right Winger':'pos_rw', 'Left Winger':'pos_lw', 'Striker':'pos_st',
+};
+function renderPositionOptions(selected) {
+  return `<option value="" ${!selected?'selected':''}>${I18n.t('pos_select')}</option>` +
+    CONFIG.POSITIONS.map(p => `<option value="${p}" ${selected===p?'selected':''}>${I18n.t(POSITION_I18N_KEYS[p])}</option>`).join('');
 }
 
 // ── SHARED AGE GROUP LIST ────────────────────────────────────────────────────
@@ -2713,6 +2778,28 @@ function renderAgeGroupField(selectId, customId, currentValue) {
 // Reads back the actual value from a renderAgeGroupField pair — either
 // the selected option, or the custom text if "Other" was chosen.
 function readAgeGroupField(selectId, customId) {
+  const sel = document.getElementById(selectId)?.value || '';
+  if (sel === 'Other') return document.getElementById(customId)?.value.trim() || null;
+  return sel || null;
+}
+
+// ── SHARED COUNTRY FIELD ─────────────────────────────────────────────────────
+// No country field exists anywhere in the data model today — this is the
+// first one, added for Team creation. Same dropdown + conditional "Other"
+// text pattern as renderAgeGroupField, covering the markets this app is
+// actually used in today plus a free-text escape hatch for anywhere else.
+const COUNTRY_OPTIONS = ['Portugal','Brazil','Spain','Italy','France','United Kingdom','Other'];
+function renderCountryField(selectId, customId, currentValue) {
+  const isKnownOption = COUNTRY_OPTIONS.includes(currentValue);
+  const isOtherWithText = currentValue && !isKnownOption;
+  return `
+    <select id="${selectId}" onchange="document.getElementById('${customId}').style.display=this.value==='Other'?'block':'none'">
+      <option value="">—</option>
+      ${COUNTRY_OPTIONS.map(o => `<option value="${o}" ${(currentValue===o || (isOtherWithText && o==='Other'))?'selected':''}>${o}</option>`).join('')}
+    </select>
+    <input id="${customId}" type="text" placeholder="e.g. Angola" value="${esc(isOtherWithText ? currentValue : '')}" style="display:${isOtherWithText?'block':'none'};margin-top:6px">`;
+}
+function readCountryField(selectId, customId) {
   const sel = document.getElementById(selectId)?.value || '';
   if (sel === 'Other') return document.getElementById(customId)?.value.trim() || null;
   return sel || null;
@@ -3830,10 +3917,12 @@ function checkPasswordStrength(password) {
   };
 }
 
-function updatePasswordStrengthUI() {
-  const password = document.getElementById('signup-password')?.value || '';
+function updatePasswordStrengthUI(inputId, checklistId) {
+  inputId = inputId || 'signup-password';
+  checklistId = checklistId || 'password-strength-checklist';
+  const password = document.getElementById(inputId)?.value || '';
   const checks = checkPasswordStrength(password);
-  const el = document.getElementById('password-strength-checklist');
+  const el = document.getElementById(checklistId);
   if (!el) return;
   const rows = [
     [checks.length, I18n.t('acc_pw_check_length')],
@@ -4522,18 +4611,25 @@ function renderPasswordResetScreen() {
   el.innerHTML = `
     <p style="font-size:13px;color:var(--muted);margin-bottom:16px;text-align:center">${I18n.t('acc_reset_intro')}</p>
     <div class="form-grid" style="margin-bottom:12px">
-      <div class="form-group full"><label>${I18n.t('acc_reset_new_password')}</label><input id="reset-new-password" type="password" placeholder="••••••••" autocomplete="new-password"></div>
+      <div class="form-group full"><label>${I18n.t('acc_reset_new_password')}</label><input id="reset-new-password" type="password" placeholder="••••••••" autocomplete="new-password" oninput="updatePasswordStrengthUI('reset-new-password','reset-password-strength-checklist')"></div>
     </div>
+    <div id="reset-password-strength-checklist" style="font-size:11.5px;color:var(--muted);margin-bottom:14px;line-height:1.9"></div>
     <div id="reset-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
     <button class="btn btn-primary" style="width:100%" onclick="handleCompletePasswordReset()">${I18n.t('acc_reset_submit')}</button>
   `;
+  updatePasswordStrengthUI('reset-new-password', 'reset-password-strength-checklist');
 }
 
+// Same rule as signup (checkPasswordStrength — 12 chars, upper/lower/digit/
+// special), reused rather than duplicated. Previously this only checked a
+// 6-character minimum, so a reset could downgrade an account into a weaker
+// password than signup would ever have allowed in the first place.
 async function handleCompletePasswordReset() {
   const newPassword = document.getElementById('reset-new-password')?.value || '';
   const errEl = document.getElementById('reset-error');
-  if (newPassword.length < 6) {
-    if (errEl) { errEl.textContent = I18n.t('acc_err_password_too_short'); errEl.style.display = ''; }
+  const checks = checkPasswordStrength(newPassword);
+  if (!Object.values(checks).every(Boolean)) {
+    if (errEl) { errEl.textContent = I18n.t('acc_err_password_too_weak'); errEl.style.display = ''; }
     return;
   }
   try {
@@ -6370,8 +6466,10 @@ const TR = {
     ftw_step_welcome_label:'Welcome', ftw_welcome_title:'Welcome to NextEleven',
     ftw_welcome_body:'We\'ll help you set up your football environment in a few simple steps.',
     ftw_btn_start_setup:'Start Setup',
-    ftw_step_club_label:'Club/Team', ftw_step_club_title:'Tell us about your Club/Team',
+    ftw_step_club_label:'Team', ftw_step_club_title:'Tell us about your Team',
     ftw_lbl_logo_url:'Club Logo URL (optional)',
+    ftw_lbl_country:'Country', ftw_err_age_group_required:'Select an age group.', ftw_err_country_required:'Select a country.',
+    ftw_lbl_team_name:'Team Name',
     ftw_step_season_label:'Season', ftw_step_season_title:'Create your first Season',
     ftw_season_dates_note:'runs 1 September – 31 August',
     ftw_step_squad_label:'Squad', ftw_step_squad_title:'Set up your Squad',
@@ -6401,8 +6499,12 @@ const TR = {
     ftw_btn_resume_setup:'Resume Setup',
     gs_title:'Getting Started', gs_btn_dismiss:'Dismiss',
     gs_item_club:'Club created', gs_item_season:'Season created', gs_item_squad:'Squad created',
-    gs_item_game:'Add first Game', gs_item_tournament:'Add first Tournament', gs_item_resources:'Add Resources',
+    gs_item_game:'Add first Game', gs_item_tournament:'Add first Tournament', gs_item_resources:'Explore Settings',
     gs_item_share:'Share Team Page',
+    ipr_title:'Invalid Position Report', ipr_scanning:'Scanning players…',
+    ipr_none_found:'No players with an unrecognized position found.',
+    ipr_hint:'These players have a primary or secondary position that doesn\'t match the app\'s standard list — most likely written before a recent fix. Nothing here is changed automatically; edit a player from the Squad page to correct it.',
+    ipr_lbl_primary:'Primary', ipr_lbl_secondary:'Secondary',
 
     wiz_step_year_label:'Season Year', wiz_step_year_title:'What year does this season start?',
     wiz_step_age_label:'Age Group', wiz_step_ground_label:'Ground & Duration', wiz_step_ground_title:'Home ground and match length',
@@ -7807,8 +7909,10 @@ const TR = {
     ftw_step_welcome_label:'Boas-vindas', ftw_welcome_title:'Bem-vindo ao NextEleven',
     ftw_welcome_body:'Vamos ajudá-lo a configurar o seu ambiente de futebol em alguns passos simples.',
     ftw_btn_start_setup:'Iniciar Configuração',
-    ftw_step_club_label:'Clube/Equipa', ftw_step_club_title:'Fale-nos sobre o seu Clube/Equipa',
+    ftw_step_club_label:'Equipa', ftw_step_club_title:'Fale-nos sobre a sua Equipa',
     ftw_lbl_logo_url:'URL do Logótipo do Clube (opcional)',
+    ftw_lbl_country:'País', ftw_err_age_group_required:'Selecione um escalão.', ftw_err_country_required:'Selecione um país.',
+    ftw_lbl_team_name:'Nome da Equipa',
     ftw_step_season_label:'Época', ftw_step_season_title:'Crie a sua primeira Época',
     ftw_season_dates_note:'decorre de 1 de setembro a 31 de agosto',
     ftw_step_squad_label:'Plantel', ftw_step_squad_title:'Configure o seu Plantel',
@@ -7838,8 +7942,12 @@ const TR = {
     ftw_btn_resume_setup:'Retomar Configuração',
     gs_title:'Primeiros Passos', gs_btn_dismiss:'Dispensar',
     gs_item_club:'Clube criado', gs_item_season:'Época criada', gs_item_squad:'Plantel criado',
-    gs_item_game:'Adicionar primeiro Jogo', gs_item_tournament:'Adicionar primeiro Torneio', gs_item_resources:'Adicionar Recursos',
+    gs_item_game:'Adicionar primeiro Jogo', gs_item_tournament:'Adicionar primeiro Torneio', gs_item_resources:'Explorar Definições',
     gs_item_share:'Página de Partilha da Equipa',
+    ipr_title:'Relatório de Posições Inválidas', ipr_scanning:'A analisar jogadores…',
+    ipr_none_found:'Não foram encontrados jogadores com uma posição não reconhecida.',
+    ipr_hint:'Estes jogadores têm uma posição principal ou secundária que não corresponde à lista padrão da aplicação — provavelmente registada antes de uma correção recente. Nada aqui é alterado automaticamente; edite o jogador a partir da página do Plantel para corrigir.',
+    ipr_lbl_primary:'Principal', ipr_lbl_secondary:'Secundária',
 
     wiz_step_year_label:'Ano da Época', wiz_step_year_title:'Em que ano começa esta época?',
     wiz_step_age_label:'Escalão', wiz_step_ground_label:'Campo e Duração', wiz_step_ground_title:'Campo de casa e duração do jogo',
@@ -10030,6 +10138,62 @@ let _playerIdentityGroups = [];
 async function renderDiagnosticsTab() {
   await renderIdentityReviewSection();
   await renderSeasonAuditSection();
+  await renderInvalidPositionSection();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// INVALID POSITION REPORT — Admin diagnostic tool (read-only)
+// ══════════════════════════════════════════════════════════════════════════
+// Surfaces players whose primaryPosition/secondaryPosition don't match the
+// canonical 10-value taxonomy (CONFIG.POSITIONS) — most likely written by
+// the First-Time Wizard's quick-add form before it was fixed to use the
+// same picker as the standalone Add-Player form (it previously stored
+// GK/DF/MF/FW, which the rest of the app — lineup builder, position pills,
+// filters — doesn't recognize). Report-only: nothing here writes to any
+// player record. Fixing a flagged player is done normally, from the Squad
+// page's own Edit Player form.
+async function scanInvalidPositionPlayers() {
+  const allPlayers = await DB.getAll('players');
+  const allSeasons = await DB.getAll('seasons');
+  const seasonById = {};
+  allSeasons.forEach(s => { seasonById[s.seasonId] = s; });
+  const isValid = pos => !pos || CONFIG.POSITIONS.includes(pos);
+
+  return allPlayers
+    .filter(p => !isValid(p.primaryPosition) || !isValid(p.secondaryPosition))
+    .map(p => ({
+      playerId: p.playerId,
+      fullName: p.fullName,
+      seasonName: seasonById[p.seasonId]?.seasonName || '—',
+      primaryPosition: p.primaryPosition || null,
+      secondaryPosition: p.secondaryPosition || null,
+    }));
+}
+
+async function renderInvalidPositionSection() {
+  const el = document.getElementById('invalidPositionContainer');
+  if (!el) return;
+  el.innerHTML = `<div class="card"><div class="card-title">${I18n.t('ipr_title')}</div><p style="font-size:12px;color:var(--muted)">${I18n.t('ipr_scanning')}</p></div>`;
+
+  const flagged = await scanInvalidPositionPlayers();
+
+  if (!flagged.length) {
+    el.innerHTML = `<div class="card"><div class="card-title">${I18n.t('ipr_title')}</div><p style="font-size:12px;color:var(--muted)">${I18n.t('ipr_none_found')}</p></div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="card" style="background:#fbf3d9;border:1px solid #d9c26b">
+      <div class="card-title">${I18n.t('ipr_title')}</div>
+      <p style="font-size:12px;color:#8a6d1e;margin-bottom:12px">${I18n.t('ipr_hint')}</p>
+      ${flagged.map(r => `
+        <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+          <strong>${esc(r.fullName)}</strong> · ${esc(r.seasonName)}<br>
+          <span style="color:var(--muted)">${I18n.t('ipr_lbl_primary')}: ${esc(r.primaryPosition||'—')}${r.secondaryPosition?' · '+I18n.t('ipr_lbl_secondary')+': '+esc(r.secondaryPosition):''}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
 async function renderIdentityReviewSection() {
@@ -18850,6 +19014,9 @@ const Render = (() => {
       const existingDraft = await loadFirstTimeWizardDraft();
       if (existingDraft) {
         _firstTimeWizardState = existingDraft;
+        // Same clamp as openFirstTimeWizard() — a draft saved under the old
+        // 8-step flow could have step 4-8, which no longer exist as screens.
+        if (_firstTimeWizardState.step > FIRST_TIME_WIZARD_STEPS) _firstTimeWizardState.step = FIRST_TIME_WIZARD_STEPS;
       } else {
         _firstTimeWizardState = { step: 1, club: {}, season: {}, squad: { mode: null, players: [] }, opponentsMode: null, opponents: [] };
       }
@@ -20273,6 +20440,11 @@ const Render = (() => {
 
   // ── SETTINGS ───────────────────────────────────────────────────────────────
   async function settings() {
+    // Backs the "Explore Settings" Getting Started item — the only honest
+    // way to mark it done, since there is no actual Season Resources
+    // feature in this codebase for that item to track (confirmed by direct
+    // search). Fire-and-forget; never blocks the render.
+    DB.put('appMeta', { metaKey: 'gettingStartedSettingsVisited', value: true });
     const el = document.getElementById('settingsContent');
     const [seasonsUnsorted, backups] = await Promise.all([DB.getAll('seasons'), Backup.getList()]);
     // Newest season first, oldest last — chronological by the real season
@@ -20434,6 +20606,10 @@ const Render = (() => {
               </div>
               <div class="form-group"><label>Home Ground</label><input id="sf-edit-homeground" type="text" placeholder="e.g. Campo SL Olivais" value="${esc(State.currentSeason?.homeGround||'')}"></div>
               <div class="form-group"><label>Age Group</label>${renderAgeGroupField('sf-edit-age', 'sf-edit-age-other', State.currentSeason?.ageGroup||'')}</div>
+              <div class="form-group"><label>${I18n.t('ftw_lbl_country')}</label>${await (async () => {
+                const existingCountry = (await DB.get('clubTeams', State.currentSeason?.clubTeamId))?.country || '';
+                return renderCountryField('sf-edit-country', 'sf-edit-country-other', existingCountry);
+              })()}</div>
               <div class="form-group"><label>${I18n.t('set_lbl_shirt_color')}${infoTip('tip_shirt_color')} <span style="font-size:10px;font-weight:400;color:#999">${I18n.t('set_shirt_color_hint')}</span></label>
                 <div style="display:flex;gap:6px;align-items:center">
                   <input id="sf-edit-shirtcolor" type="color" value="${esc(State.currentSeason?.shirtColor||'#B23333')}" style="width:44px;height:36px;padding:2px;border:1px solid var(--border);border-radius:4px">
@@ -20639,6 +20815,7 @@ const Render = (() => {
           <p style="font-size:12px;color:var(--muted);margin-bottom:14px">${I18n.t('diag_intro')}</p>
           <div id="identityReviewContainer"></div>
           <div id="seasonAuditContainer"></div>
+          <div id="invalidPositionContainer" style="margin-top:14px"></div>
         </div>
       </div><!-- end stab-panel-diagnostics -->
 
@@ -26879,9 +27056,10 @@ document.addEventListener('click', async e => {
     // missing piece, confirmed tonight, that meant there was previously
     // no way to ever set a logo for a club at all.
     const editLogoUrl = document.getElementById('sf-edit-club-logo')?.value.trim() || null;
+    const editCountry = readCountryField('sf-edit-country', 'sf-edit-country-other');
     const clubTeamRecord = await DB.get('clubTeams', editClubTeamId);
-    if (clubTeamRecord && clubTeamRecord.logoUrl !== editLogoUrl) {
-      await DB.put('clubTeams', { ...clubTeamRecord, logoUrl: editLogoUrl });
+    if (clubTeamRecord && (clubTeamRecord.logoUrl !== editLogoUrl || clubTeamRecord.country !== editCountry)) {
+      await DB.put('clubTeams', { ...clubTeamRecord, logoUrl: editLogoUrl, country: editCountry });
     }
 
     const editShirtInput = document.getElementById('sf-edit-shirtcolor');
