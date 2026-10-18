@@ -698,7 +698,7 @@ function groupPlayersByPosition(players, getPosition, sortWithinGroup) {
 }
 
 const CONFIG = {
-  APP_VERSION: '1.2.13', // human-readable label only — staleness detection no longer depends on this matching anything
+  APP_VERSION: '1.2.14', // human-readable label only — staleness detection no longer depends on this matching anything
   SCHEMA_VERSION: 21,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability); 21 = classificationSnapshots/teamAliasMappings (League Classification)
   DB_NAME: 'footballSquadTrackerDB',
   // Demo Mode lives in a SEPARATE IndexedDB database. Isolation is physical,
@@ -24866,7 +24866,7 @@ function openKickoffTimeDialog(gameId, existingIso) {
   // Preserve the original calendar date when adjusting an already-set
   // kickoff (e.g. correcting it the next day) instead of always re-stamping
   // today — only a brand-new "starting now" tap should default to today.
-  dlg.dataset.baseDate = base.toISOString().slice(0, 10);
+  dlg.dataset.baseDate = dISO({y: base.getFullYear(), m: base.getMonth()+1, d: base.getDate()});
   dlg.classList.add('open');
 }
 
@@ -24884,7 +24884,8 @@ async function confirmKickoffTime() {
     const game = await DB.get('games', gameId);
     if (!game) return;
     const [h, m] = timeVal.split(':').map(Number);
-    const dateStr = dlg.dataset.baseDate || new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const dateStr = dlg.dataset.baseDate || dISO({y: now.getFullYear(), m: now.getMonth()+1, d: now.getDate()});
     const dt = new Date(`${dateStr}T00:00:00`);
     dt.setHours(h, m, 0, 0);
     game.actualKickoffAt = dt.toISOString();
@@ -25758,6 +25759,21 @@ function effectiveShirtNumber(defaultNum, gp) {
   return (gp && gp.shirtNumberPlayed !== null && gp.shirtNumberPlayed !== undefined) ? gp.shirtNumberPlayed : defaultNum;
 }
 
+// Whether the Starting XI tab's "C" captain-toggle button shows on one row.
+// Pure/standalone so it can be unit-tested directly against the truth table
+// below, rather than only as an inline expression inside the render loop.
+//   - No captain set yet: every AVAILABLE player is eligible (unavailable
+//     players can't be newly assigned captain).
+//   - Once a captain is set: ONLY that captain's own row shows the button —
+//     every other row's is hidden, captain-or-not.
+//   - The current captain's own button must keep showing even if they later
+//     become unavailable, so the manager still has a way to clear/reassign
+//     captaincy — `isCaptain` alone satisfies that, deliberately checked
+//     before (not combined with) the `avail` gate.
+function shouldShowCaptainButton(avail, isCaptain, anyCaptainSet) {
+  return isCaptain || (!avail && !anyCaptainSet);
+}
+
 // Shared comparator for two already-resolved effective numbers — numbered
 // players first (ascending), unnumbered ones pushed to the end. Same rule
 // the Squad and Starting XI tabs already apply inline; factored out here
@@ -25953,7 +25969,7 @@ async function renderStartingXITab(gameId) {
               <span class="wp-num" ${avail?'':`style="cursor:pointer" onclick="event.stopPropagation();${numPickerCall}"`}>${effNum??'—'}</span>
               <span class="wp-name" title="${esc(e.name)}">${esc(e.isTemp ? e.name : shortName(e.name))}${e.isTemp ? ` <span class="pos-pill">${I18n.t('gd_guest_badge')}</span>` : ''}</span>
               ${avail ? `<span class="wp-status-pill">${esc(availabilityStatusLabel(avail.status))}</span>` : effPos?`<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" title="${esc(effPos)}" onclick="event.stopPropagation();${pickerCall}">${esc(POSITION_ABBR[effPos] || effPos)}</span>`:''}
-              ${(!avail && (isCaptain || !anyCaptainSet))?`<button type="button" class="wp-cap-btn ${isCaptain?'wp-cap-active':''}" style="margin-left:${effPos?'8px':'auto'}" title="${esc(I18n.t('tp_stat_captain'))}" aria-pressed="${isCaptain}" onclick="event.stopPropagation();${capToggleCall}">C</button>`:''}
+              ${shouldShowCaptainButton(avail, isCaptain, anyCaptainSet)?`<button type="button" class="wp-cap-btn ${isCaptain?'wp-cap-active':''}" style="margin-left:${effPos?'8px':'auto'}" title="${esc(I18n.t('tp_stat_captain'))}" aria-pressed="${isCaptain}" onclick="event.stopPropagation();${capToggleCall}">C</button>`:''}
               ${avail?'':`<span class="wp-role-pill ${isStarter?'wp-role-starter':'wp-role-sub'}" style="margin-left:6px">${isStarter?I18n.t('gd_role_starter'):I18n.t('gd_role_sub')}</span>`}
             </div>
           </div>`;
@@ -26275,6 +26291,24 @@ async function logGoalEventsForDelta(gameId, seasonId, scorerId, scorerType, old
   }
 }
 
+// Soft-deletes every still-active goalEvents row for one game — both
+// season-player and guest scorers, since resetGameGoals zeroes goals/
+// assists for both. Called by resetGameGoals so a reset doesn't leave
+// orphaned per-goal timestamps behind (logGoalEventsForDelta is per-player-
+// delta and isn't a fit here: a reset zeroes everyone on the game in one
+// pass, not one player's own running total). Scoped strictly by the
+// 'gameId' index, so another match's goalEvents are never touched.
+// Idempotent: DB.getAll already filters out soft-deleted rows, so a repeat
+// reset simply finds nothing left to remove and is a clean no-op — never
+// re-deletes a row or throws. Uses the same DB.softDelete tombstone the
+// rest of the app relies on, so the deletion still reaches Supabase.
+async function clearAllGoalEventsForGame(gameId) {
+  const rows = await DB.getAll('goalEvents', 'gameId', gameId);
+  for (const row of rows) {
+    await DB.softDelete('goalEvents', row.goalEventId);
+  }
+}
+
 async function simpleSetField(gameId, playerId, field, value) {
   if (!checkGameEditableOrWarn()) return;
   gdDebugLog(`CHANGE ${field} player=${playerId} value=${value}`);
@@ -26410,6 +26444,12 @@ async function resetGameGoals(gameId) {
         gp.assists = 0;
         await DB.put('gamePlayers', gp);
       }
+      // gamePlayers.goals/.assists are zeroed above, but that bypasses
+      // logGoalEventsForDelta (it's keyed off a per-player old/new goals
+      // comparison, not a game-wide reset) — without this, a reset would
+      // leave this game's per-goal goalEvents log still showing the old
+      // goal count's timestamps even though the score itself reads 0.
+      await clearAllGoalEventsForGame(gameId);
       await refreshGameHeaderScore(gameId);
       await renderSimpleGoalsTab(gameId);
       Toast.show(I18n.t('gd_reset_scores_done'));
