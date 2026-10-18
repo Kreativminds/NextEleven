@@ -1439,6 +1439,10 @@ async function renderWizardStepChooseClub(preferExisting) {
           <label>${I18n.t('wiz_lbl_new_club_name')}</label>
           <input id="wiz-new-club-name" type="text" placeholder="e.g. FC Example">
         </div>
+        <div class="form-group">
+          <label>${I18n.t('ftw_lbl_country')} *</label>
+          ${renderCountryField('wiz-new-club-country', 'wiz-new-club-country-other', '')}
+        </div>
         <button class="btn btn-secondary" style="width:100%" onclick="wizardCreateNewClub()">${I18n.t('wiz_btn_create_new_club')}</button>
         <div class="form-actions" style="margin-top:16px">
           <button class="btn btn-secondary" onclick="renderWizardStepRenewalQuestion()">${I18n.t('wiz_btn_back')}</button>
@@ -1467,11 +1471,17 @@ async function wizardSelectExistingClub() {
 async function wizardCreateNewClub() {
   const name = document.getElementById('wiz-new-club-name')?.value.trim();
   if (!name) { Toast.error(I18n.t('wiz_err_club_name_required')); return; }
+  const country = readCountryField('wiz-new-club-country', 'wiz-new-club-country-other');
+  if (!country) { Toast.error(I18n.t('ftw_err_country_required')); return; }
   const normalize = s => (s||'').trim().toLowerCase().replace(/\s+/g,' ').normalize('NFD').replace(/[̀-ͯ]/g,'');
   const existingClubTeams = await DB.getAll('clubTeams');
-  let clubTeamId = existingClubTeams.find(c => normalize(c.name) === normalize(name))?.clubTeamId;
+  const matchedClubTeam = existingClubTeams.find(c => normalize(c.name) === normalize(name));
+  let clubTeamId = matchedClubTeam?.clubTeamId;
   if (!clubTeamId) {
-    clubTeamId = await DB.put('clubTeams', { name, createdAt: new Date().toISOString() });
+    clubTeamId = await DB.put('clubTeams', { name, country, createdAt: new Date().toISOString() });
+  } else if (matchedClubTeam.country !== country) {
+    // Same update-if-changed pattern as Settings Create/Edit Season.
+    await DB.put('clubTeams', { ...matchedClubTeam, country });
   }
   _seasonWizardState.clubTeamId = clubTeamId;
   _seasonWizardState.clubName = name;
@@ -20539,6 +20549,7 @@ const Render = (() => {
             <div class="form-group"><label>${I18n.t('set_lbl_club_name')} *</label><input id="sf-club" type="text" placeholder="e.g. SL Olivais"></div>
             <div class="form-group"><label>${I18n.t('set_lbl_home_ground')}</label><input id="sf-homeground" type="text" placeholder="e.g. Campo SL Olivais"></div>
             <div class="form-group"><label>${I18n.t('set_lbl_age_group')}</label>${renderAgeGroupField('sf-age', 'sf-age-other', '')}</div>
+            <div class="form-group"><label>${I18n.t('ftw_lbl_country')} *</label>${renderCountryField('sf-country', 'sf-country-other', '')}</div>
             <div class="form-group"><label>${I18n.t('set_lbl_match_duration')}</label>
               <select id="sf-duration-select" onchange="toggleSeasonDurationCustom()">
                 <option value="">${I18n.t('duration_default_90')}</option>
@@ -26975,6 +26986,8 @@ document.addEventListener('click', async e => {
     // explicit rule. Previously this field silently allowed null.
     const clubNameInput = document.getElementById('sf-club')?.value.trim();
     if (!clubNameInput) { Toast.error(I18n.t('set_err_club_required')); return; }
+    const countryInput = readCountryField('sf-country', 'sf-country-other');
+    if (!countryInput) { Toast.error(I18n.t('ftw_err_country_required')); return; }
     // Block creating a second season for a year that already has one —
     // this was previously silently allowed, and created exactly the
     // "two seasons both called 2026/27" problem that's confusing to
@@ -26993,9 +27006,15 @@ document.addEventListener('click', async e => {
     // real club typed slightly differently.
     const normalize = s => (s||'').trim().toLowerCase().replace(/\s+/g,' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
     const existingClubTeams = await DB.getAll('clubTeams');
-    let clubTeamId = existingClubTeams.find(c => normalize(c.name) === normalize(clubNameInput))?.clubTeamId;
+    const matchedClubTeam = existingClubTeams.find(c => normalize(c.name) === normalize(clubNameInput));
+    let clubTeamId = matchedClubTeam?.clubTeamId;
     if (!clubTeamId) {
-      clubTeamId = await DB.put('clubTeams', { name: clubNameInput, createdAt: new Date().toISOString() });
+      clubTeamId = await DB.put('clubTeams', { name: clubNameInput, country: countryInput, createdAt: new Date().toISOString() });
+    } else if (matchedClubTeam.country !== countryInput) {
+      // Reusing an existing club record (e.g. an orphaned one from a prior
+      // season that was later deleted) \u2014 same update-if-changed pattern as
+      // Settings -> Edit Season, so country never regresses to blank here.
+      await DB.put('clubTeams', { ...matchedClubTeam, country: countryInput });
     }
 
     const name = buildSeasonName(startYear);

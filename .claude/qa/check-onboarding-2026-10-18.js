@@ -189,19 +189,50 @@ try {
   check('Season Renewal Wizard: wizardCreateNewClub now normalizes+reuses an existing club',
     wizardCreateNewClubSrc.includes('normalize(c.name) === normalize(name)'));
 
-  const fakeDB = makeFakeDB({ clubTeams: [{ clubTeamId: 1, name: 'SL Olívais', createdAt: 't' }] });
-  global.document = makeFakeDocument({ 'wiz-new-club-name': 'sl olivais' }); // same name, no accent, different case
+  const fakeDB = makeFakeDB({ clubTeams: [{ clubTeamId: 1, name: 'SL Olívais', country: 'Portugal', createdAt: 't' }] });
+  // Same name (no accent, different case) + same country — pure reuse, no update.
+  global.document = makeFakeDocument({ 'wiz-new-club-name': 'sl olivais', 'wiz-new-club-country': 'Portugal', 'wiz-new-club-country-other': '' });
   global.Toast = { error() {}, show() {} };
   global._seasonWizardState = {};
   global.renderWizardStepYear = async () => {};
   global.I18n = makeFakeI18n();
+  // wizardCreateNewClub now also calls readCountryField, which reads
+  // COUNTRY_OPTIONS — pull both into this function's scope the same way
+  // Test Group 5 does, rather than reimplementing them.
+  const countryOptionsMatch = html.match(/const COUNTRY_OPTIONS\s*=\s*\[[^\]]*\]\s*;/);
+  if (!countryOptionsMatch) throw new Error('COUNTRY_OPTIONS declaration not found in index.html');
+  const readCountryFieldSrc = extractFn(html, 'readCountryField');
   const wizardCreateNewClub = new Function('DB', 'document', 'Toast', 'I18n',
-    `let _seasonWizardState = {}; async function renderWizardStepYear(){} ${wizardCreateNewClubSrc}; return wizardCreateNewClub;`
+    `${countryOptionsMatch[0]}; ${readCountryFieldSrc}; let _seasonWizardState = {}; async function renderWizardStepYear(){} ${wizardCreateNewClubSrc}; return wizardCreateNewClub;`
   )(fakeDB, global.document, global.Toast, global.I18n);
   await wizardCreateNewClub();
   check('duplicate-team fix: a diacritic/case-different name reuses clubTeamId 1 instead of creating a 2nd row',
     fakeDB._stores.clubTeams.length === 1,
     JSON.stringify(fakeDB._stores.clubTeams));
+
+  // A second call with a DIFFERENT country for the same club name should
+  // update the existing row's country, not create a second row or silently
+  // keep the stale value — the same update-if-changed rule Edit Season uses.
+  global.document = makeFakeDocument({ 'wiz-new-club-name': 'SL Olivais', 'wiz-new-club-country': 'Brazil', 'wiz-new-club-country-other': '' });
+  const wizardCreateNewClub2 = new Function('DB', 'document', 'Toast', 'I18n',
+    `${countryOptionsMatch[0]}; ${readCountryFieldSrc}; let _seasonWizardState = {}; async function renderWizardStepYear(){} ${wizardCreateNewClubSrc}; return wizardCreateNewClub;`
+  )(fakeDB, global.document, global.Toast, global.I18n);
+  await wizardCreateNewClub2();
+  check('duplicate-team fix: reusing a club with a changed country updates it in place (still 1 row)',
+    fakeDB._stores.clubTeams.length === 1 && fakeDB._stores.clubTeams[0].country === 'Brazil',
+    JSON.stringify(fakeDB._stores.clubTeams));
+
+  // Missing country must block creation, same as the First-Time Wizard.
+  global.document = makeFakeDocument({ 'wiz-new-club-name': 'Another Club', 'wiz-new-club-country': '', 'wiz-new-club-country-other': '' });
+  let countryErrorShown = false;
+  global.Toast = { error() { countryErrorShown = true; }, show() {} };
+  const wizardCreateNewClub3 = new Function('DB', 'document', 'Toast', 'I18n',
+    `${countryOptionsMatch[0]}; ${readCountryFieldSrc}; let _seasonWizardState = {}; async function renderWizardStepYear(){} ${wizardCreateNewClubSrc}; return wizardCreateNewClub;`
+  )(fakeDB, global.document, global.Toast, global.I18n);
+  await wizardCreateNewClub3();
+  check('duplicate-team fix: missing country blocks club creation (no 2nd row, error shown)',
+    fakeDB._stores.clubTeams.length === 1 && countryErrorShown,
+    JSON.stringify({ rows: fakeDB._stores.clubTeams, countryErrorShown }));
 } catch (e) {
   check('duplicate-team-name group', false, e.message);
 }
@@ -273,6 +304,41 @@ try {
     !flagged.some(f => f.fullName === 'Valid Player' || f.fullName === 'No Position Player'));
 } catch (e) {
   check('invalid-position report group', false, e.message);
+}
+
+// ── TEST GROUP 8 — country field on the Settings Create Season fallback ─────
+// This is the first of the two other team-creation paths flagged as a known
+// limitation in PR #6 (the Season Renewal Wizard's "new club" path is
+// covered by the Test Group 4 additions above). The handler lives inline
+// inside the big delegated click listener, not as its own named function,
+// so this checks the real source text (same technique Test Groups 2-4 use
+// for router/dispatcher checks) rather than re-implementing a mock DOM for
+// the whole click-event flow — the actual find-or-create + country logic
+// is already exercised end-to-end via wizardCreateNewClub above, since both
+// now share the identical pattern.
+try {
+  // extractBlock brace-matches a `{...}` body right after its marker, which
+  // fits the handler (an `if (...) { ... }` statement) but not this HTML
+  // template chunk — so the form is checked with a plain bounded substring
+  // instead, from the section heading down to its own closing button.
+  const formStart = html.indexOf("I18n.t('set_create_season')");
+  const formEnd = html.indexOf('btnCreateSeason', formStart);
+  if (formStart === -1 || formEnd === -1) throw new Error('Create Season form markup not found');
+  const formBlock = html.slice(formStart, formEnd);
+  check('Create Season form: country field is present and required',
+    formBlock.includes("renderCountryField('sf-country', 'sf-country-other'") &&
+    formBlock.includes("I18n.t('ftw_lbl_country')} *"));
+
+  const handlerBlock = extractBlock(html, "if (t.id==='btnCreateSeason')");
+  check('Create Season handler: validates country is set before creating',
+    handlerBlock.includes("readCountryField('sf-country', 'sf-country-other')") &&
+    handlerBlock.includes("if (!countryInput)"));
+  check('Create Season handler: new clubTeams row carries the country',
+    handlerBlock.includes('country: countryInput'));
+  check('Create Season handler: reusing an existing club updates its country if changed',
+    handlerBlock.includes('matchedClubTeam.country !== countryInput'));
+} catch (e) {
+  check('Create Season country-field group', false, e.message);
 }
 
 const failed = results.filter(r => !r.pass);
