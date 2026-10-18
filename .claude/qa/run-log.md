@@ -8,6 +8,74 @@ Newest entry on top.
 
 ---
 
+## 2026-10-18 — Scheduled nightly run
+
+- lastInspectedCommit: 841dc50
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt again claimed BUGS.md had exactly one
+  Open entry (`integ_fix_review`, i18n) — same stale claim as the last
+  several nights (it was resolved 2026-10-12). Confirmed BUGS.md's real
+  "Open" section is empty and the `integ_fix_review` EN string is
+  present in index.html. Went with the real repo state, as every prior
+  run has. Flagging again that whatever generates the scheduled prompt
+  should stop hardcoding this.
+- Scope: diff since fcc36cd (last run's lastInspectedCommit) touched
+  index.html via 4 merged PRs, all made directly to main outside this
+  agent (no `nightly-qa:` prefix, no maintenance branch — same pattern
+  as every other night): PR #5 (kickoff-timezone fix, goalEvents-reset
+  cleanup, captain-button-lockout fix — all three were open items from
+  this agent's own earlier nights, now closed by an interactive
+  session), PR #6 (onboarding wizard simplified from 8 steps to 3, plus
+  several related fixes), PR #7 (country field extended to two more
+  team-creation paths). Zero-AI early exit did not fire (app code
+  changed), so triage ran.
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse).
+  - `check-i18n-parity.js` → OK (1942/1942 keys, no gaps).
+- Triage (haiku): given commit-message summaries of all 4 PRs (not the
+  full diff) plus the check results and empty BUGS.md Open section,
+  returned 8 "verify" candidates, P1 down to P3 — none a slam-dunk,
+  all explicitly framed as "worth a closer look," which is the right
+  call given it only saw summaries, not code. Orchestrator verified
+  each against the actual code before acting; none held up as a fixable
+  defect:
+  - Not real / already handled correctly: kickoff-read-side concern
+    (team.html already derives local display time from the full ISO
+    timestamp — the bug was only in how the date was constructed before
+    saving, already fixed); public-stats soft-deleted-goalEvents concern
+    (public-stats-core.js reads `gamePlayers.goals`/`.assists` directly,
+    never touches `goalEvents` at all — confirmed by grep, no code path
+    exists to check); legacy-position-taxonomy concern (the new invalid-
+    position report is explicitly a report-only diagnostic per its own
+    code comment and the PR's stated scope — "no historical player
+    records are modified" — and `getPositionGroup` already falls back
+    to an `'other'` bucket for unrecognized values rather than hiding
+    players); country-required-on-edit concern (PR #6's own commit
+    message states the design explicitly: "required-on-create" only,
+    optional on existing records — confirmed Edit Season's save handler
+    deliberately has no required-check, matching that stated intent);
+    i18n-remapping-correctness concern (checked all 4 remapped squad-
+    form keys in both EN and PT — correct, sensible labels).
+  - Real but not worth a fix tonight (moved to Known Unresolved below):
+    dead wizard-step code left over from the 8-to-3 consolidation
+    (confirmed genuinely unreachable, zero functional impact — cleanup,
+    not a bug); possible wrong-calendar-day `actualKickoffAt` on games
+    saved before today's timezone fix (unconfirmed against real data,
+    and backfilling match data automatically is out of scope anyway).
+  - Not pursued: Getting Started checklist flag backfill (new
+    `gettingStartedSettingsVisited` flag starts `false` for existing
+    clubs who already opened Settings many times before this shipped) —
+    true but cosmetic, self-corrects the moment Settings is opened
+    again, not worth a slot.
+- Fixed: none (0/2 of cap used — nothing found held up as a genuine,
+  fixable issue after verification).
+- Needs approval: none.
+- Pending: none (every triage candidate was run to ground tonight, not
+  deferred for lack of time).
+- Known Unresolved housekeeping: removed the captain-button and
+  `resetGameGoals`/`goalEvents` entries — both fixed in today's PR #5.
+  Added the two new "real but not worth fixing tonight" items above.
+
 ## 2026-10-17 — Scheduled nightly run
 
 - lastInspectedCommit: fcc36cd
@@ -249,24 +317,13 @@ Newest entry on top.
 ## Known Unresolved
 (carried forward between runs so they aren't re-analyzed from scratch)
 
-- Captain ("C") button (index.html, `renderStartingXITab`, from
-  2026-10-17's affb9d8) can end up hidden on every row, with no UI path
-  to clear or reassign captaincy, if the current captain's own row ever
-  becomes `avail` (marked unavailable) while still called up — the
-  button is gated on `!avail && (isCaptain || !anyCaptainSet)`. Not
-  reachable under today's app rules (the adjacent comment states a
-  called-up player "should never actually be unavailable here"), so
-  flagged rather than fixed — touches core Starting XI/captain logic
-  shared by multiple features. Revisit if Victor wants a defensive
-  fallback (always show the captain's own button regardless of `avail`),
-  or if the "never unavailable while called up" invariant ever changes.
+- ~~Captain button stuck-hidden edge case~~ — fixed 2026-10-18 in
+  `shouldShowCaptainButton` (commit 2d3afdd, PR #5, interactive session
+  outside this agent). Removed from this list.
 
-- `resetGameGoals` (index.html) zeroes `gamePlayers.goals`/`.assists`
-  directly, bypassing `logGoalEventsForDelta` (added 2026-10-17) — a
-  reset leaves orphaned `goalEvents` rows for that game. Zero current
-  observable impact since nothing reads `goalEvents` back into any UI
-  yet (portal included). Worth a look once something actually consumes
-  `goalEvents`.
+- ~~`resetGameGoals` leaving orphaned `goalEvents` rows~~ — fixed
+  2026-10-18 via `clearAllGoalEventsForGame` (commit 2d3afdd, PR #5,
+  same session as above). Removed from this list.
 
 - Home carousel card `min-height:118px` (set in 226b5d3) is a floor, not
   a guarantee — if real content ever exceeds it (e.g. the fixture-status
@@ -301,3 +358,23 @@ Newest entry on top.
     reasoned design choice, not a defect introduced carelessly. Worth a
     look if/when `opponentMapAddress` gets a real admin-UI input and
     sees broader use.
+
+- Historical `actualKickoffAt` values possibly on the wrong calendar day
+  for games where "Game Starting Now" / the kickoff-time dialog was used
+  before today's UTC-crossing-timezone fix (commit ecf0b2d, PR #5)
+  landed. The fix only corrects new saves going forward; nothing
+  backfills records already written with the old UTC-derived date. Not
+  confirmed against real data (would need to check actual game records
+  for a BR/PT-timezone edge case), and correcting past records
+  automatically is out of scope for this agent either way (touches
+  user-facing match data) — flagging for Victor to spot-check if a
+  wrong kickoff day turns up on an older game.
+
+- Dead code from the 8-to-3 First-Time Wizard consolidation (660e650):
+  `renderFTWStepWelcome`, `renderFTWStepOpponents`, `renderFTWStepResources`,
+  `renderFTWStepReview` and their supporting functions are no longer
+  reachable — `renderFirstTimeWizardStep()`'s dispatcher only handles
+  steps 1-3 and `FIRST_TIME_WIZARD_STEPS = 3` clamps any in-flight draft
+  down to that range. Confirmed no live code path still calls into them.
+  Zero functional impact (truly dead, not a latent bug) — pure cleanup
+  opportunity, not urgent.
