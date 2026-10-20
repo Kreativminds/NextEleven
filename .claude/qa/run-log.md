@@ -8,6 +8,39 @@ Newest entry on top.
 
 ---
 
+## 2026-10-20 — Scheduled nightly run
+
+- lastInspectedCommit: 3f7894a
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process. This is now
+  the 6th night running (2026-10-15 through tonight) that the scheduled
+  prompt has hardcoded this same stale claim — the real fix landed
+  2026-10-12 via PR #1. Confirmed again tonight: BUGS.md's "Open"
+  section is empty, and the `integ_fix_review` EN string is present at
+  index.html:7041 (`'{n} similar games — NOT merged. Check whether they
+  are really the same game.'`), matching the PT string. Went with the
+  real repo state, per every prior run since 10-15. Re-flagging: whoever
+  generates the scheduled prompt should stop hardcoding this — it's a
+  recurring false signal, not a one-off.
+- Scope: diff since 924d7b1 (last run's lastInspectedCommit) touched
+  only this agent's own bookkeeping (`.claude/qa/lock.json`,
+  `.claude/qa/run-log.md` from last night's run) — no commits to
+  `index.html`, `css/nexteleven.css`, `team.html`, or
+  `public-stats-core.js`. No interactive bug-fixer session landed
+  anything on `main` either.
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse).
+  - `check-i18n-parity.js` → OK (1942/1942 keys, no gaps).
+- Zero-AI early exit: fired. No app-code diff, both checks pass, BUGS.md
+  Open section empty (confirmed directly, not from the scheduled
+  prompt's claim), nothing in Known Unresolved changed or worth
+  reconsidering (no code moved since it was last written). No haiku
+  triage spawned, no AI reasoning spent on triage/fix.
+- Fixed: none (0/2 of cap used — nothing to look at).
+- Needs approval: none.
+- Pending: none.
+
 ## 2026-10-19 — Scheduled nightly run
 
 - lastInspectedCommit: 924d7b1
