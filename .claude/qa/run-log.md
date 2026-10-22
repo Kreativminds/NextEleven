@@ -8,6 +8,64 @@ Newest entry on top.
 
 ---
 
+## 2026-10-22 — Scheduled nightly run
+
+- lastInspectedCommit: 32f6ef6
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process. This is now
+  the 8th night running (2026-10-15 through tonight) that the scheduled
+  prompt has hardcoded this same stale claim — the real fix landed
+  2026-10-12 via PR #1. Confirmed again tonight: BUGS.md's "Open" section
+  is empty, and the `integ_fix_review` EN string is present in index.html,
+  matching the PT string (i18n-parity check below also confirms 1943/1943
+  keys, no gaps). Went with the real repo state, per every prior run since
+  10-15. Re-flagging once more: whoever generates the scheduled prompt
+  should stop hardcoding this.
+- Scope: diff since 92e2e95 (last run's lastInspectedCommit) touched
+  `index.html` via one commit, 8396fa8 ("Fix three League Classification
+  import UX issues"), made directly to main outside this agent (no
+  `nightly-qa:` prefix, no maintenance branch — same pattern as other
+  interactive sessions on prior nights). No other app-code files changed.
+  Zero-AI early exit did not fire (app code changed), so triage ran.
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse).
+  - `check-i18n-parity.js` → OK (1943/1943 keys, no gaps).
+- Triage (haiku): given only the commit message for 8396fa8 (not the
+  diff) plus the check results and the empty BUGS.md Open section,
+  returned 3 candidates: P1 possible silent truncation in
+  `firstTableRows()` if position were ever compared as a string (e.g.
+  "10" < "9") or left blank; P1 possible wrong team auto-marked "our
+  team" via `matchAlias()` if an alias matched ambiguously or scope were
+  wrong; P3 dark-mode contrast risk on the new amber "our team" row
+  styling. Orchestrator verified each against the actual code; none held
+  up:
+  - `firstTableRows` concern: not real. `buildRow()` runs every position
+    through `toIntOrNull()` before it ever reaches `firstTableRows` —
+    position is always a proper integer or `null`, never a string, so no
+    "10" vs "9" lexicographic comparison is possible. A blank/null
+    position is explicitly skipped by the `pos != null` guard rather than
+    breaking the ordering check — intentional, not a defect.
+  - `matchAlias` concern: not real. The alias record for a given
+    season/competition/phase/series scope is only ever appended to with a
+    normalized name the admin explicitly confirmed by marking a row "our
+    team" on a previous publish (`clsPublish`'s `cleanRows.find(r =>
+    r.isOurTeam)` path) — there is exactly one alias record per scope,
+    built solely from admin-confirmed names. A wrong auto-mark would
+    require the admin to have mis-marked a row previously (a data/human
+    issue, not a code defect this agent can detect or fix).
+  - Dark-mode concern: not applicable. Grepped the whole codebase —
+    `prefers-color-scheme`, `data-theme`, and a `.dark` class don't exist
+    anywhere in `css/nexteleven.css` or `index.html`. The app has no dark
+    mode, so there's no dark-mode contrast to regress.
+- Fixed: none (0/2 of cap used — nothing found held up as a genuine,
+  fixable issue after verification).
+- Needs approval: none.
+- Pending: none (every triage candidate was run to ground tonight, not
+  deferred for lack of time).
+- Known Unresolved housekeeping: none — nothing in tonight's diff
+  touches any carried-forward item; list unchanged.
+
 ## 2026-10-21 — Scheduled nightly run
 
 - lastInspectedCommit: 92e2e95
