@@ -7343,6 +7343,7 @@ const TR = {
     cls_snapshot_meta:'{date} · {source} · {method}',
     cls_method_label_text:'Pasted text', cls_method_label_csv:'CSV file', cls_method_label_image:'Screenshot + text',
     cls_err_no_rows:'No rows could be read from this input.', cls_err_parse_failed:'Could not read this file.',
+    cls_warn_second_table:'This pasted text looked like it included an older table as well as the current one — only the first table was imported.',
     cls_rows_count:'{n} teams',
   },
   PT:{
@@ -8783,6 +8784,7 @@ const TR = {
     cls_snapshot_meta:'{date} · {source} · {method}',
     cls_method_label_text:'Texto colado', cls_method_label_csv:'Ficheiro CSV', cls_method_label_image:'Captura de ecrã + texto',
     cls_err_no_rows:'Não foi possível ler nenhuma linha a partir desta informação.', cls_err_parse_failed:'Não foi possível ler este ficheiro.',
+    cls_warn_second_table:'Este texto colado parecia incluir uma tabela antiga além da atual — só a primeira tabela foi importada.',
     cls_rows_count:'{n} equipas',
   },
   IT:{
@@ -12493,6 +12495,27 @@ const Classification = (() => {
   }
 
   // ---- paste-text / HTML-table-text parser -----------------------------------
+  // A genuine single standings table always lists positions in
+  // non-decreasing order (ties share a position, but a real table never
+  // goes backwards). A source page that copies a previous/older table
+  // along with the current one (e.g. a past matchday's standings still
+  // sitting below the current table when the selection is dragged over
+  // both) restarts its position numbers at 1 — that restart is the only
+  // reliable signal available in plain pasted text with no round/date
+  // marker of its own, so once a position goes backwards, that row and
+  // everything after it is treated as the stale second table and dropped.
+  function firstTableRows(rows) {
+    let maxPosition = null;
+    for (let i = 0; i < rows.length; i++) {
+      const pos = rows[i].position;
+      if (pos != null) {
+        if (maxPosition != null && pos < maxPosition) return { rows: rows.slice(0, i), ignored: rows.length - i };
+        maxPosition = maxPosition == null ? pos : Math.max(maxPosition, pos);
+      }
+    }
+    return { rows, ignored: 0 };
+  }
+
   function parseText(raw) {
     const warnings = [];
     const lines = String(raw || '').replace(/\r\n/g, '\n').split('\n').map(l => l.trim()).filter(l => l !== '');
@@ -12507,7 +12530,7 @@ const Classification = (() => {
       dataLines = lines.slice(1);
     }
 
-    const rows = [];
+    let rows = [];
     for (const line of dataLines) {
       const tokens = splitRow(line);
       let fieldMap = {};
@@ -12523,6 +12546,9 @@ const Classification = (() => {
       if (!fieldMap.team) { warnings.push('missing_team: ' + line); continue; }
       rows.push(buildRow(fieldMap));
     }
+    const trimmed = firstTableRows(rows);
+    if (trimmed.ignored) warnings.push('second_table_ignored: ' + trimmed.ignored);
+    rows = trimmed.rows;
     return { rows, warnings, headerDetected: !!header };
   }
 
@@ -12561,7 +12587,7 @@ const Classification = (() => {
     const header = recognizeHeader(firstTokens);
     const dataLines = header ? lines.slice(1) : lines;
 
-    const rows = [];
+    let rows = [];
     for (const line of dataLines) {
       const tokens = parseCSVLine(line, delim);
       let fieldMap = {};
@@ -12575,6 +12601,9 @@ const Classification = (() => {
       if (!fieldMap.team) { warnings.push('missing_team: ' + line); continue; }
       rows.push(buildRow(fieldMap));
     }
+    const trimmed = firstTableRows(rows);
+    if (trimmed.ignored) warnings.push('second_table_ignored: ' + trimmed.ignored);
+    rows = trimmed.rows;
     return { rows, warnings, headerDetected: !!header };
   }
 
@@ -12907,9 +12936,17 @@ function clsRenderTable(rows, editable) {
         <td><button class="btn" style="padding:3px 8px;font-size:11px${r.isOurTeam ? ';background:var(--black);color:#fff' : ''}" onclick="clsToggleOurTeam(${i})">${r.isOurTeam ? esc(I18n.t('cls_our_team_badge')) : esc(I18n.t('cls_mark_our_team'))}</button></td>
       </tr>`;
     }
+    // Our own team's row is marked by bolding the team name plus a subtle
+    // left-border accent on the row — the same quiet "this one matters"
+    // treatment used elsewhere (e.g. .leader-feature-card), not a filled
+    // badge/box sitting next to (and overlapping) the team name.
+    const posStyle = r.isOurTeam ? ' style="background:#fff7e6;border-left:3px solid var(--black)"' : '';
+    const teamLabel = r.isOurTeam
+      ? `<strong>${esc(Classification.cleanTeamName(r.teamName || ''))}</strong>`
+      : esc(Classification.cleanTeamName(r.teamName || ''));
     return `<tr${hiStyle}>
-      <td>${r.position ?? '—'}</td>
-      <td>${esc(Classification.cleanTeamName(r.teamName || ''))}${r.isOurTeam ? ` <span class="badge-warn" style="background:var(--black);color:#fff">${esc(I18n.t('cls_our_team_badge'))}</span>` : ''}</td>
+      <td${posStyle}>${r.position ?? '—'}</td>
+      <td>${teamLabel}</td>
       <td>${r.points ?? '—'}</td><td>${r.played ?? '—'}</td><td>${r.wins ?? '—'}</td><td>${r.draws ?? '—'}</td><td>${r.losses ?? '—'}</td>
       <td>${r.goalsFor ?? '—'}</td><td>${r.goalsAgainst ?? '—'}</td><td>${r.goalDiff ?? '—'}</td>
     </tr>`;
@@ -13112,12 +13149,27 @@ function clsParse() {
   }
   // Re-parsing (after correcting the raw text) keeps whichever row was
   // already marked as our team, matched by name, rather than losing it.
+  // On the *first* parse of a fresh import there's nothing to carry over
+  // yet, so fall back to the team remembered from a previous publish for
+  // this exact season/competition/phase/series scope (teamAliasMappings) —
+  // this is what lets "our team" be picked once and auto-applied on every
+  // later import instead of asked again each time. If the remembered team
+  // can't be found in this new table, no row gets auto-marked and the
+  // admin is simply asked to pick one, same as before this existed.
   const prevOur = _cls.draftRows ? _cls.draftRows.find(r => r.isOurTeam) : null;
-  _cls.draftRows = result.rows.map(r => ({
-    ...r,
-    isOurTeam: prevOur ? Classification.normalizeName(r.teamName) === Classification.normalizeName(prevOur.teamName) : false,
-  }));
+  _cls.draftRows = result.rows.map(r => {
+    let isOurTeam = false;
+    if (prevOur) {
+      isOurTeam = Classification.normalizeName(r.teamName) === Classification.normalizeName(prevOur.teamName);
+    } else if (_cls.scope) {
+      isOurTeam = !!Classification.matchAlias(r.teamName, _cls.aliasRecords, _cls.scope);
+    }
+    return { ...r, isOurTeam };
+  });
   _cls.stage = 'preview';
+  if ((result.warnings || []).some(w => w.startsWith('second_table_ignored'))) {
+    Toast.show(I18n.t('cls_warn_second_table'));
+  }
   clsRerenderBelow();
 }
 
