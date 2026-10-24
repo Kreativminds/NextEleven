@@ -422,14 +422,16 @@ function renderLiveCard(g, season, players, gamePlayers) {
 // as its own parameter rather than merged into `players` to match how the
 // rest of this file already keeps the two lists separate.
 function renderMatchSummaryCard(g, season, players, gamePlayers, tempPlayers) {
-  const gps = gamePlayers.filter(r => r.gameId === g.gameId);
+  // Deliberately NOT sourced from the `gamePlayers` param (gated behind the
+  // "Show player stats" season-wide toggle) — Victor asked for this card to
+  // show scorer names/minutes independently of that setting, since it's a
+  // one-off recap of the match just played, not a season stat leaderboard.
+  // The public RPC exposes `goalScorers`/`goalEvents` per game, ungated,
+  // restricted server-side to recently-finished games only.
+  const gps = (g.goalScorers || []).map(r => ({ ...r, gameId: g.gameId }));
   const our = parseInt(g.ourScore) || 0;
   const their = parseInt(g.opponentScore) || 0;
   const sc = homeAwayScore(g.homeAway, our, their, g.neutralSide);
-  // goalEvents is not part of the public payload today (see
-  // buildMatchGoalSummary's own comment) — passing an empty array means
-  // every our-team goal below simply has minute:null, the spec's own
-  // "no minute recorded" case, not an error.
   const summary = buildMatchGoalSummary(g, gps, players, tempPlayers || [], g.goalEvents || []);
   const usHome = g.homeAway === 'Home' || (g.homeAway === 'Neutral' && g.neutralSide === 'home');
   const ourName = season.clubName || 'Us';
