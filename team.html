@@ -73,6 +73,9 @@
   .live-scorers{font-size:15px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);line-height:1.8;text-align:left}
   .live-scorers .who{font-weight:700}
   .live-note{font-size:11px;color:var(--muted);margin-top:12px}
+  .summary-card{border-color:#0F1E2E;border-width:2px;padding:22px 18px 20px;text-align:center}
+  .summary-flag{display:inline-flex;align-items:center;color:#fff;background:#0F1E2E;border-radius:20px;padding:5px 14px;font-weight:800;font-size:12px;letter-spacing:1px}
+  .live-scorers.opponent-scorers .who{font-weight:700;color:var(--muted)}
   .split-note{font-size:12px;color:var(--muted);margin:0 0 8px}
   .split-line{font-size:11px;color:var(--muted);padding:0 0 9px;margin-top:-4px}
   .outcome-banner{text-align:center;padding:18px 16px}
@@ -309,6 +312,27 @@ function isGameFinished(g, season) {
   const mins = (parseInt(g.matchDurationMins) || parseInt(season && season.defaultMatchDurationMins) || 90) + 15;
   return now >= new Date(kickoff.getTime() + mins * 60000);
 }
+// "Just finished" window for the pinned match-summary card (final score +
+// kickoff time + per-goal breakdown) — true from the moment isGameFinished
+// flips true until roughly MATCH_SUMMARY_WINDOW_HOURS later, then the page
+// falls back to its normal view (Next Match / birthday carousel). Mirrors
+// index.html's isMatchSummaryWindowOpen, kept in sync by hand like every
+// other completion rule in this file.
+const MATCH_SUMMARY_WINDOW_HOURS = 24;
+function isMatchSummaryWindowOpen(g, season) {
+  if (!g || !g.date) return false;
+  if (!isGameFinished(g, season)) return false;
+  const now = new Date();
+  if (!g.gameTime && !g.actualKickoffAt) {
+    const endOfDay = new Date(`${g.date}T23:59:59`);
+    return now < new Date(endOfDay.getTime() + MATCH_SUMMARY_WINDOW_HOURS * 3600000);
+  }
+  const kickoff = g.actualKickoffAt ? new Date(g.actualKickoffAt) : new Date(`${g.date}T${g.gameTime}`);
+  if (isNaN(kickoff)) return false;
+  const mins = (parseInt(g.matchDurationMins) || parseInt(season && season.defaultMatchDurationMins) || 90) + 15;
+  const cutoff = new Date(kickoff.getTime() + mins * 60000);
+  return now < new Date(cutoff.getTime() + MATCH_SUMMARY_WINDOW_HOURS * 3600000);
+}
 // Kicked off but not finished yet — shown live, never counted in any record.
 // Same grouping as the main app's Squad/Convocados/Starting XI screens —
 // kept identical by hand, since this file and index.html share no
@@ -385,6 +409,50 @@ function renderLiveCard(g, season, players, gamePlayers) {
         ${ownGoals ? `<div><span aria-hidden="true">⚽</span> <span class="who">${tr('own_goal')}</span>${ownGoals > 1 ? ` ×${ownGoals}` : ''}</div>` : ''}
       </div>` : ''}
       <div class="live-note">${tr('live_note')}</div>
+    </div>`;
+}
+
+// "Just finished" match summary — final score, kickoff time, and the
+// per-goal breakdown (our scorer + minute when known, generic placeholder
+// + minute for the opponent). Rendered the same always-visible way as
+// renderLiveCard above (NOT one of the rotating carousel slides, so a
+// parent who doesn't wait through the rotation still sees it) for roughly
+// 24h after the match finishes — see isMatchSummaryWindowOpen. tempPlayers
+// is the public RPC's data.guestPlayers array (guest/trial players), kept
+// as its own parameter rather than merged into `players` to match how the
+// rest of this file already keeps the two lists separate.
+function renderMatchSummaryCard(g, season, players, gamePlayers, tempPlayers) {
+  const gps = gamePlayers.filter(r => r.gameId === g.gameId);
+  const our = parseInt(g.ourScore) || 0;
+  const their = parseInt(g.opponentScore) || 0;
+  const sc = homeAwayScore(g.homeAway, our, their, g.neutralSide);
+  // goalEvents is not part of the public payload today (see
+  // buildMatchGoalSummary's own comment) — passing an empty array means
+  // every our-team goal below simply has minute:null, the spec's own
+  // "no minute recorded" case, not an error.
+  const summary = buildMatchGoalSummary(g, gps, players, tempPlayers || [], g.goalEvents || []);
+  const usHome = g.homeAway === 'Home' || (g.homeAway === 'Neutral' && g.neutralSide === 'home');
+  const ourName = season.clubName || 'Us';
+  const homeName = usHome ? ourName : g.opponent;
+  const awayName = usHome ? g.opponent : ourName;
+  const goalLine = (who, minute) => `<div><span aria-hidden="true">⚽</span> <span class="who">${who}</span>${minute != null ? ` ${minute}&#39;` : ''}</div>`;
+  return `
+    <div class="card summary-card">
+      <span class="summary-flag">${tr('match_summary_badge')}</span>
+      <div class="live-fixture">
+        <div class="live-team">${esc(homeName)}</div>
+        <div class="live-score" role="status" aria-live="polite">${sc.home} - ${sc.away}</div>
+        <div class="live-team">${esc(awayName)}</div>
+      </div>
+      <div class="live-meta">${roundLabel(g) ? esc(roundLabel(g)) + ' · ' : ''}${g.homeAway === 'Home' ? tr('home') : tr('away')}${g.venue ? ' · ' + esc(g.venue) : ''} · ${tr('kickoff')} ${esc(g.actualKickoffAt ? fmtTimeHM(g.actualKickoffAt) : (g.gameTime||''))}</div>
+      ${summary.ourGoals.length ? `
+      <div class="live-scorers">
+        ${summary.ourGoals.map(x => goalLine(esc(x.isOwnGoal ? tr('own_goal') : (x.name ? shortName(x.name) : 'Unknown')), x.minute)).join('')}
+      </div>` : ''}
+      ${summary.opponentGoals.length ? `
+      <div class="live-scorers opponent-scorers">
+        ${summary.opponentGoals.map(x => goalLine(esc(tr('opponent_goal')), x.minute)).join('')}
+      </div>` : ''}
     </div>`;
 }
 
@@ -1006,6 +1074,7 @@ const STRINGS = {
     live:'LIVE', home:'Home', away:'Away', kickoff:'Kick-off',
     live_note:'Updating every 15 seconds while the game is on. Counted in the season record once the game ends.',
     own_goal:'Own goal',
+    match_summary_badge:'FINAL', opponent_goal:'Opponent goal',
     next_match:'Next Match', today:'Today', tomorrow:'Tomorrow', days_remaining:'{n} days remaining', get_directions:'Directions',
     choose_nav_app:'Open directions in', open_google_maps:'Google Maps', open_waze:'Waze', cancel:'Cancel',
     next_birthday:'Next Birthday', birthdays_this_week:'Birthday This Week', birthdays_this_week_pl:'Birthdays This Week',
@@ -1076,6 +1145,7 @@ const STRINGS = {
     live:'AO VIVO', home:'Casa', away:'Fora', kickoff:'Início',
     live_note:'Atualiza a cada 15 segundos durante o jogo. Entra no registo da época quando o jogo terminar.',
     own_goal:'Autogolo',
+    match_summary_badge:'FINAL', opponent_goal:'Golo do adversário',
     next_match:'Próximo Jogo', today:'Hoje', tomorrow:'Amanhã', days_remaining:'Faltam {n} dias', get_directions:'Direções',
     choose_nav_app:'Abrir direções em', open_google_maps:'Google Maps', open_waze:'Waze', cancel:'Cancelar',
     next_birthday:'Próximo Aniversário', birthdays_this_week:'Aniversário Esta Semana', birthdays_this_week_pl:'Aniversários Esta Semana',
@@ -1733,6 +1803,14 @@ function render(el, data) {
   const finishedGames = games.filter(g => isGameFinished(g, season));
   const liveGames = games.filter(g => isGameLive(g, season)).sort((a,b) => gameSortKey(a) - gameSortKey(b));
   _liveGameOnPage = liveGames.length > 0;
+  // "Just finished" match summary — fixed above the carousel (not one of
+  // its rotating slides) for roughly 24h after the match, same always-
+  // visible treatment as the live card above. Excludes anything still in
+  // liveGames (isMatchSummaryWindowOpen already implies isGameFinished,
+  // so there's no actual overlap, but the exclusion is kept explicit here
+  // for the same reason upcomingGames excludes them below).
+  const summaryGames = games.filter(g => !liveGames.includes(g) && isMatchSummaryWindowOpen(g, season))
+    .sort((a,b) => gameSortKey(a) - gameSortKey(b));
   const upcomingGames = games.filter(g => g.date && !finishedGames.includes(g) && !liveGames.includes(g))
     .sort((a,b) => gameSortKey(a) - gameSortKey(b));
   const split = splitGames(finishedGames);
@@ -1829,6 +1907,7 @@ function render(el, data) {
     </a>` : ''}
 
     ${liveGames.map(g => renderLiveCard(g, season, players, gamePlayers)).join('')}
+    ${summaryGames.map(g => renderMatchSummaryCard(g, season, players, gamePlayers, data.guestPlayers)).join('')}
 
     ${carouselSlides.length ? `
     <div class="carousel" id="pinnedCarousel">

@@ -97,6 +97,81 @@ function teamSeasonStats(games, allGP) {
   return s;
 }
 
+// Post-match goal breakdown for the "just finished" match summary (Parents
+// Page pinned card; the main app has an equivalent read-only summary on the
+// Game Detail Goals tab, built from this exact function copied verbatim —
+// see the duplication note at the top of this file).
+//
+// ourGoals: one entry per goal scored BY OUR TEAM (including own goals),
+// each { name, minute }. name is the scorer's fullName/name, or null for an
+// own goal (no scorer on our own roster) or an unresolved player record —
+// callers should fall back to a generic "Unknown"/own-goal label, same as
+// the existing live-card renderer already does. minute is the elapsed
+// minutes since kickoff, derived from goalEvents' scoredAt, or null when
+// it can't be determined — no kickoff time known, no matching goalEvents
+// row (goalEvents is OPTIONAL here: on the public Parents Page today it is
+// always empty, since get_public_team_data doesn't return it yet — every
+// our-team goal then simply gets minute:null, which is exactly the spec's
+// "no minute recorded" fallback, not a bug), or a value outside a
+// plausible match window (a correction entered long after the fact).
+//
+// opponentGoals: one entry per goal scored BY THE OPPONENT, each just
+// { minute }, always minute:null today — the app has never tracked a
+// per-opponent-goal event (not even a timestamp), only the running total
+// game.opponentScore, and there is no opposing scorer name to show at all
+// (by design — callers render a generic placeholder label instead, e.g.
+// I18n 'opponent_goal' / team.html's STRINGS.opponent_goal).
+const MATCH_SUMMARY_MAX_PLAUSIBLE_MINUTE = 150; // 90 + extra time + stoppage; keeps a late data-entry timestamp from showing a nonsense "minute"
+function buildMatchGoalSummary(game, gpRecords, players, tempPlayers, goalEvents) {
+  players = players || [];
+  tempPlayers = tempPlayers || [];
+  goalEvents = (goalEvents || []).filter(e => e && !e.isDeleted);
+
+  const kickoffIso = game && (game.actualKickoffAt || (game.date ? `${game.date}T${game.gameTime || '00:00'}` : null));
+  const kickoff = kickoffIso ? new Date(kickoffIso) : null;
+  const hasKickoff = !!(kickoff && !isNaN(kickoff));
+
+  function minuteFromScoredAt(scoredAt) {
+    if (!hasKickoff || !scoredAt) return null;
+    const t = new Date(scoredAt);
+    if (isNaN(t)) return null;
+    const mins = Math.round((t - kickoff) / 60000);
+    if (mins < 0 || mins > MATCH_SUMMARY_MAX_PLAUSIBLE_MINUTE) return null;
+    return mins;
+  }
+
+  const ourGoals = [];
+  (gpRecords || []).filter(r => r.calledUp && (parseInt(r.goals)||0) > 0).forEach(r => {
+    const isTemp = r.playerId == null;
+    const scorerType = isTemp ? 'temp' : 'player';
+    const scorerId = isTemp ? r.tempPlayerId : r.playerId;
+    const n = parseInt(r.goals) || 0;
+    const name = isTemp
+      ? (tempPlayers.find(t => t.tempPlayerId === scorerId) || {}).name || null
+      : (players.find(p => p.playerId === scorerId) || {}).fullName || null;
+    const events = goalEvents
+      .filter(e => e.scorerId === scorerId && e.scorerType === scorerType)
+      .sort((a,b) => new Date(a.scoredAt) - new Date(b.scoredAt));
+    for (let i = 0; i < n; i++) {
+      ourGoals.push({ name, minute: events[i] ? minuteFromScoredAt(events[i].scoredAt) : null });
+    }
+  });
+  // Own goals (ball into the opponent's net off one of THEIR players) count
+  // FOR us but have no scorer on our own roster — same "Own goal" treatment
+  // the existing live card already uses, never a named player.
+  const ownGoals = parseInt(game && game.ownGoalsForUs) || 0;
+  for (let i = 0; i < ownGoals; i++) ourGoals.push({ name: null, isOwnGoal: true, minute: null });
+  // Known minutes first (ascending), unknown-minute goals trail at the end —
+  // never interleaved as if minute:null meant "minute 0".
+  ourGoals.sort((a,b) => (a.minute==null?1:0) - (b.minute==null?1:0) || (a.minute||0) - (b.minute||0));
+
+  const theirCount = parseInt(game && game.opponentScore) || 0;
+  const opponentGoals = [];
+  for (let i = 0; i < theirCount; i++) opponentGoals.push({ minute: null });
+
+  return { ourGoals, opponentGoals };
+}
+
 // Trimmed public version — appearances/starts/goals/assists only, matching
 // exactly what get_public_team_data's gamePlayers rows contain. Does NOT
 // compute minutes, cards, or MOTM (those fields are not returned by the

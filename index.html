@@ -844,6 +844,35 @@ function isGameResultVisible(game, seasonMap) {
   return now >= cutoff;
 }
 
+// "Just finished" window for the read-only match-summary block on the Game
+// Detail Goals tab (see renderSimpleGoalsTab) and the Parents Page's own
+// pinned summary card (team.html's isMatchSummaryWindowOpen, kept in sync
+// by hand since that file shares no module system with this one) — true
+// from the moment isGameResultVisible flips true until roughly
+// MATCH_SUMMARY_WINDOW_HOURS later, then both fall back to their normal
+// view. Deliberately duplicates isGameResultVisible's own cutoff math
+// rather than refactoring that function (used everywhere stats are
+// aggregated) to also return a Date — lower risk, same duplication this
+// codebase already accepts elsewhere for this exact completion rule.
+const MATCH_SUMMARY_WINDOW_HOURS = 24;
+function isMatchSummaryWindowOpen(game, seasonMap) {
+  if (!game || !game.date) return false;
+  if (!isGameResultVisible(game, seasonMap)) return false;
+  const now = new Date();
+  const gameDateTime = game.actualKickoffAt
+    ? new Date(game.actualKickoffAt)
+    : new Date(`${game.date}T${game.gameTime || '00:00'}`);
+  if (isNaN(gameDateTime)) return false;
+  if (!game.gameTime && !game.actualKickoffAt) {
+    const endOfDay = new Date(`${game.date}T23:59:59`);
+    return now < new Date(endOfDay.getTime() + MATCH_SUMMARY_WINDOW_HOURS * 3600000);
+  }
+  const season = seasonMap ? seasonMap.get(game.seasonId) : null;
+  const durationMins = resolveMatchDuration(game, season);
+  const cutoff = new Date(gameDateTime.getTime() + (durationMins + CONFIG.RESULT_VISIBILITY_BUFFER_MINS) * 60000);
+  return now < new Date(cutoff.getTime() + MATCH_SUMMARY_WINDOW_HOURS * 3600000);
+}
+
 // Gates the "Game Starting Now" card itself (see gameDetail rendering,
 // startGameNow). Per Victor's call on the placement brainstorm: it should
 // only surface close to matchday, not sit on every not-yet-finished
@@ -6274,6 +6303,9 @@ const TR = {
     gd_reset_scores_confirm_body:'Their score, our score override, own goals, and every player\'s goals and assists on this game will be set back to zero (our score back to automatic). This cannot be undone.',
     gd_reset_scores_done:'All scores reset to zero.',
     gd_own_goal_hint:'If the opponent scored an own goal (counts for us), add it here — not on any of our players.',
+    gd_match_summary_title:'Match Summary', gd_match_summary_hint:'Shown here (and on the Parents Page) for about 24 hours after the match.',
+    gd_match_summary_kickoff:'Kick-off: {time}',
+    gd_own_goal_label:'Own goal', gd_opponent_goal:'Opponent goal', gd_match_summary_unknown_scorer:'Unknown',
     gd_shootout_title:'Penalty Shootout', gd_shootout_hint:'Tap each of our players who scored their penalty. This does not change the match score or player goal stats.',
     gd_shootout_our_scorers:'Our Scorers', gd_shootout_their_scorers:'Their Penalties',
     gd_shootout_score_line:'Shootout: {ours} — {theirs}',
@@ -7718,6 +7750,9 @@ const TR = {
     gd_reset_scores_confirm_body:'O resultado do adversário, a substituição manual do nosso resultado, os autogolos e os golos e assistências de todos os jogadores neste jogo voltam a zero (o nosso resultado volta a automático). Não pode ser desfeito.',
     gd_reset_scores_done:'Todos os resultados repostos a zero.',
     gd_own_goal_hint:'Se o adversário marcou um autogolo (conta a nosso favor), adicione aqui — não em nenhum dos nossos jogadores.',
+    gd_match_summary_title:'Resumo do Jogo', gd_match_summary_hint:'Mostrado aqui (e na Página dos Encarregados de Educação) durante cerca de 24 horas após o jogo.',
+    gd_match_summary_kickoff:'Início: {time}',
+    gd_own_goal_label:'Autogolo', gd_opponent_goal:'Golo do adversário', gd_match_summary_unknown_scorer:'Desconhecido',
     gd_shootout_title:'Grande Penalidades', gd_shootout_hint:'Toque em cada jogador nosso que marcou o seu penálti. Isto não altera o resultado do jogo nem as estatísticas de golos dos jogadores.',
     gd_shootout_our_scorers:'Os Nossos Marcadores', gd_shootout_their_scorers:'Penáltis Deles',
     gd_shootout_score_line:'Grandes Penalidades: {ours} — {theirs}',
@@ -26374,6 +26409,33 @@ async function renderSimpleGoalsTab(gameId) {
     const allPlayers = window._gdPlayers || [];
     const allTempPlayers = window._gdTempPlayers || [];
     const existingGP = await DB.getAll('gamePlayers','gameId',gameId);
+
+    // Read-only "Match Summary" — final result, kickoff time, and the
+    // per-goal breakdown (our scorer + minute when known, generic
+    // placeholder + minute for the opponent) — shown only within roughly
+    // 24h of the match finishing, same window the Parents Page uses for
+    // its own pinned summary card. Outside that window this tab looks
+    // exactly as it did before this feature.
+    const seasonForSummary = await DB.get('seasons', game?.seasonId);
+    const showMatchSummary = game && isMatchSummaryWindowOpen(game, new Map([[game.seasonId, seasonForSummary]]));
+    let matchSummaryHtml = '';
+    if (showMatchSummary) {
+      const goalEventsForSummary = await DB.getAll('goalEvents', 'gameId', gameId);
+      const summary = buildMatchGoalSummary(game, existingGP, allPlayers, allTempPlayers, goalEventsForSummary);
+      const displayScoreForSummary = Calc.homeAwayScore(game.homeAway, Calc.teamGoals(existingGP, game), parseInt(game.opponentScore)||0, game.neutralSide);
+      const goalLine = (who, minute) => `<div style="padding:3px 0">&#9917; <strong>${who}</strong>${minute!=null?` <span style="color:var(--muted)">${minute}&#39;</span>`:''}</div>`;
+      matchSummaryHtml = `
+        <div class="card" style="margin-bottom:14px;padding:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div style="font-weight:700;font-size:13px">${I18n.t('gd_match_summary_title')}</div>
+            <div style="font-size:18px;font-weight:800">${displayScoreForSummary.home} — ${displayScoreForSummary.away}</div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(I18n.t('gd_match_summary_hint'))}</div>
+          ${game.actualKickoffAt || game.gameTime ? `<div style="font-size:12px;color:var(--muted);margin-top:8px">${esc(I18n.t('gd_match_summary_kickoff', {time: game.actualKickoffAt ? new Date(game.actualKickoffAt).toLocaleTimeString(I18n.get()==='PT'?'pt-PT':'en-GB', {hour:'2-digit',minute:'2-digit'}) : game.gameTime}))}</div>` : ''}
+          ${summary.ourGoals.length ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">${summary.ourGoals.map(x => goalLine(esc(x.isOwnGoal ? I18n.t('gd_own_goal_label') : (x.name ? shortName(x.name) : I18n.t('gd_match_summary_unknown_scorer'))), x.minute)).join('')}</div>` : ''}
+          ${summary.opponentGoals.length ? `<div style="margin-top:6px">${summary.opponentGoals.map(x => goalLine(esc(I18n.t('gd_opponent_goal')), x.minute)).join('')}</div>` : ''}
+        </div>`;
+    }
     const squad = allPlayers.filter(p => {
       const gp = existingGP.find(r=>r.playerId===p.playerId);
       return gp && gp.calledUp;
@@ -26439,11 +26501,12 @@ async function renderSimpleGoalsTab(gameId) {
       </div>`;
 
     if (!squad.length && !tempSquad.length) {
-      el.innerHTML = oppScoreField + `<div class="empty"><strong>${I18n.t('gd_xi_no_squad_title')}</strong><p>${I18n.t('gd_goals_no_squad_desc')}</p><button class="btn btn-primary" onclick="switchSimpleTab(${gameId},'squad')">${I18n.t('gd_btn_go_to_squad')}</button></div>`;
+      el.innerHTML = matchSummaryHtml + oppScoreField + `<div class="empty"><strong>${I18n.t('gd_xi_no_squad_title')}</strong><p>${I18n.t('gd_goals_no_squad_desc')}</p><button class="btn btn-primary" onclick="switchSimpleTab(${gameId},'squad')">${I18n.t('gd_btn_go_to_squad')}</button></div>`;
       return;
     }
 
     el.innerHTML = `
+      ${matchSummaryHtml}
       ${oppScoreField}
       <p style="font-size:12px;color:var(--muted);margin-bottom:14px">${I18n.t('gd_goals_hint')}</p>
       <div class="goals-list">
@@ -26547,6 +26610,71 @@ async function clearAllGoalEventsForGame(gameId) {
   for (const row of rows) {
     await DB.softDelete('goalEvents', row.goalEventId);
   }
+}
+
+// Post-match goal breakdown for the read-only "Match Summary" block on this
+// tab (see renderSimpleGoalsTab) and the Parents Page's own pinned summary
+// card — COPIED VERBATIM from public-stats-core.js's buildMatchGoalSummary
+// (that file cannot be imported here, same reason it's a separate file at
+// all — see the duplication note at its top). If this logic ever changes,
+// update both places.
+//
+// ourGoals: one entry per goal scored BY OUR TEAM (including own goals),
+// each { name, minute }. name is the scorer's fullName/name, or null for an
+// own goal or an unresolved player record. minute is the elapsed minutes
+// since kickoff, derived from goalEvents' scoredAt, or null when it can't
+// be determined (no kickoff time known, no matching goalEvents row, or a
+// value outside a plausible match window).
+//
+// opponentGoals: one entry per goal scored BY THE OPPONENT, each just
+// { minute }, always minute:null today — no per-opponent-goal event is
+// tracked anywhere (not even a timestamp), only the running total
+// game.opponentScore, and there is no opposing scorer name to show at all
+// (callers render I18n 'gd_opponent_goal' instead).
+const MATCH_SUMMARY_MAX_PLAUSIBLE_MINUTE = 150; // 90 + extra time + stoppage; keeps a late data-entry timestamp from showing a nonsense "minute"
+function buildMatchGoalSummary(game, gpRecords, players, tempPlayers, goalEvents) {
+  players = players || [];
+  tempPlayers = tempPlayers || [];
+  goalEvents = (goalEvents || []).filter(e => e && !e.isDeleted);
+
+  const kickoffIso = game && (game.actualKickoffAt || (game.date ? `${game.date}T${game.gameTime || '00:00'}` : null));
+  const kickoff = kickoffIso ? new Date(kickoffIso) : null;
+  const hasKickoff = !!(kickoff && !isNaN(kickoff));
+
+  function minuteFromScoredAt(scoredAt) {
+    if (!hasKickoff || !scoredAt) return null;
+    const t = new Date(scoredAt);
+    if (isNaN(t)) return null;
+    const mins = Math.round((t - kickoff) / 60000);
+    if (mins < 0 || mins > MATCH_SUMMARY_MAX_PLAUSIBLE_MINUTE) return null;
+    return mins;
+  }
+
+  const ourGoals = [];
+  (gpRecords || []).filter(r => r.calledUp && (parseInt(r.goals)||0) > 0).forEach(r => {
+    const isTemp = r.playerId == null;
+    const scorerType = isTemp ? 'temp' : 'player';
+    const scorerId = isTemp ? r.tempPlayerId : r.playerId;
+    const n = parseInt(r.goals) || 0;
+    const name = isTemp
+      ? (tempPlayers.find(t => t.tempPlayerId === scorerId) || {}).name || null
+      : (players.find(p => p.playerId === scorerId) || {}).fullName || null;
+    const events = goalEvents
+      .filter(e => e.scorerId === scorerId && e.scorerType === scorerType)
+      .sort((a,b) => new Date(a.scoredAt) - new Date(b.scoredAt));
+    for (let i = 0; i < n; i++) {
+      ourGoals.push({ name, minute: events[i] ? minuteFromScoredAt(events[i].scoredAt) : null });
+    }
+  });
+  const ownGoals = parseInt(game && game.ownGoalsForUs) || 0;
+  for (let i = 0; i < ownGoals; i++) ourGoals.push({ name: null, isOwnGoal: true, minute: null });
+  ourGoals.sort((a,b) => (a.minute==null?1:0) - (b.minute==null?1:0) || (a.minute||0) - (b.minute||0));
+
+  const theirCount = parseInt(game && game.opponentScore) || 0;
+  const opponentGoals = [];
+  for (let i = 0; i < theirCount; i++) opponentGoals.push({ minute: null });
+
+  return { ourGoals, opponentGoals };
 }
 
 async function simpleSetField(gameId, playerId, field, value) {
