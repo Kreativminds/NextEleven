@@ -6303,7 +6303,7 @@ const TR = {
     gd_reset_scores_confirm_body:'Their score, our score override, own goals, and every player\'s goals and assists on this game will be set back to zero (our score back to automatic). This cannot be undone.',
     gd_reset_scores_done:'All scores reset to zero.',
     gd_own_goal_hint:'If the opponent scored an own goal (counts for us), add it here — not on any of our players.',
-    gd_match_summary_title:'Match Summary', gd_match_summary_hint:'Shown here (and on the Parents Page) for about 24 hours after the match.',
+    gd_match_summary_title:'Match Summary', gd_match_summary_hint:'Also shown on the Parents Page for about 24 hours after the match.',
     gd_match_summary_kickoff:'Kick-off: {time}',
     gd_own_goal_label:'Own goal', gd_opponent_goal:'Opponent goal', gd_match_summary_unknown_scorer:'Unknown',
     gd_shootout_title:'Penalty Shootout', gd_shootout_hint:'Tap each of our players who scored their penalty. This does not change the match score or player goal stats.',
@@ -7750,7 +7750,7 @@ const TR = {
     gd_reset_scores_confirm_body:'O resultado do adversário, a substituição manual do nosso resultado, os autogolos e os golos e assistências de todos os jogadores neste jogo voltam a zero (o nosso resultado volta a automático). Não pode ser desfeito.',
     gd_reset_scores_done:'Todos os resultados repostos a zero.',
     gd_own_goal_hint:'Se o adversário marcou um autogolo (conta a nosso favor), adicione aqui — não em nenhum dos nossos jogadores.',
-    gd_match_summary_title:'Resumo do Jogo', gd_match_summary_hint:'Mostrado aqui (e na Página dos Encarregados de Educação) durante cerca de 24 horas após o jogo.',
+    gd_match_summary_title:'Resumo do Jogo', gd_match_summary_hint:'Também mostrado na Página dos Encarregados de Educação durante cerca de 24 horas após o jogo.',
     gd_match_summary_kickoff:'Início: {time}',
     gd_own_goal_label:'Autogolo', gd_opponent_goal:'Golo do adversário', gd_match_summary_unknown_scorer:'Desconhecido',
     gd_shootout_title:'Grande Penalidades', gd_shootout_hint:'Toque em cada jogador nosso que marcou o seu penálti. Isto não altera o resultado do jogo nem as estatísticas de golos dos jogadores.',
@@ -26412,18 +26412,27 @@ async function renderSimpleGoalsTab(gameId) {
 
     // Read-only "Match Summary" — final result, kickoff time, and the
     // per-goal breakdown (our scorer + minute when known, generic
-    // placeholder + minute for the opponent) — shown only within roughly
-    // 24h of the match finishing, same window the Parents Page uses for
-    // its own pinned summary card. Outside that window this tab looks
-    // exactly as it did before this feature.
+    // placeholder + minute for the opponent). Per Victor, this tab shows it
+    // for as long as the game counts as finished — no 24h cutoff here (that
+    // cutoff still applies on the Parents Page's own pinned card, which has
+    // its own good reason to roll off: this tab, unlike that one, isn't
+    // something parents are scrolling past indefinitely).
     const seasonForSummary = await DB.get('seasons', game?.seasonId);
-    const showMatchSummary = game && isMatchSummaryWindowOpen(game, new Map([[game.seasonId, seasonForSummary]]));
+    const showMatchSummary = game && isGameResultVisible(game, new Map([[game.seasonId, seasonForSummary]]));
     let matchSummaryHtml = '';
     if (showMatchSummary) {
       const goalEventsForSummary = await DB.getAll('goalEvents', 'gameId', gameId);
       const summary = buildMatchGoalSummary(game, existingGP, allPlayers, allTempPlayers, goalEventsForSummary);
       const displayScoreForSummary = Calc.homeAwayScore(game.homeAway, Calc.teamGoals(existingGP, game), parseInt(game.opponentScore)||0, game.neutralSide);
+      // Two columns, left/right matching the home/away side — not "us then
+      // them" stacked — same convention as the Parents Page card.
+      const usHomeForSummary = game.homeAway === 'Home' || (game.homeAway === 'Neutral' && game.neutralSide === 'home');
       const goalLine = (who, minute) => `<div style="padding:3px 0;font-size:13px">&#9917; <strong>${who}</strong>${minute!=null?` <span style="color:var(--muted)">${minute}&#39;</span>`:''}</div>`;
+      const ourLinesForSummary = summary.ourGoals.map(x => goalLine(esc(x.isOwnGoal ? I18n.t('gd_own_goal_label') : (x.name ? shortName(x.name) : I18n.t('gd_match_summary_unknown_scorer'))), x.minute)).join('');
+      const theirLinesForSummary = summary.opponentGoals.map(x => goalLine(esc(I18n.t('gd_opponent_goal')), x.minute)).join('');
+      const ourColForSummary = `<div style="flex:1;min-width:0;text-align:${usHomeForSummary ? 'left' : 'right'}">${ourLinesForSummary}</div>`;
+      const theirColForSummary = `<div style="flex:1;min-width:0;text-align:${usHomeForSummary ? 'right' : 'left'};color:var(--muted)">${theirLinesForSummary}</div>`;
+      const scorerColsForSummary = usHomeForSummary ? (ourColForSummary + theirColForSummary) : (theirColForSummary + ourColForSummary);
       matchSummaryHtml = `
         <div class="card" style="margin-bottom:14px;padding:14px">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
@@ -26432,8 +26441,7 @@ async function renderSimpleGoalsTab(gameId) {
           </div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(I18n.t('gd_match_summary_hint'))}</div>
           ${game.actualKickoffAt || game.gameTime ? `<div style="font-size:12px;color:var(--muted);margin-top:8px">${esc(I18n.t('gd_match_summary_kickoff', {time: game.actualKickoffAt ? new Date(game.actualKickoffAt).toLocaleTimeString(I18n.get()==='PT'?'pt-PT':'en-GB', {hour:'2-digit',minute:'2-digit'}) : game.gameTime}))}</div>` : ''}
-          ${summary.ourGoals.length ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">${summary.ourGoals.map(x => goalLine(esc(x.isOwnGoal ? I18n.t('gd_own_goal_label') : (x.name ? shortName(x.name) : I18n.t('gd_match_summary_unknown_scorer'))), x.minute)).join('')}</div>` : ''}
-          ${summary.opponentGoals.length ? `<div style="margin-top:6px">${summary.opponentGoals.map(x => goalLine(esc(I18n.t('gd_opponent_goal')), x.minute)).join('')}</div>` : ''}
+          ${(ourLinesForSummary || theirLinesForSummary) ? `<div style="display:flex;gap:14px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">${scorerColsForSummary}</div>` : ''}
         </div>`;
     }
     const squad = allPlayers.filter(p => {

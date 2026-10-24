@@ -77,8 +77,10 @@
   .summary-flag{display:inline-flex;align-items:center;color:#fff;background:#0F1E2E;border-radius:20px;padding:5px 14px;font-weight:800;font-size:12px;letter-spacing:1px}
   .summary-card .live-score{font-size:30px;font-weight:700}
   .summary-card .live-team{font-size:13px;font-weight:700}
-  .summary-card .live-scorers{font-size:13px}
-  .summary-card .live-scorers .who{font-weight:600}
+  .scorer-cols{display:flex;gap:14px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);line-height:1.8;font-size:13px}
+  .scorer-col{flex:1;min-width:0}
+  .scorer-col .who{font-weight:600}
+  .scorer-col.opponent-scorers .who{font-weight:600;color:var(--muted)}
   .live-scorers.opponent-scorers .who{font-weight:700;color:var(--muted)}
   .split-note{font-size:12px;color:var(--muted);margin:0 0 8px}
   .split-line{font-size:11px;color:var(--muted);padding:0 0 9px;margin-top:-4px}
@@ -442,6 +444,16 @@ function renderMatchSummaryCard(g, season, players, gamePlayers, tempPlayers) {
   const homeName = usHome ? ourName : g.opponent;
   const awayName = usHome ? g.opponent : ourName;
   const goalLine = (who, minute) => `<div><span aria-hidden="true">⚽</span> <span class="who">${who}</span>${minute != null ? ` ${minute}&#39;` : ''}</div>`;
+  // Two side-by-side columns, under the matching team name above — not
+  // "us then them" stacked, but whichever side actually played home/away,
+  // same convention the score header already uses. Per Victor: for
+  // today's home win it should read scorers-on-the-left (home side),
+  // opponent-on-the-right (away side), at a glance.
+  const ourLines = summary.ourGoals.map(x => goalLine(esc(x.isOwnGoal ? tr('own_goal') : (x.name ? shortName(x.name) : 'Unknown')), x.minute)).join('');
+  const theirLines = summary.opponentGoals.map(x => goalLine(esc(tr('opponent_goal')), x.minute)).join('');
+  const ourCol = `<div class="scorer-col" style="text-align:${usHome ? 'left' : 'right'}">${ourLines}</div>`;
+  const theirCol = `<div class="scorer-col opponent-scorers" style="text-align:${usHome ? 'right' : 'left'}">${theirLines}</div>`;
+  const scorerColsHtml = usHome ? (ourCol + theirCol) : (theirCol + ourCol);
   return `
     <div class="card summary-card">
       <span class="summary-flag">${tr('match_summary_badge')}</span>
@@ -451,17 +463,10 @@ function renderMatchSummaryCard(g, season, players, gamePlayers, tempPlayers) {
         <div class="live-team">${esc(awayName)}</div>
       </div>
       <div class="live-meta">${roundLabel(g) ? esc(roundLabel(g)) + ' · ' : ''}${g.homeAway === 'Home' ? tr('home') : tr('away')}${g.venue ? ' · ' + esc(g.venue) : ''} · ${tr('kickoff')} ${esc(g.actualKickoffAt ? fmtTimeHM(g.actualKickoffAt) : (g.gameTime||''))}</div>
-      ${summary.ourGoals.length ? `
-      <div class="live-scorers">
-        ${summary.ourGoals.map(x => goalLine(esc(x.isOwnGoal ? tr('own_goal') : (x.name ? shortName(x.name) : 'Unknown')), x.minute)).join('')}
-      </div>` : ''}
-      ${summary.opponentGoals.length ? `
-      <div class="live-scorers opponent-scorers">
-        ${summary.opponentGoals.map(x => goalLine(esc(tr('opponent_goal')), x.minute)).join('')}
-      </div>` : ''}
+      ${(ourLines || theirLines) ? `
+      <div class="scorer-cols">${scorerColsHtml}</div>` : ''}
     </div>`;
 }
-
 // Large, faded club identity, fixed to the viewport — stays in place
 // while the page scrolls past it, rather than scrolling with the
 // content. A SINGLE element, rendered once; previously this sat inside
