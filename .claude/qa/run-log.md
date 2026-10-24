@@ -8,6 +8,107 @@ Newest entry on top.
 
 ---
 
+## 2026-10-24 — Scheduled nightly run
+
+- lastInspectedCommit: 040650b
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process. This is now
+  the 10th night running (2026-10-15 through tonight) that the scheduled
+  prompt has hardcoded this same stale claim — the real fix landed
+  2026-10-12 via PR #1. Confirmed again tonight: BUGS.md's "Open" section
+  is empty, and the `integ_fix_review` EN string is present in index.html,
+  matching the PT string (i18n-parity check below also confirms 1949/1949
+  keys, no gaps). Went with the real repo state, per every prior run
+  since 10-15. Re-flagging once more: whoever generates the scheduled
+  prompt should stop hardcoding this.
+- Scope: diff since 3ab1f40 (last run's lastInspectedCommit) touched
+  `index.html`, `public-stats-core.js` and `team.html` via 4 commits —
+  fc6eb46 (add post-match summary card to Parents Page + admin Goals
+  tab), 277ac3a (make Parents Page scorer names independent of the
+  "Show player stats" toggle), 470892f (fix scorer names + reduce text
+  prominence), 84aecb5 (side-by-side scorer columns, drop 24h cap on
+  admin tab) — plus 3 version-bump commits. All 4 were made directly to
+  `main` by an interactive session the same day (2026-10-24, all
+  commits timestamped between 16:26 and 21:02), each commit message
+  citing explicit "per Victor"/"Victor confirmed" direction, not found
+  by this agent. Zero-AI early exit did not fire (app code changed), so
+  triage ran.
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse).
+  - `check-i18n-parity.js` → OK (1949/1949 keys, no gaps).
+- Triage (haiku): given only the 4 commits' messages + diffstat (not the
+  full diffs) plus the check results and the empty BUGS.md Open section,
+  returned: P1 scorer names fixed twice then the layout changed again —
+  may be incomplete/regressed; P1 277ac3a's toggle-independence change
+  may leak data the toggle is meant to hide; P2 dropping the 24h cap on
+  the admin tab is a behavior change worth confirming was intended; P2
+  summary logic duplicated across index.html/team.html/public-stats-core.js
+  risks the two views drifting apart; P2 fc6eb46 adds 283 lines with no
+  tests — edge cases worth checking (zero-goal games, own goals, unnamed
+  scorers, ties); P3 the deterministic checks don't cover this behavior.
+  Orchestrator read the actual diffs and current code (not just the
+  summary) to verify each:
+  - Both P1s: not real concerns, already addressed in the commit
+    messages themselves. 470892f's own text explains and fixes the
+    first bug (team.html passed `data.guestPlayers`, a field that
+    doesn't exist in the public payload — guest players are per-game
+    `g.guestPlayers` — so every guest scorer fell back to "Unknown";
+    fixed to pass `g.guestPlayers`). 277ac3a's toggle-independence is an
+    explicit, confirmed Victor decision, not a silent leak: the commit
+    message states the backend's `get_public_team_data` RPC was changed
+    to return per-game `goalScorers`/`goalEvents` ungated but restricted
+    server-side to games finished within the last 3 days — i.e. the
+    scope was deliberately narrowed to "this match only," not opened up
+    to full season history regardless of the privacy toggle.
+  - 24h-cap drop: explicit, confirmed Victor decision per 84aecb5's
+    message (admin tab only; the Parents Page card keeps its own 24h
+    window), with the admin tab's EN/PT hint text updated to match in
+    the same commit. Not a defect.
+  - Duplicated summary logic: real, pre-existing, already-documented
+    tech debt (see the "DUPLICATED TECHNICAL DEBT" header comment at
+    the top of `public-stats-core.js`, predating tonight) — not a new
+    issue from tonight's commits, and not something to restructure
+    unattended.
+  - fc6eb46 edge cases: checked `buildMatchGoalSummary` directly — own
+    goals (`isOwnGoal`), zero-goal games (empty `ourGoals`/
+    `opponentGoals`, template already guards on `(ourLines ||
+    theirLines)` before rendering the section at all), and unresolved
+    scorer names (falls back to "Unknown") are all explicitly handled.
+    No defect found.
+  - One residual item this agent could not fully close out from static
+    code alone: `buildMatchGoalSummary` (shared by both pages) only
+    counts a gpRecords entry as a scorer when `r.calledUp` is truthy.
+    team.html's `renderMatchSummaryCard` (277ac3a) now builds its
+    `gps` straight from the backend's new `goalScorers` field
+    (`.map(r => ({ ...r, gameId: g.gameId }))`, no explicit
+    `calledUp` set) rather than the old gated `gamePlayers` rows, which
+    always had `calledUp: true`. Whether the backend's `goalScorers`
+    rows include a `calledUp` (or equivalent truthy) field is defined
+    server-side in the Supabase RPC, which isn't tracked in this repo,
+    so it can't be confirmed from code alone, and this agent didn't
+    have and didn't attempt to obtain a real team share token to probe
+    the live RPC response. Leaning toward "this is fine": 84aecb5's own
+    commit message describes Victor giving layout feedback against
+    "today's home win" — i.e. he was looking at this card rendering
+    live, same day, after 277ac3a had already landed. Noted below for a
+    quick human double-check rather than guessed at blind.
+- Fixed: none (0/2 of cap used — nothing held up as a genuine,
+  actionable defect).
+- Needs approval: none — see the one residual item above, filed as a
+  double-check rather than a confirmed issue (no branch/PR opened for
+  it, since there is nothing to fix yet and no reproduction).
+- Pending / worth a quick look next time you're on the Parents Page
+  after a game with goals: confirm scorer names (not just "Unknown"/
+  the opponent placeholder) actually render on the pinned match-summary
+  card. If they don't, the likely cause is the `goalScorers`→`gps`
+  mapping in `renderMatchSummaryCard` missing a `calledUp` flag that
+  `buildMatchGoalSummary` expects — a one-line fix (set
+  `calledUp: true` in that `.map()`), flag it in BUGS.md and a future
+  run (or an interactive session) can land it immediately.
+- Known Unresolved housekeeping: none — nothing in tonight's diff
+  touches any carried-forward item; list unchanged.
+
 ## 2026-10-23 — Scheduled nightly run
 
 - lastInspectedCommit: 3ab1f40
