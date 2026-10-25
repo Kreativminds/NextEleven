@@ -8,6 +8,30 @@ Newest entry on top.
 
 ---
 
+## 2026-10-25 — Scheduled nightly run
+
+- lastInspectedCommit: 428ddef
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt again stated BUGS.md had exactly one
+  Open entry (`integ_fix_review`, i18n, P3) to process — this is now the
+  11th night running (2026-10-15 through tonight) the scheduled prompt
+  has hardcoded this same stale claim. Confirmed again: BUGS.md's "Open"
+  section is empty; the real fix landed 2026-10-12 via PR #1. Went with
+  actual repo state, per every prior run since 10-15.
+- Scope: diff since 040650b (last run's lastInspectedCommit) was only 3
+  commits, all `.claude/qa/` bookkeeping (lock + run-log housekeeping
+  from the 2026-10-24 run plus tonight's own in-flight lock commit) —
+  zero touches to `index.html`, `css/nexteleven.css`, `team.html`, or
+  `public-stats-core.js`.
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse).
+  - `check-i18n-parity.js` → OK (1949/1949 keys, no gaps).
+- Zero-AI early exit fired: no app-code diff, both checks green, BUGS.md
+  Open section empty, nothing in Known Unresolved changed or worth
+  reconsidering. No subagent spawned, no AI reasoning spent beyond this
+  scoping/reporting pass.
+- Found / Fixed / Needs approval / Pending: none — nothing to report.
+
 ## 2026-10-24 — Scheduled nightly run
 
 - lastInspectedCommit: 040650b
