@@ -539,6 +539,55 @@
   </div>
 </div>
 
+<!-- CARD EVENT DIALOG — add/edit a single yellow/red card event. Team
+     toggle shows/hides the "our player" select vs the opponent shirt
+     number+name fields; card-type toggle swaps the active pill. Minute is
+     a single free-text field accepting "34" or "40+2" (parseCardMinuteInput
+     validates on save). See openCardDialog/saveCardDialog/deleteCardEvent. -->
+<div class="dialog-overlay" id="cardDialog">
+  <div class="dialog">
+    <h3 id="cardDialogTitle">Add Card</h3>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button type="button" class="btn btn-secondary btn-sm" id="cardTeamUsBtn" style="flex:1" onclick="selectCardTeam('us')" data-i18n="gd_card_us">Our Team</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="cardTeamOpponentBtn" style="flex:1" onclick="selectCardTeam('opponent')" data-i18n="gd_card_opponent">Opponent</button>
+    </div>
+    <div id="cardPlayerField" style="margin-bottom:12px">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px" data-i18n="gd_card_player_label">Player</label>
+      <select id="cardPlayerSelect" style="width:100%;font-size:15px;padding:8px;border:1px solid var(--border);border-radius:8px"></select>
+    </div>
+    <div id="cardOpponentFields" style="display:none;margin-bottom:12px;gap:8px">
+      <div style="flex:1">
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px" data-i18n="gd_card_shirt_label">Shirt number</label>
+        <input type="number" id="cardOpponentShirt" min="1" max="99" style="width:100%;font-size:15px;padding:8px;border:1px solid var(--border);border-radius:8px">
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px" data-i18n="gd_card_opponent_name_label">Name (optional)</label>
+        <input type="text" id="cardOpponentName" style="width:100%;font-size:15px;padding:8px;border:1px solid var(--border);border-radius:8px">
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px" data-i18n="gd_card_type_label">Card</label>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn btn-secondary btn-sm" id="cardTypeYellowBtn" style="flex:1" onclick="selectCardType('yellow')" data-i18n="gd_card_type_yellow">Yellow</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="cardTypeSecondYellowBtn" style="flex:1" onclick="selectCardType('second_yellow')" data-i18n="gd_card_type_second_yellow">2nd Yellow</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="cardTypeRedBtn" style="flex:1" onclick="selectCardType('direct_red')" data-i18n="gd_card_type_red">Red</button>
+      </div>
+    </div>
+    <div id="cardSecondYellowWarning" style="display:none;font-size:12px;color:#8a6d1f;background:var(--amber-bg,#fdf3d9);border-radius:8px;padding:8px 10px;margin-bottom:12px"></div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px" data-i18n="gd_card_minute_label">Minute</label>
+      <input type="text" id="cardMinuteInput" data-i18n-placeholder="gd_card_minute_placeholder" placeholder="34 or 40+2" style="width:100%;font-size:18px;padding:8px;border:1px solid var(--border);border-radius:8px" oninput="document.getElementById('cardDialogError').style.display='none'">
+    </div>
+    <div id="cardDialogError" style="display:none;font-size:12px;color:var(--red,#b23333);margin-bottom:8px"></div>
+    <div class="dialog-actions" style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-danger btn-sm" id="cardDialogDelete" style="display:none" onclick="deleteCardEventFromDialog()" data-i18n="common_delete">Delete</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary" onclick="cancelCardDialog()" data-i18n="common_cancel">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCardDialog()" id="cardDialogSave" data-i18n="common_save">Save</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <!-- ROADMAP FORM OVERLAY -->
@@ -699,7 +748,7 @@ function groupPlayersByPosition(players, getPosition, sortWithinGroup) {
 
 const CONFIG = {
   APP_VERSION: '1.2.14', // human-readable label only — staleness detection no longer depends on this matching anything
-  SCHEMA_VERSION: 21,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability); 21 = classificationSnapshots/teamAliasMappings (League Classification)
+  SCHEMA_VERSION: 22,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability); 21 = classificationSnapshots/teamAliasMappings (League Classification); 22 = cardEvents (yellow/red card tracking)
   DB_NAME: 'footballSquadTrackerDB',
   // Demo Mode lives in a SEPARATE IndexedDB database. Isolation is physical,
   // not a flag on shared rows: production data is in another database that the
@@ -6263,7 +6312,14 @@ const TR = {
     games_not_found:'Game not found.',
 
     // ── GAME DETAIL ──
-    gd_tab_squad:'Squad List', gd_tab_xi:'Starting XI', gd_tab_goals:'Goals', gd_tab_penalties:'Penalties',
+    gd_tab_squad:'Squad List', gd_tab_xi:'Starting XI', gd_tab_goals:'Goals', gd_tab_cards:'Cards', gd_tab_penalties:'Penalties',
+    gd_card_us:'Our Team', gd_card_opponent:'Opponent', gd_card_player_label:'Player', gd_card_shirt_label:'Shirt number',
+    gd_card_opponent_name_label:'Name (optional)', gd_card_type_label:'Card', gd_card_type_yellow:'Yellow', gd_card_type_second_yellow:'2nd Yellow',
+    gd_card_type_red:'Red', gd_card_minute_label:'Minute', gd_card_minute_placeholder:'34 or 40+2', gd_card_add:'Add Card',
+    gd_card_add_title:'Add Card', gd_card_edit_title:'Edit Card', gd_card_none_recorded:'No cards recorded for this match.',
+    gd_card_missing_caution:'No earlier yellow recorded for this player', gd_card_missing_caution_hint:'No earlier yellow found for this player in this match — the dismissal will still be saved, just without a link to a first caution.',
+    gd_card_invalid_minute:'Enter a valid minute, e.g. "34" or "40+2".', gd_card_select_player:'Select a player.',
+    gd_card_saved:'Card saved.', gd_card_deleted:'Card deleted.', gd_card_delete_confirm:'Delete this card event?',
     gd_readonly_notice:'This game is now read-only.', gd_btn_edit:'Edit', gd_err_readonly:'This game is read-only. Tap Edit to make changes.',
     gd_edit_mode_notice:'This game is currently in Edit mode.', gd_btn_lock:'Lock',
     gd_btn_start_game:'Game Starting Now', gd_started_at:'Kicked off at {time} — tap to adjust', gd_btn_undo_start:'Undo',
@@ -7710,7 +7766,14 @@ const TR = {
     games_not_found:'Jogo não encontrado.',
 
     // ── GAME DETAIL ──
-    gd_tab_squad:'Convocados', gd_tab_xi:'Onze Inicial', gd_tab_goals:'Golos', gd_tab_penalties:'Grandes Penalidades',
+    gd_tab_squad:'Convocados', gd_tab_xi:'Onze Inicial', gd_tab_goals:'Golos', gd_tab_cards:'Cartões', gd_tab_penalties:'Grandes Penalidades',
+    gd_card_us:'Nossa Equipa', gd_card_opponent:'Adversário', gd_card_player_label:'Jogador', gd_card_shirt_label:'Número da camisola',
+    gd_card_opponent_name_label:'Nome (opcional)', gd_card_type_label:'Cartão', gd_card_type_yellow:'Amarelo', gd_card_type_second_yellow:'2.º Amarelo',
+    gd_card_type_red:'Vermelho', gd_card_minute_label:'Minuto', gd_card_minute_placeholder:'34 ou 40+2', gd_card_add:'Adicionar Cartão',
+    gd_card_add_title:'Adicionar Cartão', gd_card_edit_title:'Editar Cartão', gd_card_none_recorded:'Nenhum cartão registado neste jogo.',
+    gd_card_missing_caution:'Não há amarelo anterior registado para este jogador', gd_card_missing_caution_hint:'Não foi encontrado um amarelo anterior para este jogador neste jogo — a expulsão será guardada na mesma, mas sem associação a uma primeira advertência.',
+    gd_card_invalid_minute:'Introduza um minuto válido, por exemplo "34" ou "40+2".', gd_card_select_player:'Selecione um jogador.',
+    gd_card_saved:'Cartão guardado.', gd_card_deleted:'Cartão eliminado.', gd_card_delete_confirm:'Eliminar este cartão?',
     gd_readonly_notice:'Este jogo está agora só de leitura.', gd_btn_edit:'Editar', gd_err_readonly:'Este jogo está só de leitura. Toque em Editar para fazer alterações.',
     gd_edit_mode_notice:'Este jogo está atualmente em modo de Edição.', gd_btn_lock:'Bloquear',
     gd_btn_start_game:'Jogo a Começar Agora', gd_started_at:'Início às {time} — toque para ajustar', gd_btn_undo_start:'Anular',
@@ -8975,6 +9038,16 @@ const DB = (() => {
           ge.createIndex('gameId', 'gameId', { unique: false });
           ge.createIndex('scorerId', 'scorerId', { unique: false });
         }
+        // Disciplinary events (yellow/red cards). One row per incident —
+        // a second-yellow dismissal is its own row, never a duplicate
+        // paired with a separate direct-red row. Indexed by gameId (same
+        // access pattern as goalEvents) and by scorerId so a player's
+        // existing yellow can be looked up when recording a second yellow.
+        if (!db.objectStoreNames.contains('cardEvents')) {
+          const ce = db.createObjectStore('cardEvents', { keyPath: 'cardEventId', autoIncrement: true });
+          ce.createIndex('gameId', 'gameId', { unique: false });
+          ce.createIndex('scorerId', 'scorerId', { unique: false });
+        }
         if (!db.objectStoreNames.contains('injuries')) {
           const inj = db.createObjectStore('injuries', { keyPath: 'injuryId', autoIncrement: true });
           inj.createIndex('playerId', 'playerId', { unique: false });
@@ -9347,7 +9420,7 @@ const DB = (() => {
   // other backup snapshots.
   const ALL_REAL_STORES = [
     'appMeta','seasons','players','games','gamePlayers','achievements',
-    'clubHistory','opponents','playerGameStats','events','goalEvents',
+    'clubHistory','opponents','playerGameStats','events','goalEvents','cardEvents',
     'injuries','trainingSessions','customDrills','drillFavourites',
     'trainingPacks','trainingPackVersions','trainingSeries','trainingSeriesExceptions',
     'trainingSeriesPauses','tournaments','temporaryPlayers','clubTeams',
@@ -18941,7 +19014,7 @@ async function handleSyncDownload() {
 // DB PUT WRAPPER — marks records as modified for sync
 // ══════════════════════════════════════════════════════════════════════════════
 const _origPut = DB.put.bind(DB);
-const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','trainingPackVersions','trainingSeries','trainingSeriesExceptions','trainingSeriesPauses','tournaments','temporaryPlayers','clubTeams','externalResources','classificationSnapshots','teamAliasMappings']);
+const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','cardEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','trainingPackVersions','trainingSeries','trainingSeriesExceptions','trainingSeriesPauses','tournaments','temporaryPlayers','clubTeams','externalResources','classificationSnapshots','teamAliasMappings']);
 
 DB.put = async function(store, obj) {
   if (SYNC_STORES_SET.has(store) && obj) {
@@ -19973,6 +20046,7 @@ const Render = (() => {
         <button class="import-tab ${currentTab==='squad'?'active-tab':''}" id="gdtab-squad" onclick="switchSimpleTab(${gameId},'squad')">${I18n.t('gd_tab_squad')}</button>
         <button class="import-tab ${currentTab==='xi'?'active-tab':''}" id="gdtab-xi" onclick="switchSimpleTab(${gameId},'xi')">${I18n.t('gd_tab_xi')}</button>
         <button class="import-tab ${currentTab==='goals'?'active-tab':''}" id="gdtab-goals" onclick="switchSimpleTab(${gameId},'goals')">${I18n.t('gd_tab_goals')}</button>
+        <button class="import-tab ${currentTab==='cards'?'active-tab':''}" id="gdtab-cards" onclick="switchSimpleTab(${gameId},'cards')">${I18n.t('gd_tab_cards')}</button>
         ${game.tournamentId ? `<button class="import-tab ${currentTab==='penalties'?'active-tab':''}" id="gdtab-penalties" onclick="switchSimpleTab(${gameId},'penalties')">${I18n.t('gd_tab_penalties')}</button>` : ''}
       </div>
       <div style="font-size:11px;color:#2a7a3b;margin-bottom:10px">&#10003; ${I18n.t('gd_autosave_note')}</div>
@@ -19982,6 +20056,7 @@ const Render = (() => {
       <div id="gdPanel-squad" style="${currentTab==='squad'?'':'display:none'}"></div>
       <div id="gdPanel-xi" style="${currentTab==='xi'?'':'display:none'}"></div>
       <div id="gdPanel-goals" style="${currentTab==='goals'?'':'display:none'}"></div>
+      <div id="gdPanel-cards" style="${currentTab==='cards'?'':'display:none'}"></div>
       ${game.tournamentId ? `<div id="gdPanel-penalties" style="${currentTab==='penalties'?'':'display:none'}"></div>` : ''}
 
       <div style="margin-top:10px">
@@ -19993,6 +20068,7 @@ const Render = (() => {
     if (currentTab==='squad') await renderSquadListTab(gameId);
     if (currentTab==='xi')    await renderStartingXITab(gameId);
     if (currentTab==='goals') await renderSimpleGoalsTab(gameId);
+    if (currentTab==='cards') await renderCardsTab(gameId);
   }
 
   // ── LORENZO ────────────────────────────────────────────────────────────────
@@ -22002,6 +22078,7 @@ const Sync = (() => {
       playerGameStats: 'player_game_stats',
       events: 'events',
       goalEvents: 'goal_events',
+      cardEvents: 'card_events',
       injuries: 'injuries',
       trainingSessions: 'training_sessions',
       customDrills: 'custom_drills',
@@ -23324,7 +23401,7 @@ const Sync = (() => {
     const keys = {
       seasons:'seasonId', players:'playerId', games:'gameId', gamePlayers:'gamePlayerId',
       achievements:'achievementId', clubHistory:'clubHistoryId', globalPlayers:'globalPlayerId', opponents:'opponentId',
-      playerGameStats:'pgsId', events:'eventId', goalEvents:'goalEventId', injuries:'injuryId',
+      playerGameStats:'pgsId', events:'eventId', goalEvents:'goalEventId', cardEvents:'cardEventId', injuries:'injuryId',
       trainingSessions:'trainingSessionId', customDrills:'drillId', drillFavourites:'favouriteId',
       trainingPacks:'packId', trainingPackVersions:'packVersionId',
       trainingSeries:'seriesId', trainingSeriesExceptions:'exceptionId', trainingSeriesPauses:'pauseId',
@@ -25782,7 +25859,7 @@ async function switchSimpleTab(gameId, tab) {
   gdDebugLog(`switchSimpleTab -> ${tab}`);
   State.gameDetailTab = tab;
   try { sessionStorage.setItem('squadTracker_gameDetailTab', tab); } catch(e) {}
-  ['squad','xi','goals','penalties'].forEach(t => {
+  ['squad','xi','goals','cards','penalties'].forEach(t => {
     const panel = document.getElementById(`gdPanel-${t}`);
     const btn   = document.getElementById(`gdtab-${t}`);
     if (panel) panel.style.display = t === tab ? '' : 'none';
@@ -25791,6 +25868,7 @@ async function switchSimpleTab(gameId, tab) {
   if (tab === 'squad')     await renderSquadListTab(gameId);
   if (tab === 'xi')        await renderStartingXITab(gameId);
   if (tab === 'goals')     await renderSimpleGoalsTab(gameId);
+  if (tab === 'cards')     await renderCardsTab(gameId);
   if (tab === 'penalties') await renderPenaltiesTab(gameId);
 }
 
@@ -26428,8 +26506,25 @@ async function renderSimpleGoalsTab(gameId) {
       // them" stacked — same convention as the Parents Page card.
       const usHomeForSummary = game.homeAway === 'Home' || (game.homeAway === 'Neutral' && game.neutralSide === 'home');
       const goalLine = (who, minute) => `<div style="padding:3px 0;font-size:13px">&#9917; <strong>${who}</strong>${minute!=null?` <span style="color:var(--muted)">${minute}&#39;</span>`:''}</div>`;
-      const ourLinesForSummary = summary.ourGoals.map(x => goalLine(esc(x.isOwnGoal ? I18n.t('gd_own_goal_label') : (x.name ? shortName(x.name) : I18n.t('gd_match_summary_unknown_scorer'))), x.minute)).join('');
-      const theirLinesForSummary = summary.opponentGoals.map(x => goalLine(esc(I18n.t('gd_opponent_goal')), x.minute)).join('');
+      // Card events interleave into the same two columns, sorted by minute
+      // alongside goals — extends the existing pattern rather than
+      // introducing a separate unified timeline (no such timeline exists
+      // elsewhere in the app; see Cards tab ticket assessment).
+      const cardEventsForSummary = (await DB.getAll('cardEvents', 'gameId', gameId)).filter(c => c && !c.isDeleted);
+      const cardLine = (c) => {
+        const who = c.team === 'us'
+          ? (c.scorerType === 'temp'
+              ? ((allTempPlayers.find(t => t.tempPlayerId === c.scorerId) || {}).name || I18n.t('gd_match_summary_unknown_scorer'))
+              : (() => { const p = allPlayers.find(x => x.playerId === c.scorerId); return p ? shortName(p.fullName) : I18n.t('gd_match_summary_unknown_scorer'); })())
+          : `${I18n.t('gd_card_opponent')}${c.opponentShirtNumber != null ? ' #' + c.opponentShirtNumber : ''}`;
+        return `<div style="padding:3px 0;font-size:13px">${cardTypeIcon(c.cardType)} <strong>${esc(who)}</strong> <span style="color:var(--muted)">${esc(formatCardMinute(c))}&#39;</span></div>`;
+      };
+      const ourCardItems = cardEventsForSummary.filter(c => c.team === 'us').map(c => ({ sortKey: cardMinuteSortKey(c), html: cardLine(c) }));
+      const theirCardItems = cardEventsForSummary.filter(c => c.team === 'opponent').map(c => ({ sortKey: cardMinuteSortKey(c), html: cardLine(c) }));
+      const ourGoalItems = summary.ourGoals.map(x => ({ sortKey: x.minute == null ? Infinity : x.minute, html: goalLine(esc(x.isOwnGoal ? I18n.t('gd_own_goal_label') : (x.name ? shortName(x.name) : I18n.t('gd_match_summary_unknown_scorer'))), x.minute) }));
+      const theirGoalItems = summary.opponentGoals.map(x => ({ sortKey: x.minute == null ? Infinity : x.minute, html: goalLine(esc(I18n.t('gd_opponent_goal')), x.minute) }));
+      const ourLinesForSummary = [...ourGoalItems, ...ourCardItems].sort((a,b) => a.sortKey - b.sortKey).map(i => i.html).join('');
+      const theirLinesForSummary = [...theirGoalItems, ...theirCardItems].sort((a,b) => a.sortKey - b.sortKey).map(i => i.html).join('');
       const ourColForSummary = `<div style="flex:1;min-width:0;text-align:${usHomeForSummary ? 'left' : 'right'}">${ourLinesForSummary}</div>`;
       const theirColForSummary = `<div style="flex:1;min-width:0;text-align:${usHomeForSummary ? 'right' : 'left'};color:var(--muted)">${theirLinesForSummary}</div>`;
       const scorerColsForSummary = usHomeForSummary ? (ourColForSummary + theirColForSummary) : (theirColForSummary + ourColForSummary);
@@ -26640,6 +26735,54 @@ async function clearAllGoalEventsForGame(gameId) {
 // game.opponentScore, and there is no opposing scorer name to show at all
 // (callers render I18n 'gd_opponent_goal' instead).
 const MATCH_SUMMARY_MAX_PLAUSIBLE_MINUTE = 150; // 90 + extra time + stoppage; keeps a late data-entry timestamp from showing a nonsense "minute"
+
+// ── CARD EVENT MINUTE HANDLING ──────────────────────────────────────────────
+// Cards store an explicit structured minute (not a timestamp-derived one
+// like goalEvents) because stoppage-time notation ("45+2") can't be
+// reconstructed reliably from a raw clock reading, and the coach needs to
+// both auto-fill AND freely hand-correct it. One text field accepts either
+// "34" or "40+2" (Victor's call, over two separate inputs, to keep the
+// workflow as quick as possible) and gets parsed into the two structured
+// fields at save time — never stored as a free string, so ordering stays
+// reliable regardless of how it was typed.
+//
+// Accepts optional surrounding whitespace and a trailing "'", e.g. "40 + 2"
+// or "34'". Returns null (caller shows a validation error) for anything
+// that doesn't resolve to a sane minute/stoppage pair.
+function parseCardMinuteInput(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim().replace(/'$/, '').trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{1,3})\s*(?:\+\s*(\d{1,2}))?$/);
+  if (!m) return null;
+  const minute = parseInt(m[1], 10);
+  const stoppageMinute = m[2] != null ? parseInt(m[2], 10) : null;
+  if (!Number.isFinite(minute) || minute < 0 || minute > MATCH_SUMMARY_MAX_PLAUSIBLE_MINUTE) return null;
+  if (stoppageMinute != null && (!Number.isFinite(stoppageMinute) || stoppageMinute < 0 || stoppageMinute > 30)) return null;
+  return { minute, stoppageMinute };
+}
+
+// The inverse of parseCardMinuteInput, for pre-filling the edit dialog and
+// for display elsewhere (admin Match Summary, Parents Page). Always a
+// plain "40" or "40+2" — never includes the trailing "'", callers that want
+// it append their own (same convention goalEvents' minute display uses).
+function formatCardMinute(minuteRecord) {
+  if (!minuteRecord || minuteRecord.minute == null) return '';
+  return minuteRecord.stoppageMinute != null
+    ? `${minuteRecord.minute}+${minuteRecord.stoppageMinute}`
+    : `${minuteRecord.minute}`;
+}
+
+// Chronological sort key: regulation minute first, then stoppage minute
+// within it. Stoppage counts are always < 1000 (validated above, capped at
+// 30), so this can never push a "45+N" ahead of minute 46. Also used to
+// interleave card lines with goal lines (which only ever have a plain int
+// minute, i.e. stoppageMinute effectively 0) into one chronological list.
+function cardMinuteSortKey(minuteRecord) {
+  if (!minuteRecord || minuteRecord.minute == null) return Infinity;
+  return minuteRecord.minute + (minuteRecord.stoppageMinute || 0) / 1000;
+}
+
 function buildMatchGoalSummary(game, gpRecords, players, tempPlayers, goalEvents) {
   players = players || [];
   tempPlayers = tempPlayers || [];
@@ -26947,6 +27090,295 @@ async function renderPenaltiesTab(gameId) {
   } catch(err) {
     el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;white-space:pre-wrap">${esc(err.message)}</p></div>`;
   }
+}
+
+// ── CARDS TAB ────────────────────────────────────────────────────────────────
+// Disciplinary events (yellow/red cards), stored one row per incident in
+// the cardEvents store (see parseCardMinuteInput/formatCardMinute/
+// cardMinuteSortKey above for the minute convention). Mirrors the
+// Squad/XI/Goals/Penalties tab pattern: a render function keyed to
+// gdPanel-cards, driven by a dialog for add/edit, DB.softDelete for
+// removal. Totals are always derived from the live event list — never an
+// independent counter — so an edit or delete can't leave them out of sync.
+
+function cardTypeIcon(cardType) {
+  if (cardType === 'direct_red') return '<span style="display:inline-block;width:10px;height:14px;background:#c0392b;border-radius:2px" aria-hidden="true"></span>';
+  if (cardType === 'second_yellow') return '<span style="display:inline-flex;gap:2px" aria-hidden="true"><span style="display:inline-block;width:10px;height:14px;background:#e8b800;border-radius:2px"></span><span style="display:inline-block;width:10px;height:14px;background:#c0392b;border-radius:2px"></span></span>';
+  return '<span style="display:inline-block;width:10px;height:14px;background:#e8b800;border-radius:2px" aria-hidden="true"></span>';
+}
+
+// Derives totals from the event list, never from a stored counter.
+// Dismissals and red cards both include second_yellow — a second yellow
+// IS a red-card dismissal, not a separate event to add on top of.
+function computeCardTotals(cardEvents) {
+  const totals = { us: { yellow: 0, red: 0, dismissals: 0 }, opponent: { yellow: 0, red: 0, dismissals: 0 } };
+  (cardEvents || []).forEach(c => {
+    if (!c || c.isDeleted) return;
+    const side = totals[c.team];
+    if (!side) return;
+    if (c.cardType === 'yellow') side.yellow++;
+    else if (c.cardType === 'second_yellow') { side.yellow++; side.red++; side.dismissals++; }
+    else if (c.cardType === 'direct_red') { side.red++; side.dismissals++; }
+  });
+  return totals;
+}
+
+// Best-effort elapsed-minute suggestion — a snapshot taken once when the
+// Add Card dialog opens, never a ticking clock (none exists anywhere in
+// the app: no half/period tracking, so this keeps counting straight
+// through a real half-time break). Null when there's nothing reliable to
+// suggest from (no kickoff yet, or well past a plausible match length),
+// in which case the field is simply left blank for manual entry.
+function suggestCardMinute(game) {
+  if (!game || !game.actualKickoffAt) return null;
+  const kickoff = new Date(game.actualKickoffAt);
+  if (isNaN(kickoff)) return null;
+  const mins = Math.round((new Date() - kickoff) / 60000);
+  if (mins < 0 || mins > MATCH_SUMMARY_MAX_PLAUSIBLE_MINUTE) return null;
+  return mins;
+}
+
+async function renderCardsTab(gameId) {
+  const el = document.getElementById('gdPanel-cards');
+  if (!el) return;
+  try {
+    const game = await DB.get('games', gameId);
+    if (!game) return;
+    const allPlayers = window._gdPlayers || [];
+    const allTempPlayers = window._gdTempPlayers || [];
+    const cardEvents = (await DB.getAll('cardEvents', 'gameId', gameId)).filter(c => c && !c.isDeleted);
+    const totals = computeCardTotals(cardEvents);
+
+    const playerName = (c) => {
+      if (c.scorerType === 'temp') {
+        const tp = allTempPlayers.find(t => t.tempPlayerId === c.scorerId);
+        return tp ? tp.name : I18n.t('gd_match_summary_unknown_scorer');
+      }
+      const p = allPlayers.find(x => x.playerId === c.scorerId);
+      return p ? shortName(p.fullName) : I18n.t('gd_match_summary_unknown_scorer');
+    };
+
+    const sorted = [...cardEvents].sort((a,b) => cardMinuteSortKey(a) - cardMinuteSortKey(b));
+
+    const rowHtml = (c) => {
+      const who = c.team === 'us'
+        ? esc(playerName(c))
+        : `${I18n.t('gd_card_opponent')}${c.opponentShirtNumber != null ? ' #' + c.opponentShirtNumber : ''}${c.opponentPlayerName ? ' · ' + esc(c.opponentPlayerName) : ''}`;
+      const missingCaution = c.cardType === 'second_yellow' && !c.linkedEventId;
+      return `
+        <div class="card" style="margin-bottom:8px;padding:10px 12px;display:flex;align-items:center;gap:10px" onclick="openCardDialog(${gameId},${c.cardEventId})">
+          <div style="font-weight:700;font-size:13px;min-width:38px">${esc(formatCardMinute(c))}'</div>
+          ${cardTypeIcon(c.cardType)}
+          <div style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${who}${c.team === 'opponent' ? ` <span style="color:var(--muted);font-size:11px">(${I18n.t('gd_card_opponent')})</span>` : ''}</div>
+          ${missingCaution ? `<span title="${esc(I18n.t('gd_card_missing_caution'))}" style="font-size:14px" aria-hidden="true">&#9888;</span>` : ''}
+        </div>`;
+    };
+
+    el.innerHTML = `
+      <div class="card" style="margin-bottom:14px;padding:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:8px">
+          <div>${I18n.t('gd_card_us')}</div>
+          <div>${I18n.t('gd_card_opponent')}</div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px">
+          <div>${cardTypeIcon('yellow')} ${totals.us.yellow} &nbsp; ${cardTypeIcon('direct_red')} ${totals.us.red}</div>
+          <div>${cardTypeIcon('yellow')} ${totals.opponent.yellow} &nbsp; ${cardTypeIcon('direct_red')} ${totals.opponent.red}</div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-primary" style="width:100%;margin-bottom:14px" onclick="openCardDialog(${gameId})">+ ${I18n.t('gd_card_add')}</button>
+      ${sorted.length ? sorted.map(rowHtml).join('') : `<p style="color:var(--muted);font-size:13px;text-align:center;padding:16px">${I18n.t('gd_card_none_recorded')}</p>`}
+    `;
+  } catch(err) {
+    el.innerHTML = `<div class="card" style="padding:14px"><p style="color:#b23333">${I18n.t('gd_could_not_save', {msg: err.message})}</p></div>`;
+  }
+}
+
+// ── CARD DIALOG ──────────────────────────────────────────────────────────────
+function selectCardTeam(team) {
+  const dlg = document.getElementById('cardDialog');
+  dlg.dataset.team = team;
+  document.getElementById('cardTeamUsBtn').classList.toggle('btn-primary', team === 'us');
+  document.getElementById('cardTeamUsBtn').classList.toggle('btn-secondary', team !== 'us');
+  document.getElementById('cardTeamOpponentBtn').classList.toggle('btn-primary', team === 'opponent');
+  document.getElementById('cardTeamOpponentBtn').classList.toggle('btn-secondary', team !== 'opponent');
+  document.getElementById('cardPlayerField').style.display = team === 'us' ? '' : 'none';
+  document.getElementById('cardOpponentFields').style.display = team === 'opponent' ? 'flex' : 'none';
+  updateSecondYellowCheck();
+}
+
+function selectCardType(cardType) {
+  const dlg = document.getElementById('cardDialog');
+  dlg.dataset.cardType = cardType;
+  ['Yellow','SecondYellow','Red'].forEach(k => {
+    const key = k === 'Yellow' ? 'yellow' : k === 'Red' ? 'direct_red' : 'second_yellow';
+    const btn = document.getElementById(`cardType${k}Btn`);
+    btn.classList.toggle('btn-primary', cardType === key);
+    btn.classList.toggle('btn-secondary', cardType !== key);
+  });
+  updateSecondYellowCheck();
+}
+
+// Looks up an existing active yellow for the currently-selected scorer in
+// this game (excluding the event being edited, if any) and either links to
+// it silently or flags that no earlier caution was found — never invents
+// one. Opponent matching only ever happens by shirt number, and only when
+// one was actually entered (never two anonymous yellows assumed to be the
+// same player).
+async function updateSecondYellowCheck() {
+  const dlg = document.getElementById('cardDialog');
+  const warning = document.getElementById('cardSecondYellowWarning');
+  dlg.dataset.linkedEventId = '';
+  if (dlg.dataset.cardType !== 'second_yellow') { warning.style.display = 'none'; return; }
+  const gameId = parseInt(dlg.dataset.gameId);
+  const editingId = dlg.dataset.cardEventId ? parseInt(dlg.dataset.cardEventId) : null;
+  const all = (await DB.getAll('cardEvents', 'gameId', gameId)).filter(c => c && !c.isDeleted && c.cardEventId !== editingId && c.cardType === 'yellow');
+  let match = null;
+  if (dlg.dataset.team === 'us') {
+    const sel = document.getElementById('cardPlayerSelect').value; // "player:ID" or "temp:ID"
+    if (sel) {
+      const [scorerType, scorerIdStr] = sel.split(':');
+      const scorerId = parseInt(scorerIdStr);
+      match = all.find(c => c.team === 'us' && c.scorerType === scorerType && c.scorerId === scorerId);
+    }
+  } else {
+    const shirt = parseInt(document.getElementById('cardOpponentShirt').value);
+    if (Number.isFinite(shirt)) {
+      match = all.find(c => c.team === 'opponent' && c.opponentShirtNumber === shirt);
+    }
+  }
+  if (match) {
+    dlg.dataset.linkedEventId = String(match.cardEventId);
+    warning.style.display = 'none';
+  } else {
+    warning.style.display = '';
+    warning.textContent = I18n.t('gd_card_missing_caution_hint');
+  }
+}
+
+async function openCardDialog(gameId, cardEventId) {
+  if (!checkGameEditableOrWarn()) return;
+  const game = await DB.get('games', gameId);
+  if (!game) return;
+  const allPlayers = window._gdPlayers || [];
+  const allTempPlayers = window._gdTempPlayers || [];
+  const existingGP = await DB.getAll('gamePlayers', 'gameId', gameId);
+  const squad = allPlayers.filter(p => { const gp = existingGP.find(r=>r.playerId===p.playerId); return gp && gp.calledUp; })
+    .sort((a,b) => compareEffectiveNums(
+      effectiveShirtNumber(a.shirtNumber, existingGP.find(r=>r.playerId===a.playerId)),
+      effectiveShirtNumber(b.shirtNumber, existingGP.find(r=>r.playerId===b.playerId))));
+  const tempSquad = allTempPlayers.filter(tp => { const gp = existingGP.find(r=>r.tempPlayerId===tp.tempPlayerId); return gp && gp.calledUp; });
+
+  const sel = document.getElementById('cardPlayerSelect');
+  sel.innerHTML = [
+    ...squad.map(p => `<option value="player:${p.playerId}">${esc(shortName(p.fullName))}${p.shirtNumber?' #'+p.shirtNumber:''}</option>`),
+    ...tempSquad.map(tp => `<option value="temp:${tp.tempPlayerId}">${esc(tp.name)}</option>`),
+  ].join('');
+
+  const dlg = document.getElementById('cardDialog');
+  dlg.dataset.gameId = gameId;
+  dlg.dataset.cardEventId = cardEventId != null ? cardEventId : '';
+  document.getElementById('cardDialogError').style.display = 'none';
+  document.getElementById('cardDialogDelete').style.display = cardEventId != null ? '' : 'none';
+  document.getElementById('cardDialogTitle').textContent = I18n.t(cardEventId != null ? 'gd_card_edit_title' : 'gd_card_add_title');
+
+  let existing = null;
+  if (cardEventId != null) existing = await DB.get('cardEvents', cardEventId);
+
+  if (existing) {
+    selectCardTeam(existing.team);
+    if (existing.team === 'us') sel.value = `${existing.scorerType}:${existing.scorerId}`;
+    else {
+      document.getElementById('cardOpponentShirt').value = existing.opponentShirtNumber != null ? existing.opponentShirtNumber : '';
+      document.getElementById('cardOpponentName').value = existing.opponentPlayerName || '';
+    }
+    selectCardType(existing.cardType);
+    // Editing always shows the stored minute untouched — never recomputed.
+    document.getElementById('cardMinuteInput').value = formatCardMinute(existing);
+  } else {
+    selectCardTeam('us');
+    selectCardType('yellow');
+    document.getElementById('cardOpponentShirt').value = '';
+    document.getElementById('cardOpponentName').value = '';
+    const suggested = suggestCardMinute(game);
+    document.getElementById('cardMinuteInput').value = suggested != null ? String(suggested) : '';
+  }
+  await updateSecondYellowCheck();
+  dlg.classList.add('open');
+}
+
+function cancelCardDialog() {
+  document.getElementById('cardDialog').classList.remove('open');
+}
+
+async function saveCardDialog() {
+  const dlg = document.getElementById('cardDialog');
+  const gameId = parseInt(dlg.dataset.gameId);
+  const cardEventId = dlg.dataset.cardEventId ? parseInt(dlg.dataset.cardEventId) : null;
+  const team = dlg.dataset.team;
+  const cardType = dlg.dataset.cardType;
+  const errEl = document.getElementById('cardDialogError');
+
+  const minuteRecord = parseCardMinuteInput(document.getElementById('cardMinuteInput').value);
+  if (!minuteRecord) {
+    errEl.textContent = I18n.t('gd_card_invalid_minute');
+    errEl.style.display = '';
+    return;
+  }
+
+  const payload = {
+    gameId,
+    team,
+    cardType,
+    minute: minuteRecord.minute,
+    stoppageMinute: minuteRecord.stoppageMinute,
+    linkedEventId: dlg.dataset.linkedEventId ? parseInt(dlg.dataset.linkedEventId) : null,
+  };
+  if (team === 'us') {
+    const sel = document.getElementById('cardPlayerSelect').value;
+    if (!sel) { errEl.textContent = I18n.t('gd_card_select_player'); errEl.style.display = ''; return; }
+    const [scorerType, scorerIdStr] = sel.split(':');
+    payload.scorerType = scorerType;
+    payload.scorerId = parseInt(scorerIdStr);
+    payload.opponentShirtNumber = null;
+    payload.opponentPlayerName = null;
+  } else {
+    const shirtVal = document.getElementById('cardOpponentShirt').value;
+    payload.opponentShirtNumber = shirtVal !== '' ? parseInt(shirtVal) : null;
+    payload.opponentPlayerName = document.getElementById('cardOpponentName').value.trim() || null;
+    payload.scorerType = null;
+    payload.scorerId = null;
+  }
+
+  try {
+    const game = await DB.get('games', gameId);
+    payload.seasonId = game ? game.seasonId : null;
+    if (cardEventId != null) {
+      const existing = await DB.get('cardEvents', cardEventId);
+      Object.assign(existing, payload);
+      await DB.put('cardEvents', existing);
+    } else {
+      payload.createdAt = new Date().toISOString();
+      await DB.put('cardEvents', payload);
+    }
+    dlg.classList.remove('open');
+    Toast.show(I18n.t('gd_card_saved'));
+    await renderCardsTab(gameId);
+  } catch(err) {
+    errEl.textContent = I18n.t('gd_could_not_save', {msg: err.message});
+    errEl.style.display = '';
+  }
+}
+
+async function deleteCardEventFromDialog() {
+  const dlg = document.getElementById('cardDialog');
+  const gameId = parseInt(dlg.dataset.gameId);
+  const cardEventId = dlg.dataset.cardEventId ? parseInt(dlg.dataset.cardEventId) : null;
+  if (cardEventId == null) return;
+  if (!confirm(I18n.t('gd_card_delete_confirm'))) return;
+  await DB.softDelete('cardEvents', cardEventId);
+  dlg.classList.remove('open');
+  Toast.show(I18n.t('gd_card_deleted'));
+  await renderCardsTab(gameId);
 }
 
 async function simpleSetPenaltiesForThem(gameId, value) {
@@ -27361,7 +27793,7 @@ async function init() {
     try { await backfillGameUuids(); }
     catch(e) { console.error('[migration] game UUID backfill failed:', e); }
 
-    const requiredStores = ['appMeta','seasons','players','games','gamePlayers','goalEvents','events','playerGameStats','achievements','clubHistory','injuries','opponents','trainingSessions','customDrills','drillFavourites','trainingPacks','tournaments','temporaryPlayers'];
+    const requiredStores = ['appMeta','seasons','players','games','gamePlayers','goalEvents','cardEvents','events','playerGameStats','achievements','clubHistory','injuries','opponents','trainingSessions','customDrills','drillFavourites','trainingPacks','tournaments','temporaryPlayers'];
     const missing = requiredStores.filter(s => !DB.hasStore(s));
     if (missing.length) {
       console.error('[init] Missing IndexedDB stores after open:', missing);
