@@ -2229,7 +2229,7 @@ function render(el, data) {
   // day always takes the top slide (unchanged); otherwise a non-today
   // birthday note (this week / next one) takes the lowest slot.
   //
-  // Between those two, the three rotating cards — next match, standing,
+  // Between those two, up to three rotating cards — next match, standing,
   // latest result — swap their LEAD position dynamically, game-relative:
   //  - 0-1 days after the last completed game: that result is still the
   //    freshest news, so it leads.
@@ -2240,18 +2240,29 @@ function render(el, data) {
   // (next match, standing, result) behind the leader. Confirmed with
   // Victor 2026-10-26 in place of the earlier fixed weekday idea, so this
   // keeps working whatever day a given week's match actually falls on.
+  //
+  // The result slide itself only EXISTS for that same 0-1 day window —
+  // Victor 2026-10-26: beyond the day after the game it's just repeating
+  // what the Matches tab already shows, so it drops out of the carousel
+  // entirely rather than just losing the lead (a deliberate reversal of
+  // the earlier "persists until the next result, no time window" design).
   const todayBirthdays = birthdays.filter(b => b.isToday);
   const happyBirthdaySlide = renderHappyBirthdaySlide(todayBirthdays);
   const birthdaySlide = happyBirthdaySlide || renderBirthdayInfoSlide(birthdays);
-  const latestResultSlide = (!liveMatchToday && latestCompletedGame)
-    ? renderMatchSummaryCard(latestCompletedGame, season, players, gamePlayers, latestCompletedGame.guestPlayers)
-    : null;
   const classificationPreviewSlide = renderClassificationPreviewSlide(classification);
 
   const todayStr = todayLocalDateStr();
   const daysSinceLastResult = latestCompletedGame ? calendarDaysDiff(latestCompletedGame.date, todayStr) : null;
   const daysUntilNextGame = next ? calendarDaysDiff(todayStr, next.date) : null;
-  const leadWithResult = daysSinceLastResult !== null && daysSinceLastResult >= 0 && daysSinceLastResult <= 1;
+  // Result slide only exists in the carousel for its day and the day
+  // after (Victor: beyond that it's just repeating what the Matches tab
+  // already shows). Same window also decides the lead below, so once the
+  // slide has expired it can never be picked as leadKey either.
+  const resultWithinCarouselWindow = daysSinceLastResult !== null && daysSinceLastResult >= 0 && daysSinceLastResult <= 1;
+  const latestResultSlide = (!liveMatchToday && resultWithinCarouselWindow)
+    ? renderMatchSummaryCard(latestCompletedGame, season, players, gamePlayers, latestCompletedGame.guestPlayers)
+    : null;
+  const leadWithResult = resultWithinCarouselWindow;
   const leadWithNextGame = !leadWithResult && daysUntilNextGame !== null && daysUntilNextGame >= 0 && daysUntilNextGame <= 3;
   let leadKey = 'classification';
   if (leadWithResult) leadKey = 'result';
