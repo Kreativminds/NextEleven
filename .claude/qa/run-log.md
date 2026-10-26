@@ -8,6 +8,108 @@ Newest entry on top.
 
 ---
 
+## 2026-10-26 — Scheduled nightly run
+
+- lastInspectedCommit: f15dbc1
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process — this is now
+  the 12th night running (2026-10-15 through tonight) the scheduled
+  prompt has hardcoded this same stale claim. Confirmed again: that EN
+  string has been present since 2026-10-12 (PR #1) and BUGS.md's real
+  "Open" section was empty at the start of tonight's run. Went with
+  actual repo state, per every prior run since 10-15 — flagging again
+  that whatever generates the scheduled prompt should stop hardcoding
+  this.
+- Scope: diff since 428ddef (last run's lastInspectedCommit) touched
+  `index.html`, `team.html` and `public-stats-core.js` via 16 commits —
+  a large, feature-heavy interactive session today: swipe navigation
+  between Parents Page tabs (6261c0e), win%/clean-sheets/best-streak
+  stats + W/D/L percentage bars on a renamed "Facts" tab (a3c0b8a,
+  aff42e9, 4c374ea), a Parents Page carousel/classification rework
+  (b2ab029, 9b817fb, 8813608, 8f42f1b, 84910b0, f3c4343 — League
+  Standings surfaced, natural-height slides, "League Leader Spotlight"
+  redesign, dynamic game-relative lead slide, result-slide expiry), and
+  a full yellow/red card disciplinary-tracking feature spanning all
+  three files (4c8320e/80ca284, admin Cards tab + Supabase `card_events`
+  table + public Parents Page card strip) plus its own season-totals
+  rollup on the Facts tab (601a135). All made directly to `main` outside
+  this agent, each commit citing explicit "Victor" direction/confirmation.
+  Zero-AI early exit did not fire (app code changed), so triage ran.
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse).
+  - `check-i18n-parity.js` → OK (1972/1972 keys, no gaps).
+- Triage (haiku): given only the 16 commit messages (minus version-bump
+  commits) + diffstat + check results + empty BUGS.md Open section,
+  returned 10 "worth checking" candidates, P1 down to P3 — correctly
+  framed as unconfirmed since it saw no code. Orchestrator read the
+  actual diffs/code for each before acting:
+  - **Confirmed real, P1 (flagged to BUGS.md, not fixed — see below).**
+  - Carousel `min-height:118px` possibly related to 9b817fb ("let each
+    slide use its natural height"): not real — that's a *different*
+    carousel (index.html's admin "next game" Home card, from 226b5d3 on
+    2026-10-15, untouched by tonight's diff). 9b817fb touches only
+    team.html's separate Parents Page pinned carousel. The two share a
+    name, not any code. 2026-10-15's Known Unresolved note stands
+    unchanged.
+  - Swipe-between-tabs (6261c0e) vs. the pinned carousel's own swipe
+    (`applyCarousel`) double-firing on the same gesture (both use plain
+    `ontouchstart`/`ontouchend`, neither calls `stopPropagation`): looked
+    like a real bubbling conflict at first read, but checked the actual
+    DOM structure in `render()` — `#pinnedCarousel` is rendered as a
+    sibling *above* `<nav class="tabs">`, not nested inside any `.pane`
+    element that `applyTabs`'s swipe handler attaches to. Not an ancestor
+    relationship, so the touch event never reaches the pane handler from
+    the carousel. Not real.
+  - W/D/L percentage bars (601a135/aff42e9) division-by-zero: checked
+    `renderPctBarRow` — already guards `total > 0 ? ... : 0`. Not real.
+  - "Facts" tab rename (4c374ea) stale references: internal tab `id`
+    deliberately stays `'team'` (URL hash, pane `data-tab`), only the
+    i18n label (`tab_team`) changed to "Facts"/"Factos" in both EN/PT.
+    Cosmetic-only split, not a bug.
+  - Result-slide expiry (f3c4343) day/timezone boundaries: read the
+    actual window logic (`daysSinceLastResult`, local-date based, same
+    window driving both lead-slide and existence) plus the commit's own
+    stated verification (day-of/day-after/2-days/week-later scenarios).
+    Sound, Victor-confirmed design. Not pursued.
+  - cardEvents IndexedDB/Supabase schema wiring (schema v22, sync-stores
+    set, Supabase table map, required-stores list): spot-checked all 4
+    registration points claimed in the commit message — all present.
+    No defect found.
+  - League Standings/Spotlight ties (b2ab029/8813608/8f42f1b): code
+    already explicit that position/ranking is taken verbatim from the
+    data's own row order, never recomputed — "ties are the data source's
+    call, not ours" per its own comment. Not pursued.
+  - **Real but not a fix candidate tonight** (shared-logic risk —
+    described fully below and in BUGS.md): the new card-tracking feature
+    writes disciplinary totals exclusively to the new `cardEvents` store;
+    the admin app's own `Calc.playerSeasonStats`/`Calc.lorenzoStats` (used
+    by the player profile, Squad List YC/RC sort+columns, tournament
+    stats — ~10 call sites) still read the old manual
+    `gp.yellowCards`/`gp.redCards` fields, which nothing writes anymore
+    outside the seed/demo generator. Confirmed by tracing every write
+    site for both field pairs. Net effect: from tonight on, any card
+    logged via the new Cards tab shows correctly on the public Parents
+    Page (which the public-stats-core.js comment explicitly says is
+    event-sourced now) but as 0 everywhere in the admin app's own
+    season/profile/tournament views — a real, visible stats mismatch
+    between the two apps. Not fixed: `playerSeasonStats`/`lorenzoStats`
+    are synchronous helpers that don't currently take `cardEvents` as an
+    input, so wiring them to the event-sourced totals touches shared
+    logic across ~10 call sites — exactly the "shared by several
+    features, can't confirm safe unattended" case this agent's safety
+    rules say to flag rather than touch.
+- Fixed: none (0/2 of cap used — the one confirmed issue is a
+  shared-logic case per the safety rules above, not an unattended-safe
+  fix; everything else triaged did not hold up as real).
+- Needs approval: see "Admin season disciplinary stats no longer update
+  once a card is logged via the new Cards tab" — added to BUGS.md Open
+  tonight with two suggested fix directions for Victor's call.
+- Pending: none (every triage candidate was run to ground tonight, not
+  deferred for lack of time; ~8 min of the ~20 min budget used).
+- Known Unresolved housekeeping: none — nothing in tonight's diff
+  touches any carried-forward item; list unchanged.
+
 ## 2026-10-25 — Scheduled nightly run
 
 - lastInspectedCommit: 428ddef
