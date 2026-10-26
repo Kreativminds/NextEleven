@@ -334,27 +334,6 @@ function isGameFinished(g, season) {
   const mins = (parseInt(g.matchDurationMins) || parseInt(season && season.defaultMatchDurationMins) || 90) + 15;
   return now >= new Date(kickoff.getTime() + mins * 60000);
 }
-// "Just finished" window for the pinned match-summary card (final score +
-// kickoff time + per-goal breakdown) — true from the moment isGameFinished
-// flips true until roughly MATCH_SUMMARY_WINDOW_HOURS later, then the page
-// falls back to its normal view (Next Match / birthday carousel). Mirrors
-// index.html's isMatchSummaryWindowOpen, kept in sync by hand like every
-// other completion rule in this file.
-const MATCH_SUMMARY_WINDOW_HOURS = 24;
-function isMatchSummaryWindowOpen(g, season) {
-  if (!g || !g.date) return false;
-  if (!isGameFinished(g, season)) return false;
-  const now = new Date();
-  if (!g.gameTime && !g.actualKickoffAt) {
-    const endOfDay = new Date(`${g.date}T23:59:59`);
-    return now < new Date(endOfDay.getTime() + MATCH_SUMMARY_WINDOW_HOURS * 3600000);
-  }
-  const kickoff = g.actualKickoffAt ? new Date(g.actualKickoffAt) : new Date(`${g.date}T${g.gameTime}`);
-  if (isNaN(kickoff)) return false;
-  const mins = (parseInt(g.matchDurationMins) || parseInt(season && season.defaultMatchDurationMins) || 90) + 15;
-  const cutoff = new Date(kickoff.getTime() + mins * 60000);
-  return now < new Date(cutoff.getTime() + MATCH_SUMMARY_WINDOW_HOURS * 3600000);
-}
 // Kicked off but not finished yet — shown live, never counted in any record.
 // Same grouping as the main app's Squad/Convocados/Starting XI screens —
 // kept identical by hand, since this file and index.html share no
@@ -434,15 +413,15 @@ function renderLiveCard(g, season, players, gamePlayers) {
     </div>`;
 }
 
-// "Just finished" match summary — final score, kickoff time, and the
-// per-goal breakdown (our scorer + minute when known, generic placeholder
-// + minute for the opponent). Rendered the same always-visible way as
-// renderLiveCard above (NOT one of the rotating carousel slides, so a
-// parent who doesn't wait through the rotation still sees it) for roughly
-// 24h after the match finishes — see isMatchSummaryWindowOpen. tempPlayers
-// is the public RPC's data.guestPlayers array (guest/trial players), kept
-// as its own parameter rather than merged into `players` to match how the
-// rest of this file already keeps the two lists separate.
+// Match summary — final score, kickoff time, and the per-goal breakdown
+// (our scorer + minute when known, generic placeholder + minute for the
+// opponent). Used both for the live-game's eventual result and as the
+// "latest completed result" carousel slide (render() picks the single
+// most recently-finished game and keeps it there until a newer one takes
+// its place — no time window). tempPlayers is the public RPC's
+// data.guestPlayers array (guest/trial players), kept as its own
+// parameter rather than merged into `players` to match how the rest of
+// this file already keeps the two lists separate.
 function renderMatchSummaryCard(g, season, players, gamePlayers, tempPlayers) {
   // Deliberately NOT sourced from the `gamePlayers` param (gated behind the
   // "Show player stats" season-wide toggle) — Victor asked for this card to
@@ -1170,6 +1149,7 @@ const STRINGS = {
     cls_updated_on:'Updated on {date}', cls_source_label:'Source: {source}',
     cls_stale_warning:'This classification may not include the latest results.',
     cls_col_pos:'Pos', cls_col_team:'Team', cls_col_pts:'Pts', cls_col_played:'P', cls_col_wins:'W', cls_col_draws:'D', cls_col_losses:'L', cls_col_gf:'GF', cls_col_ga:'GA', cls_col_gd:'GD',
+    cls_preview_points:'{n} pts', cls_preview_behind:'{n} pts behind the leader', cls_preview_leading:'Leading the league', cls_preview_cta:'View Full Standings →',
   },
   pt: {
     live:'AO VIVO', home:'Casa', away:'Fora', kickoff:'Início',
@@ -1242,6 +1222,7 @@ const STRINGS = {
     cls_updated_on:'Atualizado em {date}', cls_source_label:'Fonte: {source}',
     cls_stale_warning:'Esta classificação pode não incluir os resultados mais recentes.',
     cls_col_pos:'Pos', cls_col_team:'Equipa', cls_col_pts:'Pts', cls_col_played:'J', cls_col_wins:'V', cls_col_draws:'E', cls_col_losses:'D', cls_col_gf:'GM', cls_col_ga:'GS', cls_col_gd:'DG',
+    cls_preview_points:'{n} pts', cls_preview_behind:'{n} pts atrás do líder', cls_preview_leading:'A liderar a classificação', cls_preview_cta:'Ver Classificação Completa →',
   },
 };
 // Language switcher — shown on every view, in the footer.
@@ -1681,43 +1662,98 @@ function applyCarousel(el) {
   if (_slideTimer) { clearInterval(_slideTimer); _slideTimer = null; }
   if (!box) return;
   const track = box.querySelector('.carousel-track');
-  const slides = [...box.querySelectorAll('.carousel-slide')];
+  // render() prepends a clone of the last slide and appends a clone of
+  // the first whenever there's more than one real slide (so swiping past
+  // an end has a slide to animate TO), so this array is N+2 long in that
+  // case and just N when there's only one. Dots are only rendered for
+  // N>1, so dots.length doubles as "how many real slides" without having
+  // to infer it from the clone-padded DOM count.
+  const slideEls = [...box.querySelectorAll('.carousel-slide')];
   const dots = [...el.querySelectorAll('.carousel-dot')];
-  if (!slides.length) return;
+  if (!slideEls.length) return;
+  const N = dots.length > 0 ? dots.length : 1;
+  const looped = N > 1;
+  const domOffset = looped ? 1 : 0; // shift from logical index to DOM index (clone sits at 0)
 
-  // Both cards get the same minimum height — the taller of the two
-  // (in practice, usually Next Match) sets the floor, so a short
-  // birthday message doesn't look visually smaller than the match
-  // card when they share the same carousel.
-  const cardEls = slides.map(s => s.querySelector('.card')).filter(Boolean);
+  // Every slide (real + clones) gets the same minimum height — the
+  // tallest one sets the floor, so a short birthday message doesn't look
+  // visually smaller than the match card when they share the carousel.
+  const cardEls = slideEls.map(s => s.querySelector('.card')).filter(Boolean);
   const maxCardHeight = Math.max(0, ...cardEls.map(c => c.scrollHeight));
   cardEls.forEach(c => { c.style.minHeight = maxCardHeight + 'px'; });
+
+  _slideIndex = N > 0 ? (((_slideIndex % N) + N) % N) : 0; // clamp across re-renders with a different slide count
 
   // align-items:flex-start above stops slides from being stretched to
   // match the tallest one (flex's default row behavior) — this syncs
   // the TRACK's own height to just the active slide, which — now that
-  // both cards share the same min-height above — ends up the same
-  // regardless of which slide is showing.
-  const show = i => {
-    _slideIndex = (i + slides.length) % slides.length;
-    track.style.transform = `translateX(-${_slideIndex * 100}%)`;
-    track.style.height = slides[_slideIndex].scrollHeight + 'px';
-    dots.forEach((d, n) => d.setAttribute('aria-selected', n === _slideIndex ? 'true' : 'false'));
+  // every slide shares the same min-height above — ends up the same
+  // regardless of which one is showing.
+  const goToDom = (domIdx, animate) => {
+    if (!animate) track.style.transition = 'none';
+    track.style.transform = `translateX(-${domIdx * 100}%)`;
+    track.style.height = slideEls[domIdx].scrollHeight + 'px';
+    if (!animate) {
+      void track.offsetWidth; // force a reflow before re-enabling the transition
+      track.style.transition = '';
+    }
   };
-  show(_slideIndex);
+  const setDots = () => dots.forEach((d, n) => d.setAttribute('aria-selected', n === _slideIndex ? 'true' : 'false'));
+  goToDom(domOffset + _slideIndex, false); // initial position: no animation on page load/re-render
+  setDots();
+
+  // One step forward/backward, with a seamless wrap at either end: a
+  // swipe/auto-advance past the last slide animates onto the cloned
+  // first slide (not back across every real slide to reach it), then —
+  // once that short animation finishes — snaps instantly (no transition)
+  // onto the REAL first slide, which looks identical to the clone it was
+  // just sitting on, so the reset is invisible. Same trick in reverse at
+  // the start. Non-wrapping steps are a plain one-slide animation.
+  let _wrapPending = false;
+  const step = dir => {
+    if (_wrapPending) return; // ignore a rapid re-trigger mid-wrap-snap
+    const atLast = _slideIndex === N - 1;
+    const atFirst = _slideIndex === 0;
+    const wrapForward = looped && dir === 1 && atLast;
+    const wrapBackward = looped && dir === -1 && atFirst;
+    _slideIndex = ((_slideIndex + dir) % N + N) % N;
+    setDots();
+    if (wrapForward || wrapBackward) {
+      _wrapPending = true;
+      goToDom(wrapForward ? N + 1 : 0, true); // animate onto the clone just past the edge
+      let done = false;
+      const settle = () => {
+        if (done) return;
+        done = true;
+        track.removeEventListener('transitionend', settle);
+        goToDom(domOffset + _slideIndex, false); // instant snap onto the real slide (visually identical to the clone)
+        _wrapPending = false;
+      };
+      track.addEventListener('transitionend', settle);
+      setTimeout(settle, 350); // fallback for reduced-motion / no-transition environments
+    } else {
+      goToDom(domOffset + _slideIndex, true);
+    }
+  };
+  const jumpTo = logical => {
+    _slideIndex = ((logical % N) + N) % N;
+    setDots();
+    goToDom(domOffset + _slideIndex, true);
+  };
 
   dots.forEach(d => {
-    d.onclick = () => { _slidePaused = true; if (_slideTimer) { clearInterval(_slideTimer); _slideTimer = null; } show(parseInt(d.dataset.slide)); };
+    d.onclick = () => { _slidePaused = true; if (_slideTimer) { clearInterval(_slideTimer); _slideTimer = null; } jumpTo(parseInt(d.dataset.slide)); };
   });
 
   // Shared by initial setup and by a manual swipe (which restarts
   // auto-advance rather than permanently stopping it, unlike a dot
   // tap) — one place sets up the interval so both stay consistent.
+  // Loops continuously, same as a swipe, via step()'s own wrap handling.
   const startAutoAdvance = () => {
     if (_slideTimer) { clearInterval(_slideTimer); _slideTimer = null; }
-    if (slides.length > 1 && !_slidePaused) {
+    if (N > 1 && !_slidePaused) {
       _slideTimer = setInterval(() => {
-        if (document.visibilityState === 'visible') show(_slideIndex + 1);
+        if (document.visibilityState === 'visible') step(1);
       }, 6000);
     }
   };
@@ -1731,7 +1767,7 @@ function applyCarousel(el) {
   // scrolling is never touched — a vertical or diagonal gesture just
   // scrolls the page as it always would, the swipe check simply
   // declines to act on it afterward.
-  if (slides.length > 1) {
+  if (N > 1) {
     const SWIPE_MIN_PX = 40;
     let tStartX = 0, tStartY = 0, tActive = false;
     box.ontouchstart = e => {
@@ -1744,7 +1780,7 @@ function applyCarousel(el) {
       const t = e.changedTouches[0];
       const dx = t.clientX - tStartX, dy = t.clientY - tStartY;
       if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) <= Math.abs(dy)) return;
-      show(_slideIndex + (dx < 0 ? 1 : -1));
+      step(dx < 0 ? 1 : -1);
       _slidePaused = false;
       startAutoAdvance();
     };
@@ -1865,7 +1901,7 @@ function renderClassificationTable(classification) {
       <td>${r.goalsAgainst ?? '—'}</td>
       <td>${r.goalDiff ?? '—'}</td>
     </tr>`).join('');
-  return `<div class="card">
+  return `<div class="card" id="cls-section">
     ${header}
     ${scopeBits.length ? `<div class="cls-meta">${scopeBits.join(' · ')}</div>` : ''}
     ${metaParts.length ? `<div class="cls-meta">${metaParts.join(' · ')}</div>` : ''}
@@ -1881,6 +1917,45 @@ function renderClassificationTable(classification) {
       </table>
     </div>
   </div>`;
+}
+
+// Compact carousel teaser for the League Classification (Change 1 of the
+// standings-placement ticket). Shown only when the full table would show
+// real rows — the same gate as its own empty state above, so "no league",
+// "league not started" and "no snapshot published yet" are all covered
+// the one existing way: no preview slide, and the full table in Facts
+// still explains why if a parent goes looking.
+function renderClassificationPreviewSlide(classification) {
+  if (!classification || !Array.isArray(classification.rows) || !classification.rows.length) return null;
+  const ourRow = classification.rows.find(r => r.isOurTeam);
+  if (!ourRow) return null;
+  const total = classification.rows.length;
+  const leader = classification.rows[0];
+  const behindLeader = (leader && leader.points != null && ourRow.points != null) ? (leader.points - ourRow.points) : null;
+  return `
+    <div class="card cls-preview-card" onclick="goToClassification()" onkeydown="if(event.key==='Enter'){goToClassification()}" role="button" tabindex="0" style="cursor:pointer">
+      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('cls_section_header')}</h2>
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <div style="font-size:28px;font-weight:800">${ourRow.position ?? '—'}<span style="font-size:13px;font-weight:600;color:var(--muted)">${total ? ' / ' + total : ''}</span></div>
+        <div style="font-size:12px;color:var(--muted)">${tr('cls_preview_points', {n: ourRow.points ?? 0})}</div>
+      </div>
+      ${behindLeader != null ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">${behindLeader > 0 ? tr('cls_preview_behind', {n: behindLeader}) : tr('cls_preview_leading')}</div>` : ''}
+      <div style="margin-top:10px;font-size:12px;font-weight:700;text-decoration:underline">${tr('cls_preview_cta')}</div>
+    </div>`;
+}
+
+// Tap target for the classification preview slide — jumps to the Facts
+// tab and scrolls straight to the table (vs. the normal tab-click/swipe
+// path, which scrolls to the top of the page). Reuses the same two
+// primitives applyTabs itself is driven by (the URL hash + a re-render),
+// so Facts' own "which tab is active" logic doesn't need to know this
+// entry point exists.
+function goToClassification() {
+  history.replaceState(null, '', '#team');
+  const el = document.getElementById('content');
+  if (el) applyTabs(el);
+  const target = document.getElementById('cls-section');
+  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function render(el, data) {
@@ -1912,14 +1987,15 @@ function render(el, data) {
   const finishedGames = games.filter(g => isGameFinished(g, season));
   const liveGames = games.filter(g => isGameLive(g, season)).sort((a,b) => gameSortKey(a) - gameSortKey(b));
   _liveGameOnPage = liveGames.length > 0;
-  // "Just finished" match summary — fixed above the carousel (not one of
-  // its rotating slides) for roughly 24h after the match, same always-
-  // visible treatment as the live card above. Excludes anything still in
-  // liveGames (isMatchSummaryWindowOpen already implies isGameFinished,
-  // so there's no actual overlap, but the exclusion is kept explicit here
-  // for the same reason upcomingGames excludes them below).
-  const summaryGames = games.filter(g => !liveGames.includes(g) && isMatchSummaryWindowOpen(g, season))
-    .sort((a,b) => gameSortKey(a) - gameSortKey(b));
+  // Latest completed result — the single most recently-finished game, no
+  // time window attached. It moves from the pinned area into the carousel
+  // the instant isGameLive flips false (isGameLive/isGameFinished are
+  // mutually exclusive, so a game is never both live and "latest result"
+  // at once), and stays there until a newer finished game replaces it —
+  // "latest" is simply recomputed on every render, nothing to expire.
+  const latestCompletedGame = finishedGames.length
+    ? [...finishedGames].sort((a,b) => gameSortKey(b) - gameSortKey(a))[0]
+    : null;
   const upcomingGames = games.filter(g => g.date && !finishedGames.includes(g) && !liveGames.includes(g))
     .sort((a,b) => gameSortKey(a) - gameSortKey(b));
   const split = splitGames(finishedGames);
@@ -1974,26 +2050,28 @@ function render(el, data) {
       })()}
     </div>` : '';
   const birthdays = dedupePlayerRows(data.birthdays || []);
-  // Pinned carousel: birthday and next match share ONE card area,
-  // flipping between them — not two separate stacked cards.
-  //
-  // Priority: Next Match normally comes first — football has priority
-  // on this page. The one exception is a birthday that falls on the
-  // actual current day: that becomes slide 1, UNLESS there's also a
-  // game today, in which case the game keeps first priority and the
-  // birthday celebration is slide 2.
+  // Pinned carousel content. Priority (confirmed): today's birthday >
+  // latest completed result > upcoming match > classification preview >
+  // any other upcoming-birthday note. A birthday that falls on the actual
+  // current day takes the top slide; otherwise a non-today birthday note
+  // (this week / next one) takes the lowest slot, as it did before.
   const todayBirthdays = birthdays.filter(b => b.isToday);
-  const gameToday = games.some(g => g.date === todayLocalDateStr());
   const happyBirthdaySlide = renderHappyBirthdaySlide(todayBirthdays);
   const birthdaySlide = happyBirthdaySlide || renderBirthdayInfoSlide(birthdays);
-  // Hidden entirely while a match is live — the global live card
-  // already has full attention; the carousel returns once the match
-  // finishes and liveMatchToday clears on the next render.
-  const carouselSlides = liveMatchToday ? [] : (
-    (todayBirthdays.length && !gameToday)
-      ? [birthdaySlide, nextMatchHtml].filter(Boolean)
-      : [nextMatchHtml, birthdaySlide].filter(Boolean)
-  );
+  const latestResultSlide = (!liveMatchToday && latestCompletedGame)
+    ? renderMatchSummaryCard(latestCompletedGame, season, players, gamePlayers, latestCompletedGame.guestPlayers)
+    : null;
+  const classificationPreviewSlide = renderClassificationPreviewSlide(classification);
+  // Hidden entirely while a match is live — the global live card already
+  // has full attention; the carousel returns with the latest result the
+  // moment the match finishes and liveMatchToday clears on the next render.
+  const carouselSlides = liveMatchToday ? [] : [
+    todayBirthdays.length ? birthdaySlide : null,
+    latestResultSlide,
+    nextMatchHtml || null,
+    classificationPreviewSlide,
+    !todayBirthdays.length ? birthdaySlide : null,
+  ].filter(Boolean);
 
   const html = `
     <div class="team-header" style="position:relative;overflow:hidden">
@@ -2016,12 +2094,13 @@ function render(el, data) {
     </a>` : ''}
 
     ${liveGames.map(g => renderLiveCard(g, season, players, gamePlayers)).join('')}
-    ${summaryGames.map(g => renderMatchSummaryCard(g, season, players, gamePlayers, g.guestPlayers)).join('')}
 
     ${carouselSlides.length ? `
     <div class="carousel" id="pinnedCarousel">
       <div class="carousel-track">
+        ${carouselSlides.length > 1 ? `<div class="carousel-slide" aria-hidden="true" inert>${carouselSlides[carouselSlides.length - 1]}</div>` : ''}
         ${carouselSlides.map(html => `<div class="carousel-slide">${html}</div>`).join('')}
+        ${carouselSlides.length > 1 ? `<div class="carousel-slide" aria-hidden="true" inert>${carouselSlides[0]}</div>` : ''}
       </div>
     </div>
     ${carouselSlides.length > 1 ? `
@@ -2036,6 +2115,7 @@ function render(el, data) {
     </nav>
 
     <div class="pane" data-tab="team">
+    ${renderClassificationTable(classification)}
     <div class="card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_summary')}</h2>
       ${officialGames.length ? '' : '<p class="split-note">' + tr('no_official') + '</p>'}
@@ -2076,7 +2156,6 @@ function render(el, data) {
     </div>
 
     ${renderSeasonLeaders(players, officialGames, gamePlayers)}
-    ${renderClassificationTable(classification)}
     </div>
 
     <div class="pane" data-tab="matches">
