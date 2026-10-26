@@ -1116,6 +1116,8 @@ const STRINGS = {
     upcoming_birthdays:'Upcoming Birthdays',
     season_summary:'Season Summary · League & Cup', record:'Record', goal_diff:'Goal Diff',
     goals_for:'Goals For', goals_against:'Goals Against', current_form:'Current Form',
+    win_pct:'Win Rate', clean_sheets:'Clean Sheets', best_win_streak:'Best Win Streak', best_unbeaten:'Best Unbeaten Run',
+    home_record:'Home', away_record:'Away', games_suffix:'games',
     by_competition:'By Competition', official:'League & Cup', friendlies:'Friendlies', tournaments:'Tournaments',
     league:'League', cup:'Cup', pre_season_friendlies:'Pre-Season', in_season_friendlies:'In-Season', post_season_friendlies:'Post-Season',
     w_short:'W', d_short:'D', l_short:'L',
@@ -1185,6 +1187,8 @@ const STRINGS = {
     upcoming_birthdays:'Próximos Aniversários',
     season_summary:'Resumo da Época · Campeonato e Taça', record:'Registo', goal_diff:'Diferença de Golos',
     goals_for:'Golos Marcados', goals_against:'Golos Sofridos', current_form:'Forma Atual',
+    win_pct:'% Vitórias', clean_sheets:'Jogos Sem Sofrer', best_win_streak:'Melhor Sequência de Vitórias', best_unbeaten:'Melhor Série Invicta',
+    home_record:'Casa', away_record:'Fora', games_suffix:'jogos',
     by_competition:'Por Competição', official:'Campeonato e Taça', friendlies:'Jogos Amigáveis', tournaments:'Torneios',
     league:'Campeonato', cup:'Taça', pre_season_friendlies:'Pré-Época', in_season_friendlies:'Durante a Época', post_season_friendlies:'Pós-Época',
     w_short:'V', d_short:'E', l_short:'D',
@@ -1338,23 +1342,48 @@ function formatNameList(names) {
 // the same function Current Form and Recent Results already use, so
 // this can never disagree with them about what counts as a win.
 function computeTeamStats(games) {
-  let wins = 0, draws = 0, losses = 0, goalsFor = 0, goalsAgainst = 0;
-  (games || []).forEach(g => {
+  const s = {
+    played: 0, wins: 0, draws: 0, losses: 0,
+    goalsFor: 0, goalsAgainst: 0,
+    homeW: 0, homeD: 0, homeL: 0, awayW: 0, awayD: 0, awayL: 0,
+    cleanSheets: 0, failedToScore: 0,
+    biggestWin: null, biggestLoss: null,
+    bestStreak: 0, bestUnbeaten: 0,
+  };
+  // Sorted chronologically so streaks are computed in the order the games
+  // were actually played, not whatever order the RPC happened to return —
+  // same gameSortKey already used everywhere else on this page that needs
+  // chronological order (the summary-card window check, upcoming/finished
+  // splits, etc.).
+  const sorted = [...(games || [])].sort((a, b) => gameSortKey(a) - gameSortKey(b));
+  let streak = 0, unbeaten = 0;
+  sorted.forEach(g => {
     const our = parseInt(g.ourScore) || 0;
     const their = parseInt(g.opponentScore) || 0;
-    goalsFor += our;
-    goalsAgainst += their;
     const res = result(our, their, g);
-    if (res === 'W') wins++;
-    else if (res === 'D') draws++;
-    else if (res === 'L') losses++;
+    const gd = our - their;
+
+    s.played++;
+    s.goalsFor += our;
+    s.goalsAgainst += their;
+
+    if (res === 'W') { s.wins++; streak++; unbeaten++; if (streak > s.bestStreak) s.bestStreak = streak; if (unbeaten > s.bestUnbeaten) s.bestUnbeaten = unbeaten; }
+    else if (res === 'D') { s.draws++; streak = 0; unbeaten++; if (unbeaten > s.bestUnbeaten) s.bestUnbeaten = unbeaten; }
+    else { s.losses++; streak = 0; unbeaten = 0; }
+
+    if (g.homeAway === 'Home') { if (res === 'W') s.homeW++; else if (res === 'D') s.homeD++; else s.homeL++; }
+    else if (g.homeAway === 'Away') { if (res === 'W') s.awayW++; else if (res === 'D') s.awayD++; else s.awayL++; }
+
+    if (their === 0) s.cleanSheets++;
+    if (our === 0) s.failedToScore++;
+
+    const haScore = homeAwayScore(g.homeAway, our, their, g.neutralSide);
+    const haScoreStr = `${haScore.home}-${haScore.away}`;
+    if (res === 'W' && (!s.biggestWin || gd > s.biggestWin.gd)) s.biggestWin = { score: haScoreStr, opp: g.opponent, gd };
+    if (res === 'L' && (!s.biggestLoss || gd < s.biggestLoss.gd)) s.biggestLoss = { score: haScoreStr, opp: g.opponent, gd };
   });
-  return {
-    played: (games || []).length,
-    wins, draws, losses,
-    goalsFor, goalsAgainst,
-    goalDiff: goalsFor - goalsAgainst,
-  };
+  s.goalDiff = s.goalsFor - s.goalsAgainst;
+  return s;
 }
 
 function fmtBirthday(b) {
@@ -1980,6 +2009,10 @@ function render(el, data) {
         <div><div class="stat-label">${tr('goal_diff')}</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
         <div><div class="stat-label">${tr('goals_for')}</div><div class="stat-value">${stats.goalsFor}</div></div>
         <div><div class="stat-label">${tr('goals_against')}</div><div class="stat-value">${stats.goalsAgainst}</div></div>
+        <div><div class="stat-label">${tr('win_pct')}</div><div class="stat-value">${stats.played ? Math.round(stats.wins / stats.played * 100) : 0}%</div></div>
+        <div><div class="stat-label">${tr('clean_sheets')}</div><div class="stat-value">${stats.cleanSheets}</div></div>
+        <div><div class="stat-label">${tr('best_win_streak')}</div><div class="stat-value">${stats.bestStreak}</div></div>
+        <div><div class="stat-label">${tr('best_unbeaten')}</div><div class="stat-value">${stats.bestUnbeaten}</div></div>
       </div>
       ${recentOfficial.length ? `
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
