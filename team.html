@@ -132,10 +132,10 @@
   .tab-btn[aria-selected="true"]{background:var(--black);border-color:var(--black);color:#fff}
   .pane[hidden]{display:none}
   .carousel{position:relative;overflow:hidden}
-  .carousel-track{display:flex;align-items:flex-start;transition:transform .3s ease,height .25s ease}
+  .carousel-track{display:flex;align-items:flex-start;transition:transform .3s ease,height .3s ease}
   .carousel-slide{flex:0 0 100%;min-width:100%;box-sizing:border-box}
   .carousel-slide .card{margin-bottom:0}
-  .carousel-dots{display:flex;justify-content:center;gap:6px;margin:8px 0 14px}
+  .carousel-dots{display:flex;justify-content:center;gap:6px;margin:4px 0 8px}
   .carousel-dot{width:22px;height:22px;padding:0;border:none;background:none;cursor:pointer;line-height:0}
   .carousel-dot span{display:block;width:7px;height:7px;margin:0 auto;border-radius:50%;background:var(--border)}
   .carousel-dot[aria-selected="true"] span{background:var(--black)}
@@ -1675,20 +1675,16 @@ function applyCarousel(el) {
   const looped = N > 1;
   const domOffset = looped ? 1 : 0; // shift from logical index to DOM index (clone sits at 0)
 
-  // Every slide (real + clones) gets the same minimum height — the
-  // tallest one sets the floor, so a short birthday message doesn't look
-  // visually smaller than the match card when they share the carousel.
-  const cardEls = slideEls.map(s => s.querySelector('.card')).filter(Boolean);
-  const maxCardHeight = Math.max(0, ...cardEls.map(c => c.scrollHeight));
-  cardEls.forEach(c => { c.style.minHeight = maxCardHeight + 'px'; });
-
   _slideIndex = N > 0 ? (((_slideIndex % N) + N) % N) : 0; // clamp across re-renders with a different slide count
 
-  // align-items:flex-start above stops slides from being stretched to
-  // match the tallest one (flex's default row behavior) — this syncs
-  // the TRACK's own height to just the active slide, which — now that
-  // every slide shares the same min-height above — ends up the same
-  // regardless of which one is showing.
+  // Deliberately NO forced equal-height here — each card (classification
+  // preview, latest result, next match, birthday) sizes to its own
+  // content. align-items:flex-start stops flexbox's default cross-axis
+  // stretch, and the TRACK's own height is synced to just the active
+  // slide below, so a short card never inherits a tall neighbour's
+  // height; the CSS transition on that height (same duration as the
+  // slide transform) animates the change smoothly when slides of
+  // different heights swap in.
   const goToDom = (domIdx, animate) => {
     if (!animate) track.style.transition = 'none';
     track.style.transform = `translateX(-${domIdx * 100}%)`;
@@ -2106,7 +2102,7 @@ function render(el, data) {
     ${carouselSlides.length > 1 ? `
     <div class="carousel-dots" role="tablist" aria-label="Pinned cards">
       ${carouselSlides.map((_, i) => `<button type="button" class="carousel-dot" role="tab" data-slide="${i}" aria-selected="false" aria-label="Card ${i+1}"><span></span></button>`).join('')}
-    </div>` : '<div style="height:14px"></div>'}
+    </div>` : '<div style="height:8px"></div>'}
     ` : ''}
 
     ${renderClubWatermark(season)}
