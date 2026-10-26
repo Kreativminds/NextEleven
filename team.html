@@ -67,6 +67,14 @@
   .pct-bar-fill{height:100%;border-radius:4px}
   .row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border)}
   .row:last-child{border-bottom:none}
+  /* Card-events strip sits directly under a Recent Results .row (same
+     parent, not wrapped) so the existing `.row:last-child` border logic
+     keeps working for rows with no cards. When a strip follows a row,
+     the border moves onto the strip instead, so the visual rhythm (one
+     border per result item) stays the same whichever one is actually last. */
+  .row:has(+ .card-events-line){border-bottom:none}
+  .card-events-line{font-size:11px;color:var(--muted);padding:0 0 9px 0;border-bottom:1px solid var(--border);line-height:1.5}
+  .card-events-line:last-child{border-bottom:none}
   .row-name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
   .row-meta{font-size:11px;color:var(--muted);flex-shrink:0}
   .pill{background:#eee;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;flex-shrink:0}
@@ -498,6 +506,41 @@ function renderMatchSummaryCard(g, season, players, gamePlayers, tempPlayers) {
       ${(ourLines || theirLines) ? `
       <div class="scorer-cols">${scorerColsHtml}</div>` : ''}
     </div>`;
+}
+
+// Read-only disciplinary-event strip shown under each Recent Results row —
+// Victor's 2026-10-26 card-tracking spec: "Display them as read-only
+// information within the existing Matches tab, alongside match details.
+// Do not add another tab or include cards in the carousel or pinned
+// live-score card." The public RPC returns a per-game `cardEvents` array
+// (same shape/windowing as `goalEvents`). Our-team scorer names resolve
+// against the already-privacy-filtered `players`/`guestPlayers` arrays —
+// fmt_public_name() is applied to those lists server-side, the same
+// mechanism goals already rely on — so no separate name-visibility check
+// is needed here; an unresolved id just falls back to "Unknown", same as
+// the goals summary above.
+function cardEventIcon(cardType) {
+  if (cardType === 'second_yellow') return '🟨🟥';
+  if (cardType === 'red') return '🟥';
+  return '🟨';
+}
+function renderCardEventsStrip(g, players) {
+  const events = (g.cardEvents || []).filter(c => c && c.minute != null);
+  if (!events.length) return '';
+  const sortKey = (c) => (parseInt(c.minute) || 0) + (parseInt(c.stoppageMinute) || 0) / 1000;
+  const sorted = [...events].sort((a, b) => sortKey(a) - sortKey(b));
+  const tempPlayers = g.guestPlayers || [];
+  const line = (c) => {
+    const who = c.team === 'us'
+      ? (c.scorerType === 'temp'
+          ? esc((tempPlayers.find(t => t.tempPlayerId === c.scorerId) || {}).name || 'Unknown')
+          : esc(shortName((players.find(p => p.playerId === c.scorerId) || {}).fullName || 'Unknown')))
+      : `${esc(tr('card_opponent'))}${c.opponentShirtNumber != null ? ' #' + esc(c.opponentShirtNumber) : ''}`;
+    const minuteTxt = c.stoppageMinute != null ? `${c.minute}+${c.stoppageMinute}` : `${c.minute}`;
+    const note = c.cardType === 'second_yellow' ? ` ${esc(tr('card_second_yellow_note'))}` : '';
+    return `<span aria-hidden="true">${cardEventIcon(c.cardType)}</span> ${who}${note} ${minuteTxt}&#39;`;
+  };
+  return `<div class="card-events-line">${sorted.map(line).join(' &middot; ')}</div>`;
 }
 // Large, faded club identity, fixed to the viewport — stays in place
 // while the page scrolls past it, rather than scrolling with the
@@ -1118,6 +1161,7 @@ const STRINGS = {
     live_note:'Updating every 15 seconds while the game is on. Counted in the season record once the game ends.',
     own_goal:'Own goal',
     match_summary_badge:'FINAL', opponent_goal:'Opponent goal',
+    card_opponent:'Opponent', card_second_yellow_note:'(2nd yellow)',
     next_match:'Next Match', today:'Today', tomorrow:'Tomorrow', days_remaining:'{n} days remaining', get_directions:'Directions',
     choose_nav_app:'Open directions in', open_google_maps:'Google Maps', open_waze:'Waze', cancel:'Cancel',
     next_birthday:'Next Birthday', birthdays_this_week:'Birthday This Week', birthdays_this_week_pl:'Birthdays This Week',
@@ -1199,6 +1243,7 @@ const STRINGS = {
     live_note:'Atualiza a cada 15 segundos durante o jogo. Entra no registo da época quando o jogo terminar.',
     own_goal:'Autogolo',
     match_summary_badge:'FINAL', opponent_goal:'Golo do adversário',
+    card_opponent:'Adversário', card_second_yellow_note:'(2º amarelo)',
     next_match:'Próximo Jogo', today:'Hoje', tomorrow:'Amanhã', days_remaining:'Faltam {n} dias', get_directions:'Direções',
     choose_nav_app:'Abrir direções em', open_google_maps:'Google Maps', open_waze:'Waze', cancel:'Cancelar',
     next_birthday:'Próximo Aniversário', birthdays_this_week:'Aniversário Esta Semana', birthdays_this_week_pl:'Aniversários Esta Semana',
@@ -2387,7 +2432,7 @@ function render(el, data) {
           <span class="score">${s.home}-${s.away}</span>
           ${hasPens?`<span class="row-meta">${g.ourPenaltyGoals}-${g.penaltiesForThem}P</span>`:''}
           <span class="badge badge-${res}">${res}</span>
-        </div>`;
+        </div>${renderCardEventsStrip(g, players)}`;
       }).join('')}
     </div>` : ''}
 
