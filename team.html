@@ -49,6 +49,22 @@
   .stat-grid.cols-3{grid-template-columns:1fr 1fr 1fr}
   .stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
   .stat-value{font-size:20px;font-weight:800;margin-top:2px}
+  /* "Boxed" variant — scoped to this modifier rather than every .stat-grid
+     (several existing ones sit on a dark background or are loading
+     skeletons, where a light tile would look wrong) — tiles with a light
+     background and rounded corners, matching the reference screenshot
+     Victor shared. box-green highlights the "best of" achievement tiles
+     the same way that reference highlighted its best-streak tiles. */
+  .stat-grid.boxed > div{background:#f5f6f8;border-radius:8px;padding:10px 8px;text-align:center}
+  .stat-grid.boxed > div.box-green{background:var(--green-bg)}
+  .stat-grid.boxed .stat-value{font-size:18px}
+  .pct-bar-row{margin-bottom:9px}
+  .pct-bar-row:last-child{margin-bottom:0}
+  .pct-bar-head{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px}
+  .pct-bar-head .pct-bar-label{font-weight:700}
+  .pct-bar-head .pct-bar-pct{color:var(--muted)}
+  .pct-bar-track{height:8px;background:#eceef1;border-radius:4px;overflow:hidden}
+  .pct-bar-fill{height:100%;border-radius:4px}
   .row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border)}
   .row:last-child{border-bottom:none}
   .row-name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
@@ -1118,6 +1134,7 @@ const STRINGS = {
     goals_for:'Goals For', goals_against:'Goals Against', current_form:'Current Form',
     win_pct:'Win Rate', clean_sheets:'Clean Sheets', best_win_streak:'Best Win Streak', best_unbeaten:'Best Unbeaten Run',
     home_record:'Home', away_record:'Away', games_suffix:'games',
+    biggest_win:'Biggest Win', biggest_loss:'Biggest Loss', vs:'vs',
     by_competition:'By Competition', official:'League & Cup', friendlies:'Friendlies', tournaments:'Tournaments',
     league:'League', cup:'Cup', pre_season_friendlies:'Pre-Season', in_season_friendlies:'In-Season', post_season_friendlies:'Post-Season',
     w_short:'W', d_short:'D', l_short:'L',
@@ -1189,6 +1206,7 @@ const STRINGS = {
     goals_for:'Golos Marcados', goals_against:'Golos Sofridos', current_form:'Forma Atual',
     win_pct:'% Vitórias', clean_sheets:'Jogos Sem Sofrer', best_win_streak:'Melhor Sequência de Vitórias', best_unbeaten:'Melhor Série Invicta',
     home_record:'Casa', away_record:'Fora', games_suffix:'jogos',
+    biggest_win:'Maior Vitória', biggest_loss:'Maior Derrota', vs:'vs',
     by_competition:'Por Competição', official:'Campeonato e Taça', friendlies:'Jogos Amigáveis', tournaments:'Torneios',
     league:'Campeonato', cup:'Taça', pre_season_friendlies:'Pré-Época', in_season_friendlies:'Durante a Época', post_season_friendlies:'Pós-Época',
     w_short:'V', d_short:'E', l_short:'D',
@@ -1384,6 +1402,23 @@ function computeTeamStats(games) {
   });
   s.goalDiff = s.goalsFor - s.goalsAgainst;
   return s;
+}
+
+// One row of the Win/Draw/Loss percentage-bar breakdown — label + count on
+// the left, percentage on the right, a proportional colored bar underneath.
+// colorVar is one of the existing --green/--amber/--red tokens already used
+// for the W/D/L result badges elsewhere on this page, so the bars read with
+// the same color meaning a parent already learned from Current Form.
+function renderPctBarRow(label, count, total, colorVar) {
+  const pct = total > 0 ? Math.round(count / total * 100) : 0;
+  return `
+    <div class="pct-bar-row">
+      <div class="pct-bar-head">
+        <span class="pct-bar-label">${esc(label)} ${count}</span>
+        <span class="pct-bar-pct">${pct}%</span>
+      </div>
+      <div class="pct-bar-track"><div class="pct-bar-fill" style="width:${pct}%;background:var(${colorVar})"></div></div>
+    </div>`;
 }
 
 function fmtBirthday(b) {
@@ -2004,16 +2039,27 @@ function render(el, data) {
     <div class="card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_summary')}</h2>
       ${officialGames.length ? '' : '<p class="split-note">' + tr('no_official') + '</p>'}
-      <div class="stat-grid">
-        <div><div class="stat-label">${tr('record')}</div><div class="stat-value">${stats.wins}${tr('w_short')}-${stats.draws}${tr('d_short')}-${stats.losses}${tr('l_short')}</div></div>
+      ${stats.played ? `
+      <div style="margin-bottom:14px">
+        ${renderPctBarRow(tr('w_short'), stats.wins, stats.played, '--green')}
+        ${renderPctBarRow(tr('d_short'), stats.draws, stats.played, '--amber')}
+        ${renderPctBarRow(tr('l_short'), stats.losses, stats.played, '--red')}
+      </div>` : ''}
+      <div class="stat-grid boxed">
         <div><div class="stat-label">${tr('goal_diff')}</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
         <div><div class="stat-label">${tr('goals_for')}</div><div class="stat-value">${stats.goalsFor}</div></div>
         <div><div class="stat-label">${tr('goals_against')}</div><div class="stat-value">${stats.goalsAgainst}</div></div>
-        <div><div class="stat-label">${tr('win_pct')}</div><div class="stat-value">${stats.played ? Math.round(stats.wins / stats.played * 100) : 0}%</div></div>
-        <div><div class="stat-label">${tr('clean_sheets')}</div><div class="stat-value">${stats.cleanSheets}</div></div>
-        <div><div class="stat-label">${tr('best_win_streak')}</div><div class="stat-value">${stats.bestStreak}</div></div>
-        <div><div class="stat-label">${tr('best_unbeaten')}</div><div class="stat-value">${stats.bestUnbeaten}</div></div>
+        <div class="box-green"><div class="stat-label">${tr('clean_sheets')}</div><div class="stat-value">${stats.cleanSheets}</div></div>
+        <div class="box-green"><div class="stat-label">${tr('best_win_streak')}</div><div class="stat-value">${stats.bestStreak}</div></div>
+        <div class="box-green"><div class="stat-label">${tr('best_unbeaten')}</div><div class="stat-value">${stats.bestUnbeaten}</div></div>
       </div>
+      ${(stats.homeW || stats.homeD || stats.homeL || stats.awayW || stats.awayD || stats.awayL) ? `
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div class="row"><span class="row-name">${tr('home_record')}</span><span class="row-meta">${stats.homeW}${tr('w_short')}-${stats.homeD}${tr('d_short')}-${stats.homeL}${tr('l_short')}</span></div>
+        <div class="row"><span class="row-name">${tr('away_record')}</span><span class="row-meta">${stats.awayW}${tr('w_short')}-${stats.awayD}${tr('d_short')}-${stats.awayL}${tr('l_short')}</span></div>
+        ${stats.biggestWin ? `<div class="row"><span class="row-name">${tr('biggest_win')}</span><span class="row-meta">${esc(stats.biggestWin.score)} ${tr('vs')} ${esc(stats.biggestWin.opp)}</span></div>` : ''}
+        ${stats.biggestLoss ? `<div class="row"><span class="row-name">${tr('biggest_loss')}</span><span class="row-meta">${esc(stats.biggestLoss.score)} ${tr('vs')} ${esc(stats.biggestLoss.opp)}</span></div>` : ''}
+      </div>` : ''}
       ${recentOfficial.length ? `
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div class="stat-label" style="margin-bottom:6px">${tr('current_form')}</div>
