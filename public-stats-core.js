@@ -172,14 +172,25 @@ function buildMatchGoalSummary(game, gpRecords, players, tempPlayers, goalEvents
   return { ourGoals, opponentGoals };
 }
 
-// Trimmed public version — appearances/starts/goals/assists only, matching
+// Trimmed public version — appearances/starts/goals/assists/cards, matching
 // exactly what get_public_team_data's gamePlayers rows contain. Does NOT
-// compute minutes, cards, or MOTM (those fields are not returned by the
-// public RPC and are out of scope for the public page per approved spec).
+// compute minutes or MOTM (those fields are not returned by the public RPC
+// and are out of scope for the public page per approved spec).
 // 'started' mirrors the main app's playerSeasonStats exactly: role==='Starter'
 // on a calledUp row — a bench/unused call-up never counts, same as there.
+//
+// yellowCards/redCards (added 2026-10-26, card-tracking feature) are summed
+// from gp.cardYellowCount/gp.cardRedCount — per-game-player counts the RPC
+// computes server-side FROM THE card_events TABLE, not from the older
+// manual gp.yellowCards/gp.redCards integer fields the admin app's own
+// playerSeasonStats still reads elsewhere. Per Victor's instruction: "All
+// disciplinary totals must be calculated from recorded events" — the new
+// event-sourced table is the only source of truth for any total shown here,
+// public or admin, going forward. A second-yellow dismissal counts toward
+// BOTH tallies (one caution + one sending-off), same convention as the
+// admin Cards tab's own computeCardTotals().
 function playerPublicStats(playerId, games, allGP) {
-  let calledUp=0, started=0, goals=0, assists=0;
+  let calledUp=0, started=0, goals=0, assists=0, yellowCards=0, redCards=0;
   const positionCounts = {};
   const positionMostRecentKey = {};
   games.forEach(g => {
@@ -189,6 +200,8 @@ function playerPublicStats(playerId, games, allGP) {
     if (gp.role === 'Starter') started++;
     goals += parseInt(gp.goals)||0;
     assists += parseInt(gp.assists)||0;
+    yellowCards += parseInt(gp.cardYellowCount)||0;
+    redCards += parseInt(gp.cardRedCount)||0;
     if (gp.positionPlayed) {
       positionCounts[gp.positionPlayed] = (positionCounts[gp.positionPlayed]||0) + 1;
       const key = gameSortKey(g);
@@ -207,7 +220,7 @@ function playerPublicStats(playerId, games, allGP) {
     }
   });
 
-  return { calledUp, started, goals, assists, mostPlayedPosition };
+  return { calledUp, started, goals, assists, yellowCards, redCards, mostPlayedPosition };
 }
 
 // Adapted from the main app's async getTournamentOutcome(tournament),

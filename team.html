@@ -32,6 +32,8 @@
     --amber-bg:#fbf3d9;
     --red:#b03030;
     --red-bg:#fbe9e9;
+    --gray:#5a5f66;
+    --gray-bg:#eceef1;
   }
   *{box-sizing:border-box}
   html,body{height:100%;width:100%;font-family:'Montserrat',Arial,sans-serif;font-size:14px;background:var(--bg);color:var(--dark);margin:0;overscroll-behavior-x:none}
@@ -1162,6 +1164,7 @@ const STRINGS = {
     own_goal:'Own goal',
     match_summary_badge:'FINAL', opponent_goal:'Opponent goal',
     card_opponent:'Opponent', card_second_yellow_note:'(2nd yellow)',
+    yellow_cards:'Yellow Cards', red_cards:'Red Cards',
     next_match:'Next Match', today:'Today', tomorrow:'Tomorrow', days_remaining:'{n} days remaining', get_directions:'Directions',
     choose_nav_app:'Open directions in', open_google_maps:'Google Maps', open_waze:'Waze', cancel:'Cancel',
     next_birthday:'Next Birthday', birthdays_this_week:'Birthday This Week', birthdays_this_week_pl:'Birthdays This Week',
@@ -1244,6 +1247,7 @@ const STRINGS = {
     own_goal:'Autogolo',
     match_summary_badge:'FINAL', opponent_goal:'Golo do adversário',
     card_opponent:'Adversário', card_second_yellow_note:'(2º amarelo)',
+    yellow_cards:'Cartões Amarelos', red_cards:'Cartões Vermelhos',
     next_match:'Próximo Jogo', today:'Hoje', tomorrow:'Amanhã', days_remaining:'Faltam {n} dias', get_directions:'Direções',
     choose_nav_app:'Abrir direções em', open_google_maps:'Google Maps', open_waze:'Waze', cancel:'Cancelar',
     next_birthday:'Próximo Aniversário', birthdays_this_week:'Aniversário Esta Semana', birthdays_this_week_pl:'Aniversários Esta Semana',
@@ -1479,20 +1483,39 @@ function computeTeamStats(games) {
   return s;
 }
 
+// Linear per-channel interpolation between a pale tint (0%) and the full
+// saturated color (100%) — Victor, 2026-10-26: "the closer to 100% the
+// stronger the color", so a 10% loss rate reads as barely-there pale red
+// and a 90% one reads as a strong, alarming red, rather than every
+// non-zero bar showing the same fixed color regardless of how big it is.
+function interpolateHexColor(lightHex, strongHex, pct) {
+  const t = Math.max(0, Math.min(100, pct)) / 100;
+  const toRgb = hex => {
+    const h = hex.replace('#', '');
+    return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16));
+  };
+  const [lr, lg, lb] = toRgb(lightHex);
+  const [sr, sg, sb] = toRgb(strongHex);
+  const mix = (a, b) => Math.round(a + (b - a) * t);
+  return `rgb(${mix(lr, sr)},${mix(lg, sg)},${mix(lb, sb)})`;
+}
+
 // One row of the Win/Draw/Loss percentage-bar breakdown — label + count on
 // the left, percentage on the right, a proportional colored bar underneath.
-// colorVar is one of the existing --green/--amber/--red tokens already used
-// for the W/D/L result badges elsewhere on this page, so the bars read with
-// the same color meaning a parent already learned from Current Form.
-function renderPctBarRow(label, count, total, colorVar) {
+// lightHex/strongHex are the pale-tint/full-strength pair for this row's
+// color family (green for wins, gray for draws, red for losses — same
+// color meaning a parent already learned from Current Form's W/D/L
+// badges), interpolated by this row's own percentage, not a fixed shade.
+function renderPctBarRow(label, count, total, lightHex, strongHex) {
   const pct = total > 0 ? Math.round(count / total * 100) : 0;
+  const fillColor = interpolateHexColor(lightHex, strongHex, pct);
   return `
     <div class="pct-bar-row">
       <div class="pct-bar-head">
         <span class="pct-bar-label">${esc(label)} ${count}</span>
         <span class="pct-bar-pct">${pct}%</span>
       </div>
-      <div class="pct-bar-track"><div class="pct-bar-fill" style="width:${pct}%;background:var(${colorVar})"></div></div>
+      <div class="pct-bar-track"><div class="pct-bar-fill" style="width:${pct}%;background:${fillColor}"></div></div>
     </div>`;
 }
 
@@ -2223,6 +2246,21 @@ function render(el, data) {
 
   const stats = computeTeamStats(officialGames);
 
+  // Team-season disciplinary total (card-tracking feature, 2026-10-26) —
+  // summed from the SAME per-game-player cardYellowCount/cardRedCount the
+  // RPC computes from card_events, scoped to official games only (same
+  // scoping as the rest of this Season Summary card's tiles). Naturally
+  // comes out {0,0} when gamePlayers is '[]' (show_player_stats off), so
+  // the tile below is gated on gamePlayers.length instead of a separate
+  // privacy check — same implicit convention the Player Stats card already
+  // uses (calledUp===0 for every player when the toggle is off).
+  const officialGameIds = new Set(officialGames.map(g => g.gameId));
+  const teamCardTotals = gamePlayers.filter(gp => officialGameIds.has(gp.gameId)).reduce((acc, gp) => {
+    acc.yellow += parseInt(gp.cardYellowCount) || 0;
+    acc.red += parseInt(gp.cardRedCount) || 0;
+    return acc;
+  }, { yellow: 0, red: 0 });
+
   // League Classification (ticket section 11) — the RPC already selected
   // the single latest-published snapshot for this season, scoped and
   // validated on the admin side; this page only displays it read-only.
@@ -2377,9 +2415,9 @@ function render(el, data) {
       ${officialGames.length ? '' : '<p class="split-note">' + tr('no_official') + '</p>'}
       ${stats.played ? `
       <div style="margin-bottom:14px">
-        ${renderPctBarRow(tr('w_short'), stats.wins, stats.played, '--green')}
-        ${renderPctBarRow(tr('d_short'), stats.draws, stats.played, '--amber')}
-        ${renderPctBarRow(tr('l_short'), stats.losses, stats.played, '--red')}
+        ${renderPctBarRow(tr('w_short'), stats.wins, stats.played, '#e6f4ea', '#2a7a4e')}
+        ${renderPctBarRow(tr('d_short'), stats.draws, stats.played, '#eceef1', '#5a5f66')}
+        ${renderPctBarRow(tr('l_short'), stats.losses, stats.played, '#fbe9e9', '#b03030')}
       </div>` : ''}
       <div class="stat-grid boxed">
         <div><div class="stat-label">${tr('goal_diff')}</div><div class="stat-value">${stats.goalDiff>0?'+':''}${stats.goalDiff}</div></div>
@@ -2389,6 +2427,11 @@ function render(el, data) {
         <div class="box-green"><div class="stat-label">${tr('best_win_streak')}</div><div class="stat-value">${stats.bestStreak}</div></div>
         <div class="box-green"><div class="stat-label">${tr('best_unbeaten')}</div><div class="stat-value">${stats.bestUnbeaten}</div></div>
       </div>
+      ${gamePlayers.length ? `
+      <div class="stat-grid" style="margin-top:10px">
+        <div><div class="stat-label">${tr('yellow_cards')}</div><div class="stat-value">🟨 ${teamCardTotals.yellow}</div></div>
+        <div><div class="stat-label">${tr('red_cards')}</div><div class="stat-value">🟥 ${teamCardTotals.red}</div></div>
+      </div>` : ''}
       ${(stats.homeW || stats.homeD || stats.homeL || stats.awayW || stats.awayD || stats.awayL) ? `
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div class="row"><span class="row-name">${tr('home_record')}</span><span class="row-meta">${stats.homeW}${tr('w_short')}-${stats.homeD}${tr('d_short')}-${stats.homeL}${tr('l_short')}</span></div>
@@ -2581,6 +2624,8 @@ function render(el, data) {
           <span class="pill">${s.calledUp} GP</span>
           <span class="pill">${s.goals} G</span>
           <span class="pill">${s.assists} A</span>
+          ${s.yellowCards ? `<span class="pill" aria-label="${esc(tr('yellow_cards'))}">🟨 ${s.yellowCards}</span>` : ''}
+          ${s.redCards ? `<span class="pill" aria-label="${esc(tr('red_cards'))}">🟥 ${s.redCards}</span>` : ''}
         </div>${extra ? `<div class="split-line" style="border-bottom:1px solid var(--border)">${extra}</div>` : ''}`;
       }).join('')}
     </div>` : ''}
