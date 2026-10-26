@@ -1705,16 +1705,50 @@ function applyTabs(el) {
   if (!available.includes(active)) active = available[0] || 'matches';
 
   panes.forEach(p => { p.hidden = p.dataset.tab !== active; });
+  const switchTo = id => {
+    // replaceState rather than assigning location.hash: no history entry
+    // per tap, and no browser jump-to-anchor.
+    history.replaceState(null, '', '#' + id);
+    applyTabs(el);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   el.querySelectorAll('[data-tabbtn]').forEach(btn => {
     const id = btn.dataset.tabbtn;
     btn.hidden = !available.includes(id);
     btn.setAttribute('aria-selected', id === active ? 'true' : 'false');
-    btn.onclick = () => {
-      // replaceState rather than assigning location.hash: no history entry
-      // per tap, and no browser jump-to-anchor.
-      history.replaceState(null, '', '#' + id);
-      applyTabs(el);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    btn.onclick = () => switchTo(id);
+  });
+
+  // Swipe left/right between tabs — same plain-touch technique as the
+  // pinned carousel above (applyCarousel): classify once at touchend from
+  // the total movement, only acting when the horizontal distance clears a
+  // minimum AND exceeds the vertical one, with passive listeners so normal
+  // page scrolling is never touched. Unlike the carousel, this does NOT
+  // wrap around at the ends — swiping past the last/first tab just stays
+  // put, matching how a tab bar (not a looping deck of cards) is expected
+  // to behave. Skipped entirely when the gesture starts inside the League
+  // Classification table's own horizontal scroller (.cls-scroll), so
+  // scrolling that table never also flips the tab underneath it.
+  const SWIPE_MIN_PX = 50;
+  let tStartX = 0, tStartY = 0, tActive = false;
+  panes.forEach(p => {
+    p.ontouchstart = e => {
+      tActive = !(e.target.closest && e.target.closest('.cls-scroll'));
+      if (!tActive) return;
+      const t = e.touches[0];
+      tStartX = t.clientX; tStartY = t.clientY;
+    };
+    p.ontouchend = e => {
+      if (!tActive) return;
+      tActive = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - tStartX, dy = t.clientY - tStartY;
+      if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) <= Math.abs(dy)) return;
+      const i = available.indexOf(active);
+      if (i < 0) return;
+      const nextI = i + (dx < 0 ? 1 : -1);
+      if (nextI < 0 || nextI >= available.length) return;
+      switchTo(available[nextI]);
     };
   });
 }
