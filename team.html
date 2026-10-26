@@ -1470,6 +1470,18 @@ function todayLocalDateStr() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// Whole calendar days between two 'YYYY-MM-DD' dates (b - a), ignoring
+// time-of-day. Drives the carousel's dynamic lead-slide choice below —
+// game-relative, not a fixed weekday, so it keeps working whatever day a
+// given week's match actually falls on (rescheduled games, midweek cup
+// ties, bye weeks).
+function calendarDaysDiff(dateStrA, dateStrB) {
+  const a = new Date(`${dateStrA}T00:00:00`);
+  const b = new Date(`${dateStrB}T00:00:00`);
+  if (isNaN(a) || isNaN(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+
 // The celebration slide — only ever rendered when one or more
 // birthdays fall on the actual current day. Single-player and
 // shared-birthday cases use separate message pools (shared pools are
@@ -2213,11 +2225,21 @@ function render(el, data) {
       })()}
     </div>` : '';
   const birthdays = dedupePlayerRows(data.birthdays || []);
-  // Pinned carousel content. Priority (confirmed): today's birthday >
-  // latest completed result > upcoming match > classification preview >
-  // any other upcoming-birthday note. A birthday that falls on the actual
-  // current day takes the top slide; otherwise a non-today birthday note
-  // (this week / next one) takes the lowest slot, as it did before.
+  // Pinned carousel content. A birthday that falls on the actual current
+  // day always takes the top slide (unchanged); otherwise a non-today
+  // birthday note (this week / next one) takes the lowest slot.
+  //
+  // Between those two, the three rotating cards — next match, standing,
+  // latest result — swap their LEAD position dynamically, game-relative:
+  //  - 0-1 days after the last completed game: that result is still the
+  //    freshest news, so it leads.
+  //  - 0-3 days before the next game: anticipation builds, so the next
+  //    match leads.
+  //  - Otherwise (the mid-week gap): the standing leads.
+  // Whichever one doesn't lead keeps its place in the base order
+  // (next match, standing, result) behind the leader. Confirmed with
+  // Victor 2026-10-26 in place of the earlier fixed weekday idea, so this
+  // keeps working whatever day a given week's match actually falls on.
   const todayBirthdays = birthdays.filter(b => b.isToday);
   const happyBirthdaySlide = renderHappyBirthdaySlide(todayBirthdays);
   const birthdaySlide = happyBirthdaySlide || renderBirthdayInfoSlide(birthdays);
@@ -2225,14 +2247,29 @@ function render(el, data) {
     ? renderMatchSummaryCard(latestCompletedGame, season, players, gamePlayers, latestCompletedGame.guestPlayers)
     : null;
   const classificationPreviewSlide = renderClassificationPreviewSlide(classification);
+
+  const todayStr = todayLocalDateStr();
+  const daysSinceLastResult = latestCompletedGame ? calendarDaysDiff(latestCompletedGame.date, todayStr) : null;
+  const daysUntilNextGame = next ? calendarDaysDiff(todayStr, next.date) : null;
+  const leadWithResult = daysSinceLastResult !== null && daysSinceLastResult >= 0 && daysSinceLastResult <= 1;
+  const leadWithNextGame = !leadWithResult && daysUntilNextGame !== null && daysUntilNextGame >= 0 && daysUntilNextGame <= 3;
+  let leadKey = 'classification';
+  if (leadWithResult) leadKey = 'result';
+  else if (leadWithNextGame) leadKey = 'next';
+
+  const rotatingSlides = [
+    { key: 'next', html: nextMatchHtml || null },
+    { key: 'classification', html: classificationPreviewSlide },
+    { key: 'result', html: latestResultSlide },
+  ].filter(s => s.html);
+  rotatingSlides.sort((a, b) => (a.key === leadKey ? -1 : b.key === leadKey ? 1 : 0));
+
   // Hidden entirely while a match is live — the global live card already
   // has full attention; the carousel returns with the latest result the
   // moment the match finishes and liveMatchToday clears on the next render.
   const carouselSlides = liveMatchToday ? [] : [
     todayBirthdays.length ? birthdaySlide : null,
-    latestResultSlide,
-    nextMatchHtml || null,
-    classificationPreviewSlide,
+    ...rotatingSlides.map(s => s.html),
     !todayBirthdays.length ? birthdaySlide : null,
   ].filter(Boolean);
 
