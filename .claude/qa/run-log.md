@@ -8,6 +8,43 @@ Newest entry on top.
 
 ---
 
+## 2026-10-28 — Scheduled nightly run
+
+- lastInspectedCommit: cb757db
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process — this is now
+  the 14th night running (2026-10-15 through tonight) the scheduled
+  prompt has hardcoded this same stale claim. That EN string was fixed
+  2026-10-12 via PR #1 and is in "Resolved." BUGS.md's actual "Open"
+  section at the start of tonight's run held one entry: the admin
+  disciplinary-stats gap flagged by the 2026-10-26 run, still awaiting
+  Victor's decision. Went with real repo state, per every prior run
+  since 10-15 — flagging again that whatever generates the scheduled
+  prompt should stop hardcoding this.
+- Scope: diff since 99d3750 (last run's lastInspectedCommit) was only 2
+  commits (2a95274 last night's report, cb757db tonight's lock-acquire),
+  both this agent's own bookkeeping — zero touches to `index.html`,
+  `css/nexteleven.css`, `team.html`, or `public-stats-core.js`.
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse).
+  - `check-i18n-parity.js` → OK (1972/1972 keys, no gaps).
+- Zero-AI early exit did NOT fire on its own: BUGS.md's Open section
+  was non-empty (the carried-over disciplinary-stats entry), so one
+  condition failed mechanically. Spawned the haiku triage subagent with
+  only the diff summary, check outputs, and that Open entry's text, per
+  the model-strategy split — this is the cheapest path when that one
+  condition is the only thing blocking the exit. Result: "none" — no
+  new app-code diff to look at, and it agreed the existing Open entry
+  was already fully traced on 2026-10-26 and needs Victor's decision,
+  not re-triage.
+- Found / Fixed: none.
+- Needs approval: none new — the disciplinary-stats entry from
+  2026-10-26 stands unchanged in BUGS.md, still awaiting Victor's call.
+- Pending: none.
+- Known Unresolved housekeeping: none — nothing in tonight's diff
+  touches any carried-forward item; list unchanged.
+
 ## 2026-10-27 — Scheduled nightly run
 
 - lastInspectedCommit: 99d3750
