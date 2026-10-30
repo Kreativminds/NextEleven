@@ -9,14 +9,15 @@ How this works:
 
 ## Open
 
-### Admin season disciplinary stats (yellow/red cards) no longer update once a card is logged via the new Cards tab
-- Reported: 2026-10-26 (found by the nightly QA run, not by Victor)
-- Status: Open, flagged — needs your decision, not auto-fixed (touches shared stats logic used across many screens; see run-log for the full trace)
-- What's happening: tonight's card-tracking feature (commit 4c8320e) added a `cardEvents` store as the single source of truth for disciplinary totals, and the Parents Page season card totals (`public-stats-core.js`'s `playerPublicStats`, commit 601a135) correctly reads from it via `gp.cardYellowCount`/`gp.cardRedCount` (computed server-side from `card_events`). But the admin app's own season aggregates — `Calc.playerSeasonStats` and `Calc.lorenzoStats` in index.html, used by the player profile, the Squad List's YC/RC sort+columns, and tournament stats — still read the old manual per-gamePlayer fields `gp.yellowCards`/`gp.redCards`. Nothing in the new Cards tab writes to those fields anymore (only to `cardEvents`), and the only other place that ever set them was the seed/demo data generator. So from tonight onward, every card logged via the new Cards tab will show correctly on the public Parents Page but as 0 everywhere in the admin app's own season/profile/tournament views.
-- Why it's flagged instead of fixed: `playerSeasonStats`/`lorenzoStats` are synchronous and don't currently receive `cardEvents` as an input; wiring them to the event-sourced totals touches ~10 call sites across index.html (squad list, player profile, tournament stats) — real logic shared by multiple features, which this agent won't change unattended per its safety rules.
-- Suggested options for your call: (a) have `playerSeasonStats`/`lorenzoStats` accept a season's `cardEvents` and aggregate per player from it, replacing the `gp.yellowCards`/`gp.redCards` reads; or (b) keep the legacy fields but have the Cards tab's save handler also increment/decrement them per affected player so both paths stay in sync. (a) matches "events are the only source of truth" from tonight's own commit message; (b) is a smaller diff but reintroduces a second place totals can drift.
+(none)
 
 ## Resolved
+
+### Admin season disciplinary stats (yellow/red cards) no longer update once a card is logged via the new Cards tab
+- Reported: 2026-10-26 (found by the nightly QA run, not by Victor)
+- Status: Fixed (commit 4822bf5, PR https://github.com/Kreativminds/NextEleven/pull/6 — interactive session, not this agent)
+- Fix: `Calc.lorenzoStats`/`Calc.playerSeasonStats` now take a season's `cardEvents` and derive yellow/red totals from it via a new `getSeasonCardEvents()` helper, replacing the stale `gp.yellowCards`/`gp.redCards` reads, exactly option (a) suggested below. Same commit also fixed a separate latent `direct_red` vs `'red'` string mismatch in `team.html`'s card icon (the matching Supabase RPC fix is staged in `supabase/migrations_pending/002`, not yet applied — see tonight's run-log).
+- Verified 2026-10-30 (this agent, as part of the nightly sweep): every call site where `playerSeasonStats`/`lorenzoStats`'s `yellow`/`red` fields are actually rendered (`trackedPlayer`'s Overview tab and `renderPlayerPortalStats`'s Quick Stats) now passes `allCardEvents`. ~9 other call sites (Squad List/Team Summary leaderboards, Tournament Summary top scorers, Dashboard tracked-player cards, Player Card popup Quick Stats, Player Portal Team Summary) still call these functions without `allCardEvents`, but none of those call sites ever display `.yellow`/`.red` — they only use `.calledUp`/`.goals`/`.assists`/`.mom` — so the gap is inert, not a visible defect. `tests/regression_caio_and_cards.js` (added in the same commit) passes.
 
 ### "Game Starting Now" kickoff time saved on the wrong calendar day in some timezones
 - Reported: 2026-10-17 (found by the nightly QA run, not by Victor)

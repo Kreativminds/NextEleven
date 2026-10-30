@@ -8,6 +8,81 @@ Newest entry on top.
 
 ---
 
+## 2026-10-30 — Scheduled nightly run
+
+- lastInspectedCommit: e6927fc
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process — this is now
+  the 16th night running (2026-10-15 through tonight) the scheduled
+  prompt has hardcoded this same stale claim. That EN string was fixed
+  2026-10-12 via PR #1 and is in "Resolved." Went with real repo state,
+  per every prior run since 10-15 — flagging again that whatever
+  generates the scheduled prompt should stop hardcoding this.
+- Scope: diff since f275086 (last run's lastInspectedCommit) touched
+  `index.html` and `team.html` via 2 real commits made directly to main
+  outside this agent, each an interactive session fix citing explicit
+  Victor direction:
+  - 4822bf5 "Fix card sync to use card_events everywhere; prepare Caio
+    conversion" — rewires `Calc.lorenzoStats`/`Calc.playerSeasonStats` to
+    derive yellow/red totals from `cardEvents` via a new
+    `getSeasonCardEvents()` helper, fixes a `direct_red`-vs-`'red'` icon
+    mismatch in team.html, adds `tests/regression_caio_and_cards.js`, and
+    stages (not applies) two Supabase migrations — 001 converts Caio
+    Andrade from temp to permanent player, 002 fixes the matching
+    `direct_red` mismatch in the `get_public_team_data` RPC. Both dry-run
+    tested in a rolled-back transaction against production; both held
+    for Victor's explicit approval per `supabase/migrations_pending/README.md`
+    — this agent does not apply them (never touches production
+    Supabase).
+  - 5274830 "Fix Parents Page card pill misaligning player-stats
+    columns" — CSS-only + one team.html template change, moves the
+    optional card-count pill to its own right-aligned line so it no
+    longer shifts the GP/G/A pills. Read the diff: correct, no concern.
+  Zero-AI early exit did not fire (BUGS.md's Open section was non-empty
+  going in — the carried-over disciplinary-stats entry — and app code
+  changed), so triage ran.
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse).
+  - `check-i18n-parity.js` → OK (1972/1972 keys, no gaps).
+  - `tests/regression_caio_and_cards.js` (exists from tonight's diff,
+    directly relevant) → all 6 checks pass.
+- Triage (haiku): given the diff summary, both commit messages, check
+  outputs, and the BUGS.md Open entry text, flagged two candidates —
+  P1: the BUGS.md Open entry and commit 4822bf5 appear to contradict
+  each other (stale-vs-fixed), asked for confirmation that every
+  `gp.yellowCards`/`gp.redCards` read actually moved to `card_events`;
+  P2 (latent): the `direct_red`-vs-`'red'` RPC mismatch is only
+  half-fixed (client-side done, RPC migration not applied) — correctly
+  surfaced, already known and already staged by the commit itself.
+- Orchestrator follow-through on the P1 candidate: grepped every
+  remaining call site of `Calc.playerSeasonStats`/`Calc.lorenzoStats`
+  (13 total) and traced each one's actual rendered output, not just
+  whether it passes `allCardEvents`. Result: the two call sites that
+  genuinely display `.yellow`/`.red` (`trackedPlayer`'s Overview tab,
+  `renderPlayerPortalStats`'s Quick Stats) both already pass
+  `allCardEvents` in tonight's diff. The other ~9 call sites (Squad
+  List/Team Summary leaderboards, Tournament Summary top scorers,
+  Dashboard tracked-player cards, Player Card popup Quick Stats, Player
+  Portal Team Summary) call these functions without `allCardEvents` too
+  — so their returned `.yellow`/`.red` is always 0 — but none of those
+  call sites ever render `.yellow`/`.red` in their output (only
+  `.calledUp`/`.goals`/`.assists`/`.mom`). So the BUGS.md entry was
+  genuinely resolved by 4822bf5, not stale-vs-fixed; the P1 was a false
+  alarm once actually traced to the DOM, not a real remaining defect.
+  Moved the BUGS.md entry to "Resolved" tonight with this verification
+  noted. Not pursued as a "fix" — there is nothing left to fix.
+- Found / Fixed: none (0/2 of cap used — nothing needed fixing; tonight's
+  work was verifying and closing out an already-landed fix).
+- Needs approval: none new. For visibility only (already staged by the
+  interactive session, not a new finding): `supabase/migrations_pending/
+  001` (Caio conversion) and `002` (direct_red RPC fix) are dry-run
+  tested and documented, awaiting Victor's explicit approval to apply —
+  see the README there.
+- Pending: none.
+- Known Unresolved housekeeping: none — nothing in tonight's diff
+  touches any carried-forward item; list unchanged.
+
 ## 2026-10-29 — Scheduled nightly run
 
 - lastInspectedCommit: f275086
