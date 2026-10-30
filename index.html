@@ -995,6 +995,19 @@ async function getSeasonGamePlayers(seasonId) {
   return allGP.filter(r => gameIds.has(r.gameId));
 }
 
+// Mirrors getSeasonGamePlayers exactly, for cardEvents. cardEvents is the
+// single authoritative source for disciplinary totals — never the legacy
+// gamePlayers.yellowCards/redCards manual counters — so every place that
+// shows a card count for this season reads from here.
+async function getSeasonCardEvents(seasonId) {
+  const [games, allCE] = await Promise.all([
+    DB.getAll('games', 'seasonId', seasonId),
+    DB.getAll('cardEvents'),
+  ]);
+  const gameIds = new Set(games.map(g => g.gameId));
+  return allCE.filter(c => c && !c.isDeleted && gameIds.has(c.gameId));
+}
+
 // ── COMPETITION SPLIT ────────────────────────────────────────────────────
 // One rule for every stats page:
 //   tournament — linked to a tournament, or typed Tournament
@@ -9621,27 +9634,44 @@ const Calc = (() => {
     return (fullGames * CONFIG.FULL_GAME_MINS) + (partialGames * CONFIG.PARTIAL_GAME_MINS);
   }
 
-  function lorenzoStats(games, allGP) {
+  function lorenzoStats(games, allGP, allCardEvents) {
     const s = {
       calledUp:0, started:0, subbed:0, fullGames:0, partialGames:0,
       goals:0, assists:0, yellow:0, red:0, mom:0, captain:0, totalGames: games.length
     };
     const posMap = {};
+    const gameIds = new Set();
+    let targetPlayerId = null, targetTempPlayerId = null;
 
     games.forEach(g => {
       const gp = allGP.find(r => r.gameId === g.gameId);
       if (!gp || !gp.calledUp) return;
+      gameIds.add(g.gameId);
+      if (gp.playerId != null) targetPlayerId = gp.playerId;
+      else if (gp.tempPlayerId != null) targetTempPlayerId = gp.tempPlayerId;
       s.calledUp++;
       if (gp.role === 'Starter') s.started++;
       if (gp.role === 'Sub') s.subbed++;
       if (gp.playedFullGame) s.fullGames++; else s.partialGames++;
       s.goals += parseInt(gp.goals)||0;
       s.assists += parseInt(gp.assists)||0;
-      s.yellow += parseInt(gp.yellowCards)||0;
-      s.red += parseInt(gp.redCards)||0;
       if (gp.playerOfTheMatch) s.mom++;
       if (gp.captain) s.captain++;
       if (gp.positionPlayed) posMap[gp.positionPlayed] = (posMap[gp.positionPlayed]||0)+1;
+    });
+
+    // Disciplinary totals come from cardEvents — the single authoritative
+    // source — never the legacy gp.yellowCards/redCards manual counters
+    // (see getSeasonCardEvents). A second yellow counts toward both.
+    (allCardEvents||[]).forEach(c => {
+      if (!c || c.isDeleted || c.team !== 'us' || !gameIds.has(c.gameId)) return;
+      const isThisPlayer = targetTempPlayerId != null ? (c.scorerType === 'temp' && c.scorerId === targetTempPlayerId)
+        : targetPlayerId != null ? (c.scorerType === 'player' && c.scorerId === targetPlayerId)
+        : false;
+      if (!isThisPlayer) return;
+      if (c.cardType === 'yellow') s.yellow++;
+      else if (c.cardType === 'second_yellow') { s.yellow++; s.red++; }
+      else if (c.cardType === 'direct_red') s.red++;
     });
 
     s.contributions = goalContributions(s.goals, s.assists);
@@ -9742,20 +9772,32 @@ const Calc = (() => {
   // instead, so the same stat calculation serves permanent and guest
   // players alike rather than guests needing a separate, parallel
   // function (ticket: "use a common participation model").
-  function playerSeasonStats(playerId, games, allGP, tempPlayerId) {
+  function playerSeasonStats(playerId, games, allGP, tempPlayerId, allCardEvents) {
     let calledUp=0,started=0,subbed=0,goals=0,assists=0,yellow=0,red=0,mom=0,fullGames=0,partial=0;
+    const gameIds = new Set();
     games.forEach(g => {
       const gp = allGP.find(r => r.gameId===g.gameId && (tempPlayerId != null ? r.tempPlayerId===tempPlayerId : r.playerId===playerId));
       if (!gp||!gp.calledUp) return;
+      gameIds.add(g.gameId);
       calledUp++;
       if(gp.role==='Starter')started++;
       if(gp.role==='Sub')subbed++;
       if(gp.playedFullGame)fullGames++;else partial++;
       goals+=parseInt(gp.goals)||0;
       assists+=parseInt(gp.assists)||0;
-      yellow+=parseInt(gp.yellowCards)||0;
-      red+=parseInt(gp.redCards)||0;
       if(gp.playerOfTheMatch)mom++;
+    });
+    // Disciplinary totals come from cardEvents — the single authoritative
+    // source — never the legacy gp.yellowCards/redCards manual counters
+    // (see getSeasonCardEvents). A second yellow counts toward both.
+    (allCardEvents||[]).forEach(c => {
+      if (!c || c.isDeleted || c.team !== 'us' || !gameIds.has(c.gameId)) return;
+      const isThisPlayer = tempPlayerId != null ? (c.scorerType === 'temp' && c.scorerId === tempPlayerId)
+        : (c.scorerType === 'player' && c.scorerId === playerId);
+      if (!isThisPlayer) return;
+      if (c.cardType === 'yellow') yellow++;
+      else if (c.cardType === 'second_yellow') { yellow++; red++; }
+      else if (c.cardType === 'direct_red') red++;
     });
     return {calledUp,started,subbed,goals,assists,yellow,red,mom,fullGames,partial,minutes:estimatedMins(fullGames,partial)};
   }
@@ -16171,7 +16213,20 @@ async function renderMatchLog(playerId) {
 
   const games = await DB.getAll('games','seasonId',State.currentSeasonId);
   const allGP = await getSeasonGamePlayers(State.currentSeasonId);
+  const allCardEvents = await getSeasonCardEvents(State.currentSeasonId);
   const lorGP = allGP.filter(r => r.playerId === playerId);
+  // Per-game disciplinary counts, derived from cardEvents — never the
+  // legacy gp.yellowCards/redCards manual counters — keyed by gameId
+  // since this table is scoped to one permanent player (scorerType
+  // 'player') throughout.
+  const cardsByGame = {};
+  allCardEvents.forEach(c => {
+    if (c.team !== 'us' || c.scorerType !== 'player' || c.scorerId !== playerId) return;
+    const b = cardsByGame[c.gameId] || (cardsByGame[c.gameId] = {yellow:0, red:0});
+    if (c.cardType === 'yellow') b.yellow++;
+    else if (c.cardType === 'second_yellow') { b.yellow++; b.red++; }
+    else if (c.cardType === 'direct_red') b.red++;
+  });
 
   // A future call-up is not match history. Relevance requires a completed
   // game (existing isGameResultVisible rule), a matching participation
@@ -16211,8 +16266,8 @@ async function renderMatchLog(playerId) {
     position: (a,b) => (a.gp?.positionPlayed||'').localeCompare(b.gp?.positionPlayed||''),
     goals:    (a,b) => (a.gp?.goals||0) - (b.gp?.goals||0),
     assists:  (a,b) => (a.gp?.assists||0) - (b.gp?.assists||0),
-    yc:       (a,b) => (a.gp?.yellowCards||0) - (b.gp?.yellowCards||0),
-    rc:       (a,b) => (a.gp?.redCards||0) - (b.gp?.redCards||0),
+    yc:       (a,b) => (cardsByGame[a.game.gameId]?.yellow||0) - (cardsByGame[b.game.gameId]?.yellow||0),
+    rc:       (a,b) => (cardsByGame[a.game.gameId]?.red||0) - (cardsByGame[b.game.gameId]?.red||0),
   };
   enriched.sort((a,b) => {
     const fn = sortFns[sortKey] || sortFns.date;
@@ -16259,8 +16314,8 @@ async function renderMatchLog(playerId) {
               <td><span class="pos-pill">${gp.positionPlayed||'—'}</span></td>
               <td class="td-center td-bold">${resultVisible?(gp.goals||0):'—'}</td>
               <td class="td-center">${resultVisible?(gp.assists||0):'—'}</td>
-              <td class="td-center">${resultVisible?(gp.yellowCards||0):'—'}</td>
-              <td class="td-center">${resultVisible?(gp.redCards||0):'—'}</td>
+              <td class="td-center">${resultVisible?(cardsByGame[g.gameId]?.yellow||0):'—'}</td>
+              <td class="td-center">${resultVisible?(cardsByGame[g.gameId]?.red||0):'—'}</td>
               <td class="td-center">${resultVisible?(gp.playerOfTheMatch?'<span class="badge badge-mom">MoM</span>':'—'):'—'}</td>
               <td class="td-center">${resultVisible?(gp.captain?'<span class="badge badge-cap">C</span>':'—'):'—'}</td>
               <td style="font-size:11px;color:var(--muted);max-width:140px">${esc(gp.performanceNotes||'')}</td>
@@ -18268,10 +18323,11 @@ async function renderPlayerPortalStats() {
 
   const games = (await DB.getAll('games','seasonId', State.currentSeasonId)).filter(g => g.date);
   const allGP = await getSeasonGamePlayers(State.currentSeasonId);
+  const allCardEvents = await getSeasonCardEvents(State.currentSeasonId);
   const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
   const playerGP = allGP.filter(r => r.playerId === playerId);
   const split = splitGamesByCategory(finishedGames);
-  const s = Calc.lorenzoStats(split.official, playerGP);
+  const s = Calc.lorenzoStats(split.official, playerGP, allCardEvents);
 
   // "Recent form" means the last games actually PLAYED, not just the last 5
   // games on the calendar — a season with its full fixture list entered up
@@ -20082,10 +20138,11 @@ const Render = (() => {
 
     // Three reads issued together rather than sequentially — same pattern
     // Team Summary already uses. Identical data, identical arguments.
-    const [players, games, allGP] = await Promise.all([
+    const [players, games, allGP, allCardEvents] = await Promise.all([
       DB.getAll('players','seasonId',State.currentSeasonId),
       DB.getAll('games','seasonId',State.currentSeasonId),
       getSeasonGamePlayers(State.currentSeasonId),
+      getSeasonCardEvents(State.currentSeasonId),
     ]);
 
     // Archived players are viewable. The isActive requirement here (plus
@@ -20114,7 +20171,18 @@ const Render = (() => {
     // towards season totals — an in-progress game shouldn't inflate stats yet.
     const finishedGames = games.filter(g => isGameResultVisible(g, _seasonMap));
     const split = splitGamesByCategory(finishedGames);
-    const s = Calc.lorenzoStats(split.official, lorGP);
+    const s = Calc.lorenzoStats(split.official, lorGP, allCardEvents);
+    // Per-game disciplinary counts for the Match by Match table below —
+    // derived from cardEvents, never the legacy gp.yellowCards/redCards
+    // manual counters.
+    const cardsByGame = {};
+    allCardEvents.forEach(c => {
+      if (c.team !== 'us' || c.scorerType !== 'player' || c.scorerId !== lor.playerId) return;
+      const b = cardsByGame[c.gameId] || (cardsByGame[c.gameId] = {yellow:0, red:0});
+      if (c.cardType === 'yellow') b.yellow++;
+      else if (c.cardType === 'second_yellow') { b.yellow++; b.red++; }
+      else if (c.cardType === 'direct_red') b.red++;
+    });
 
     // Sorting for the Match by Match table on this Overview tab
     const ovSortKey = el.dataset.sortKey || 'date';
@@ -20134,8 +20202,8 @@ const Render = (() => {
       position: (a,b) => (a.gp?.positionPlayed||'').localeCompare(b.gp?.positionPlayed||''),
       goals:    (a,b) => (a.gp?.goals||0) - (b.gp?.goals||0),
       assists:  (a,b) => (a.gp?.assists||0) - (b.gp?.assists||0),
-      yc:       (a,b) => (a.gp?.yellowCards||0) - (b.gp?.yellowCards||0),
-      rc:       (a,b) => (a.gp?.redCards||0) - (b.gp?.redCards||0),
+      yc:       (a,b) => (cardsByGame[a.game.gameId]?.yellow||0) - (cardsByGame[b.game.gameId]?.yellow||0),
+      rc:       (a,b) => (cardsByGame[a.game.gameId]?.red||0) - (cardsByGame[b.game.gameId]?.red||0),
     };
     ovEnriched.sort((a,b) => {
       const fn = ovSortFns[ovSortKey] || ovSortFns.date;
@@ -20252,8 +20320,8 @@ const Render = (() => {
                 <td><span class="pos-pill">${gp.positionPlayed||'—'}</span></td>
                 <td class="td-center td-bold">${gp.goals||0}</td>
                 <td class="td-center">${gp.assists||0}</td>
-                <td class="td-center">${gp.yellowCards||0}</td>
-                <td class="td-center">${gp.redCards||0}</td>
+                <td class="td-center">${cardsByGame[g.gameId]?.yellow||0}</td>
+                <td class="td-center">${cardsByGame[g.gameId]?.red||0}</td>
                 <td class="td-center">${gp.playerOfTheMatch?'<span class="badge badge-mom">MoM</span>':'—'}</td>
                 <td class="td-center">${gp.captain?'<span class="badge badge-cap">C</span>':'—'}</td>
                 <td style="font-size:11px;color:var(--muted);max-width:140px">${esc(gp.performanceNotes||'—')}</td>

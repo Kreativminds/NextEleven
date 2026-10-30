@@ -523,7 +523,11 @@ function renderMatchSummaryCard(g, season, players, gamePlayers, tempPlayers) {
 // the goals summary above.
 function cardEventIcon(cardType) {
   if (cardType === 'second_yellow') return '🟨🟥';
-  if (cardType === 'red') return '🟥';
+  // Admin records a direct red as 'direct_red' (never bare 'red') — see
+  // cardTypeIcon()/selectCardType() in index.html. Matching that exact
+  // value here is what keeps a red card from silently rendering as a
+  // yellow one on this page.
+  if (cardType === 'direct_red') return '🟥';
   return '🟨';
 }
 function renderCardEventsStrip(g, players) {

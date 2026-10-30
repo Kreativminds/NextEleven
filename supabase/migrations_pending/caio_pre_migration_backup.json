@@ -1,0 +1,48 @@
+{
+  "_comment": "Snapshot of every production row 001_convert_caio_to_permanent_player.sql touches, captured 2026-10-30 before any change. For manual restore if ever needed.",
+  "project_id": "wicydcvdakqopodbxtrl",
+  "user_id": "563dea01-03a6-4e74-8cac-131cb39ccd97",
+  "temporary_players": [
+    {
+      "id": "2e85ec25-9453-4b9d-9194-3919ac595f02",
+      "device_id": "dev-qb0udozl",
+      "local_id": "1",
+      "deleted_at": null,
+      "payload": {
+        "name": "Caio Andrade", "notes": "", "seasonId": 6,
+        "createdAt": "2026-10-03T11:12:21.532206+00:00", "updatedAt": "2026-10-11T07:46:00.823Z",
+        "sourceType": "manual", "shirtNumber": null, "tempPlayerId": 1, "preferredPosition": ""
+      }
+    }
+  ],
+  "game_players": [
+    { "id": "cc905ddb-aa5d-4dea-9839-0432cb886c09", "device_id": "dev-qb0udozl", "local_id": "271", "deleted_at": null,
+      "payload": {"role":"Starter","goals":1,"gameId":250,"assists":0,"captain":false,"calledUp":true,"redCards":0,"seasonId":6,"yellowCards":0,"gamePlayerId":271,"tempPlayerId":1,"playedFullGame":true,"positionPlayed":"Attacking Midfielder","playerOfTheMatch":false} },
+    { "id": "84a777ec-1829-4f5e-82f8-3cf5b6396c90", "device_id": "dev-qb0udozl", "local_id": "303", "deleted_at": null,
+      "payload": {"role":"Starter","gameId":251,"calledUp":true,"gamePlayerId":303,"tempPlayerId":1,"positionPlayed":"Left Back","shirtNumberPlayed":3} },
+    { "id": "71a84386-bd81-4cd7-a8da-1e89f7c64335", "device_id": "dev-qb0udozl", "local_id": "373", "deleted_at": "2026-10-16T22:29:40.287824+00:00",
+      "payload": {"role":null,"goals":0,"gameId":252,"assists":0,"captain":false,"calledUp":true,"redCards":0,"seasonId":6,"yellowCards":0,"gamePlayerId":373,"tempPlayerId":1,"playedFullGame":false,"positionPlayed":null,"playerOfTheMatch":false} },
+    { "id": "8afc3572-7091-4f22-8974-2fae386233a6", "device_id": "dev-qb0udozl", "local_id": "384", "deleted_at": null,
+      "payload": {"role":"Starter","goals":4,"gameId":252,"assists":1,"captain":false,"calledUp":true,"redCards":0,"seasonId":6,"yellowCards":0,"gamePlayerId":384,"tempPlayerId":1,"playedFullGame":true,"positionPlayed":"Central Midfielder","playerOfTheMatch":false,"shirtNumberPlayed":47} },
+    { "id": "07a84cec-c79c-494c-84b6-4c3ce98d9da7", "device_id": "dev-ipiovysv", "local_id": "401", "deleted_at": null,
+      "payload": {"role":"Starter","goals":0,"gameId":253,"assists":0,"captain":false,"calledUp":true,"redCards":0,"seasonId":6,"yellowCards":0,"gamePlayerId":401,"tempPlayerId":1,"playedFullGame":true,"positionPlayed":"Attacking Midfielder","playerOfTheMatch":false,"shirtNumberPlayed":47},
+      "_note": "duplicate of 408 for game 253 — older update, 0 goals — soft-deleted by step 1" },
+    { "id": "c2f23a14-6c17-4896-8b0e-11d63fbdb9c0", "device_id": "dev-ipiovysv", "local_id": "408", "deleted_at": null,
+      "payload": {"role":"Starter","goals":2,"gameId":253,"assists":0,"captain":false,"calledUp":true,"redCards":0,"seasonId":6,"yellowCards":0,"gamePlayerId":408,"tempPlayerId":1,"playedFullGame":true,"positionPlayed":"Central Midfielder","playerOfTheMatch":false,"shirtNumberPlayed":47},
+      "_note": "survives — most recently updated, 2 goals" },
+    { "id": "29679bb1-d456-4db6-93ad-d215f0b78467", "device_id": "dev-qb0udozl", "local_id": "295", "deleted_at": "2026-10-10T20:02:19.165+00:00",
+      "payload": {"role":"Sub","goals":0,"gameId":274,"assists":0,"captain":false,"calledUp":true,"redCards":0,"seasonId":6,"isDeleted":true,"yellowCards":0,"gamePlayerId":295,"tempPlayerId":1,"playedFullGame":false,"positionPlayed":null,"playerOfTheMatch":false} }
+  ],
+  "goal_events": [
+    { "id": "8c61239d-c6ce-41ff-bb15-20550891264c", "device_id": "dev-ipiovysv", "local_id": "1", "deleted_at": "2026-10-24T13:38:07.152+00:00",
+      "payload": {"gameId":253,"scoredAt":"2026-10-24T13:37:26.191Z","scorerId":1,"seasonId":6,"isDeleted":true,"scorerType":"temp","goalEventId":1} },
+    { "id": "b7dc6589-3bf1-4fe4-93c0-1e1e9b0e4c9d", "device_id": "dev-ipiovysv", "local_id": "2", "deleted_at": null,
+      "payload": {"gameId":253,"scoredAt":"2026-10-24T14:09:39.278Z","scorerId":1,"seasonId":6,"scorerType":"temp","goalEventId":2} },
+    { "id": "eca5a9ed-9be3-4980-b0a3-1f383e14ef34", "device_id": "dev-ipiovysv", "local_id": "3", "deleted_at": null,
+      "payload": {"gameId":253,"scoredAt":"2026-10-24T14:18:48.538Z","scorerId":1,"seasonId":6,"scorerType":"temp","goalEventId":3} }
+  ],
+  "card_events": [
+    { "id": "32583bb3-32ba-4f28-89d0-8ae1cc833808", "device_id": "dev-ipiovysv", "local_id": "1", "deleted_at": null,
+      "payload": {"team":"us","gameId":253,"minute":72,"cardType":"yellow","scorerId":1,"seasonId":6,"scorerType":"temp","cardEventId":1,"linkedEventId":null,"stoppageMinute":null,"opponentPlayerName":null,"opponentShirtNumber":null} }
+  ]
+}
