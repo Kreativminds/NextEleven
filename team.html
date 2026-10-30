@@ -110,6 +110,11 @@
   .live-scorers.opponent-scorers .who{font-weight:700;color:var(--muted)}
   .split-note{font-size:12px;color:var(--muted);margin:0 0 8px}
   .split-line{font-size:11px;color:var(--muted);padding:0 0 9px;margin-top:-4px}
+  /* Card badges (🟨/🟥) for a player-stats row live on their own line,
+     right-aligned, instead of inline after the GP/G/A pills. Inline, a
+     variable 4th/5th pill shifted the GP/G/A pills left on any row with a
+     card, breaking column alignment against rows with none. */
+  .card-line{display:flex;justify-content:flex-end;gap:8px;padding:0 0 9px;margin-top:-4px}
   .outcome-banner{text-align:center;padding:18px 16px}
   .outcome-banner .name{font-weight:700;font-size:14px}
   .outcome-banner .label{font-size:19px;font-weight:800;margin-top:4px}
@@ -2623,14 +2628,17 @@ function render(el, data) {
           const x = playerPublicStats(p.playerId, split[k], gamePlayers);
           return x.calledUp ? `${categoryLabel(k)}: ${x.calledUp} GP · ${x.goals} G · ${x.assists} A` : '';
         }).filter(Boolean).join(' &nbsp;|&nbsp; ');
-        return `<div class="row"${extra ? ' style="border-bottom:none"' : ''}>
+        const cardBadges = [
+          s.yellowCards ? `<span class="pill" aria-label="${esc(tr('yellow_cards'))}">🟨 ${s.yellowCards}</span>` : '',
+          s.redCards ? `<span class="pill" aria-label="${esc(tr('red_cards'))}">🟥 ${s.redCards}</span>` : '',
+        ].filter(Boolean).join('');
+        const hasTrailingLine = Boolean(extra) || Boolean(cardBadges);
+        return `<div class="row"${hasTrailingLine ? ' style="border-bottom:none"' : ''}>
           <span class="row-name">${esc(shortName(p.fullName))}</span>
           <span class="pill">${s.calledUp} GP</span>
           <span class="pill">${s.goals} G</span>
           <span class="pill">${s.assists} A</span>
-          ${s.yellowCards ? `<span class="pill" aria-label="${esc(tr('yellow_cards'))}">🟨 ${s.yellowCards}</span>` : ''}
-          ${s.redCards ? `<span class="pill" aria-label="${esc(tr('red_cards'))}">🟥 ${s.redCards}</span>` : ''}
-        </div>${extra ? `<div class="split-line" style="border-bottom:1px solid var(--border)">${extra}</div>` : ''}`;
+        </div>${cardBadges ? `<div class="card-line"${extra ? '' : ' style="border-bottom:1px solid var(--border)"'}>${cardBadges}</div>` : ''}${extra ? `<div class="split-line" style="border-bottom:1px solid var(--border)">${extra}</div>` : ''}`;
       }).join('')}
     </div>` : ''}
 
