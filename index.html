@@ -23192,7 +23192,23 @@ const Sync = (() => {
         // to apply here; skip it and let any live cloud row for that
         // natural key (processed elsewhere in this same pull) be the
         // one that writes the real, current state.
-        if (!existing && cr.deleted_at) continue;
+        //
+        // That risk only exists for stores that actually DO heuristic
+        // natural-key merging (naturalKeyFields(store) non-null) —
+        // games, gamePlayers, players, etc., where the local primary
+        // key can genuinely differ from the cloud row's own id. Every
+        // other store (temporaryPlayers among them) has no natural-key
+        // definition at all: its payload's own id field (tempPlayerId,
+        // injuryId, ...) IS the local primary key, identical to how a
+        // live row with no cloudId match already falls through to
+        // _origPut() below. Skipping those unconditionally only ever
+        // prevented a legitimate deletion from reaching a device that
+        // hadn't cached that exact row's cloudId — e.g. a retired
+        // Guest Player (like Caio Andrade after being converted to a
+        // permanent squad player) staying visible in the Guest Players
+        // list on a device that pulls the deletion fresh, forever,
+        // because it never had that one row's cloudId locally.
+        if (!existing && cr.deleted_at && naturalKeyFields(store)) continue;
         if (!existing) {
           const naturalMatch = findByNaturalKey(store, all, payload);
           if (naturalMatch) {
