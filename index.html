@@ -19164,6 +19164,38 @@ async function performBlockingStartupSync(isRetry) {
   return 'success';
 }
 
+// One-time full resync so every existing device automatically picks up
+// deletions that got stuck under the old Sync.pull() guard (fixed
+// 2026-10-31 — see that commit). A normal incremental pull only
+// re-fetches rows whose updated_at is after this device's own last
+// sync, so a record already seen (and silently dropped) once under the
+// old buggy guard stays missing from every later pull too: its
+// updated_at is now older than _lastSync, guard or no guard. Running
+// one full, lastSync-ignoring pull clears that for good.
+//
+// Deliberately calls Sync.downloadAll() directly rather than the
+// Settings-button handler — this isn't something the Parent asked for,
+// so it must stay silent: no "Downloading..." toast, no visible UI
+// beyond the existing sync status dot. Pre-checking isConfigured()/
+// online here means downloadAll()'s own two Toast.error guards are
+// never reached; any other failure (offline mid-request, etc.) is
+// swallowed the same way downloadAll() already swallows pull() errors
+// internally, and simply retries on the next load since the flag below
+// only gets set on completion.
+const SYNC_DELETION_BACKFILL_ID = 'deletion-propagation-fix-2026-10-31';
+async function runSyncDeletionBackfillIfNeeded() {
+  if (!Auth.isLoggedIn() || !Sync.isConfigured() || !navigator.onLine) return;
+  try {
+    const done = await DB.get('appMeta', 'syncDeletionBackfillId');
+    if (done?.value === SYNC_DELETION_BACKFILL_ID) return;
+    await Sync.downloadAll();
+    await DB.put('appMeta', { metaKey: 'syncDeletionBackfillId', value: SYNC_DELETION_BACKFILL_ID });
+  } catch (e) {
+    // Offline or a transient error — leave the flag unset so this
+    // simply retries on the next app load.
+  }
+}
+
 function showSyncFailureScreen(title, body) {
   document.getElementById('syncFailureTitle').textContent = title;
   document.getElementById('syncFailureBody').textContent = body;
@@ -28124,6 +28156,13 @@ async function continueAppLoadAfterLogin() {
         _startupBootstrapInFlight = false;
       }
     }
+
+    // One-time, automatic, silent full resync so a record stuck locally
+    // under the old Sync.pull() deletion guard (e.g. a converted Guest
+    // Player still showing up on the squad screen) clears itself on
+    // every device's next load — no manual Settings > Sync > Download
+    // All needed. See runSyncDeletionBackfillIfNeeded() above.
+    await runSyncDeletionBackfillIfNeeded();
 
     // Resolve the current season on EVERY startup path, not only after an
     // account transition. A saved season that no longer exists, or a device
