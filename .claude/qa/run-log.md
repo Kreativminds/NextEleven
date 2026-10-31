@@ -8,6 +8,73 @@ Newest entry on top.
 
 ---
 
+## 2026-10-31 — Scheduled nightly run
+
+- lastInspectedCommit: a5cc00f
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process — this is now
+  the 17th night running (2026-10-15 through tonight) the scheduled
+  prompt has hardcoded this same stale claim. That EN string was fixed
+  2026-10-12 via PR #1 and has been in "Resolved" ever since. Went with
+  real repo state, per every prior run since 10-15 — flagging again that
+  whatever generates the scheduled prompt should stop hardcoding this.
+- Scope: diff since e6927fc (last run's lastInspectedCommit) touched
+  `index.html` and `team.html` via 3 real commits made directly to main
+  outside this agent (each merged via its own fix/* branch, interactive
+  sessions, same day):
+  - 91971ba "Fix admin sync: a deleted cloud record with no local
+    cloudId match was silently dropped forever..." — narrows
+    `Sync.pull()`'s deletion-skip guard to only stores that actually do
+    natural-key merging (`naturalKeyFields(store)` non-null), so stores
+    like `temporaryPlayers` (keyed directly by their own id, no merge
+    ambiguity) stop losing legitimate deletions. Read the diff: the
+    added condition is exactly the guard the commit message describes —
+    correct, no concern.
+  - 8754dba "Make the Caio-style stuck-deletion fix self-healing..." —
+    adds a one-time, silent, per-device full `Sync.downloadAll()` on next
+    load (own appMeta flag, set only after the call succeeds, left unset
+    on any error so it simply retries next load), hooked in right after
+    the existing `requiresBlockingSyncOnNextLoad` check in
+    `continueAppLoadAfterLogin()`. Read the diff: flag timing is correct
+    (no "set-then-fail" gap), and the two checks run sequentially, not
+    concurrently — no race. Minor, unconfirmed inefficiency noted below
+    under Known Unresolved (possible back-to-back full sync on the rare
+    account-transition-plus-first-device-load case).
+  - 9a25ffb "Fix live-game card: scorer shown on wrong side, no goal
+    minute" — factors the finished-match card's two-column,
+    minute-labeled scorer rendering into a shared `renderScorerColumns()`
+    (in `public-stats-core.js`'s `buildMatchGoalSummary`) and switches
+    the live card to use it too. Read `minuteFromScoredAt()`: already
+    null-safe for missing `scoredAt`, invalid dates, missing kickoff, and
+    implausible minutes (<0 or >150) — all return `null`, and the
+    render-side `goalLine()` already guards `minute != null` before
+    printing — so no blank/NaN minute is possible, live or finished.
+  Zero-AI early exit did not fire (app code changed), so triage ran.
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse).
+  - `check-i18n-parity.js` → OK (1972/1972 keys, no gaps).
+- Triage (haiku): given the 3 commit messages, diff stat, check outputs,
+  and the empty BUGS.md Open section, flagged 2 P1s and a P2 worth a
+  closer look — (1) whether the sync-pull guard removal is actually
+  gated per store so natural-key-ambiguous stores keep the old
+  protection; (2) whether the one-time resync's appMeta flag could be
+  set before completion (losing a failed run) or cause a double full
+  sync with the existing blocking-sync flag; (3) whether the live card's
+  reused minute computation could show NaN/blank on missing
+  scoredAt/kickoff.
+- Orchestrator follow-through: read all 3 commits' actual diffs (not
+  just messages). All three concerns were already handled correctly in
+  the code as shipped — see Scope notes above for each. No false
+  positives reached the fix stage; nothing needed fixing.
+- Found / Fixed: none (0/2 of cap used — every triage candidate resolved
+  itself on inspection; no genuine defect found).
+- Needs approval: none.
+- Pending: none.
+- Known Unresolved housekeeping: adding one new speculative item (below)
+  from tonight's reading of 8754dba; nothing else in tonight's diff
+  touches an existing carried-forward item.
+
 ## 2026-10-30 — Scheduled nightly run
 
 - lastInspectedCommit: e6927fc
@@ -913,6 +980,20 @@ Newest entry on top.
 
 ## Known Unresolved
 (carried forward between runs so they aren't re-analyzed from scratch)
+
+- Possible back-to-back full sync on the rare account-transition-plus-
+  first-load case (from tonight's 2026-10-31 reading of 8754dba): when
+  `requiresBlockingSyncOnNextLoad` is true (set only right before a
+  genuine account-transition reload) AND this device's one-time
+  `syncDeletionBackfillId` flag hasn't been set yet, `init()` now runs
+  `performBlockingStartupSync()` and then immediately
+  `runSyncDeletionBackfillIfNeeded()` right after it — both full,
+  lastSync-ignoring downloads, run sequentially (no race), but back to
+  back on that one specific first load. Silent, not user-visible beyond
+  extra load time/network use, and self-corrects after that single
+  occurrence per device (the backfill flag is then set for good). Not
+  confirmed as actually slow/noticeable in practice — worth a look only
+  if an account-transition load is ever reported as unusually slow.
 
 - ~~Captain button stuck-hidden edge case~~ — fixed 2026-10-18 in
   `shouldShowCaptainButton` (commit 2d3afdd, PR #5, interactive session
