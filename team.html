@@ -96,8 +96,6 @@
   .live-team{flex:1;min-width:0;font-weight:800;font-size:15px;line-height:1.25;overflow-wrap:anywhere}
   .live-score{font-size:44px;font-weight:800;line-height:1;letter-spacing:-1px;flex-shrink:0}
   .live-meta{font-size:12px;color:var(--muted);margin-top:6px}
-  .live-scorers{font-size:15px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);line-height:1.8;text-align:left}
-  .live-scorers .who{font-weight:700}
   .live-note{font-size:11px;color:var(--muted);margin-top:12px}
   .summary-card{border-color:#0F1E2E;border-width:2px;padding:22px 18px 20px;text-align:center}
   .summary-flag{display:inline-flex;align-items:center;color:#fff;background:#0F1E2E;border-radius:20px;padding:5px 14px;font-weight:800;font-size:12px;letter-spacing:1px}
@@ -107,7 +105,6 @@
   .scorer-col{flex:1;min-width:0}
   .scorer-col .who{font-weight:600}
   .scorer-col.opponent-scorers .who{font-weight:600;color:var(--muted)}
-  .live-scorers.opponent-scorers .who{font-weight:700;color:var(--muted)}
   .split-note{font-size:12px;color:var(--muted);margin:0 0 8px}
   .split-line{font-size:11px;color:var(--muted);padding:0 0 9px;margin-top:-4px}
   /* Card badges (🟨/🟥) for a player-stats row live on their own line,
@@ -425,24 +422,43 @@ function renderPositionGroupedRows(players, renderRow) {
     `).join('');
 }
 
+// Shared by the live card and the finished-match summary card, so a goal
+// looks the same whether the match is still being played or has just
+// ended: two side-by-side columns under the matching team name, in actual
+// home/away position (never "us then them" stacked), each scorer's
+// minute shown when it's known (derived from the goal event's scoredAt
+// vs. kickoff — see buildMatchGoalSummary/minuteFromScoredAt), a generic
+// placeholder with no name for the opponent's side since we only know
+// their running score, not who scored. Previously the live card had its
+// own separate, simpler rendering — a flat, unlabeled list of scorer
+// names with no minute and no left/right side at all, which from the
+// opponent-first "Away" scoreline (opponent listed first/left, since
+// score headers always read Home — Away) could misread as if our own
+// scorer belonged to the opponent shown right above it. Also, unlike this
+// shared helper, it recomputed scorers from the season-stats-gated
+// `gamePlayers` list instead of the ungated per-game `goalScorers`.
+function renderScorerColumns(g, season, players, gamePlayers, tempPlayers) {
+  const gps = (g.goalScorers || []).map(r => ({ ...r, gameId: g.gameId }));
+  const summary = buildMatchGoalSummary(g, gps, players, tempPlayers || [], g.goalEvents || []);
+  const usHome = g.homeAway === 'Home' || (g.homeAway === 'Neutral' && g.neutralSide === 'home');
+  const goalLine = (who, minute) => `<div><span aria-hidden="true">⚽</span> <span class="who">${who}</span>${minute != null ? ` ${minute}&#39;` : ''}</div>`;
+  const ourLines = summary.ourGoals.map(x => goalLine(esc(x.isOwnGoal ? tr('own_goal') : (x.name ? shortName(x.name) : 'Unknown')), x.minute)).join('');
+  const theirLines = summary.opponentGoals.map(x => goalLine(esc(tr('opponent_goal')), x.minute)).join('');
+  const ourCol = `<div class="scorer-col" style="text-align:${usHome ? 'left' : 'right'}">${ourLines}</div>`;
+  const theirCol = `<div class="scorer-col opponent-scorers" style="text-align:${usHome ? 'right' : 'left'}">${theirLines}</div>`;
+  return { html: usHome ? (ourCol + theirCol) : (theirCol + ourCol), hasAny: !!(ourLines || theirLines) };
+}
+
 // Factored out so the same live card can render both at the top of the
 // page and inside the Lineup tab — previously only existed inline.
 function renderLiveCard(g, season, players, gamePlayers) {
-  const gps = gamePlayers.filter(r => r.gameId === g.gameId);
   // Server-computed, independent of show_player_stats — previously
   // summed from gamePlayers directly, which is empty whenever player
   // stats are private, making our own score always read as 0.
   const our = parseInt(g.ourScore) || 0;
   const their = parseInt(g.opponentScore)||0;
   const sc = homeAwayScore(g.homeAway, our, their, g.neutralSide);
-  const scorers = gps.filter(r => (parseInt(r.goals)||0) > 0)
-    .map(r => {
-      const pl = players.find(x => x.playerId === r.playerId);
-      const n = parseInt(r.goals)||0;
-      return { name: pl ? shortName(pl.fullName) : 'Unknown', goals: n };
-    })
-    .sort((a,b) => b.goals - a.goals || a.name.localeCompare(b.name));
-  const ownGoals = parseInt(g.ownGoalsForUs)||0;
+  const cols = renderScorerColumns(g, season, players, gamePlayers, g.guestPlayers);
   const usHome = g.homeAway === 'Home' || (g.homeAway === 'Neutral' && g.neutralSide === 'home');
   const ourName = season.clubName || 'Us';
   const homeName = usHome ? ourName : g.opponent;
@@ -456,11 +472,7 @@ function renderLiveCard(g, season, players, gamePlayers) {
         <div class="live-team">${esc(awayName)}</div>
       </div>
       <div class="live-meta">${roundLabel(g) ? esc(roundLabel(g)) + ' · ' : ''}${g.homeAway === 'Home' ? tr('home') : tr('away')}${g.venue ? ' · ' + esc(g.venue) : ''} · ${tr('kickoff')} ${esc(g.actualKickoffAt ? fmtTimeHM(g.actualKickoffAt) : (g.gameTime||''))}</div>
-      ${(scorers.length || ownGoals) ? `
-      <div class="live-scorers">
-        ${scorers.map(x => `<div><span aria-hidden="true">⚽</span> <span class="who">${esc(x.name)}</span>${x.goals > 1 ? ` ×${x.goals}` : ''}</div>`).join('')}
-        ${ownGoals ? `<div><span aria-hidden="true">⚽</span> <span class="who">${tr('own_goal')}</span>${ownGoals > 1 ? ` ×${ownGoals}` : ''}</div>` : ''}
-      </div>` : ''}
+      ${cols.hasAny ? `<div class="scorer-cols">${cols.html}</div>` : ''}
       <div class="live-note">${tr('live_note')}</div>
     </div>`;
 }
@@ -481,26 +493,14 @@ function renderMatchSummaryCard(g, season, players, gamePlayers, tempPlayers) {
   // one-off recap of the match just played, not a season stat leaderboard.
   // The public RPC exposes `goalScorers`/`goalEvents` per game, ungated,
   // restricted server-side to recently-finished games only.
-  const gps = (g.goalScorers || []).map(r => ({ ...r, gameId: g.gameId }));
   const our = parseInt(g.ourScore) || 0;
   const their = parseInt(g.opponentScore) || 0;
   const sc = homeAwayScore(g.homeAway, our, their, g.neutralSide);
-  const summary = buildMatchGoalSummary(g, gps, players, tempPlayers || [], g.goalEvents || []);
+  const cols = renderScorerColumns(g, season, players, gamePlayers, tempPlayers);
   const usHome = g.homeAway === 'Home' || (g.homeAway === 'Neutral' && g.neutralSide === 'home');
   const ourName = season.clubName || 'Us';
   const homeName = usHome ? ourName : g.opponent;
   const awayName = usHome ? g.opponent : ourName;
-  const goalLine = (who, minute) => `<div><span aria-hidden="true">⚽</span> <span class="who">${who}</span>${minute != null ? ` ${minute}&#39;` : ''}</div>`;
-  // Two side-by-side columns, under the matching team name above — not
-  // "us then them" stacked, but whichever side actually played home/away,
-  // same convention the score header already uses. Per Victor: for
-  // today's home win it should read scorers-on-the-left (home side),
-  // opponent-on-the-right (away side), at a glance.
-  const ourLines = summary.ourGoals.map(x => goalLine(esc(x.isOwnGoal ? tr('own_goal') : (x.name ? shortName(x.name) : 'Unknown')), x.minute)).join('');
-  const theirLines = summary.opponentGoals.map(x => goalLine(esc(tr('opponent_goal')), x.minute)).join('');
-  const ourCol = `<div class="scorer-col" style="text-align:${usHome ? 'left' : 'right'}">${ourLines}</div>`;
-  const theirCol = `<div class="scorer-col opponent-scorers" style="text-align:${usHome ? 'right' : 'left'}">${theirLines}</div>`;
-  const scorerColsHtml = usHome ? (ourCol + theirCol) : (theirCol + ourCol);
   return `
     <div class="card summary-card">
       <span class="summary-flag">${tr('match_summary_badge')}</span>
@@ -510,8 +510,7 @@ function renderMatchSummaryCard(g, season, players, gamePlayers, tempPlayers) {
         <div class="live-team">${esc(awayName)}</div>
       </div>
       <div class="live-meta">${roundLabel(g) ? esc(roundLabel(g)) + ' · ' : ''}${g.homeAway === 'Home' ? tr('home') : tr('away')}${g.venue ? ' · ' + esc(g.venue) : ''} · ${tr('kickoff')} ${esc(g.actualKickoffAt ? fmtTimeHM(g.actualKickoffAt) : (g.gameTime||''))}</div>
-      ${(ourLines || theirLines) ? `
-      <div class="scorer-cols">${scorerColsHtml}</div>` : ''}
+      ${cols.hasAny ? `<div class="scorer-cols">${cols.html}</div>` : ''}
     </div>`;
 }
 
