@@ -189,12 +189,12 @@ function buildMatchGoalSummary(game, gpRecords, players, tempPlayers, goalEvents
 // public or admin, going forward. A second-yellow dismissal counts toward
 // BOTH tallies (one caution + one sending-off), same convention as the
 // admin Cards tab's own computeCardTotals().
-function playerPublicStats(playerId, games, allGP) {
+function playerPublicStats(playerId, games, allGP, tempPlayerId) {
   let calledUp=0, started=0, goals=0, assists=0, yellowCards=0, redCards=0;
   const positionCounts = {};
   const positionMostRecentKey = {};
   games.forEach(g => {
-    const gp = allGP.find(r => r.gameId===g.gameId && r.playerId===playerId);
+    const gp = allGP.find(r => r.gameId===g.gameId && (tempPlayerId != null ? r.tempPlayerId===tempPlayerId : r.playerId===playerId));
     if (!gp || !gp.calledUp) return;
     calledUp++;
     if (gp.role === 'Starter') started++;

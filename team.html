@@ -1294,15 +1294,27 @@ function updateFooterRefreshStatus(errorMessage) {
 }
 
 
-function renderSeasonLeaders(players, finishedGames, gamePlayers) {
+function renderSeasonLeaders(players, finishedGames, gamePlayers, guestPlayers) {
   // finishedGames here = official (League & Cup) games only
   players = dedupePlayers(players);
   if (!players.length || !finishedGames.length) return '';
 
-  const withStats = players.map(p => ({
+  const pStats = players.map(p => ({
     ...p,
     stats: playerPublicStats(p.playerId, finishedGames, gamePlayers)
   }));
+  // Guests counted on exactly the same terms as permanent players, mirroring
+  // the admin app's own established precedent (Calc.playerSeasonStats with
+  // a tempPlayerId): their goals/assists/starts already count toward the
+  // team's season totals regardless (teamGoals doesn't filter to roster-only)
+  // — without this they just never showed up on these per-player
+  // leaderboards even when they led them (Victor, 2026-11-01: "If we scored
+  // 26 why the total of the scorer is not 26?").
+  const guestStats = (guestPlayers || []).map(tp => ({
+    ...tp, fullName: tp.name,
+    stats: playerPublicStats(null, finishedGames, gamePlayers, tp.tempPlayerId)
+  }));
+  const withStats = [...pStats, ...guestStats];
 
   function leaderRow(label, statKey) {
     const maxVal = Math.max(...withStats.map(p => p.stats[statKey] || 0));
@@ -2457,6 +2469,19 @@ function render(el, data) {
   const players = dedupePlayers(data.players || []);
   const tournaments = data.tournaments || [];
   const season = data.season || {};
+  // Season-wide guest/trial-player registry, deduped by tempPlayerId across
+  // every game's own g.guestPlayers array (the RPC has no top-level
+  // guestPlayers field — each game carries its own). Built once here so both
+  // the season leaderboards (Marcadores/Assistências/Mais Titularidades) and
+  // the live-match-today lineup card can look guests up by tempPlayerId,
+  // same as the admin app's own guest registry.
+  const guestPlayers = (() => {
+    const seen = new Map();
+    games.forEach(g => (g.guestPlayers || []).forEach(gp => {
+      if (gp.tempPlayerId != null && !seen.has(gp.tempPlayerId)) seen.set(gp.tempPlayerId, gp);
+    }));
+    return [...seen.values()];
+  })();
 
   // Only finished games count toward the record — same rule the main
   // app's own isGameResultVisible / Team Summary use: the moment kickoff
@@ -2697,7 +2722,7 @@ function render(el, data) {
       ${renderCompetitionBreakdown(split, games, gamePlayers)}
     </div>
 
-    ${renderSeasonLeaders(players, officialGames, gamePlayers)}
+    ${renderSeasonLeaders(players, officialGames, gamePlayers, guestPlayers)}
     </div>
 
     <div class="pane" data-tab="matches">
@@ -2757,8 +2782,12 @@ function render(el, data) {
         const gp = liveGP.find(r => r.playerId === p.playerId) || {};
         return { ...p, primaryPosition: gp.positionPlayed || p.primaryPosition };
       };
-      const guestStarters = (data.guestPlayers || []).filter(g => starterTempIds.has(g.tempPlayerId)).map(asPlayerShape);
-      const guestSubs = (data.guestPlayers || []).filter(g => subTempIds.has(g.tempPlayerId)).map(asPlayerShape);
+      // guestPlayers here is the season-wide registry built in render()
+      // (deduped from each game's own g.guestPlayers) — data.guestPlayers
+      // is not a field the RPC provides at the top level and was always
+      // empty, silently hiding guest starters/subs on this card.
+      const guestStarters = guestPlayers.filter(g => starterTempIds.has(g.tempPlayerId)).map(asPlayerShape);
+      const guestSubs = guestPlayers.filter(g => subTempIds.has(g.tempPlayerId)).map(asPlayerShape);
       const starters = players.filter(p => starterIds.has(p.playerId)).map(withEffectivePos).concat(guestStarters);
       const subs = players.filter(p => subIds.has(p.playerId)).map(withEffectivePos).concat(guestSubs);
       const playerRow = p => `<div class="row">
