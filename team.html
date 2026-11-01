@@ -820,33 +820,26 @@ function renderSeasonCalendar(games, tournaments, calendarEvents) {
     // the spec's icon requirement is specifically "Folgas and holiday
     // periods", not every pause-style tile.
     const icon = it.kind === 'pause' ? '📅 ' : '';
-    // Same date column as the match cards above, but ONLY for a genuine
-    // single-day item (an ordinary Folga, a one-day milestone) — those
-    // really do happen on exactly one day, same as a match (Victor,
-    // 2026-11-01: "the folga dates are not the same as the others").
-    // A multi-day range (Pausa de Natal/Páscoa, a tournament) must NOT get
-    // this column: anchoring it to the start date made a break starting
-    // the same day as the last match before it LOOK like it was scheduled
-    // "on" that match's own date cell — Victor, seeing Pausa de Natal's
-    // column show "19 DEZ", the same day AD Pastéis (Jornada 12) is
-    // played: "How can I have Christmas break and a game on the same
-    // date?" They're not actually on the same date in any conflicting
-    // sense (the break starting the day of the last match before it is
-    // normal), the single-day column just implied a coincidence that
-    // isn't there. A range instead keeps its explicit
-    // "19/12/2026 → 04/01/2027" text — unambiguous precisely because it
-    // isn't squeezed into a single-day cell.
+    // Same date column as the match cards above (Victor, 2026-11-01: "the
+    // folga dates are not the same as the others") — these tiles were
+    // still showing the plain DD/MM/YYYY rangeLabel while match cards had
+    // already moved to the weekday/day/month-abbrev column, so the two
+    // tile types read inconsistently in the same list. Reusing
+    // .match-card-date/-dow/-daynum/-mon verbatim guarantees the date
+    // actually looks identical, not just similarly formatted.
+    // The column anchors to the item's start date; for a genuine
+    // multi-day range (a tournament or Pausa de Natal/Páscoa) the full
+    // range stays as explicit text below the title so the end date is
+    // never lost — a single date column can't represent a span on its
+    // own.
+    const dp = calDayParts(it.sortDate);
     const isRange = it.rangeLabel && it.rangeLabel.includes('→');
-    const dateColHtml = isRange ? '' : (() => {
-      const dp = calDayParts(it.sortDate);
-      return `<div class="match-card-date">
+    return `<div class="cal-box${cls}">
+      <div class="match-card-date">
         <div class="match-card-dow">${esc(dp.dow)}</div>
         <div class="match-card-daynum">${esc(dp.day)}</div>
         <div class="match-card-mon">${esc(dp.mon)}</div>
-      </div>`;
-    })();
-    return `<div class="cal-box${cls}">
-      ${dateColHtml}
+      </div>
       <div class="cal-box-body">
         <div class="cal-box-title">${icon}${esc(it.title)}</div>
         ${isRange ? `<div class="cal-box-meta">${esc(it.rangeLabel)}</div>` : ''}
