@@ -667,7 +667,13 @@ function calBuildTimeline(confirmedEvents, games, tournaments) {
     // 'folga'/'break' are both "no football this period" markers — styled
     // the same (amber) so parents can tell a pause apart from a fixture
     // at a glance. 'milestone' (season end, etc.) gets its own treatment.
-    items.push({ sortDate: e.startDate, title: e.title, rangeLabel: calFmtRange(e), kind: (e.type === 'milestone') ? 'milestone' : 'pause' });
+    // eventType is kept (not just the amber 'pause' kind) so the renderer
+    // can attach the right disclaimer below: a Folga may still get a
+    // friendly arranged on it, a longer break may still have a tournament
+    // slotted into it — both need a "wait for the coach's confirmation"
+    // note so parents don't read the tile as a guaranteed empty date
+    // (Victor, 2026-11-01).
+    items.push({ sortDate: e.startDate, title: e.title, rangeLabel: calFmtRange(e), kind: (e.type === 'milestone') ? 'milestone' : 'pause', eventType: e.type });
   });
   items.sort((a, b) => a.sortDate.localeCompare(b.sortDate));
   return items;
@@ -695,7 +701,13 @@ function renderSeasonCalendar(games, tournaments, calendarEvents) {
   const box = it => {
     if (it.kind === 'game') return renderUpcomingMatchRow(it.game, gameIdx++);
     const cls = it.kind === 'pause' ? ' cal-pause' : it.kind === 'milestone' ? ' cal-milestone' : '';
-    return `<div class="cal-box${cls}"><div class="cal-box-title">${esc(it.title)}</div><div class="cal-box-meta">${esc(it.rangeLabel)}</div></div>`;
+    // A Folga might still get a friendly arranged on it, and a longer
+    // break (Pausa de Natal/Páscoa) might still have a tournament slotted
+    // into it — the tile's own date range never changes to reflect that,
+    // so a short note below it tells parents to wait for the coach's
+    // confirmation instead of assuming the date is guaranteed free.
+    const note = it.eventType === 'folga' ? tr('cal_folga_note') : it.eventType === 'break' ? tr('cal_break_note') : '';
+    return `<div class="cal-box${cls}"><div class="cal-box-title">${esc(it.title)}</div><div class="cal-box-meta">${esc(it.rangeLabel)}</div>${note ? `<div class="cal-box-meta" style="margin-top:2px">${esc(note)}</div>` : ''}</div>`;
   };
   // Anchored at today, not at a fixed count: a chronological list starting
   // from the season's first friendly reads as a wall of old fixtures with
@@ -1390,6 +1402,8 @@ const STRINGS = {
     show_less:'Show less',
     season_calendar_title:'Season Calendar', view_full_calendar:'View past events',
     cal_no_upcoming:'No upcoming matches, tournaments or breaks.',
+    cal_folga_note:'A friendly may still be arranged on this date — wait for further notice from the coach.',
+    cal_break_note:'A tournament may be organized during this period — wait for further notice from the coach.',
     view_all_results:'View all results', show_less_results:'Show fewer results',
     upcoming_note:'Note: Dates, times and venues may change. Always confirm the information with the club\'s official match call-up.',
     no_official:'No League or Cup games played yet.',
@@ -1475,6 +1489,8 @@ const STRINGS = {
     show_less:'Mostrar menos',
     season_calendar_title:'Calendário da Época', view_full_calendar:'Ver eventos passados',
     cal_no_upcoming:'Sem jogos, torneios ou pausas por vir.',
+    cal_folga_note:'Pode ainda ser marcado um amigável nesta data — aguarda indicação do treinador.',
+    cal_break_note:'Pode ser organizado um torneio durante este período — aguarda indicação do treinador.',
     view_all_results:'Ver todos os resultados', show_less_results:'Ver menos resultados',
     upcoming_note:'Nota: Datas, horários e locais podem sofrer alterações. Confirma sempre a informação na convocatória oficial do clube.',
     no_official:'Ainda sem jogos de Campeonato ou Taça.',
