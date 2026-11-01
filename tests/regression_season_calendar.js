@@ -146,7 +146,11 @@ function check(label, cond) {
     // without has just the range. Bound each tile's fragment up to the
     // next tile/row so a later box's meta divs never leak into the count.
     const tileMetaCount = title => {
-      const m = notesHtml.match(new RegExp('<div class="cal-box-title">' + title + '</div>([\\s\\S]*?)(?=<div class="cal-box-title">|<div class="row |$)'));
+      // Folga/break tiles now get a 📅 icon prefix ahead of the title text
+      // (mockup §3) — match it optionally so this stays agnostic to
+      // whichever kind of tile is being checked (milestone tiles have no
+      // icon).
+      const m = notesHtml.match(new RegExp('<div class="cal-box-title">(?:\\S+ )?' + title + '</div>([\\s\\S]*?)(?=<div class="cal-box-title">|<div class="match-card|$)'));
       if (!m) return -1;
       return (m[1].match(/cal-box-meta/g) || []).length;
     };
@@ -171,9 +175,13 @@ function check(label, cond) {
       return renderSeasonCalendar(games, [], calendarEvents);
     });
     check('Exactly 3 month headers rendered for 3 distinct months (Nov/Dec/Jan)',
-      (monthGroupHtml.match(/cal-section-label/g) || []).length === 3);
+      (monthGroupHtml.match(/cal-month-header/g) || []).length === 3);
     check('Both November items sit under the SAME single November header (not duplicated)',
-      (monthGroupHtml.slice(0, monthGroupHtml.indexOf('Nov Match B')).match(/cal-section-label/g) || []).length === 1);
+      (monthGroupHtml.slice(0, monthGroupHtml.indexOf('Nov Match B')).match(/cal-month-header/g) || []).length === 1);
+    check('Each month header shows the correct dynamically-computed event count (2 for November, 1 each for December/January)',
+      /Novembro de 2026[\s\S]{0,40}2 eventos/.test(monthGroupHtml) &&
+      /Dezembro de 2026[\s\S]{0,40}1 evento(?!s)/.test(monthGroupHtml) &&
+      /Janeiro de 2027[\s\S]{0,40}1 evento(?!s)/.test(monthGroupHtml));
     check('Chronological order preserved: November header before December header before January header',
       monthGroupHtml.indexOf('Nov Match A') < monthGroupHtml.indexOf('Dec Match') &&
       monthGroupHtml.indexOf('Dec Match') < monthGroupHtml.indexOf('Jan Milestone'));
@@ -230,11 +238,12 @@ function check(label, cond) {
     check('A milestone item gets the cal-milestone highlight class', /cal-box cal-milestone"[^>]*>[\s\S]{0,80}Marco Futuro/.test(todaySplit.html));
     // Jogos Tab UX Improvements (spec, 2026): calendar game items are no
     // longer flattened cal-box tiles — they reuse renderUpcomingMatchRow's
-    // richer row (opponent, date/time, home/away, venue, directions), so an
-    // ordinary upcoming fixture must render via THAT markup, not a cal-box,
-    // and must never pick up the pause/milestone highlight classes.
-    check('An ordinary upcoming fixture renders via the rich match row (not a cal-box tile)',
-      /<div class="row venue-row[^"]*"[^>]*>[\s\S]{0,300}?Future Opponent FC/.test(todaySplit.html));
+    // richer match-card (opponent, date/time, home/away, venue,
+    // directions), so an ordinary upcoming fixture must render via THAT
+    // markup, not a cal-box, and must never pick up the pause/milestone
+    // highlight classes.
+    check('An ordinary upcoming fixture renders via the rich match card (not a cal-box tile)',
+      /<div class="match-card[^"]*"[^>]*>[\s\S]{0,300}?Future Opponent FC/.test(todaySplit.html));
     check('An ordinary fixture does NOT get a pause/milestone highlight class',
       !/cal-box[^"]*cal-(pause|milestone)[^"]*"[^>]*>[\s\S]{0,120}Future Opponent FC/.test(todaySplit.html));
 
