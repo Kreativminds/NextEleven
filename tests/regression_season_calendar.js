@@ -154,9 +154,15 @@ function check(label, cond) {
       if (!m) return -1;
       return (m[1].match(/cal-box-meta/g) || []).length;
     };
-    check('A Folga tile shows an extra note beyond its date range', tileMetaCount('Folga With Note') === 2);
-    check('A break tile shows an extra note beyond its date range', tileMetaCount('Break With Note') === 2);
-    check('A milestone tile shows NO extra note (just its date range)', tileMetaCount('Milestone No Note') === 1);
+    // Single-day items (Folga, this milestone) no longer repeat their date
+    // as a separate meta line — the tile's own date column (added
+    // 2026-11-01, "the folga dates are not the same as the others") already
+    // shows it, so a second textual date line would just be redundant.
+    // Only a genuine multi-day range (the break) still needs the explicit
+    // range text, since the date column can only anchor to one day.
+    check('A Folga tile shows an extra note beyond its date (single day, no separate range line)', tileMetaCount('Folga With Note') === 1);
+    check('A break tile shows an extra note beyond its date range (multi-day, keeps the explicit range line)', tileMetaCount('Break With Note') === 2);
+    check('A milestone tile shows NO extra note and no separate range line (single day, nothing beyond the date column)', tileMetaCount('Milestone No Note') === 0);
     check('An ordinary match row carries no cal-box note markup at all', !/Note-Free FC[\s\S]{0,300}cal-box-meta/.test(notesHtml));
 
     // Month grouping (Victor, 2026-11-01: "group by month ... so it's
@@ -234,8 +240,11 @@ function check(label, cond) {
     check('Past fixture IS inside the collapsed "past events" section', todaySplit.restPart.includes('Past Opponent FC'));
     check('Future fixture, future Folga and future milestone are all in the default-visible section',
       todaySplit.visiblePart.includes('Future Opponent FC') && todaySplit.visiblePart.includes('Folga Futura') && todaySplit.visiblePart.includes('Marco Futuro'));
-    check('A Folga/break item gets the cal-pause highlight class', /cal-box cal-pause"[^>]*>[\s\S]{0,80}Folga Futura/.test(todaySplit.html));
-    check('A milestone item gets the cal-milestone highlight class', /cal-box cal-milestone"[^>]*>[\s\S]{0,80}Marco Futuro/.test(todaySplit.html));
+    // Widened lookahead (80 -> 260) to span the tile's own date column
+    // markup (weekday/day/month divs, added 2026-11-01), which now sits
+    // between the opening tile tag and the title text.
+    check('A Folga/break item gets the cal-pause highlight class', /cal-box cal-pause"[^>]*>[\s\S]{0,350}Folga Futura/.test(todaySplit.html));
+    check('A milestone item gets the cal-milestone highlight class', /cal-box cal-milestone"[^>]*>[\s\S]{0,350}Marco Futuro/.test(todaySplit.html));
     // Jogos Tab UX Improvements (spec, 2026): calendar game items are no
     // longer flattened cal-box tiles — they reuse renderUpcomingMatchRow's
     // richer match-card (opponent, date/time, home/away, venue,

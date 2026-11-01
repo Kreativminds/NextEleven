@@ -71,7 +71,12 @@
      rely on colour alone. The icon and text must clearly identify home
      versus away."). */
   .cal-box-list{display:flex;flex-direction:column;gap:8px}
-  .cal-box{background:#f5f6f8;border-radius:8px;padding:10px 12px;border-left:4px solid transparent}
+  /* display:flex so the tile can carry the same .match-card-date column
+     as match cards (Victor, 2026-11-01: "the folga dates are not the
+     same as the others") — .cal-box-body holds the title/meta/note that
+     used to sit directly in .cal-box. */
+  .cal-box{background:#f5f6f8;border-radius:8px;padding:10px 12px;border-left:4px solid transparent;display:flex;gap:10px;align-items:flex-start}
+  .cal-box-body{flex:1;min-width:0}
   .cal-box-title{font-weight:700;font-size:13px}
   .cal-box-meta{font-size:11px;color:var(--muted);margin-top:2px}
   /* Pauses (Folga/Christmas/Easter) and milestones get their own colour so
@@ -815,7 +820,32 @@ function renderSeasonCalendar(games, tournaments, calendarEvents) {
     // the spec's icon requirement is specifically "Folgas and holiday
     // periods", not every pause-style tile.
     const icon = it.kind === 'pause' ? '📅 ' : '';
-    return `<div class="cal-box${cls}"><div class="cal-box-title">${icon}${esc(it.title)}</div><div class="cal-box-meta">${esc(it.rangeLabel)}</div>${note ? `<div class="cal-box-meta" style="margin-top:2px">${esc(note)}</div>` : ''}</div>`;
+    // Same date column as the match cards above (Victor, 2026-11-01: "the
+    // folga dates are not the same as the others") — these tiles were
+    // still showing the plain DD/MM/YYYY rangeLabel while match cards had
+    // already moved to the weekday/day/month-abbrev column, so the two
+    // tile types read inconsistently in the same list. Reusing
+    // .match-card-date/-dow/-daynum/-mon verbatim guarantees the date
+    // actually looks identical, not just similarly formatted.
+    // The column anchors to the item's start date; for a genuine
+    // multi-day range (a tournament or Pausa de Natal/Páscoa) the full
+    // range stays as explicit text below the title so the end date is
+    // never lost — a single date column can't represent a span on its
+    // own.
+    const dp = calDayParts(it.sortDate);
+    const isRange = it.rangeLabel && it.rangeLabel.includes('→');
+    return `<div class="cal-box${cls}">
+      <div class="match-card-date">
+        <div class="match-card-dow">${esc(dp.dow)}</div>
+        <div class="match-card-daynum">${esc(dp.day)}</div>
+        <div class="match-card-mon">${esc(dp.mon)}</div>
+      </div>
+      <div class="cal-box-body">
+        <div class="cal-box-title">${icon}${esc(it.title)}</div>
+        ${isRange ? `<div class="cal-box-meta">${esc(it.rangeLabel)}</div>` : ''}
+        ${note ? `<div class="cal-box-meta" style="margin-top:2px">${esc(note)}</div>` : ''}
+      </div>
+    </div>`;
   };
   // Anchored at today, not at a fixed count: a chronological list starting
   // from the season's first friendly reads as a wall of old fixtures with
