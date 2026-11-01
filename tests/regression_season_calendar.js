@@ -285,6 +285,34 @@ function check(label, cond) {
     check('renderUpcomingMatchRow: venue and kickoff time are present', /Home Ground/.test(upcomingRows.league) && /15:00/.test(upcomingRows.league));
     check('renderUpcomingMatchRow: away fixture shows its own venue', /Away Ground/.test(upcomingRows.cup));
 
+    // Jornada/round number (Victor, 2026-11-01): the public RPC previously
+    // never selected games.round, so this was always blank on the Parents
+    // Page even though roundLabel()/renderResultRow()/
+    // renderUpcomingMatchRow() already supported it — the fix was an RPC
+    // change (migration 007), not a front-end one. These checks lock the
+    // already-existing front-end behaviour in place: round shows when
+    // present, is silently omitted when absent (friendlies/tournament
+    // games typically have no round), and is translated per language.
+    const roundRows = await page.evaluate(() => {
+      const withRound = { opponent: 'Round Match', date: '2027-05-01', gameTime: '15:00', homeAway: 'Home', venue: 'Ground', competitionType: 'League', tournamentId: null, round: '10' };
+      const noRound = { opponent: 'Friendly Town FC', date: '2027-05-08', gameTime: '15:00', homeAway: 'Home', venue: 'Ground', competitionType: 'Friendly', tournamentId: null };
+      const resultWithRound = { opponent: 'Round Result', ourScore: 2, opponentScore: 1, homeAway: 'Home', competitionType: 'League', tournamentId: null, round: '12' };
+      setLang('en');
+      const enUpcoming = renderUpcomingMatchRow(withRound, 0);
+      const enResult = renderResultRow(resultWithRound, []);
+      setLang('pt');
+      const ptUpcoming = renderUpcomingMatchRow(withRound, 0);
+      const ptResult = renderResultRow(resultWithRound, []);
+      const noRoundUpcoming = renderUpcomingMatchRow(noRound, 0);
+      setLang('pt'); // restore the page's default language for later checks
+      return { enUpcoming, enResult, ptUpcoming, ptResult, noRoundUpcoming };
+    });
+    check('renderUpcomingMatchRow shows "Round 10" in English when g.round is set', /Round 10/.test(roundRows.enUpcoming));
+    check('renderUpcomingMatchRow shows "Jornada 10" in Portuguese when g.round is set', /Jornada 10/.test(roundRows.ptUpcoming));
+    check('renderResultRow shows "Round 12" in English when g.round is set', /Round 12/.test(roundRows.enResult));
+    check('renderResultRow shows "Jornada 12" in Portuguese when g.round is set', /Jornada 12/.test(roundRows.ptResult));
+    check('renderUpcomingMatchRow omits round text entirely when g.round is absent', !/Round |Jornada /.test(roundRows.noRoundUpcoming));
+
     // No duplication: a finished match passed into Últimos Resultados must
     // never also appear in the calendar when the calendar is only given
     // upcomingGames (the already-filtered not-yet-played list) — exercised
