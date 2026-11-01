@@ -60,6 +60,14 @@
   .stat-grid.boxed > div{background:#f5f6f8;border-radius:8px;padding:10px 8px;text-align:center}
   .stat-grid.boxed > div.box-green{background:var(--green-bg)}
   .stat-grid.boxed .stat-value{font-size:18px}
+  /* Season Calendar — same light-tile "boxed" look as .stat-grid.boxed
+     above (reused colour/radius), one tile per calendar item instead of
+     a plain divider row, so breaks/Folgas/milestones read as distinct
+     entries at a glance rather than blending into a dense list. */
+  .cal-box-list{display:flex;flex-direction:column;gap:8px}
+  .cal-box{background:#f5f6f8;border-radius:8px;padding:10px 12px}
+  .cal-box-title{font-weight:700;font-size:13px}
+  .cal-box-meta{font-size:11px;color:var(--muted);margin-top:2px}
   .pct-bar-row{margin-bottom:9px}
   .pct-bar-row:last-child{margin-bottom:0}
   .pct-bar-head{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px}
@@ -647,14 +655,14 @@ function toggleSeasonCalendar() {
 function renderSeasonCalendar(games, tournaments, calendarEvents) {
   const items = calBuildTimeline(calendarEvents, games, tournaments);
   if (!items.length) return '';
-  const row = it => `<div class="row"><span class="row-name">${esc(it.title)}</span><span class="row-meta">${esc(it.rangeLabel)}</span></div>`;
+  const box = it => `<div class="cal-box"><div class="cal-box-title">${esc(it.title)}</div><div class="cal-box-meta">${esc(it.rangeLabel)}</div></div>`;
   const head = items.slice(0, 8);
   const rest = items.slice(8);
   return `<div class="card">
     <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_calendar_title')}</h2>
-    <div id="season-calendar-list">${head.map(row).join('')}</div>
+    <div class="cal-box-list" id="season-calendar-list">${head.map(box).join('')}</div>
     ${rest.length ? `
-    <div id="season-calendar-rest" style="display:none">${rest.map(row).join('')}</div>
+    <div class="cal-box-list" id="season-calendar-rest" style="display:none;margin-top:8px">${rest.map(box).join('')}</div>
     <button type="button" id="season-calendar-toggle" class="link-button"
             style="background:none;border:none;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:6px 0;display:block"
             onclick="toggleSeasonCalendar()">${tr('view_full_calendar')}</button>
