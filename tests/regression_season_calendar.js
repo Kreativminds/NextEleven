@@ -116,6 +116,40 @@ function check(label, cond) {
     });
     check('Renders fine with no calendarEvents at all (undefined)', /CF Estrela/.test(htmlNoEvents));
 
+    // Today-anchored default view: a past fixture/break must be present
+    // in the markup (nothing is lost) but inside the collapsed
+    // #season-calendar-rest container, not the default-visible list —
+    // "it must be clear what stage we are" (Victor, 2026-11-01). Dates
+    // are computed relative to the real clock so this never goes stale.
+    const todaySplit = await page.evaluate(() => {
+      const d = new Date();
+      const fmt = (delta) => { const x = new Date(d); x.setDate(x.getDate() + delta); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; };
+      const games = [
+        { date: fmt(-10), opponent: 'Past Opponent FC', competitionType: 'League', tournamentId: null },
+        { date: fmt(10), opponent: 'Future Opponent FC', competitionType: 'League', tournamentId: null },
+      ];
+      const calendarEvents = [
+        { type: 'folga', title: 'Folga Futura', startDate: fmt(5), endDate: fmt(5) },
+        { type: 'milestone', title: 'Marco Futuro', startDate: fmt(20), endDate: fmt(20) },
+      ];
+      const html = renderSeasonCalendar(games, [], calendarEvents);
+      const listSection = html.split('id="season-calendar-list"')[1].split('</div>')[0] + (html.split('id="season-calendar-rest"')[0] || '');
+      const restMatch = html.match(/id="season-calendar-rest"[^>]*>([\s\S]*?)<\/div>\s*<button/);
+      return {
+        html,
+        visiblePart: html.split('id="season-calendar-rest"')[0],
+        restPart: restMatch ? restMatch[1] : '',
+      };
+    });
+    check('Past fixture is present in the markup but NOT in the default-visible section',
+      todaySplit.html.includes('Past Opponent FC') && !todaySplit.visiblePart.includes('Past Opponent FC'));
+    check('Past fixture IS inside the collapsed "past events" section', todaySplit.restPart.includes('Past Opponent FC'));
+    check('Future fixture, future Folga and future milestone are all in the default-visible section',
+      todaySplit.visiblePart.includes('Future Opponent FC') && todaySplit.visiblePart.includes('Folga Futura') && todaySplit.visiblePart.includes('Marco Futuro'));
+    check('A Folga/break item gets the cal-pause highlight class', /cal-box cal-pause"[^>]*>[\s\S]{0,80}Folga Futura/.test(todaySplit.html));
+    check('A milestone item gets the cal-milestone highlight class', /cal-box cal-milestone"[^>]*>[\s\S]{0,80}Marco Futuro/.test(todaySplit.html));
+    check('An ordinary fixture does NOT get a highlight class', /cal-box"><div class="cal-box-title">[^<]*Future Opponent FC/.test(todaySplit.html));
+
     await page.close();
   }
 
