@@ -1,0 +1,22 @@
+{
+  "note": "Backup of every row touched by 004_merge_caio_unconverted_guest_goals.sql, captured 2026-11-01 before applying. Migration 001 (Oct 2026) converted Caio Andrade (temporaryPlayers.tempPlayerId=1) to a permanent player (players.playerId=134), but 4 game_players rows, 5 goal_events rows, 1 card_events row and the temporary_players row itself were still unconverted at the time of this backup -- these are the rows that migration 001's steps 3-6 should have caught.",
+  "game_players": [
+    {"id":"8afc3572-7091-4f22-8974-2fae386233a6","payload":{"role":"Starter","goals":4,"gameId":252,"assists":1,"captain":false,"calledUp":true,"redCards":0,"seasonId":6,"createdAt":"2026-10-16T22:23:51.497Z","updatedAt":"2026-10-17T15:46:12.326Z","yellowCards":0,"gamePlayerId":384,"tempPlayerId":1,"playedFullGame":true,"positionPlayed":"Central Midfielder","performanceNotes":null,"playerOfTheMatch":false,"shirtNumberPlayed":47},"deleted_at":null,"updated_at":"2026-10-17T15:46:12.326+00:00"},
+    {"id":"c2f23a14-6c17-4896-8b0e-11d63fbdb9c0","payload":{"role":"Starter","goals":2,"gameId":253,"assists":0,"captain":false,"calledUp":true,"redCards":0,"seasonId":6,"createdAt":"2026-10-24T12:20:29.427Z","updatedAt":"2026-10-24T14:18:48.535Z","yellowCards":0,"gamePlayerId":408,"tempPlayerId":1,"playedFullGame":true,"positionPlayed":"Central Midfielder","performanceNotes":null,"playerOfTheMatch":false,"shirtNumberPlayed":47},"deleted_at":null,"updated_at":"2026-10-24T14:18:48.535+00:00"},
+    {"id":"84a777ec-1829-4f5e-82f8-3cf5b6396c90","payload":{"role":"Starter","goals":3,"gameId":251,"calledUp":true,"createdAt":"2026-10-31T21:35:14.417Z","updatedAt":"2026-10-31T21:35:14.417Z","gamePlayerId":303,"tempPlayerId":1,"positionPlayed":"Left Back","shirtNumberPlayed":3},"deleted_at":null,"updated_at":"2026-10-31T21:35:14.417+00:00"},
+    {"id":"cc905ddb-aa5d-4dea-9839-0432cb886c09","payload":{"role":"Starter","goals":1,"gameId":250,"assists":0,"captain":false,"calledUp":true,"redCards":0,"seasonId":6,"createdAt":"2026-10-03T11:30:25.641Z","updatedAt":"2026-10-10T20:02:55.714Z","yellowCards":0,"gamePlayerId":271,"tempPlayerId":1,"playedFullGame":true,"positionPlayed":"Attacking Midfielder","performanceNotes":null,"playerOfTheMatch":false},"deleted_at":null,"updated_at":"2026-10-10T20:02:55.714+00:00"}
+  ],
+  "goal_events": [
+    {"id":"b7dc6589-3bf1-4fe4-93c0-1e1e9b0e4c9d","payload":{"gameId":253,"scoredAt":"2026-10-24T14:09:39.278Z","scorerId":1,"seasonId":6,"createdAt":"2026-10-24T14:09:39.279Z","updatedAt":"2026-10-24T14:09:39.279Z","scorerType":"temp","goalEventId":2},"deleted_at":null},
+    {"id":"eca5a9ed-9be3-4980-b0a3-1f383e14ef34","payload":{"gameId":253,"scoredAt":"2026-10-24T14:18:48.538Z","scorerId":1,"seasonId":6,"createdAt":"2026-10-24T14:18:48.538Z","updatedAt":"2026-10-24T14:18:48.538Z","scorerType":"temp","goalEventId":3},"deleted_at":null},
+    {"id":"36b03503-1466-4450-b040-39bbce53199f","payload":{"gameId":251,"scoredAt":"2026-10-31T21:35:14.422Z","scorerId":1,"createdAt":"2026-10-31T21:35:14.422Z","updatedAt":"2026-10-31T21:35:14.422Z","scorerType":"temp","goalEventId":9},"deleted_at":null},
+    {"id":"d8643538-febc-4972-a2dd-647c956ae55c","payload":{"gameId":251,"scoredAt":"2026-10-31T21:35:14.422Z","scorerId":1,"createdAt":"2026-10-31T21:35:14.432Z","updatedAt":"2026-10-31T21:35:14.432Z","scorerType":"temp","goalEventId":10},"deleted_at":null},
+    {"id":"cc4d738d-793b-475d-92e1-1f10fe94a928","payload":{"gameId":251,"scoredAt":"2026-10-31T21:35:14.422Z","scorerId":1,"createdAt":"2026-10-31T21:35:14.439Z","updatedAt":"2026-10-31T21:35:14.439Z","scorerType":"temp","goalEventId":11},"deleted_at":null}
+  ],
+  "card_events": [
+    {"id":"32583bb3-32ba-4f28-89d0-8ae1cc833808","payload":{"team":"us","gameId":253,"minute":72,"cardType":"yellow","scorerId":1,"seasonId":6,"createdAt":"2026-10-26T21:50:22.840Z","updatedAt":"2026-10-26T21:50:22.840Z","scorerType":"temp","cardEventId":1,"linkedEventId":null,"stoppageMinute":null,"opponentPlayerName":null,"opponentShirtNumber":null},"deleted_at":null}
+  ],
+  "temporary_players": [
+    {"id":"2e85ec25-9453-4b9d-9194-3919ac595f02","payload":{"name":"Caio Andrade","notes":"","seasonId":6,"createdAt":"2026-10-03T11:12:21.532206+00:00","updatedAt":"2026-10-11T07:46:00.823Z","sourceType":"manual","shirtNumber":null,"tempPlayerId":1,"preferredPosition":""},"deleted_at":null}
+  ]
+}
