@@ -68,6 +68,18 @@
   .cal-box{background:#f5f6f8;border-radius:8px;padding:10px 12px}
   .cal-box-title{font-weight:700;font-size:13px}
   .cal-box-meta{font-size:11px;color:var(--muted);margin-top:2px}
+  /* Pauses (Folga/Christmas/Easter) and milestones get their own colour so
+     they stand out from ordinary fixtures/tournaments in the merged list,
+     reusing the existing badge palette (same amber/green used for W/D/L
+     and status badges elsewhere) rather than introducing new colours. */
+  .cal-box.cal-pause{background:var(--amber-bg)}
+  .cal-box.cal-pause .cal-box-title{color:var(--amber)}
+  .cal-box.cal-pause .cal-box-meta{color:var(--amber)}
+  .cal-box.cal-milestone{background:var(--green-bg)}
+  .cal-box.cal-milestone .cal-box-title{color:var(--green)}
+  .cal-box.cal-milestone .cal-box-meta{color:var(--green)}
+  .cal-section-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:12px 0 6px}
+  .cal-section-label:first-child{margin-top:0}
   .pct-bar-row{margin-bottom:9px}
   .pct-bar-row:last-child{margin-bottom:0}
   .pct-bar-head{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px}
@@ -631,15 +643,18 @@ function calBuildTimeline(confirmedEvents, games, tournaments) {
   (games || []).forEach(g => {
     if (!g.date) return;
     const label = g.tournamentId ? `${tr('tournament')}: ${g.opponent || ''}` : `${compTypeTag(g.competitionType) || tr('comp_tag_league')}: ${g.opponent || ''}`;
-    items.push({ sortDate: g.date, title: label, rangeLabel: fmtDate(g.date) });
+    items.push({ sortDate: g.date, title: label, rangeLabel: fmtDate(g.date), kind: 'game' });
   });
   (tournaments || []).forEach(t => {
     if (!t.startDate) return;
-    items.push({ sortDate: t.startDate, title: t.name || tr('tournament'), rangeLabel: calFmtRange({ startDate: t.startDate, endDate: t.endDate || t.startDate }) });
+    items.push({ sortDate: t.startDate, title: t.name || tr('tournament'), rangeLabel: calFmtRange({ startDate: t.startDate, endDate: t.endDate || t.startDate }), kind: 'tournament' });
   });
   (confirmedEvents || []).forEach(e => {
     if (!e.startDate) return;
-    items.push({ sortDate: e.startDate, title: e.title, rangeLabel: calFmtRange(e) });
+    // 'folga'/'break' are both "no football this period" markers — styled
+    // the same (amber) so parents can tell a pause apart from a fixture
+    // at a glance. 'milestone' (season end, etc.) gets its own treatment.
+    items.push({ sortDate: e.startDate, title: e.title, rangeLabel: calFmtRange(e), kind: (e.type === 'milestone') ? 'milestone' : 'pause' });
   });
   items.sort((a, b) => a.sortDate.localeCompare(b.sortDate));
   return items;
@@ -655,14 +670,21 @@ function toggleSeasonCalendar() {
 function renderSeasonCalendar(games, tournaments, calendarEvents) {
   const items = calBuildTimeline(calendarEvents, games, tournaments);
   if (!items.length) return '';
-  const box = it => `<div class="cal-box"><div class="cal-box-title">${esc(it.title)}</div><div class="cal-box-meta">${esc(it.rangeLabel)}</div></div>`;
-  const head = items.slice(0, 8);
-  const rest = items.slice(8);
+  const box = it => `<div class="cal-box${it.kind === 'pause' ? ' cal-pause' : it.kind === 'milestone' ? ' cal-milestone' : ''}"><div class="cal-box-title">${esc(it.title)}</div><div class="cal-box-meta">${esc(it.rangeLabel)}</div></div>`;
+  // Anchored at today, not at a fixed count: a chronological list starting
+  // from the season's first friendly reads as a wall of old fixtures with
+  // no sense of "where are we now". Everything from today onward is shown
+  // by default; everything before today — already-played matches, past
+  // breaks — is still there, just folded away a tap behind "View past
+  // events", so the full-season record spec still asked for isn't lost.
+  const today = todayLocalDateStr();
+  const upcoming = items.filter(it => it.sortDate >= today);
+  const past = items.filter(it => it.sortDate < today);
   return `<div class="card">
     <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_calendar_title')}</h2>
-    <div class="cal-box-list" id="season-calendar-list">${head.map(box).join('')}</div>
-    ${rest.length ? `
-    <div class="cal-box-list" id="season-calendar-rest" style="display:none;margin-top:8px">${rest.map(box).join('')}</div>
+    <div class="cal-box-list" id="season-calendar-list">${upcoming.length ? upcoming.map(box).join('') : `<p class="row-meta" style="padding:4px 0">${tr('cal_no_upcoming')}</p>`}</div>
+    ${past.length ? `
+    <div class="cal-box-list" id="season-calendar-rest" style="display:none;margin-top:8px">${past.map(box).join('')}</div>
     <button type="button" id="season-calendar-toggle" class="link-button"
             style="background:none;border:none;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:6px 0;display:block"
             onclick="toggleSeasonCalendar()">${tr('view_full_calendar')}</button>
@@ -1307,7 +1329,8 @@ const STRINGS = {
     comp_tag_friendly:'Friendly', comp_tag_league:'League', comp_tag_cup:'Cup', comp_tag_trial:'Trial',
     round_label:'Round {n}',
     upcoming_matches:'Upcoming Matches', view_all_matches:'View all matches', show_less:'Show less',
-    season_calendar_title:'Season Calendar', view_full_calendar:'View full calendar',
+    season_calendar_title:'Season Calendar', view_full_calendar:'View past events',
+    cal_no_upcoming:'No upcoming matches, tournaments or breaks.',
     no_upcoming_matches:'No upcoming matches are currently scheduled.',
     upcoming_note:'Note: Dates, times and venues may change. Always confirm the information with the club\'s official match call-up.',
     no_official:'No League or Cup games played yet.',
@@ -1391,7 +1414,8 @@ const STRINGS = {
     comp_tag_friendly:'Amigável', comp_tag_league:'Campeonato', comp_tag_cup:'Taça', comp_tag_trial:'Teste',
     round_label:'Jornada {n}',
     upcoming_matches:'Próximos Jogos', view_all_matches:'Ver todos os jogos', show_less:'Mostrar menos',
-    season_calendar_title:'Calendário da Época', view_full_calendar:'Ver calendário completo',
+    season_calendar_title:'Calendário da Época', view_full_calendar:'Ver eventos passados',
+    cal_no_upcoming:'Sem jogos, torneios ou pausas por vir.',
     no_upcoming_matches:'Não existem próximos jogos agendados.',
     upcoming_note:'Nota: Datas, horários e locais podem sofrer alterações. Confirma sempre a informação na convocatória oficial do clube.',
     no_official:'Ainda sem jogos de Campeonato ou Taça.',
