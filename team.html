@@ -63,23 +63,64 @@
   /* Season Calendar — same light-tile "boxed" look as .stat-grid.boxed
      above (reused colour/radius), one tile per calendar item instead of
      a plain divider row, so breaks/Folgas/milestones read as distinct
-     entries at a glance rather than blending into a dense list. */
+     entries at a glance rather than blending into a dense list. A 4px
+     left accent bar (transparent by default) is the shared visual
+     language across both .cal-box tiles and .match-card rows below —
+     green/red/amber tell home/away/pause apart without relying on
+     background colour alone (Victor, 2026-11-01 mockup spec: "Do not
+     rely on colour alone. The icon and text must clearly identify home
+     versus away."). */
   .cal-box-list{display:flex;flex-direction:column;gap:8px}
-  .cal-box{background:#f5f6f8;border-radius:8px;padding:10px 12px}
+  .cal-box{background:#f5f6f8;border-radius:8px;padding:10px 12px;border-left:4px solid transparent}
   .cal-box-title{font-weight:700;font-size:13px}
   .cal-box-meta{font-size:11px;color:var(--muted);margin-top:2px}
   /* Pauses (Folga/Christmas/Easter) and milestones get their own colour so
      they stand out from ordinary fixtures/tournaments in the merged list,
      reusing the existing badge palette (same amber/green used for W/D/L
      and status badges elsewhere) rather than introducing new colours. */
-  .cal-box.cal-pause{background:var(--amber-bg)}
+  .cal-box.cal-pause{background:var(--amber-bg);border-left-color:var(--amber)}
   .cal-box.cal-pause .cal-box-title{color:var(--amber)}
   .cal-box.cal-pause .cal-box-meta{color:var(--amber)}
-  .cal-box.cal-milestone{background:var(--green-bg)}
+  .cal-box.cal-milestone{background:var(--green-bg);border-left-color:var(--green)}
   .cal-box.cal-milestone .cal-box-title{color:var(--green)}
   .cal-box.cal-milestone .cal-box-meta{color:var(--green)}
-  .cal-section-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:12px 0 6px}
-  .cal-section-label:first-child{margin-top:0}
+  /* Month grouping (Victor, 2026-11-01 mockup): a dark-navy header per
+     month — same navy already used for .app-header/.summary-card
+     elsewhere on this page, not a new colour — with a dynamically
+     computed event count, so a long scroll reads as clearly separated
+     monthly blocks instead of one flat list. Replaces the old plain-text
+     .cal-section-label. */
+  .cal-month-group{margin-bottom:16px}
+  .cal-month-group:last-child{margin-bottom:0}
+  .cal-month-header{background:#0F1E2E;color:#fff;border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:700;font-size:12px;margin-bottom:8px}
+  .cal-month-header .cal-month-count{font-weight:600;font-size:10.5px;opacity:.8;white-space:nowrap}
+  .cal-month-items{display:flex;flex-direction:column;gap:8px}
+  /* Match card — two-column layout (date/time left, opponent/home-away/
+     venue/directions right), per the mockup. Each card carries its own
+     colour AND icon AND text label for home/away, never colour alone.
+     Opponent/venue text wraps rather than truncates — long names (a
+     validation requirement) must stay fully readable on mobile. */
+  .match-card{display:flex;gap:10px;background:var(--surface);border-radius:8px;padding:10px 12px;border-left:4px solid var(--green);position:relative}
+  .match-card.is-away{background:var(--red-bg);border-left-color:var(--red)}
+  .match-card-date{flex:0 0 46px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding-top:2px}
+  .match-card-dow{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase}
+  .match-card-daynum{font-size:17px;font-weight:800;line-height:1.1}
+  .match-card-mon{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase}
+  .match-card-time{font-size:10px;color:var(--muted);margin-top:4px;font-weight:600}
+  .match-card-body{flex:1;min-width:0;padding-right:40px}
+  .match-card-opponent-row{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+  .match-card-opponent{font-weight:700;font-size:13px;overflow-wrap:anywhere}
+  .match-card-ha{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:11px;margin-top:4px;color:var(--dark)}
+  .match-card-ha-pill{display:inline-flex;align-items:center;gap:3px;font-weight:700}
+  .match-card-ha.is-home .match-card-ha-pill{color:var(--green)}
+  .match-card-ha.is-away .match-card-ha-pill{color:var(--red)}
+  .match-card-venue{color:var(--muted);overflow-wrap:anywhere}
+  .match-card-dir{margin-top:5px;font-size:11px}
+  /* Jornada/round — "discreet", so it sits tucked in the card's own
+     corner at small, muted size rather than competing with the opponent
+     name for attention (Victor, 2026-11-01: "displayed discreetly
+     without cluttering the card"). */
+  .match-card-round{position:absolute;top:9px;right:12px;font-size:9.5px;color:var(--muted);font-weight:600;white-space:nowrap}
   .pct-bar-row{margin-bottom:9px}
   .pct-bar-row:last-child{margin-bottom:0}
   .pct-bar-head{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px}
@@ -266,13 +307,6 @@
     .cls-preview-rank-num{font-size:22px}
     .cls-preview-stat span{font-size:8px}
   }
-  /* Venue list zebra-striping (parents' "hard to tell rows apart" fix) —
-     scoped to .venue-row specifically, never to the plain .row class
-     shared by birthdays/unavailable-players/etc elsewhere on this page.
-     Horizontal padding applies to every row, striped or not, so the text
-     sits the same distance in either way — only the background changes. */
-  .venue-row{border-radius:4px;padding:9px 10px}
-  .venue-row.venue-row-alt{background:var(--red-bg)}
   /* Directions app-chooser — a small bottom sheet, not a full dialog,
      since there are only ever 2-3 choices (Google Maps, Waze, Cancel). */
   .dir-sheet-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1300}
@@ -650,23 +684,62 @@ function calMonthLabel(dateStr) {
   const label = d.toLocaleDateString(getLang() === 'pt' ? 'pt-PT' : 'en-GB', { month: 'long', year: 'numeric' });
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
-// Renders a chronologically-sorted list of calendar items with a month
-// header inserted before each run of same-month items. Items are already
-// in date order (calBuildTimeline sorts by sortDate), so grouping is just
-// "insert a header whenever the YYYY-MM changes" — no separate sort/bucket
-// pass needed.
+// Weekday/day/month-abbrev for the match card's left-hand date column
+// ("Sáb / 07 / NOV"), per the mockup. dateStr is 'YYYY-MM-DD'. Built from
+// y/m/d parts (not `new Date(dateStr)`) to avoid UTC-vs-local parsing
+// drift — same convention calMonthLabel already uses. Intl gives PT a
+// trailing period on short weekday/month names ("sáb.", "nov."); stripped
+// so the card shows "Sáb"/"NOV" cleanly, matching the mockup.
+// Hardcoded short weekday/month labels rather than Intl's
+// toLocaleDateString({weekday:'short'}/{month:'short'}) — verified this
+// ICU's 'pt-PT' short-weekday data falls back to the FULL name ("sábado",
+// not "sáb."), which would overflow the card's fixed-width date column
+// and isn't guaranteed consistent across the different browsers/OSes
+// parents actually open this page on. Same reasoning as this file's
+// existing MONTHS_BY_LANG (full month names) — a fixed lookup table next
+// to getLang() is the only reliable way to get a short label every time.
+const WEEKDAYS_SHORT_BY_LANG = {
+  en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+  pt: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
+};
+const MONTHS_SHORT_BY_LANG = {
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+  pt: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
+};
+function calDayParts(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  const lang = getLang();
+  const dow = (WEEKDAYS_SHORT_BY_LANG[lang] || WEEKDAYS_SHORT_BY_LANG.en)[dt.getDay()];
+  const mon = (MONTHS_SHORT_BY_LANG[lang] || MONTHS_SHORT_BY_LANG.en)[dt.getMonth()];
+  return { dow, day: String(d).padStart(2, '0'), mon: mon.toUpperCase() };
+}
+// Renders a chronologically-sorted list of calendar items grouped into one
+// block per month, each under a dark-navy header carrying the month/year
+// label and a dynamically-computed event count (Victor, 2026-11-01
+// mockup: "Show the number of events in each month" + "Add clear spacing
+// between monthly groups"). Items are already in date order
+// (calBuildTimeline sorts by sortDate), so bucketing is a single pass —
+// start a new group whenever the YYYY-MM changes.
 function calRenderByMonth(itemsArr, boxFn) {
-  let out = '';
-  let lastMonthKey = null;
+  const groups = [];
   (itemsArr || []).forEach(it => {
     const monthKey = it.sortDate.slice(0, 7);
-    if (monthKey !== lastMonthKey) {
-      out += `<div class="cal-section-label">${esc(calMonthLabel(it.sortDate))}</div>`;
-      lastMonthKey = monthKey;
+    let g = groups[groups.length - 1];
+    if (!g || g.key !== monthKey) {
+      g = { key: monthKey, label: calMonthLabel(it.sortDate), items: [] };
+      groups.push(g);
     }
-    out += boxFn(it);
+    g.items.push(it);
   });
-  return out;
+  return groups.map(g => {
+    const count = g.items.length;
+    const countLabel = `${count} ${plWord(count, 'word_event', 'word_events')}`;
+    return `<div class="cal-month-group">
+      <div class="cal-month-header"><span>${esc(g.label)}</span><span class="cal-month-count">${esc(countLabel)}</span></div>
+      <div class="cal-month-items">${g.items.map(boxFn).join('')}</div>
+    </div>`;
+  }).join('');
 }
 function calBuildTimeline(confirmedEvents, games, tournaments) {
   const items = [];
@@ -737,7 +810,12 @@ function renderSeasonCalendar(games, tournaments, calendarEvents) {
     // so a short note below it tells parents to wait for the coach's
     // confirmation instead of assuming the date is guaranteed free.
     const note = it.eventType === 'folga' ? tr('cal_folga_note') : it.eventType === 'break' ? tr('cal_break_note') : '';
-    return `<div class="cal-box${cls}"><div class="cal-box-title">${esc(it.title)}</div><div class="cal-box-meta">${esc(it.rangeLabel)}</div>${note ? `<div class="cal-box-meta" style="margin-top:2px">${esc(note)}</div>` : ''}</div>`;
+    // Calendar icon on Folga/break tiles only (per mockup §3) — milestone
+    // tiles (season end, etc.) keep their plain title, unchanged, since
+    // the spec's icon requirement is specifically "Folgas and holiday
+    // periods", not every pause-style tile.
+    const icon = it.kind === 'pause' ? '📅 ' : '';
+    return `<div class="cal-box${cls}"><div class="cal-box-title">${icon}${esc(it.title)}</div><div class="cal-box-meta">${esc(it.rangeLabel)}</div>${note ? `<div class="cal-box-meta" style="margin-top:2px">${esc(note)}</div>` : ''}</div>`;
   };
   // Anchored at today, not at a fixed count: a chronological list starting
   // from the season's first friendly reads as a wall of old fixtures with
@@ -819,17 +897,22 @@ function renderResultRow(g, players) {
 // Per-game competition tag — singular, since this labels one fixture at
 // a time (distinct from tr('friendlies')/tr('tournaments'), which are
 // the plural/category forms used for section headers and breakdowns).
-// One compact row per fixture — date, time, opponent, home/away, venue,
-// and a small competition tag. Deliberately no fixture-status (confirmed
-// / to-confirm) wording here — that's coach-app-only; the disclaimer
-// below the list already covers "this may change."
-// idx is a CONTINUOUS position across the whole upcoming-matches list
-// (not reset per render chunk) — the zebra-stripe only looks right if
-// row 6 (first row of the "show more" chunk) continues the alternation
-// from row 5, instead of restarting at 0.
+// One match card per fixture (Victor, 2026-11-01 mockup): a fixed-width
+// date column (weekday/day/month-abbrev + kickoff time) on the left, and
+// opponent/home-away/venue/directions on the right. Home gets a green
+// accent + house icon + "Casa"/"Home" label on a neutral background; away
+// gets red + a travel icon + "Fora"/"Away" on a pale red background —
+// colour, icon AND text together, never colour alone. Deliberately no
+// fixture-status (confirmed/to-confirm) wording here — that's coach-app-
+// only; the disclaimer below the list already covers "this may change."
+// idx is no longer used for zebra-striping (each fixture is now its own
+// visually distinct card via the home/away accent) but is kept in the
+// signature since callers still pass a continuous position.
 function renderUpcomingMatchRow(g, idx) {
-  const dateLabel = fmtDate(g.date); // the one real date formatter already used elsewhere on this page
-  const haLabel = g.homeAway === 'Home' ? tr('home') : tr('away');
+  const dp = calDayParts(g.date);
+  const isHome = g.homeAway === 'Home';
+  const haLabel = isHome ? tr('home') : tr('away');
+  const haIcon = isHome ? '🏠' : '✈️';
   // A plain League fixture needs no tag — it's the large majority of rows
   // and repeating the same competition name down the whole list adds no
   // information. Cup/Friendly/Trial fixtures and tournament matches keep
@@ -838,15 +921,27 @@ function renderUpcomingMatchRow(g, idx) {
   // tournaments").
   const compLabel = (g.tournamentId || (g.competitionType && g.competitionType !== 'League'))
     ? (g.competitionName || compTypeTag(g.competitionType)) : '';
-  const stripeClass = (idx % 2 === 1) ? ' venue-row-alt' : '';
   const dirHtml = directionsLinkHtml(g.opponentMapUrl, g.venue || g.opponent, g.opponentMapAddress);
   const roundTxt = roundLabel(g);
-  return `<div class="row venue-row${stripeClass}" style="flex-wrap:wrap;row-gap:2px">
-    <span class="row-name" style="flex-basis:100%">${esc(g.opponent)}</span>
-    <span class="row-meta">${roundTxt ? esc(roundTxt) + ' · ' : ''}${esc(dateLabel)} · ${esc(g.gameTime || '')}</span>
-    <span class="row-meta">${haLabel}${g.venue ? ' · ' + esc(g.venue) : ''}</span>
-    ${compLabel ? `<span class="comp-tag">${esc(compLabel)}</span>` : ''}
-    ${dirHtml ? `<span class="row-meta" style="flex-basis:100%">${dirHtml}</span>` : ''}
+  return `<div class="match-card${isHome ? '' : ' is-away'}">
+    <div class="match-card-date">
+      <div class="match-card-dow">${esc(dp.dow)}</div>
+      <div class="match-card-daynum">${esc(dp.day)}</div>
+      <div class="match-card-mon">${esc(dp.mon)}</div>
+      ${g.gameTime ? `<div class="match-card-time">${esc(g.gameTime)}</div>` : ''}
+    </div>
+    <div class="match-card-body">
+      <div class="match-card-opponent-row">
+        <span class="match-card-opponent">⚽ ${esc(g.opponent)}</span>
+        ${compLabel ? `<span class="comp-tag">${esc(compLabel)}</span>` : ''}
+      </div>
+      <div class="match-card-ha${isHome ? ' is-home' : ' is-away'}">
+        <span class="match-card-ha-pill"><span aria-hidden="true">${haIcon}</span> ${esc(haLabel)}</span>
+        ${g.venue ? `<span class="match-card-venue">· ${esc(g.venue)}</span>` : ''}
+      </div>
+      ${dirHtml ? `<div class="match-card-dir">${dirHtml}</div>` : ''}
+    </div>
+    ${roundTxt ? `<div class="match-card-round">${esc(roundTxt)}</div>` : ''}
   </div>`;
 }
 
@@ -1484,6 +1579,7 @@ const STRINGS = {
     word_game:'game', word_games:'games', word_win:'win', word_wins:'wins',
     word_draw:'draw', word_draws:'draws', word_loss:'loss', word_losses:'losses',
     word_point:'point', word_points:'points', word_team:'team', word_teams:'teams',
+    word_event:'event', word_events:'events',
   },
   pt: {
     live:'AO VIVO', home:'Casa', away:'Fora', kickoff:'Início',
@@ -1571,6 +1667,7 @@ const STRINGS = {
     word_game:'jogo', word_games:'jogos', word_win:'vitória', word_wins:'vitórias',
     word_draw:'empate', word_draws:'empates', word_loss:'derrota', word_losses:'derrotas',
     word_point:'ponto', word_points:'pontos', word_team:'equipa', word_teams:'equipas',
+    word_event:'evento', word_events:'eventos',
   },
 };
 // Language switcher — shown on every view, in the footer.
