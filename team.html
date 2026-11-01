@@ -1134,8 +1134,8 @@ function renderSeasonLeaders(players, finishedGames, gamePlayers) {
     // the English string here even in PT mode; the recap view below
     // already used tr() for the same stat, so this just closes that gap.
     leaderRow(tr('most_apps'), 'started'),
-    renderGoalscorersList(withStats),
-    leaderRow('Most Assists', 'assists'),
+    renderRankedStatList(withStats, 'goals', 'goalscorers_label', 'word_goal', 'word_goals'),
+    renderRankedStatList(withStats, 'assists', 'assisters_label', 'word_assist', 'word_assists'),
   ].filter(r => r);
 
   if (!rows.length) return '';
@@ -1147,28 +1147,28 @@ function renderSeasonLeaders(players, finishedGames, gamePlayers) {
   </div>`;
 }
 
-// Full goalscorers list, ranked — not just the single leader (the other
-// season-leader rows above still collapse to "who's #1", since a full
-// ranking there isn't what parents asked for; goals are the one stat
-// people actually want to see everyone's tally for). Ties for the top
-// spot all get the #1 highlight — a tie for the lead is still the lead,
-// not a reason to pick one name over the other.
-function renderGoalscorersList(withStats) {
-  const scorers = withStats
-    .map(p => ({ name: shortName(p.fullName), goals: p.stats.goals || 0 }))
-    .filter(p => p.goals > 0)
-    .sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name));
-  if (!scorers.length) return '';
-  const topGoals = scorers[0].goals;
-  const rowsHtml = scorers.map(s => {
-    const isTop = s.goals === topGoals;
+// Full ranked list for a given stat (goals, assists, …) — not just the
+// single leader (Most Starts above still collapses to "who's #1"; a full
+// ranking there isn't what parents asked for — goals and assists are the
+// stats people actually want to see everyone's tally for). Ties for the
+// top spot all get the #1 highlight — a tie for the lead is still the
+// lead, not a reason to pick one name over the other.
+function renderRankedStatList(withStats, statKey, labelKey, wordSingularKey, wordPluralKey) {
+  const ranked = withStats
+    .map(p => ({ name: shortName(p.fullName), value: p.stats[statKey] || 0 }))
+    .filter(p => p.value > 0)
+    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+  if (!ranked.length) return '';
+  const topVal = ranked[0].value;
+  const rowsHtml = ranked.map(s => {
+    const isTop = s.value === topVal;
     return `<div class="row scorer-row${isTop ? ' scorer-row-top' : ''}">
       <span class="row-name">${isTop ? '<span aria-hidden="true">🥇</span> ' : ''}${esc(s.name)}</span>
-      <span class="row-meta">${s.goals} ${esc(plWord(s.goals, 'word_goal', 'word_goals'))}</span>
+      <span class="row-meta">${s.value} ${esc(plWord(s.value, wordSingularKey, wordPluralKey))}</span>
     </div>`;
   }).join('');
   return `
-    <div class="scorer-group-label">${esc(tr('goalscorers_label'))}</div>
+    <div class="scorer-group-label">${esc(tr(labelKey))}</div>
     ${rowsHtml}`;
 }
 
@@ -1247,6 +1247,7 @@ const STRINGS = {
     season_leaders:'Season Leaders · League & Cup', top_scorer:'Top Scorer', most_assists:'Most Assists',
     most_apps:'Most Starts', players_tied:'{n} players tied', most_played:'most played',
     goalscorers_label:'Goalscorers', word_goal:'goal', word_goals:'goals',
+    assisters_label:'Assists', word_assist:'assist', word_assists:'assists',
     recent_results:'Recent Results', tournament:'Tournament', matches_played:'{n} matches played',
     match_played:'1 match played',
     availability:'Player Availability', available:'Available', unavailable:'Unavailable',
@@ -1329,6 +1330,7 @@ const STRINGS = {
     season_leaders:'Destaques da Época · Campeonato e Taça', top_scorer:'Melhor Marcador', most_assists:'Mais Assistências',
     most_apps:'Mais Titularidades', players_tied:'{n} jogadores empatados', most_played:'mais jogada',
     goalscorers_label:'Marcadores', word_goal:'golo', word_goals:'golos',
+    assisters_label:'Assistências', word_assist:'assistência', word_assists:'assistências',
     recent_results:'Últimos Resultados', tournament:'Torneio', matches_played:'{n} jogos realizados',
     match_played:'1 jogo realizado',
     availability:'Disponibilidade', available:'Disponíveis', unavailable:'Indisponíveis',
