@@ -128,6 +128,33 @@ function check(label, cond) {
     check('A stand-alone Folga outside any break still renders normally',
       /Folga Standalone/.test(folgaVsBreak));
 
+    // Folga/break tiles carry a "wait for the coach" disclaimer — a
+    // friendly may still be arranged on a Folga date, a tournament may
+    // still be slotted into a break (Victor, 2026-11-01). Milestones and
+    // match rows must NOT pick up either note.
+    const notesHtml = await page.evaluate(() => {
+      const games = [{ date: '2027-05-01', opponent: 'Note-Free FC', competitionType: 'League', tournamentId: null }];
+      const calendarEvents = [
+        { type: 'folga', title: 'Folga With Note', startDate: '2027-05-10', endDate: '2027-05-10' },
+        { type: 'break', subtype: 'christmas', title: 'Break With Note', startDate: '2027-05-15', endDate: '2027-05-20' },
+        { type: 'milestone', title: 'Milestone No Note', startDate: '2027-05-25', endDate: '2027-05-25' },
+      ];
+      return renderSeasonCalendar(games, [], calendarEvents);
+    });
+    // Language-agnostic (the page's default language may be PT or EN): a
+    // tile with a note has TWO cal-box-meta divs (range + note), one
+    // without has just the range. Bound each tile's fragment up to the
+    // next tile/row so a later box's meta divs never leak into the count.
+    const tileMetaCount = title => {
+      const m = notesHtml.match(new RegExp('<div class="cal-box-title">' + title + '</div>([\\s\\S]*?)(?=<div class="cal-box-title">|<div class="row |$)'));
+      if (!m) return -1;
+      return (m[1].match(/cal-box-meta/g) || []).length;
+    };
+    check('A Folga tile shows an extra note beyond its date range', tileMetaCount('Folga With Note') === 2);
+    check('A break tile shows an extra note beyond its date range', tileMetaCount('Break With Note') === 2);
+    check('A milestone tile shows NO extra note (just its date range)', tileMetaCount('Milestone No Note') === 1);
+    check('An ordinary match row carries no cal-box note markup at all', !/Note-Free FC[\s\S]{0,300}cal-box-meta/.test(notesHtml));
+
     // Empty calendarEvents (e.g. production before migration 006 is
     // applied, or simply no events yet) must render gracefully.
     const htmlNoEvents = await page.evaluate(() => {
