@@ -654,8 +654,16 @@ function calBuildTimeline(confirmedEvents, games, tournaments) {
     if (!t.startDate) return;
     items.push({ sortDate: t.startDate, title: t.name || tr('tournament'), rangeLabel: calFmtRange({ startDate: t.startDate, endDate: t.endDate || t.startDate }), kind: 'tournament' });
   });
+  // A Folga whose date already falls inside a confirmed break (Pausa de
+  // Natal/Páscoa) adds nothing — the break tile already says "no football"
+  // for that whole stretch, so a separate Folga on a day it already covers
+  // is pure duplication, not a second distinct event (Victor, 2026-11-01:
+  // "If a Folga is within a break, it's not a Folga, it's a break").
+  const breaks = (confirmedEvents || []).filter(e => e.type === 'break' && e.startDate);
+  const isFolgaInsideBreak = e => breaks.some(b => e.startDate >= b.startDate && (e.endDate || e.startDate) <= (b.endDate || b.startDate));
   (confirmedEvents || []).forEach(e => {
     if (!e.startDate) return;
+    if (e.type === 'folga' && isFolgaInsideBreak(e)) return;
     // 'folga'/'break' are both "no football this period" markers — styled
     // the same (amber) so parents can tell a pause apart from a fixture
     // at a glance. 'milestone' (season end, etc.) gets its own treatment.

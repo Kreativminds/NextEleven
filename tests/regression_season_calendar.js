@@ -108,6 +108,26 @@ function check(label, cond) {
     check('The milestone (Fim do Campeonato) appears', /Fim do Campeonato/.test(html));
     check('The League fixture still appears alongside everything else', /CF Estrela/.test(html));
 
+    // A Folga dated INSIDE a confirmed break is pure duplication (the break
+    // already covers it) and must be suppressed; a Folga OUTSIDE any break
+    // is a genuine stand-alone rest day and must still appear (Victor,
+    // 2026-11-01, reporting Folga 27/03/2027 shown redundantly inside
+    // Pausa da Páscoa 25/03→01/04/2027).
+    const folgaVsBreak = await page.evaluate(() => {
+      const calendarEvents = [
+        { type: 'folga', title: 'Folga Standalone', startDate: '2027-03-13', endDate: '2027-03-13' },
+        { type: 'break', subtype: 'easter', title: 'Pausa da Páscoa', startDate: '2027-03-25', endDate: '2027-04-01' },
+        { type: 'folga', title: 'Folga Inside Break', startDate: '2027-03-27', endDate: '2027-03-27' },
+      ];
+      return renderSeasonCalendar([], [], calendarEvents);
+    });
+    check('A Folga dated inside a confirmed break is suppressed (not shown as a duplicate tile)',
+      !/Folga Inside Break/.test(folgaVsBreak));
+    check('The break itself still renders once, covering its full range',
+      (folgaVsBreak.match(/Pausa da Páscoa/g) || []).length === 1);
+    check('A stand-alone Folga outside any break still renders normally',
+      /Folga Standalone/.test(folgaVsBreak));
+
     // Empty calendarEvents (e.g. production before migration 006 is
     // applied, or simply no events yet) must render gracefully.
     const htmlNoEvents = await page.evaluate(() => {
