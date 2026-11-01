@@ -92,7 +92,7 @@
      below for the colour split) and the outer tile gets a real border +
      soft shadow so it reads as a distinct card, not a flat row.
      overflow:hidden clips both children to the shared border-radius. */
-  .cal-box{background:var(--surface);border-radius:10px;padding:0;border:1px solid var(--border);box-shadow:0 1px 3px rgba(16,24,40,.08);display:flex;gap:0;align-items:stretch;overflow:hidden}
+  .cal-box{background:var(--surface);border-radius:10px;padding:0;border:1px solid var(--border);border-left:4px solid #c7cbd1;box-shadow:0 1px 3px rgba(16,24,40,.08);display:flex;gap:0;align-items:stretch;overflow:hidden}
   .cal-box-body{flex:1;min-width:0;padding:10px 12px 10px 10px}
   .cal-box-title{font-weight:700;font-size:13px}
   .cal-box-meta{font-size:11px;color:var(--muted);margin-top:2px}
@@ -104,11 +104,16 @@
      they stand out from ordinary fixtures/tournaments in the merged list,
      reusing the existing badge palette (same amber/green used for W/D/L
      and status badges elsewhere) rather than introducing new colours. The
-     colour now lives on the date chip (dual-colour per tile) instead of
-     tinting the whole card. */
+     colour lives on the date chip (dual-colour per tile) AND, per
+     Victor's follow-up (2026-11-01: "put back that little border... with
+     this dark color"), on a 4px left border in that same solid accent
+     colour — the chip is the pale tint, the border is the full-strength
+     colour, same pairing .badge-W/.match-card-ha already use elsewhere. */
+  .cal-box.cal-pause{border-left-color:var(--amber)}
   .cal-box.cal-pause .match-card-date{background:var(--amber-bg);color:var(--amber)}
   .cal-box.cal-pause .cal-box-title{color:var(--amber)}
   .cal-box.cal-pause .cal-box-meta{color:var(--amber)}
+  .cal-box.cal-milestone{border-left-color:var(--green)}
   .cal-box.cal-milestone .match-card-date{background:var(--green-bg);color:var(--green)}
   .cal-box.cal-milestone .cal-box-title{color:var(--green)}
   .cal-box.cal-milestone .cal-box-meta{color:var(--green)}
@@ -128,12 +133,17 @@
      colour AND icon AND text label for home/away, never colour alone.
      Opponent/venue text wraps rather than truncates — long names (a
      validation requirement) must stay fully readable on mobile. */
-  .match-card{display:flex;gap:0;background:var(--surface);border-radius:10px;padding:0;border:1px solid var(--border);box-shadow:0 1px 3px rgba(16,24,40,.08);position:relative;overflow:hidden}
+  .match-card{display:flex;gap:0;background:var(--surface);border-radius:10px;padding:0;border:1px solid var(--border);border-left:4px solid var(--green);box-shadow:0 1px 3px rgba(16,24,40,.08);position:relative;overflow:hidden}
+  .match-card.is-away{border-left-color:var(--red)}
   /* Dual colouring (Victor, 2026-11-01 mockup: "a color for the date and
      another for the content") — the date chip carries the home/away
      colour (green/red) as its own background; the content area stays a
      plain, neutral white/surface so the two zones read as distinct
-     blocks within one bordered, shadowed card, not one flat tint. */
+     blocks within one bordered, shadowed card, not one flat tint. The
+     4px left border above repeats the same colour at full strength
+     (Victor's follow-up, 2026-11-01: "put back that little border...
+     with this dark color of each rectangle") — pale chip + solid border,
+     same pairing as .badge-W/.match-card-ha elsewhere. */
   .match-card-date{flex:0 0 50px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:10px 4px;background:var(--green-bg);color:var(--green)}
   .match-card.is-away .match-card-date{background:var(--red-bg);color:var(--red)}
   .match-card-dow{font-size:10px;font-weight:700;text-transform:uppercase;opacity:.85}
