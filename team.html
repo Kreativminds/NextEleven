@@ -638,6 +638,36 @@ function splitOfficialByType(officialGames) {
 function calFmtRange(e) {
   return (!e.endDate || e.startDate === e.endDate) ? fmtDate(e.startDate) : `${fmtDate(e.startDate)} → ${fmtDate(e.endDate)}`;
 }
+// "Novembro 2026" / "November 2026" — a month+year header for the season
+// calendar so games/events read as blocks per month instead of one long
+// flat list (Victor, 2026-11-01: "group by month... so it's easier to see
+// by block"). dateStr is any 'YYYY-MM-...' date; only the year/month are
+// used. Intl lowercases PT month names ("novembro de 2026"), so the first
+// letter is capitalised for a header.
+function calMonthLabel(dateStr) {
+  const [y, m] = dateStr.split('-');
+  const d = new Date(Number(y), Number(m) - 1, 1);
+  const label = d.toLocaleDateString(getLang() === 'pt' ? 'pt-PT' : 'en-GB', { month: 'long', year: 'numeric' });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+// Renders a chronologically-sorted list of calendar items with a month
+// header inserted before each run of same-month items. Items are already
+// in date order (calBuildTimeline sorts by sortDate), so grouping is just
+// "insert a header whenever the YYYY-MM changes" — no separate sort/bucket
+// pass needed.
+function calRenderByMonth(itemsArr, boxFn) {
+  let out = '';
+  let lastMonthKey = null;
+  (itemsArr || []).forEach(it => {
+    const monthKey = it.sortDate.slice(0, 7);
+    if (monthKey !== lastMonthKey) {
+      out += `<div class="cal-section-label">${esc(calMonthLabel(it.sortDate))}</div>`;
+      lastMonthKey = monthKey;
+    }
+    out += boxFn(it);
+  });
+  return out;
+}
 function calBuildTimeline(confirmedEvents, games, tournaments) {
   const items = [];
   (games || []).forEach(g => {
@@ -721,9 +751,9 @@ function renderSeasonCalendar(games, tournaments, calendarEvents) {
   const hasUpcomingGame = upcoming.some(it => it.kind === 'game');
   return `<div class="card">
     <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_calendar_title')}</h2>
-    <div class="cal-box-list" id="season-calendar-list">${upcoming.length ? upcoming.map(box).join('') : `<p class="row-meta" style="padding:4px 0">${tr('cal_no_upcoming')}</p>`}</div>
+    <div class="cal-box-list" id="season-calendar-list">${upcoming.length ? calRenderByMonth(upcoming, box) : `<p class="row-meta" style="padding:4px 0">${tr('cal_no_upcoming')}</p>`}</div>
     ${past.length ? `
-    <div class="cal-box-list" id="season-calendar-rest" style="display:none;margin-top:8px">${past.map(box).join('')}</div>
+    <div class="cal-box-list" id="season-calendar-rest" style="display:none;margin-top:8px">${calRenderByMonth(past, box)}</div>
     <button type="button" id="season-calendar-toggle" class="link-button"
             style="background:none;border:none;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:6px 0;display:block"
             onclick="toggleSeasonCalendar()">${tr('view_full_calendar')}</button>

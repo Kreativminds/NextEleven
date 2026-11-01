@@ -155,6 +155,39 @@ function check(label, cond) {
     check('A milestone tile shows NO extra note (just its date range)', tileMetaCount('Milestone No Note') === 1);
     check('An ordinary match row carries no cal-box note markup at all', !/Note-Free FC[\s\S]{0,300}cal-box-meta/.test(notesHtml));
 
+    // Month grouping (Victor, 2026-11-01: "group by month ... so it's
+    // easier to see by block"). Items spanning 3 distinct months must get
+    // exactly 3 headers, each immediately preceding its own month's items,
+    // with no repeated header for a second item in the same month.
+    const monthGroupHtml = await page.evaluate(() => {
+      const games = [
+        { date: '2026-11-07', opponent: 'Nov Match A', competitionType: 'League', tournamentId: null },
+        { date: '2026-11-21', opponent: 'Nov Match B', competitionType: 'League', tournamentId: null },
+        { date: '2026-12-05', opponent: 'Dec Match', competitionType: 'League', tournamentId: null },
+      ];
+      const calendarEvents = [
+        { type: 'milestone', title: 'Jan Milestone', startDate: '2027-01-15', endDate: '2027-01-15' },
+      ];
+      return renderSeasonCalendar(games, [], calendarEvents);
+    });
+    check('Exactly 3 month headers rendered for 3 distinct months (Nov/Dec/Jan)',
+      (monthGroupHtml.match(/cal-section-label/g) || []).length === 3);
+    check('Both November items sit under the SAME single November header (not duplicated)',
+      (monthGroupHtml.slice(0, monthGroupHtml.indexOf('Nov Match B')).match(/cal-section-label/g) || []).length === 1);
+    check('Chronological order preserved: November header before December header before January header',
+      monthGroupHtml.indexOf('Nov Match A') < monthGroupHtml.indexOf('Dec Match') &&
+      monthGroupHtml.indexOf('Dec Match') < monthGroupHtml.indexOf('Jan Milestone'));
+
+    // calMonthLabel itself: capitalised, includes the year, language-aware.
+    const monthLabels = await page.evaluate(() => ({
+      nov2026: calMonthLabel('2026-11-07'),
+      jan2027: calMonthLabel('2027-01-01'),
+    }));
+    check('calMonthLabel capitalises the month name and includes the year',
+      /^[A-ZÀ-Ý]/.test(monthLabels.nov2026) && monthLabels.nov2026.includes('2026'));
+    check('calMonthLabel produces a different label for a different month',
+      monthLabels.nov2026 !== monthLabels.jan2027);
+
     // Empty calendarEvents (e.g. production before migration 006 is
     // applied, or simply no events yet) must render gracefully.
     const htmlNoEvents = await page.evaluate(() => {
