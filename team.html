@@ -642,8 +642,13 @@ function calBuildTimeline(confirmedEvents, games, tournaments) {
   const items = [];
   (games || []).forEach(g => {
     if (!g.date) return;
-    const label = g.tournamentId ? `${tr('tournament')}: ${g.opponent || ''}` : `${compTypeTag(g.competitionType) || tr('comp_tag_league')}: ${g.opponent || ''}`;
-    items.push({ sortDate: g.date, title: label, rangeLabel: fmtDate(g.date), kind: 'game' });
+    // 'game' items carry the raw game object, not a flattened title —
+    // the calendar renders these with the same rich row (opponent, time,
+    // home/away, venue, directions) as the old standalone "Próximos
+    // Jogos" section used, via renderUpcomingMatchRow (spec: Jogos tab UX
+    // Improvements §3/§7 — reuse renderUpcomingMatchRow(), don't
+    // duplicate its logic).
+    items.push({ sortDate: g.date, kind: 'game', game: g });
   });
   (tournaments || []).forEach(t => {
     if (!t.startDate) return;
@@ -668,9 +673,22 @@ function toggleSeasonCalendar() {
   btn.textContent = opening ? tr('show_less') : tr('view_full_calendar');
 }
 function renderSeasonCalendar(games, tournaments, calendarEvents) {
+  // games here is the UPCOMING list only (not-yet-played, passed in by the
+  // caller) — completed matches live solely in Últimos Resultados now, so
+  // the calendar never repeats a result it already showed (spec §2/§3:
+  // "Do not duplicate completed matches in the upcoming calendar").
   const items = calBuildTimeline(calendarEvents, games, tournaments);
   if (!items.length) return '';
-  const box = it => `<div class="cal-box${it.kind === 'pause' ? ' cal-pause' : it.kind === 'milestone' ? ' cal-milestone' : ''}"><div class="cal-box-title">${esc(it.title)}</div><div class="cal-box-meta">${esc(it.rangeLabel)}</div></div>`;
+  // idx is continuous across every 'game' row actually rendered (upcoming
+  // list first, then the folded "past" list, matching reading order) —
+  // renderUpcomingMatchRow's zebra-stripe only looks right if row 2
+  // continues the alternation from row 1 instead of restarting per bucket.
+  let gameIdx = 0;
+  const box = it => {
+    if (it.kind === 'game') return renderUpcomingMatchRow(it.game, gameIdx++);
+    const cls = it.kind === 'pause' ? ' cal-pause' : it.kind === 'milestone' ? ' cal-milestone' : '';
+    return `<div class="cal-box${cls}"><div class="cal-box-title">${esc(it.title)}</div><div class="cal-box-meta">${esc(it.rangeLabel)}</div></div>`;
+  };
   // Anchored at today, not at a fixed count: a chronological list starting
   // from the season's first friendly reads as a wall of old fixtures with
   // no sense of "where are we now". Everything from today onward is shown
@@ -680,6 +698,7 @@ function renderSeasonCalendar(games, tournaments, calendarEvents) {
   const today = todayLocalDateStr();
   const upcoming = items.filter(it => it.sortDate >= today);
   const past = items.filter(it => it.sortDate < today);
+  const hasUpcomingGame = upcoming.some(it => it.kind === 'game');
   return `<div class="card">
     <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_calendar_title')}</h2>
     <div class="cal-box-list" id="season-calendar-list">${upcoming.length ? upcoming.map(box).join('') : `<p class="row-meta" style="padding:4px 0">${tr('cal_no_upcoming')}</p>`}</div>
@@ -689,6 +708,7 @@ function renderSeasonCalendar(games, tournaments, calendarEvents) {
             style="background:none;border:none;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:6px 0;display:block"
             onclick="toggleSeasonCalendar()">${tr('view_full_calendar')}</button>
     ` : ''}
+    ${hasUpcomingGame ? `<p class="row-meta" style="margin-top:8px;font-size:10px;color:var(--muted)">${tr('upcoming_note')}</p>` : ''}
   </div>`;
 }
 // Pre/in/post-season boundary for friendlies, per the defined rule:
@@ -722,6 +742,30 @@ function categoryLabel(k) {
   if (k === 'tournament') return tr('tournaments');
   return k;
 }
+// One row per finished match — factored out so the first-5 and the
+// "View all results" expansion render identically instead of keeping two
+// copies of the same template in sync by hand.
+function renderResultRow(g, players) {
+  const our = parseInt(g.ourScore) || 0;
+  const their = parseInt(g.opponentScore) || 0;
+  const res = result(our, their, g);
+  const s = homeAwayScore(g.homeAway, our, their, g.neutralSide);
+  const hasPens = g.ourPenaltyGoals != null && g.penaltiesForThem != null;
+  const roundTxt = roundLabel(g);
+  // Same "skip the repetitive League tag" rule as renderUpcomingMatchRow —
+  // kept for Cup/Friendly/Trial/tournament matches, dropped for plain
+  // League results (spec §4).
+  const compLabel = (g.tournamentId || (g.competitionType && g.competitionType !== 'League'))
+    ? (g.competitionName || compTypeTag(g.competitionType)) : '';
+  return `<div class="row">
+    <span class="row-name">${esc(g.opponent)}</span>
+    ${roundTxt?`<span class="row-meta">${esc(roundTxt)}</span>`:''}
+    ${compLabel ? `<span class="comp-tag">${esc(compLabel)}</span>` : ''}
+    <span class="score">${s.home}-${s.away}</span>
+    ${hasPens?`<span class="row-meta">${g.ourPenaltyGoals}-${g.penaltiesForThem}P</span>`:''}
+    <span class="badge badge-${res}">${res}</span>
+  </div>${renderCardEventsStrip(g, players)}`;
+}
 // Per-game competition tag — singular, since this labels one fixture at
 // a time (distinct from tr('friendlies')/tr('tournaments'), which are
 // the plural/category forms used for section headers and breakdowns).
@@ -736,7 +780,14 @@ function categoryLabel(k) {
 function renderUpcomingMatchRow(g, idx) {
   const dateLabel = fmtDate(g.date); // the one real date formatter already used elsewhere on this page
   const haLabel = g.homeAway === 'Home' ? tr('home') : tr('away');
-  const compLabel = g.competitionName || compTypeTag(g.competitionType);
+  // A plain League fixture needs no tag — it's the large majority of rows
+  // and repeating the same competition name down the whole list adds no
+  // information. Cup/Friendly/Trial fixtures and tournament matches keep
+  // theirs: those genuinely differ from the default league context (spec
+  // §4: "retain useful identification for ... cups, friendlies or
+  // tournaments").
+  const compLabel = (g.tournamentId || (g.competitionType && g.competitionType !== 'League'))
+    ? (g.competitionName || compTypeTag(g.competitionType)) : '';
   const stripeClass = (idx % 2 === 1) ? ' venue-row-alt' : '';
   const dirHtml = directionsLinkHtml(g.opponentMapUrl, g.venue || g.opponent, g.opponentMapAddress);
   const roundTxt = roundLabel(g);
@@ -868,13 +919,13 @@ function showDirectionsSheet(googleUrl, wazeUrl) {
   document.body.appendChild(wrap);
 }
 
-function toggleUpcomingMatches() {
-  const rest = document.getElementById('upcoming-matches-rest');
-  const btn = document.getElementById('upcoming-matches-toggle');
+function toggleRecentResults() {
+  const rest = document.getElementById('recent-results-rest');
+  const btn = document.getElementById('recent-results-toggle');
   if (!rest || !btn) return;
   const opening = rest.style.display === 'none';
   rest.style.display = opening ? '' : 'none';
-  btn.textContent = opening ? tr('show_less') : tr('view_all_matches');
+  btn.textContent = opening ? tr('show_less_results') : tr('view_all_results');
 }
 
 function compTypeTag(type) {
@@ -1328,10 +1379,10 @@ const STRINGS = {
     w_short:'W', d_short:'D', l_short:'L',
     comp_tag_friendly:'Friendly', comp_tag_league:'League', comp_tag_cup:'Cup', comp_tag_trial:'Trial',
     round_label:'Round {n}',
-    upcoming_matches:'Upcoming Matches', view_all_matches:'View all matches', show_less:'Show less',
+    show_less:'Show less',
     season_calendar_title:'Season Calendar', view_full_calendar:'View past events',
     cal_no_upcoming:'No upcoming matches, tournaments or breaks.',
-    no_upcoming_matches:'No upcoming matches are currently scheduled.',
+    view_all_results:'View all results', show_less_results:'Show fewer results',
     upcoming_note:'Note: Dates, times and venues may change. Always confirm the information with the club\'s official match call-up.',
     no_official:'No League or Cup games played yet.',
     season_leaders:'Season Leaders · League & Cup', top_scorer:'Top Scorer', most_assists:'Most Assists',
@@ -1413,10 +1464,10 @@ const STRINGS = {
     w_short:'V', d_short:'E', l_short:'D',
     comp_tag_friendly:'Amigável', comp_tag_league:'Campeonato', comp_tag_cup:'Taça', comp_tag_trial:'Teste',
     round_label:'Jornada {n}',
-    upcoming_matches:'Próximos Jogos', view_all_matches:'Ver todos os jogos', show_less:'Mostrar menos',
+    show_less:'Mostrar menos',
     season_calendar_title:'Calendário da Época', view_full_calendar:'Ver eventos passados',
     cal_no_upcoming:'Sem jogos, torneios ou pausas por vir.',
-    no_upcoming_matches:'Não existem próximos jogos agendados.',
+    view_all_results:'Ver todos os resultados', show_less_results:'Ver menos resultados',
     upcoming_note:'Nota: Datas, horários e locais podem sofrer alterações. Confirma sempre a informação na convocatória oficial do clube.',
     no_official:'Ainda sem jogos de Campeonato ou Taça.',
     season_leaders:'Destaques da Época · Campeonato e Taça', top_scorer:'Melhor Marcador', most_assists:'Mais Assistências',
@@ -2411,8 +2462,12 @@ function render(el, data) {
   }
 
   // Recent Results lists every finished game (tagged by type); the form
-  // strip in Season Summary is League & Cup only.
-  const recent = [...finishedGames].sort((a,b) => gameSortKey(b) - gameSortKey(a)).slice(0, 5);
+  // strip in Season Summary is League & Cup only. Newest-first throughout —
+  // the first 5 show by default, anything older folds behind "View all
+  // results" (spec: Jogos tab UX improvements, §2).
+  const finishedNewestFirst = [...finishedGames].sort((a,b) => gameSortKey(b) - gameSortKey(a));
+  const recent = finishedNewestFirst.slice(0, 5);
+  const olderResults = finishedNewestFirst.slice(5);
   const recentOfficial = [...officialGames].sort((a,b) => gameSortKey(b) - gameSortKey(a)).slice(0, 5);
   const next = upcomingGames[0];
 
@@ -2595,41 +2650,14 @@ function render(el, data) {
     ${recent.length ? `
     <div class="card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('recent_results')}</h2>
-      ${recent.map(g => {
-        const our = parseInt(g.ourScore) || 0;
-        const their = parseInt(g.opponentScore)||0;
-        const res = result(our, their, g);
-        const s = homeAwayScore(g.homeAway, our, their, g.neutralSide);
-        const hasPens = g.ourPenaltyGoals!=null && g.penaltiesForThem!=null;
-        const roundTxt = roundLabel(g);
-        return `<div class="row">
-          <span class="row-name">${esc(g.opponent)}</span>
-          ${roundTxt?`<span class="row-meta">${esc(roundTxt)}</span>`:''}
-          <span class="comp-tag">${esc(g.competitionName || compTypeTag(g.competitionType))}</span>
-          <span class="score">${s.home}-${s.away}</span>
-          ${hasPens?`<span class="row-meta">${g.ourPenaltyGoals}-${g.penaltiesForThem}P</span>`:''}
-          <span class="badge badge-${res}">${res}</span>
-        </div>${renderCardEventsStrip(g, players)}`;
-      }).join('')}
-    </div>` : ''}
-
-    <div class="card">
-      <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('upcoming_matches')}</h2>
-      ${upcomingGames.length ? `
-      <div id="upcoming-matches-list">
-        ${upcomingGames.slice(0, 5).map((g, i) => renderUpcomingMatchRow(g, i)).join('')}
-      </div>
-      ${upcomingGames.length > 5 ? `
-      <div id="upcoming-matches-rest" style="display:none">
-        ${upcomingGames.slice(5).map((g, i) => renderUpcomingMatchRow(g, i + 5)).join('')}
-      </div>
-      <button type="button" id="upcoming-matches-toggle" class="link-button"
+      <div id="recent-results-list">${recent.map(g => renderResultRow(g, players)).join('')}</div>
+      ${olderResults.length ? `
+      <div id="recent-results-rest" style="display:none">${olderResults.map(g => renderResultRow(g, players)).join('')}</div>
+      <button type="button" id="recent-results-toggle" class="link-button"
               style="background:none;border:none;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:6px 0;display:block"
-              onclick="toggleUpcomingMatches()">${tr('view_all_matches')}</button>
+              onclick="toggleRecentResults()">${tr('view_all_results')}</button>
       ` : ''}
-      ` : `<p class="row-meta" style="padding:4px 0">${tr('no_upcoming_matches')}</p>`}
-      <p class="row-meta" style="margin-top:8px;font-size:10px;color:var(--muted)">${tr('upcoming_note')}</p>
-    </div>
+    </div>` : ''}
 
     ${tournaments.length ? `
     ${tournaments.map(t => {
@@ -2644,7 +2672,7 @@ function render(el, data) {
     }).join('')}
     ` : ''}
 
-    ${renderSeasonCalendar(games, tournaments, data.calendarEvents)}
+    ${renderSeasonCalendar(upcomingGames, tournaments, data.calendarEvents)}
     </div>
 
     <div class="pane" data-tab="lineup">

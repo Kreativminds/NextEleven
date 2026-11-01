@@ -148,7 +148,95 @@ function check(label, cond) {
       todaySplit.visiblePart.includes('Future Opponent FC') && todaySplit.visiblePart.includes('Folga Futura') && todaySplit.visiblePart.includes('Marco Futuro'));
     check('A Folga/break item gets the cal-pause highlight class', /cal-box cal-pause"[^>]*>[\s\S]{0,80}Folga Futura/.test(todaySplit.html));
     check('A milestone item gets the cal-milestone highlight class', /cal-box cal-milestone"[^>]*>[\s\S]{0,80}Marco Futuro/.test(todaySplit.html));
-    check('An ordinary fixture does NOT get a highlight class', /cal-box"><div class="cal-box-title">[^<]*Future Opponent FC/.test(todaySplit.html));
+    // Jogos Tab UX Improvements (spec, 2026): calendar game items are no
+    // longer flattened cal-box tiles — they reuse renderUpcomingMatchRow's
+    // richer row (opponent, date/time, home/away, venue, directions), so an
+    // ordinary upcoming fixture must render via THAT markup, not a cal-box,
+    // and must never pick up the pause/milestone highlight classes.
+    check('An ordinary upcoming fixture renders via the rich match row (not a cal-box tile)',
+      /<div class="row venue-row[^"]*"[^>]*>[\s\S]{0,300}?Future Opponent FC/.test(todaySplit.html));
+    check('An ordinary fixture does NOT get a pause/milestone highlight class',
+      !/cal-box[^"]*cal-(pause|milestone)[^"]*"[^>]*>[\s\S]{0,120}Future Opponent FC/.test(todaySplit.html));
+
+    await page.close();
+  }
+
+  // ── team.html: Jogos Tab UX Improvements (2026) ─────────────────────
+  // Últimos Resultados expand/collapse, competition-label suppression,
+  // and no-duplication between results and the calendar.
+  {
+    const page = await browser.newPage();
+    await page.goto('file://' + path.resolve(__dirname, '../team.html'));
+
+    // renderResultRow: League matches drop the repetitive comp tag;
+    // Cup/Friendly/tournament-linked matches keep it (spec §4).
+    const resultRows = await page.evaluate(() => {
+      const leagueGame = { opponent: 'Leagueside FC', ourScore: 2, opponentScore: 1, homeAway: 'Home', competitionType: 'League', tournamentId: null };
+      const friendlyGame = { opponent: 'Friendly Town', ourScore: 1, opponentScore: 1, homeAway: 'Away', competitionType: 'Friendly', tournamentId: null };
+      const tourneyGame = { opponent: 'Cup Rivals', ourScore: 3, opponentScore: 0, homeAway: 'Home', competitionType: 'League', tournamentId: 'tourney-1', competitionName: 'Winter Cup' };
+      return {
+        league: renderResultRow(leagueGame, []),
+        friendly: renderResultRow(friendlyGame, []),
+        tourney: renderResultRow(tourneyGame, []),
+      };
+    });
+    check('renderResultRow: League match has NO comp-tag (repetitive label removed)', !/comp-tag/.test(resultRows.league));
+    check('renderResultRow: Friendly match KEEPS its comp-tag', /comp-tag/.test(resultRows.friendly));
+    check('renderResultRow: tournament-linked match KEEPS its comp-tag', /comp-tag/.test(resultRows.tourney) && /Winter Cup/.test(resultRows.tourney));
+    check('renderResultRow: home/away score order preserved (home 2-1 at home)', /2-1/.test(resultRows.league));
+    // Away game: our=1, their=1 at Away means the score shown must still be
+    // "their score - our score" positionally (home-away), i.e. homeAwayScore
+    // handles the flip — 1-1 is a draw either way, so assert the W/D/L badge
+    // (result() returns the single-letter code used directly as the class).
+    check('renderResultRow: away draw gets the "D" badge', /badge-D"/.test(resultRows.friendly));
+    check('renderResultRow: home win gets the "W" badge', /badge-W"/.test(resultRows.league));
+
+    // renderUpcomingMatchRow: same comp-tag suppression rule.
+    const upcomingRows = await page.evaluate(() => {
+      const leagueGame = { opponent: 'Leagueside FC', date: '2027-05-01', gameTime: '15:00', homeAway: 'Home', venue: 'Home Ground', competitionType: 'League', tournamentId: null };
+      const cupGame = { opponent: 'Cup Rivals', date: '2027-05-08', gameTime: '18:00', homeAway: 'Away', venue: 'Away Ground', competitionType: 'Cup', tournamentId: null, competitionName: 'National Cup' };
+      return {
+        league: renderUpcomingMatchRow(leagueGame, 0),
+        cup: renderUpcomingMatchRow(cupGame, 1),
+      };
+    });
+    check('renderUpcomingMatchRow: League fixture has NO comp-tag', !/comp-tag/.test(upcomingRows.league));
+    check('renderUpcomingMatchRow: Cup fixture KEEPS its comp-tag', /comp-tag/.test(upcomingRows.cup) && /National Cup/.test(upcomingRows.cup));
+    check('renderUpcomingMatchRow: venue and kickoff time are present', /Home Ground/.test(upcomingRows.league) && /15:00/.test(upcomingRows.league));
+    check('renderUpcomingMatchRow: away fixture shows its own venue', /Away Ground/.test(upcomingRows.cup));
+
+    // No duplication: a finished match passed into Últimos Resultados must
+    // never also appear in the calendar when the calendar is only given
+    // upcomingGames (the already-filtered not-yet-played list) — exercised
+    // directly at the call-site contract: a finished game is simply absent
+    // from the array handed to renderSeasonCalendar.
+    const noDupe = await page.evaluate(() => {
+      const upcomingOnly = [{ date: '2027-06-01', opponent: 'Still To Play FC', competitionType: 'League', tournamentId: null }];
+      const html = renderSeasonCalendar(upcomingOnly, [], []);
+      return { hasFinished: /Already Played FC/.test(html), hasUpcoming: /Still To Play FC/.test(html) };
+    });
+    check('Calendar never shows a finished match when only upcomingGames is passed in', !noDupe.hasFinished);
+    check('Calendar still shows the genuinely upcoming match', noDupe.hasUpcoming);
+
+    // Empty states (spec §8, scenarios 3 & 7).
+    // Nothing at all (no completed matches, no upcoming items, no
+    // tournaments/events) — calendar renders nothing to show, which is the
+    // correct "graceful" empty state rather than an empty card shell.
+    const emptyCalendar = await page.evaluate(() => renderSeasonCalendar([], [], []));
+    check('Calendar with truly nothing to show renders empty (no stray card shell)', emptyCalendar === '');
+    // Only PAST items exist (everything already played, nothing upcoming) —
+    // the card renders, and the default-visible section shows the explicit
+    // "no upcoming" message rather than appearing blank.
+    const noUpcomingState = await page.evaluate(() => {
+      const d = new Date();
+      const fmt = (delta) => { const x = new Date(d); x.setDate(x.getDate() + delta); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; };
+      const games = [{ date: fmt(-10), opponent: 'Already Played FC', competitionType: 'League', tournamentId: null }];
+      return renderSeasonCalendar(games, [], []);
+    });
+    check('No-upcoming-events state shows the empty-calendar message, not a blank list',
+      /id="season-calendar-list"[^>]*>[\s\S]{0,40}<p class="row-meta"/.test(noUpcomingState));
+    check('No-upcoming-events state still keeps the past match available behind "view past events"',
+      /Already Played FC/.test(noUpcomingState));
 
     await page.close();
   }
