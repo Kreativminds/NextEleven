@@ -162,6 +162,7 @@
     <span id="trackedNavLinks"></span>
     <button class="nav-link" data-section="teamSummary" data-nav-icon="team-summary"><span data-nav-label>Team Summary</span></button>
     <button class="nav-link" data-section="classification" data-nav-icon="classification"><span data-nav-label>Classification</span></button>
+    <button class="nav-link" data-section="seasonCalendar" data-nav-icon="calendar"><span data-nav-label>Calendar</span></button>
     <button class="nav-link" data-section="tournSummary" data-nav-icon="team-summary"><span data-nav-label>Tournament Summary</span></button>
     <button class="nav-link" data-section="settings" data-nav-icon="settings"><span data-nav-label>Settings</span></button>
     <button class="nav-link" data-section="help" data-nav-icon="help"><span data-nav-label>Help</span></button>
@@ -181,6 +182,7 @@
   <span id="trackedMobileLinks"></span>
   <button class="nav-link" data-section="teamSummary" data-nav-icon="team-summary"><span data-nav-label>Team Summary</span></button>
   <button class="nav-link" data-section="classification" data-nav-icon="classification"><span data-nav-label>Classification</span></button>
+  <button class="nav-link" data-section="seasonCalendar" data-nav-icon="calendar"><span data-nav-label>Calendar</span></button>
   <button class="nav-link" data-section="tournSummary" data-nav-icon="team-summary"><span data-nav-label>Tournament Summary</span></button>
   <button class="nav-link" data-section="settings" data-nav-icon="settings"><span data-nav-label>Settings</span></button>
   <button class="nav-link" data-section="help" data-nav-icon="help"><span data-nav-label>Help</span></button>
@@ -462,6 +464,14 @@
       <div><h1 data-i18n="cls_title">League Classification</h1><div class="page-header-sub" data-i18n="cls_subtitle">Full standings for your competition, updated by hand from a trusted source.</div></div>
     </div>
     <div id="classificationContent"></div>
+  </div>
+
+  <!-- SEASON CALENDAR -->
+  <div class="section" id="sec-seasonCalendar">
+    <div class="page-header">
+      <div><h1 data-i18n="cal_title">Season Calendar</h1><div class="page-header-sub" data-i18n="cal_subtitle">Rest weekends, holiday breaks and milestones alongside your fixtures and tournaments.</div></div>
+    </div>
+    <div id="seasonCalendarContent"></div>
   </div>
 
   <!-- TOURNAMENT SUMMARY -->
@@ -748,7 +758,7 @@ function groupPlayersByPosition(players, getPosition, sortWithinGroup) {
 
 const CONFIG = {
   APP_VERSION: '1.2.14', // human-readable label only — staleness detection no longer depends on this matching anything
-  SCHEMA_VERSION: 22,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability); 21 = classificationSnapshots/teamAliasMappings (League Classification); 22 = cardEvents (yellow/red card tracking)
+  SCHEMA_VERSION: 23,   // 17 = pack versions; 18 = recurrence stores; 19 = games.gameUuid index; 20 = injuries.tempPlayerId index (guest availability); 21 = classificationSnapshots/teamAliasMappings (League Classification); 22 = cardEvents (yellow/red card tracking); 23 = seasonCalendarEvents (Season Calendar: Folga/breaks/milestones)
   DB_NAME: 'footballSquadTrackerDB',
   // Demo Mode lives in a SEPARATE IndexedDB database. Isolation is physical,
   // not a flag on shared rows: production data is in another database that the
@@ -7446,6 +7456,29 @@ const TR = {
     cls_err_no_rows:'No rows could be read from this input.', cls_err_parse_failed:'Could not read this file.',
     cls_warn_second_table:'This pasted text looked like it included an older table as well as the current one — only the first table was imported.',
     cls_rows_count:'{n} teams',
+
+    // ── SEASON CALENDAR ──
+    cal_title:'Season Calendar', cal_subtitle:'Rest weekends, holiday breaks and milestones alongside your fixtures and tournaments.',
+    cal_actions_title:'Detect & add events',
+    cal_btn_detect_folga:'Detect Folga', cal_btn_suggest_holidays:'Suggest Holiday Breaks', cal_btn_add_custom:'Add Custom Event',
+    cal_btn_preview:'Preview Parents Page', cal_btn_hide_preview:'Hide Preview',
+    cal_section_suggested:'Pending Review', cal_section_confirmed:'Confirmed', cal_section_rejected:'Rejected',
+    cal_empty_confirmed_title:'No calendar events yet', cal_empty_confirmed_desc:'Detect Folga, suggest holiday breaks, or add a custom event above.',
+    cal_source_auto:'auto-detected', cal_status_rejected:'rejected',
+    cal_type_folga:'Folga', cal_type_break:'Break', cal_type_milestone:'Milestone',
+    cal_btn_accept:'Accept', cal_btn_adjust:'Adjust', cal_btn_reject:'Reject', cal_btn_save_accept:'Save & Accept',
+    cal_folga_title:'Folga', cal_christmas_title:'Pausa de Natal', cal_easter_title:'Pausa da Páscoa',
+    cal_detect_found:'{n} Folga weekend(s) found — review below.', cal_detect_none:'No new Folga weekends detected (your fixture list may be too short, or none are missing).',
+    cal_suggest_added:'{n} holiday break suggestion(s) added — review below.', cal_suggest_none:'Christmas and Easter suggestions already exist for this season.',
+    cal_err_no_start_year:'This season has no start year set, so a holiday reference date cannot be computed.',
+    cal_accepted:'Event confirmed.', cal_rejected:'Suggestion rejected.', cal_saved:'Calendar event saved.',
+    cal_err_start_required:'Start date is required.', cal_err_title_required:'Title is required.',
+    cal_confirm_delete_title:'Remove this calendar event?', cal_confirm_delete_body:'This cannot be undone. It will no longer appear on the parents page.',
+    cal_form_add_title:'Add Custom Event', cal_form_edit_title:'Edit Event',
+    cal_form_type:'Type', cal_form_name:'Name', cal_form_name_ph:'e.g. Fim do Campeonato',
+    cal_form_start:'Start date', cal_form_end:'End date (optional)',
+    cal_preview_title:'Preview — Parents Page Calendar', cal_preview_empty:'Nothing to show yet.',
+    cal_kind_friendly:'Friendly', cal_kind_cup:'Cup', cal_kind_league:'League', cal_kind_tournament:'Tournament', cal_kind_tournament_fixture:'Tournament match',
   },
   PT:{
     nav_import:'Importar', nav_dashboard:'Início', nav_squad:'Plantel', nav_games:'Jogos', nav_lorenzo:'Lorenzo', nav_team:'Resumo Equipa', nav_achievements:'Conquistas', nav_history:'Historial', nav_settings:'Definições', settings_language:'Idioma', lbl_language:'Idioma',
@@ -8897,6 +8930,29 @@ const TR = {
     cls_err_no_rows:'Não foi possível ler nenhuma linha a partir desta informação.', cls_err_parse_failed:'Não foi possível ler este ficheiro.',
     cls_warn_second_table:'Este texto colado parecia incluir uma tabela antiga além da atual — só a primeira tabela foi importada.',
     cls_rows_count:'{n} equipas',
+
+    // ── CALENDÁRIO DA ÉPOCA ──
+    cal_title:'Calendário da Época', cal_subtitle:'Folgas, pausas e marcas importantes, a par dos jogos e torneios.',
+    cal_actions_title:'Detetar e adicionar eventos',
+    cal_btn_detect_folga:'Detetar Folgas', cal_btn_suggest_holidays:'Sugerir Pausas', cal_btn_add_custom:'Adicionar Evento',
+    cal_btn_preview:'Pré-visualizar Página dos Encarregados', cal_btn_hide_preview:'Ocultar Pré-visualização',
+    cal_section_suggested:'Pendentes de Revisão', cal_section_confirmed:'Confirmados', cal_section_rejected:'Rejeitados',
+    cal_empty_confirmed_title:'Ainda sem eventos no calendário', cal_empty_confirmed_desc:'Deteta Folgas, sugere pausas, ou adiciona um evento personalizado acima.',
+    cal_source_auto:'detetado automaticamente', cal_status_rejected:'rejeitado',
+    cal_type_folga:'Folga', cal_type_break:'Pausa', cal_type_milestone:'Marca',
+    cal_btn_accept:'Aceitar', cal_btn_adjust:'Ajustar', cal_btn_reject:'Rejeitar', cal_btn_save_accept:'Guardar e Aceitar',
+    cal_folga_title:'Folga', cal_christmas_title:'Pausa de Natal', cal_easter_title:'Pausa da Páscoa',
+    cal_detect_found:'{n} folga(s) encontrada(s) — reveja abaixo.', cal_detect_none:'Não foram detetadas novas folgas (a lista de jogos pode ser demasiado curta, ou não falta nenhuma).',
+    cal_suggest_added:'{n} sugestão(ões) de pausa adicionada(s) — reveja abaixo.', cal_suggest_none:'Já existem sugestões de Natal e Páscoa para esta época.',
+    cal_err_no_start_year:'Esta época não tem ano de início definido, por isso não é possível calcular uma data de referência.',
+    cal_accepted:'Evento confirmado.', cal_rejected:'Sugestão rejeitada.', cal_saved:'Evento do calendário guardado.',
+    cal_err_start_required:'A data de início é obrigatória.', cal_err_title_required:'O título é obrigatório.',
+    cal_confirm_delete_title:'Remover este evento do calendário?', cal_confirm_delete_body:'Esta ação não pode ser desfeita. Deixará de aparecer na página dos encarregados.',
+    cal_form_add_title:'Adicionar Evento', cal_form_edit_title:'Editar Evento',
+    cal_form_type:'Tipo', cal_form_name:'Nome', cal_form_name_ph:'ex. Fim do Campeonato',
+    cal_form_start:'Data de início', cal_form_end:'Data de fim (opcional)',
+    cal_preview_title:'Pré-visualização — Calendário da Página dos Encarregados', cal_preview_empty:'Ainda sem nada para mostrar.',
+    cal_kind_friendly:'Amigável', cal_kind_cup:'Taça', cal_kind_league:'Campeonato', cal_kind_tournament:'Torneio', cal_kind_tournament_fixture:'Jogo de torneio',
   },
   IT:{
     nav_import:'Importa', nav_dashboard:'Dashboard', nav_squad:'Rosa', nav_games:'Partite', nav_lorenzo:'Lorenzo', nav_team:'Squadra', nav_achievements:'Traguardi', nav_history:'Storia', nav_settings:'Impostazioni', settings_language:'Lingua', lbl_language:'Lingua',
@@ -9214,6 +9270,17 @@ const DB = (() => {
           const tam = db.createObjectStore('teamAliasMappings', { keyPath: 'aliasId', autoIncrement: true });
           tam.createIndex('seasonId', 'seasonId', { unique: false });
         }
+        // Season Calendar — Folga (rest weekends with no official league
+        // fixture), Christmas/Easter breaks and other admin-defined
+        // milestones, one record per event. status is 'suggested' (auto-
+        // detected/generated, awaiting admin review — never shown on the
+        // parents page), 'confirmed' (admin-accepted or manually added —
+        // the only status the public RPC returns) or 'rejected' (admin
+        // declined — kept, not deleted, so it is never re-suggested).
+        if (!db.objectStoreNames.contains('seasonCalendarEvents')) {
+          const sce = db.createObjectStore('seasonCalendarEvents', { keyPath: 'eventId', autoIncrement: true });
+          sce.createIndex('seasonId', 'seasonId', { unique: false });
+        }
       };
       req.onsuccess = e => { _db = e.target.result; resolve(_db); };
       req.onerror = e => {
@@ -9438,6 +9505,7 @@ const DB = (() => {
     'trainingPacks','trainingPackVersions','trainingSeries','trainingSeriesExceptions',
     'trainingSeriesPauses','tournaments','temporaryPlayers','clubTeams',
     'externalResources','classificationSnapshots','teamAliasMappings',
+    'seasonCalendarEvents',
   ];
 
   async function getAllFromAllStores() {
@@ -12888,6 +12956,462 @@ const Classification = (() => {
 // simply the record with the latest publishedAt for a given scope, and
 // "restore" is just publishing a clone of an old one as a new, later version.
 // Nothing here ever mutates or deletes an existing snapshot.
+// ══════════════════════════════════════════════════════════════════════════════
+// SEASON CALENDAR — Folga (rest weekends with no official league fixture),
+// Christmas/Easter break suggestions and other admin-defined milestones.
+// Reuses the season's own League games as the ONLY source of "league
+// calendar information" (this app has no separate round/matchweek feed to
+// draw on), and the same suggest -> admin review -> confirm/reject flow
+// already established by League Classification just above. A 'folga'/
+// 'break'/'milestone' event never touches games/game_players/goal_events,
+// so nothing here can affect matches played, results, standings or player
+// statistics — those are computed from entirely separate tables.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Easter Sunday (Gregorian calendar) for a given year — the standard
+// "Anonymous Gregorian algorithm" (Meeus/Jones/Butcher). Pure and
+// deterministic: Easter's calendar date moves every year, so suggesting
+// "Pausa da Páscoa" correctly for whichever season is being configured
+// needs this computed, not hardcoded. COPIED VERBATIM into team.html —
+// this codebase has no shared module index.html loads, so logic that
+// must behave identically in both places is duplicated rather than
+// centralized (the same pattern already used for other admin/public
+// calculations in this app).
+function easterSundayISO(year) {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19*a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2*e + 2*i - h - k) % 7;
+  const m = Math.floor((a + 11*h + 22*l) / 451);
+  const month = Math.floor((h + l - 7*m + 114) / 31);
+  const day = ((h + l - 7*m + 114) % 31) + 1;
+  return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+}
+function calAddDaysISO(dateStr, days) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function calGapDays(a, b) {
+  return Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
+}
+
+// Folga candidates: given the SORTED, distinct League fixture dates for
+// one competition, find the weekend(s) that break an otherwise-regular
+// weekly cadence — a gap that is exactly DOUBLE the typical (most common)
+// gap seen across the rest of the list. This is the only reliable signal
+// available without a separate official round/matchweek feed, and it is
+// deliberately conservative:
+//  - requires at least 3 observed gaps sharing the same typical cadence
+//    before trusting the pattern at all ("only when league round/calendar
+//    information is sufficiently complete" — spec §1);
+//  - a gap that is a LARGER multiple (3x, as for a real Christmas break)
+//    is NEVER treated as a Folga — multi-week gaps are a break, handled
+//    separately, not a single rest round;
+//  - never proposed past the LAST known fixture, where "no fixture yet"
+//    can't be told apart from "season still in progress" ("incomplete
+//    league schedule, no false Folga" — test scenario).
+// COPIED VERBATIM into team.html's admin-preview-free render path is not
+// needed (Folga detection is admin-only), but the date-math helpers above
+// are shared with team.html's calendar rendering.
+function detectFolgaCandidates(sortedDates) {
+  if (sortedDates.length < 4) return [];
+  const gaps = [];
+  for (let i = 1; i < sortedDates.length; i++) gaps.push(calGapDays(sortedDates[i-1], sortedDates[i]));
+  const freq = new Map();
+  gaps.forEach(g => freq.set(g, (freq.get(g) || 0) + 1));
+  let typical = null, bestCount = 0;
+  for (const [g, count] of freq) {
+    if (count > bestCount || (count === bestCount && (typical === null || g < typical))) { typical = g; bestCount = count; }
+  }
+  if (!typical || bestCount < 3) return [];
+  const out = [];
+  for (let i = 1; i < sortedDates.length; i++) {
+    const gap = calGapDays(sortedDates[i-1], sortedDates[i]);
+    if (gap === typical * 2) out.push(calAddDaysISO(sortedDates[i-1], typical));
+  }
+  return out;
+}
+
+let _cal = {
+  seasonId: null,
+  events: [],       // every seasonCalendarEvents record for this season
+  leagueDatesByCompetition: new Map(), // competitionName(lowercased) -> sorted distinct League fixture dates
+  addForm: null,     // {type,title,startDate,endDate} while the "Add custom event" panel is open, else null
+  editingId: null,   // eventId currently being adjusted inline, else null
+  editDraft: null,   // {startDate,endDate} while adjusting
+  showRejected: false,
+  previewOpen: false,
+};
+
+async function calReload(seasonId) {
+  if (_cal.seasonId !== seasonId) { _cal.addForm = null; _cal.editingId = null; _cal.showRejected = false; _cal.previewOpen = false; }
+  _cal.seasonId = seasonId;
+  const [events, games, tournaments] = await Promise.all([
+    DB.getAll('seasonCalendarEvents', 'seasonId', seasonId),
+    DB.getAll('games', 'seasonId', seasonId),
+    DB.getAll('tournaments', 'seasonId', seasonId),
+  ]);
+  _cal.events = events.filter(e => !e.isDeleted);
+  _cal.games = games.filter(g => !g.isDeleted);
+  _cal.tournaments = tournaments.filter(t => !t.isDeleted);
+  const byComp = new Map();
+  games.filter(g => g.competitionType === 'League' && g.date).forEach(g => {
+    const key = (g.competitionName || '').trim().toLowerCase();
+    if (!byComp.has(key)) byComp.set(key, new Set());
+    byComp.get(key).add(g.date);
+  });
+  _cal.leagueDatesByCompetition = new Map(
+    [...byComp.entries()].map(([k, set]) => [k, [...set].sort()])
+  );
+}
+
+// A Folga is only ever DISPLAYED (admin list or parents page alike) when
+// no League fixture has since been scheduled on that exact date — the
+// stored/confirmed row is never deleted, it just stops counting as a
+// Folga the moment a real fixture lands there (spec §1 "do not create
+// duplicate events", test scenario "fixture rescheduled into a Folga").
+function calEventIsLive(e) {
+  if (e.type !== 'folga') return true;
+  for (const dates of _cal.leagueDatesByCompetition.values()) {
+    if (dates.includes(e.startDate)) return false;
+  }
+  return true;
+}
+
+function calVisibleEvents() {
+  return _cal.events.filter(calEventIsLive);
+}
+
+// ── Detect / Generate (idempotent — safe to run any number of times) ─────
+async function calDetectFolga() {
+  const now = new Date().toISOString();
+  let added = 0;
+  for (const dates of _cal.leagueDatesByCompetition.values()) {
+    for (const date of detectFolgaCandidates(dates)) {
+      const autoKey = 'folga-' + date;
+      if (_cal.events.some(e => e.autoKey === autoKey)) continue; // never re-suggest, whatever its status
+      await DB.put('seasonCalendarEvents', {
+        seasonId: _cal.seasonId, type: 'folga', subtype: null,
+        title: I18n.t('cal_folga_title'), startDate: date, endDate: date,
+        status: 'suggested', source: 'auto', autoKey, notes: null,
+        createdAt: now, updatedAt: now,
+      });
+      added++;
+    }
+  }
+  await calReload(_cal.seasonId);
+  Toast.show(added ? I18n.t('cal_detect_found', { n: added }) : I18n.t('cal_detect_none'));
+  await Render.seasonCalendar();
+}
+
+async function calGenerateHolidaySuggestions() {
+  const startYear = State.currentSeason?.startYear;
+  if (!startYear) { Toast.error(I18n.t('cal_err_no_start_year')); return; }
+  const now = new Date().toISOString();
+  let added = 0;
+  const wants = [
+    { autoKey: 'christmas-' + startYear, subtype: 'christmas', title: I18n.t('cal_christmas_title'),
+      startDate: `${startYear}-12-19`, endDate: `${startYear + 1}-01-04` },
+    { autoKey: 'easter-' + (startYear + 1), subtype: 'easter', title: I18n.t('cal_easter_title'),
+      startDate: calAddDaysISO(easterSundayISO(startYear + 1), -3), endDate: calAddDaysISO(easterSundayISO(startYear + 1), 4) },
+  ];
+  for (const w of wants) {
+    if (_cal.events.some(e => e.autoKey === w.autoKey)) continue; // never overwrite an existing suggestion/confirmation/rejection
+    await DB.put('seasonCalendarEvents', {
+      seasonId: _cal.seasonId, type: 'break', subtype: w.subtype, title: w.title,
+      startDate: w.startDate, endDate: w.endDate,
+      status: 'suggested', source: 'auto', autoKey: w.autoKey, notes: null,
+      createdAt: now, updatedAt: now,
+    });
+    added++;
+  }
+  await calReload(_cal.seasonId);
+  Toast.show(added ? I18n.t('cal_suggest_added', { n: added }) : I18n.t('cal_suggest_none'));
+  await Render.seasonCalendar();
+}
+
+// ── Review a suggestion: accept / adjust dates / reject ──────────────────
+async function calAccept(id) {
+  const e = await DB.get('seasonCalendarEvents', id);
+  if (!e) return;
+  e.status = 'confirmed';
+  e.updatedAt = new Date().toISOString();
+  await Backup.create('before-save');
+  await DB.put('seasonCalendarEvents', e);
+  await calReload(_cal.seasonId);
+  Toast.show(I18n.t('cal_accepted'));
+  await Render.seasonCalendar();
+}
+
+async function calReject(id) {
+  const e = await DB.get('seasonCalendarEvents', id);
+  if (!e) return;
+  e.status = 'rejected';
+  e.updatedAt = new Date().toISOString();
+  await Backup.create('before-save');
+  await DB.put('seasonCalendarEvents', e);
+  await calReload(_cal.seasonId);
+  Toast.show(I18n.t('cal_rejected'));
+  await Render.seasonCalendar();
+}
+
+function calStartAdjust(id) {
+  const e = _cal.events.find(x => x.eventId === id);
+  if (!e) return;
+  _cal.editingId = id;
+  _cal.editDraft = { startDate: e.startDate, endDate: e.endDate };
+  Render.seasonCalendar();
+}
+function calCancelAdjust() { _cal.editingId = null; _cal.editDraft = null; Render.seasonCalendar(); }
+function calSetEditField(field, value) { if (_cal.editDraft) _cal.editDraft[field] = value || null; }
+
+async function calSaveAdjust(id, accept) {
+  const e = await DB.get('seasonCalendarEvents', id);
+  if (!e || !_cal.editDraft) return;
+  if (!_cal.editDraft.startDate) { Toast.error(I18n.t('cal_err_start_required')); return; }
+  e.startDate = _cal.editDraft.startDate;
+  e.endDate = _cal.editDraft.endDate || _cal.editDraft.startDate;
+  if (accept) e.status = 'confirmed';
+  e.updatedAt = new Date().toISOString();
+  await Backup.create('before-save');
+  await DB.put('seasonCalendarEvents', e);
+  _cal.editingId = null; _cal.editDraft = null;
+  await calReload(_cal.seasonId);
+  Toast.show(I18n.t('cal_saved'));
+  await Render.seasonCalendar();
+}
+
+// ── Manual events (break or milestone) — confirmed immediately, since the
+// admin explicitly asked for them (spec §3 "Add other breaks manually") ──
+function calOpenAddForm() {
+  _cal.addForm = { editingId: null, type: 'milestone', title: '', startDate: '', endDate: '' };
+  Render.seasonCalendar();
+}
+function calOpenEditCustom(id) {
+  const e = _cal.events.find(x => x.eventId === id);
+  if (!e) return;
+  _cal.addForm = { editingId: id, type: e.type, title: e.title, startDate: e.startDate, endDate: e.endDate || '' };
+  Render.seasonCalendar();
+}
+function calCancelAddForm() { _cal.addForm = null; Render.seasonCalendar(); }
+function calSetAddField(field, value) { if (_cal.addForm) _cal.addForm[field] = value; }
+
+async function calSaveAddForm() {
+  const f = _cal.addForm;
+  if (!f) return;
+  const title = (f.title || '').trim();
+  if (!title) { Toast.error(I18n.t('cal_err_title_required')); return; }
+  if (!f.startDate) { Toast.error(I18n.t('cal_err_start_required')); return; }
+  const now = new Date().toISOString();
+  const obj = f.editingId
+    ? await DB.get('seasonCalendarEvents', f.editingId)
+    : { seasonId: _cal.seasonId, status: 'confirmed', source: 'manual', autoKey: null, notes: null, createdAt: now };
+  obj.type = f.type;
+  obj.subtype = 'custom';
+  obj.title = title;
+  obj.startDate = f.startDate;
+  obj.endDate = f.endDate || f.startDate;
+  obj.updatedAt = now;
+  await Backup.create('before-save');
+  await DB.put('seasonCalendarEvents', obj);
+  _cal.addForm = null;
+  await calReload(_cal.seasonId);
+  Toast.show(I18n.t('cal_saved'));
+  await Render.seasonCalendar();
+}
+
+async function calRemove(id) {
+  Confirm.show(I18n.t('cal_confirm_delete_title'), I18n.t('cal_confirm_delete_body'), async () => {
+    await Backup.create('before-delete');
+    await DB.softDelete('seasonCalendarEvents', id);
+    await calReload(_cal.seasonId);
+    Toast.show(I18n.t('ch_deleted'));
+    await Render.seasonCalendar();
+  });
+}
+
+function calToggleShowRejected() { _cal.showRejected = !_cal.showRejected; Render.seasonCalendar(); }
+function calTogglePreview() { _cal.previewOpen = !_cal.previewOpen; Render.seasonCalendar(); }
+
+// ── Rendering ──────────────────────────────────────────────────────────
+function calFmtRange(e) {
+  return (e.startDate === e.endDate || !e.endDate) ? fmtDate(e.startDate) : `${fmtDate(e.startDate)} → ${fmtDate(e.endDate)}`;
+}
+function calTypeLabel(e) {
+  if (e.type === 'folga') return I18n.t('cal_type_folga');
+  if (e.type === 'break') return I18n.t('cal_type_break');
+  return I18n.t('cal_type_milestone');
+}
+
+function calRenderScreen() {
+  const suggested = calVisibleEvents().filter(e => e.status === 'suggested').sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  const confirmed = calVisibleEvents().filter(e => e.status === 'confirmed').sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  const rejected = _cal.events.filter(e => e.status === 'rejected').sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  return `
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${I18n.t('cal_actions_title')}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" onclick="calDetectFolga()">${I18n.t('cal_btn_detect_folga')}</button>
+        <button class="btn btn-secondary btn-sm" onclick="calGenerateHolidaySuggestions()">${I18n.t('cal_btn_suggest_holidays')}</button>
+        <button class="btn btn-secondary btn-sm" onclick="calOpenAddForm()">${I18n.t('cal_btn_add_custom')}</button>
+        <button class="btn btn-secondary btn-sm" onclick="calTogglePreview()">${_cal.previewOpen ? I18n.t('cal_btn_hide_preview') : I18n.t('cal_btn_preview')}</button>
+      </div>
+    </div>
+    ${_cal.addForm ? calRenderAddForm() : ''}
+    ${_cal.previewOpen ? calRenderPreview() : ''}
+    ${suggested.length ? `
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${I18n.t('cal_section_suggested')}</div>
+      <div class="timeline-list">${suggested.map(e => calRenderSuggestedRow(e)).join('')}</div>
+    </div>` : ''}
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${I18n.t('cal_section_confirmed')}</div>
+      ${confirmed.length ? `<div class="timeline-list">${confirmed.map(e => calRenderConfirmedRow(e)).join('')}</div>`
+        : `<div class="empty"><strong>${I18n.t('cal_empty_confirmed_title')}</strong><p>${I18n.t('cal_empty_confirmed_desc')}</p></div>`}
+    </div>
+    ${rejected.length ? `
+    <div class="card">
+      <div class="card-title" style="cursor:pointer" onclick="calToggleShowRejected()">${I18n.t('cal_section_rejected')} (${rejected.length}) ${_cal.showRejected ? '▲' : '▼'}</div>
+      ${_cal.showRejected ? `<div class="timeline-list">${rejected.map(e => calRenderRejectedRow(e)).join('')}</div>` : ''}
+    </div>` : ''}
+  `;
+}
+
+function calRenderSuggestedRow(e) {
+  if (_cal.editingId === e.eventId) return calRenderEditRow(e, true);
+  return `
+    <div class="timeline-item">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+        <div>
+          <div class="ti-title">${esc(e.title)} <span class="pos-pill">${calTypeLabel(e)}</span></div>
+          <div class="ti-meta">${esc(calFmtRange(e))} · ${I18n.t('cal_source_auto')}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-primary btn-sm" onclick="calAccept(${e.eventId})">${I18n.t('cal_btn_accept')}</button>
+          <button class="btn btn-secondary btn-sm" onclick="calStartAdjust(${e.eventId})">${I18n.t('cal_btn_adjust')}</button>
+          <button class="btn btn-danger btn-sm" onclick="calReject(${e.eventId})">${I18n.t('cal_btn_reject')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function calRenderConfirmedRow(e) {
+  if (_cal.editingId === e.eventId) return calRenderEditRow(e, false);
+  const isCustom = e.source === 'manual';
+  return `
+    <div class="timeline-item">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+        <div>
+          <div class="ti-title">${esc(e.title)} <span class="pos-pill">${calTypeLabel(e)}</span></div>
+          <div class="ti-meta">${esc(calFmtRange(e))}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-secondary btn-sm" onclick="${isCustom ? `calOpenEditCustom(${e.eventId})` : `calStartAdjust(${e.eventId})`}">${I18n.t('common_edit')}</button>
+          <button class="btn btn-danger btn-sm" onclick="calRemove(${e.eventId})">${I18n.t('common_delete')}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function calRenderRejectedRow(e) {
+  return `
+    <div class="timeline-item" style="opacity:.65">
+      <div class="ti-title">${esc(e.title)} <span class="pos-pill">${calTypeLabel(e)}</span></div>
+      <div class="ti-meta">${esc(calFmtRange(e))} · ${I18n.t('cal_status_rejected')}</div>
+    </div>`;
+}
+
+function calRenderEditRow(e, isSuggestion) {
+  const d = _cal.editDraft || { startDate: e.startDate, endDate: e.endDate };
+  return `
+    <div class="timeline-item">
+      <div class="ti-title">${esc(e.title)}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
+        <input type="date" value="${esc(d.startDate || '')}" oninput="calSetEditField('startDate', this.value)" style="max-width:160px">
+        <span>→</span>
+        <input type="date" value="${esc(d.endDate || '')}" oninput="calSetEditField('endDate', this.value)" style="max-width:160px">
+        ${isSuggestion ? `<button class="btn btn-primary btn-sm" onclick="calSaveAdjust(${e.eventId}, true)">${I18n.t('cal_btn_save_accept')}</button>`
+                       : `<button class="btn btn-primary btn-sm" onclick="calSaveAdjust(${e.eventId}, false)">${I18n.t('common_save')}</button>`}
+        <button class="btn btn-secondary btn-sm" onclick="calCancelAdjust()">${I18n.t('common_cancel')}</button>
+      </div>
+    </div>`;
+}
+
+function calRenderAddForm() {
+  const f = _cal.addForm;
+  return `
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">${f.editingId ? I18n.t('cal_form_edit_title') : I18n.t('cal_form_add_title')}</div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>${I18n.t('cal_form_type')}</label>
+        <select onchange="calSetAddField('type', this.value)">
+          <option value="milestone" ${f.type==='milestone'?'selected':''}>${I18n.t('cal_type_milestone')}</option>
+          <option value="break" ${f.type==='break'?'selected':''}>${I18n.t('cal_type_break')}</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>${I18n.t('cal_form_name')}</label>
+        <input type="text" value="${esc(f.title)}" oninput="calSetAddField('title', this.value)" placeholder="${esc(I18n.t('cal_form_name_ph'))}">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <div class="form-group" style="margin:0"><label>${I18n.t('cal_form_start')}</label><input type="date" value="${esc(f.startDate)}" oninput="calSetAddField('startDate', this.value)"></div>
+        <div class="form-group" style="margin:0"><label>${I18n.t('cal_form_end')}</label><input type="date" value="${esc(f.endDate)}" oninput="calSetAddField('endDate', this.value)"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="calSaveAddForm()">${I18n.t('common_save')}</button>
+        <button class="btn btn-secondary btn-sm" onclick="calCancelAddForm()">${I18n.t('common_cancel')}</button>
+      </div>
+    </div>`;
+}
+
+// Minimal read-only preview of how the confirmed calendar will look on the
+// parents page — the same visible/confirmed events merged chronologically
+// with this season's games and tournaments, grouped by date range so a
+// multi-week break shows once (spec §6 "Preview how the calendar will
+// appear to parents"). Deliberately a lightweight list, not an iframe of
+// team.html, per "keep the interface simple" (spec §6).
+// Chronological merge of fixtures + tournaments + confirmed calendar
+// events into one timeline, each item carrying a sortable date and a
+// human range label. COPIED VERBATIM into team.html (see the parents-page
+// calendar section there) so admin preview and public page always agree.
+// Multi-day events (tournaments, breaks) appear ONCE as a range, never
+// duplicated per day; same-day items stay as separate entries so the
+// caller can group by date however it needs to.
+function calBuildTimeline(confirmedEvents, games, tournaments) {
+  const items = [];
+  (games || []).forEach(g => {
+    if (!g.date) return;
+    const label = (g.competitionType === 'Friendly' || g.competitionType === 'Trial')
+      ? `${I18n.t('cal_kind_friendly')}: ${g.opponent || ''}`
+      : (g.tournamentId ? `${I18n.t('cal_kind_tournament_fixture')}: ${g.opponent || ''}` : `${g.competitionType === 'Cup' ? I18n.t('cal_kind_cup') : I18n.t('cal_kind_league')}: ${g.opponent || ''}`);
+    items.push({ sortDate: g.date, title: label, rangeLabel: fmtDate(g.date) });
+  });
+  (tournaments || []).forEach(t => {
+    if (!t.startDate) return;
+    items.push({ sortDate: t.startDate, title: t.name || I18n.t('cal_kind_tournament'), rangeLabel: calFmtRange({ startDate: t.startDate, endDate: t.endDate || t.startDate }) });
+  });
+  (confirmedEvents || []).forEach(e => {
+    items.push({ sortDate: e.startDate, title: e.title, rangeLabel: calFmtRange(e) });
+  });
+  items.sort((a, b) => a.sortDate.localeCompare(b.sortDate));
+  return items;
+}
+
+function calRenderPreview() {
+  const confirmed = _cal.events.filter(e => e.status === 'confirmed' && calEventIsLive(e));
+  const items = calBuildTimeline(confirmed, _cal.games, _cal.tournaments);
+  return `
+    <div class="card" style="margin-bottom:14px;background:#f8f8f8">
+      <div class="card-title">${I18n.t('cal_preview_title')}</div>
+      ${items.length ? `<div class="timeline-list">${items.map(it => `
+        <div class="timeline-item">
+          <div class="ti-title">${esc(it.title)}</div>
+          <div class="ti-meta">${esc(it.rangeLabel)}</div>
+        </div>`).join('')}</div>` : `<div class="empty"><p>${I18n.t('cal_preview_empty')}</p></div>`}
+    </div>`;
+}
+
 let _cls = {
   seasonId: null,
   games: [],
@@ -19070,7 +19594,7 @@ async function handleSyncDownload() {
 // DB PUT WRAPPER — marks records as modified for sync
 // ══════════════════════════════════════════════════════════════════════════════
 const _origPut = DB.put.bind(DB);
-const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','cardEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','trainingPackVersions','trainingSeries','trainingSeriesExceptions','trainingSeriesPauses','tournaments','temporaryPlayers','clubTeams','externalResources','classificationSnapshots','teamAliasMappings']);
+const SYNC_STORES_SET = new Set(['seasons','players','games','gamePlayers','achievements','clubHistory','globalPlayers','opponents','playerGameStats','events','goalEvents','cardEvents','injuries','trainingSessions','customDrills','drillFavourites','trainingPacks','trainingPackVersions','trainingSeries','trainingSeriesExceptions','trainingSeriesPauses','tournaments','temporaryPlayers','clubTeams','externalResources','classificationSnapshots','teamAliasMappings','seasonCalendarEvents']);
 
 DB.put = async function(store, obj) {
   if (SYNC_STORES_SET.has(store) && obj) {
@@ -21225,6 +21749,15 @@ const Render = (() => {
     el.innerHTML = clsRenderScreen();
   }
 
+  // ── SEASON CALENDAR ──────────────────────────────────────────────────────
+  async function seasonCalendar() {
+    const el = document.getElementById('seasonCalendarContent');
+    if (!el) return;
+    if (!State.currentSeason) { el.innerHTML = noSeason(); return; }
+    await calReload(State.currentSeasonId);
+    el.innerHTML = calRenderScreen();
+  }
+
   // ── HELP ──────────────────────────────────────────────────────────────────
   function help() {
     const el = document.getElementById('helpContent');
@@ -21266,7 +21799,7 @@ const Render = (() => {
       </div>`;
   }
 
-  return { home, dashboard, squad, gamesList, gameDetail, trackedPlayer, teamSummary, classification, achievements, clubHistory, settings, help };
+  return { home, dashboard, squad, gamesList, gameDetail, trackedPlayer, teamSummary, classification, seasonCalendar, achievements, clubHistory, settings, help };
 })();
 
 // Global wrapper — onclick handlers run in global scope, Render.teamSummary lives in the closure
@@ -21373,6 +21906,7 @@ const Nav = (() => {
       case 'games':        await Render.gamesList(document.getElementById('gamesSearch')?.value||'', document.getElementById('gamesFilter')?.value||''); break;
       case 'teamSummary':  await Render.teamSummary(); break;
       case 'classification': await Render.classification(); break;
+      case 'seasonCalendar': await Render.seasonCalendar(); break;
       case 'tournSummary': await tournSummary(); break;
       case 'settings':     await Render.settings(); break;
       case 'help':         Render.help(); break;
@@ -22194,6 +22728,7 @@ const Sync = (() => {
       externalResources: 'external_resources',
       classificationSnapshots: 'classification_snapshots',
       teamAliasMappings: 'team_alias_mappings',
+      seasonCalendarEvents: 'season_calendar_events',
     };
     return map[store] || store;
   }

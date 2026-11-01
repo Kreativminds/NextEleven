@@ -603,6 +603,64 @@ function splitOfficialByType(officialGames) {
   (officialGames || []).forEach(g => out[g.competitionType === 'Cup' ? 'cup' : 'league'].push(g));
   return out;
 }
+
+// ── SEASON CALENDAR — chronological merge of fixtures + tournaments +
+// confirmed calendar events (Folga/breaks/milestones from data.calendarEvents,
+// the RPC already filters out anything not status:'confirmed' and any
+// Folga whose date now has a real League fixture on it, so every entry
+// here is meant to be shown). COPIED VERBATIM from index.html's admin
+// calendar preview (calBuildTimeline/calFmtRange) — this codebase has no
+// shared module team.html and index.html both load, so logic that must
+// behave identically in both places is duplicated rather than
+// centralized. Multi-day events (tournaments, breaks) appear ONCE as a
+// range, never once per day — "support multi-week breaks without
+// unnecessary duplicate entries" (spec §5). ─────────────────────────────
+function calFmtRange(e) {
+  return (!e.endDate || e.startDate === e.endDate) ? fmtDate(e.startDate) : `${fmtDate(e.startDate)} → ${fmtDate(e.endDate)}`;
+}
+function calBuildTimeline(confirmedEvents, games, tournaments) {
+  const items = [];
+  (games || []).forEach(g => {
+    if (!g.date) return;
+    const label = g.tournamentId ? `${tr('tournament')}: ${g.opponent || ''}` : `${compTypeTag(g.competitionType) || tr('comp_tag_league')}: ${g.opponent || ''}`;
+    items.push({ sortDate: g.date, title: label, rangeLabel: fmtDate(g.date) });
+  });
+  (tournaments || []).forEach(t => {
+    if (!t.startDate) return;
+    items.push({ sortDate: t.startDate, title: t.name || tr('tournament'), rangeLabel: calFmtRange({ startDate: t.startDate, endDate: t.endDate || t.startDate }) });
+  });
+  (confirmedEvents || []).forEach(e => {
+    if (!e.startDate) return;
+    items.push({ sortDate: e.startDate, title: e.title, rangeLabel: calFmtRange(e) });
+  });
+  items.sort((a, b) => a.sortDate.localeCompare(b.sortDate));
+  return items;
+}
+function toggleSeasonCalendar() {
+  const rest = document.getElementById('season-calendar-rest');
+  const btn = document.getElementById('season-calendar-toggle');
+  if (!rest || !btn) return;
+  const opening = rest.style.display === 'none';
+  rest.style.display = opening ? '' : 'none';
+  btn.textContent = opening ? tr('show_less') : tr('view_full_calendar');
+}
+function renderSeasonCalendar(games, tournaments, calendarEvents) {
+  const items = calBuildTimeline(calendarEvents, games, tournaments);
+  if (!items.length) return '';
+  const row = it => `<div class="row"><span class="row-name">${esc(it.title)}</span><span class="row-meta">${esc(it.rangeLabel)}</span></div>`;
+  const head = items.slice(0, 8);
+  const rest = items.slice(8);
+  return `<div class="card">
+    <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_calendar_title')}</h2>
+    <div id="season-calendar-list">${head.map(row).join('')}</div>
+    ${rest.length ? `
+    <div id="season-calendar-rest" style="display:none">${rest.map(row).join('')}</div>
+    <button type="button" id="season-calendar-toggle" class="link-button"
+            style="background:none;border:none;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:6px 0;display:block"
+            onclick="toggleSeasonCalendar()">${tr('view_full_calendar')}</button>
+    ` : ''}
+  </div>`;
+}
 // Pre/in/post-season boundary for friendlies, per the defined rule:
 // before the earliest scheduled league/cup fixture, between the
 // earliest and latest, or after the latest. Boundary dates come from
@@ -1241,6 +1299,7 @@ const STRINGS = {
     comp_tag_friendly:'Friendly', comp_tag_league:'League', comp_tag_cup:'Cup', comp_tag_trial:'Trial',
     round_label:'Round {n}',
     upcoming_matches:'Upcoming Matches', view_all_matches:'View all matches', show_less:'Show less',
+    season_calendar_title:'Season Calendar', view_full_calendar:'View full calendar',
     no_upcoming_matches:'No upcoming matches are currently scheduled.',
     upcoming_note:'Note: Dates, times and venues may change. Always confirm the information with the club\'s official match call-up.',
     no_official:'No League or Cup games played yet.',
@@ -1324,6 +1383,7 @@ const STRINGS = {
     comp_tag_friendly:'Amigável', comp_tag_league:'Campeonato', comp_tag_cup:'Taça', comp_tag_trial:'Teste',
     round_label:'Jornada {n}',
     upcoming_matches:'Próximos Jogos', view_all_matches:'Ver todos os jogos', show_less:'Mostrar menos',
+    season_calendar_title:'Calendário da Época', view_full_calendar:'Ver calendário completo',
     no_upcoming_matches:'Não existem próximos jogos agendados.',
     upcoming_note:'Nota: Datas, horários e locais podem sofrer alterações. Confirma sempre a informação na convocatória oficial do clube.',
     no_official:'Ainda sem jogos de Campeonato ou Taça.',
@@ -2551,6 +2611,8 @@ function render(el, data) {
       </div>`;
     }).join('')}
     ` : ''}
+
+    ${renderSeasonCalendar(games, tournaments, data.calendarEvents)}
     </div>
 
     <div class="pane" data-tab="lineup">
