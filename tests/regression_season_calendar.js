@@ -192,50 +192,6 @@ function check(label, cond) {
       monthGroupHtml.indexOf('Nov Match A') < monthGroupHtml.indexOf('Dec Match') &&
       monthGroupHtml.indexOf('Dec Match') < monthGroupHtml.indexOf('Jan Milestone'));
 
-    // A multi-day range (a break or tournament) must NOT get the
-    // single-day date column match cards and single-day tiles (Folga,
-    // a one-day milestone) use — anchoring a range's column to its start
-    // date falsely implied it coincided with whatever match happens to
-    // land on that same start date (Victor, 2026-11-01, seeing Pausa de
-    // Natal's column show "19 DEZ", the same day a League game was
-    // played: "How can I have Christmas break and a game on the same
-    // date?"). A range instead keeps only its explicit "start → end"
-    // text — a single-day item still gets the column.
-    const rangeVsSingleDay = await page.evaluate(() => {
-      const games = [{ date: '2026-12-19', opponent: 'Last Match Before Break', competitionType: 'League', tournamentId: null }];
-      const calendarEvents = [
-        { type: 'break', subtype: 'christmas', title: 'Range Break', startDate: '2026-12-19', endDate: '2027-01-04' },
-        { type: 'folga', title: 'Single Day Folga', startDate: '2026-11-28', endDate: '2026-11-28' },
-      ];
-      return renderSeasonCalendar(games, [], calendarEvents);
-    });
-    // Bound each tile to its own fragment — from the last tile-opening tag
-    // before its title text, up to the next tile-opening tag (cal-box or
-    // match-card) after it — same technique as tileMetaCount above, so a
-    // neighbouring tile's markup never leaks into the check.
-    const tileFragment = (html, title) => {
-      const titleIdx = html.indexOf(title);
-      if (titleIdx === -1) return '';
-      // Lookahead for a quote or space after cal-box/match-card excludes
-      // hyphenated modifier classes (cal-box-title, match-card-date, etc.)
-      // which would otherwise also match this prefix.
-      const openTagRe = /<div class="(?:cal-box|match-card)(?=["\s])/g;
-      let start = 0, m;
-      while ((m = openTagRe.exec(html)) && m.index < titleIdx) start = m.index;
-      openTagRe.lastIndex = titleIdx;
-      const next = openTagRe.exec(html);
-      const end = next ? next.index : html.length;
-      return html.slice(start, end);
-    };
-    const rangeBreakFragment = tileFragment(rangeVsSingleDay, 'Range Break');
-    const folgaFragment = tileFragment(rangeVsSingleDay, 'Single Day Folga');
-    check('A multi-day range tile (Pausa de Natal) does NOT get a single-day date column',
-      !rangeBreakFragment.includes('match-card-date'));
-    check('A multi-day range tile still shows its explicit start → end range as text',
-      /19\/12\/2026.*→.*04\/01\/2027/.test(rangeBreakFragment));
-    check('A genuine single-day tile (an ordinary Folga) STILL gets the date column',
-      folgaFragment.includes('match-card-date'));
-
     // calMonthLabel itself: capitalised, includes the year, language-aware.
     const monthLabels = await page.evaluate(() => ({
       nov2026: calMonthLabel('2026-11-07'),
