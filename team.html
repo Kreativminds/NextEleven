@@ -2187,6 +2187,7 @@ function renderClassificationPreviewSlide(classification) {
         ${statItems ? `<div class="cls-preview-stats">${statItems.map(s => `<div class="cls-preview-stat"><b>${s.value}</b><span>${esc(s.label)}</span></div>`).join('')}</div>` : ''}
         ${contextMsg ? `<div class="cls-preview-context">${esc(contextMsg)}</div>` : ''}
       </div>` : ''}
+      ${classification.stale ? `<div class="cls-warning" style="margin:8px 0 0">${tr('cls_stale_warning')}</div>` : ''}
       <div class="cls-preview-cta">
         ${barChartIconSvg()}
         <span class="cls-preview-cta-text">${tr('cls_preview_cta')}</span>
