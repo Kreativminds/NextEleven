@@ -88,6 +88,10 @@
   .leader-row{align-items:flex-start}
   .leader-row .row-name{flex:0 0 auto;white-space:normal}
   .leader-row .row-meta{flex:1;min-width:0;text-align:right;white-space:normal;overflow-wrap:anywhere}
+  .scorer-group-label{font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);padding:9px 0 2px}
+  .scorer-row-top{background:linear-gradient(90deg,#fdf3d9,var(--amber-bg));margin:0 -16px;padding:9px 16px;border-radius:6px;border-bottom:none}
+  .scorer-row-top .row-name{font-size:14px;font-weight:800;color:#8a6d1f}
+  .scorer-row-top .row-meta{font-weight:700;color:#8a6d1f}
   .comp-tag{font-size:10px;color:var(--muted);font-weight:600;flex-shrink:0}
   .live-card{border-color:var(--black);border-width:2px;padding:22px 18px 20px;text-align:center;box-shadow:0 2px 10px rgba(178,51,51,.18)}
   .live-flag{display:inline-flex;align-items:center;gap:7px;color:#fff;background:var(--black);border-radius:20px;padding:5px 14px;font-weight:800;font-size:12px;letter-spacing:1px}
@@ -1130,7 +1134,7 @@ function renderSeasonLeaders(players, finishedGames, gamePlayers) {
     // the English string here even in PT mode; the recap view below
     // already used tr() for the same stat, so this just closes that gap.
     leaderRow(tr('most_apps'), 'started'),
-    leaderRow('Top Scorer', 'goals'),
+    renderGoalscorersList(withStats),
     leaderRow('Most Assists', 'assists'),
   ].filter(r => r);
 
@@ -1141,6 +1145,31 @@ function renderSeasonLeaders(players, finishedGames, gamePlayers) {
     <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_leaders')}</h2>
     ${rows.join('')}
   </div>`;
+}
+
+// Full goalscorers list, ranked — not just the single leader (the other
+// season-leader rows above still collapse to "who's #1", since a full
+// ranking there isn't what parents asked for; goals are the one stat
+// people actually want to see everyone's tally for). Ties for the top
+// spot all get the #1 highlight — a tie for the lead is still the lead,
+// not a reason to pick one name over the other.
+function renderGoalscorersList(withStats) {
+  const scorers = withStats
+    .map(p => ({ name: shortName(p.fullName), goals: p.stats.goals || 0 }))
+    .filter(p => p.goals > 0)
+    .sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name));
+  if (!scorers.length) return '';
+  const topGoals = scorers[0].goals;
+  const rowsHtml = scorers.map(s => {
+    const isTop = s.goals === topGoals;
+    return `<div class="row scorer-row${isTop ? ' scorer-row-top' : ''}">
+      <span class="row-name">${isTop ? '<span aria-hidden="true">🥇</span> ' : ''}${esc(s.name)}</span>
+      <span class="row-meta">${s.goals} ${esc(plWord(s.goals, 'word_goal', 'word_goals'))}</span>
+    </div>`;
+  }).join('');
+  return `
+    <div class="scorer-group-label">${esc(tr('goalscorers_label'))}</div>
+    ${rowsHtml}`;
 }
 
 // ── LANGUAGE ────────────────────────────────────────────────────────────
@@ -1217,6 +1246,7 @@ const STRINGS = {
     no_official:'No League or Cup games played yet.',
     season_leaders:'Season Leaders · League & Cup', top_scorer:'Top Scorer', most_assists:'Most Assists',
     most_apps:'Most Starts', players_tied:'{n} players tied', most_played:'most played',
+    goalscorers_label:'Goalscorers', word_goal:'goal', word_goals:'goals',
     recent_results:'Recent Results', tournament:'Tournament', matches_played:'{n} matches played',
     match_played:'1 match played',
     availability:'Player Availability', available:'Available', unavailable:'Unavailable',
@@ -1298,6 +1328,7 @@ const STRINGS = {
     no_official:'Ainda sem jogos de Campeonato ou Taça.',
     season_leaders:'Destaques da Época · Campeonato e Taça', top_scorer:'Melhor Marcador', most_assists:'Mais Assistências',
     most_apps:'Mais Titularidades', players_tied:'{n} jogadores empatados', most_played:'mais jogada',
+    goalscorers_label:'Marcadores', word_goal:'golo', word_goals:'golos',
     recent_results:'Últimos Resultados', tournament:'Torneio', matches_played:'{n} jogos realizados',
     match_played:'1 jogo realizado',
     availability:'Disponibilidade', available:'Disponíveis', unavailable:'Indisponíveis',
