@@ -63,30 +63,53 @@
   /* Season Calendar — same light-tile "boxed" look as .stat-grid.boxed
      above (reused colour/radius), one tile per calendar item instead of
      a plain divider row, so breaks/Folgas/milestones read as distinct
-     entries at a glance rather than blending into a dense list. A 4px
-     left accent bar (transparent by default) is the shared visual
-     language across both .cal-box tiles and .match-card rows below —
-     green/red/amber tell home/away/pause apart without relying on
-     background colour alone (Victor, 2026-11-01 mockup spec: "Do not
-     rely on colour alone. The icon and text must clearly identify home
-     versus away."). */
-  .cal-box-list{display:flex;flex-direction:column;gap:8px}
+     entries at a glance rather than blending into a dense list. The
+     coloured date chip (see .match-card-date/.cal-box below) is the
+     shared visual language across both .cal-box tiles and .match-card
+     rows — green/red/amber tell home/away/pause apart without relying on
+     colour alone, since the icon and text label next to it say the same
+     thing (Victor, 2026-11-01 mockup spec: "Do not rely on colour alone.
+     The icon and text must clearly identify home versus away."). */
+  .cal-box-list{display:flex;flex-direction:column;gap:10px}
+  /* Legend (Victor, 2026-11-01: "the key — plane is away, house is home
+     and calendar of days — put it at the top"), one line of icon+label
+     pairs sitting above the list, in the same colours the cards below
+     use, so the icons/colours are explained before parents meet them. */
+  .cal-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;font-weight:700;margin:2px 0 10px}
+  .cal-legend-item{display:inline-flex;align-items:center;gap:4px}
+  .cal-legend-item.is-home{color:var(--green)}
+  .cal-legend-item.is-away{color:var(--red)}
+  .cal-legend-item.is-pause{color:var(--amber)}
   /* display:flex so the tile can carry the same .match-card-date column
      as match cards (Victor, 2026-11-01: "the folga dates are not the
      same as the others") — .cal-box-body holds the title/meta/note that
-     used to sit directly in .cal-box. */
-  .cal-box{background:#f5f6f8;border-radius:8px;padding:10px 12px;border-left:4px solid transparent;display:flex;gap:10px;align-items:flex-start}
-  .cal-box-body{flex:1;min-width:0}
+     used to sit directly in .cal-box.
+     Dual colouring + visible rectangle (Victor, 2026-11-01 mockup: "a
+     color for the date and another for the content... the rectangle was
+     visible with a slight drop shadow or line") — the whole tile used to
+     share one flat background with no border; now the date column and
+     the content get their own distinct fill (reusing .match-card-date
+     below for the colour split) and the outer tile gets a real border +
+     soft shadow so it reads as a distinct card, not a flat row.
+     overflow:hidden clips both children to the shared border-radius. */
+  .cal-box{background:var(--surface);border-radius:10px;padding:0;border:1px solid var(--border);box-shadow:0 1px 3px rgba(16,24,40,.08);display:flex;gap:0;align-items:stretch;overflow:hidden}
+  .cal-box-body{flex:1;min-width:0;padding:10px 12px 10px 10px}
   .cal-box-title{font-weight:700;font-size:13px}
   .cal-box-meta{font-size:11px;color:var(--muted);margin-top:2px}
+  /* Tournaments (no cal-pause/cal-milestone class) get a neutral grey
+     date chip — still its own distinct colour from the white content
+     area, just not a semantic one. */
+  .cal-box .match-card-date{background:#eef0f3;color:var(--dark)}
   /* Pauses (Folga/Christmas/Easter) and milestones get their own colour so
      they stand out from ordinary fixtures/tournaments in the merged list,
      reusing the existing badge palette (same amber/green used for W/D/L
-     and status badges elsewhere) rather than introducing new colours. */
-  .cal-box.cal-pause{background:var(--amber-bg);border-left-color:var(--amber)}
+     and status badges elsewhere) rather than introducing new colours. The
+     colour now lives on the date chip (dual-colour per tile) instead of
+     tinting the whole card. */
+  .cal-box.cal-pause .match-card-date{background:var(--amber-bg);color:var(--amber)}
   .cal-box.cal-pause .cal-box-title{color:var(--amber)}
   .cal-box.cal-pause .cal-box-meta{color:var(--amber)}
-  .cal-box.cal-milestone{background:var(--green-bg);border-left-color:var(--green)}
+  .cal-box.cal-milestone .match-card-date{background:var(--green-bg);color:var(--green)}
   .cal-box.cal-milestone .cal-box-title{color:var(--green)}
   .cal-box.cal-milestone .cal-box-meta{color:var(--green)}
   /* Month grouping (Victor, 2026-11-01 mockup): a dark-navy header per
@@ -105,14 +128,19 @@
      colour AND icon AND text label for home/away, never colour alone.
      Opponent/venue text wraps rather than truncates — long names (a
      validation requirement) must stay fully readable on mobile. */
-  .match-card{display:flex;gap:10px;background:var(--surface);border-radius:8px;padding:10px 12px;border-left:4px solid var(--green);position:relative}
-  .match-card.is-away{background:var(--red-bg);border-left-color:var(--red)}
-  .match-card-date{flex:0 0 46px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding-top:2px}
-  .match-card-dow{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase}
+  .match-card{display:flex;gap:0;background:var(--surface);border-radius:10px;padding:0;border:1px solid var(--border);box-shadow:0 1px 3px rgba(16,24,40,.08);position:relative;overflow:hidden}
+  /* Dual colouring (Victor, 2026-11-01 mockup: "a color for the date and
+     another for the content") — the date chip carries the home/away
+     colour (green/red) as its own background; the content area stays a
+     plain, neutral white/surface so the two zones read as distinct
+     blocks within one bordered, shadowed card, not one flat tint. */
+  .match-card-date{flex:0 0 50px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:10px 4px;background:var(--green-bg);color:var(--green)}
+  .match-card.is-away .match-card-date{background:var(--red-bg);color:var(--red)}
+  .match-card-dow{font-size:10px;font-weight:700;text-transform:uppercase;opacity:.85}
   .match-card-daynum{font-size:17px;font-weight:800;line-height:1.1}
-  .match-card-mon{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase}
-  .match-card-time{font-size:10px;color:var(--muted);margin-top:4px;font-weight:600}
-  .match-card-body{flex:1;min-width:0;padding-right:40px}
+  .match-card-mon{font-size:10px;font-weight:700;text-transform:uppercase;opacity:.85}
+  .match-card-time{font-size:10px;margin-top:4px;font-weight:600;opacity:.85}
+  .match-card-body{flex:1;min-width:0;padding:10px 12px 10px 10px;padding-right:40px;background:var(--surface)}
   .match-card-opponent-row{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
   .match-card-opponent{font-weight:700;font-size:13px;overflow-wrap:anywhere}
   .match-card-ha{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:11px;margin-top:4px;color:var(--dark)}
@@ -859,6 +887,11 @@ function renderSeasonCalendar(games, tournaments, calendarEvents) {
   const hasUpcomingGame = upcoming.some(it => it.kind === 'game');
   return `<div class="card">
     <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_calendar_title')}</h2>
+    <div class="cal-legend">
+      <span class="cal-legend-item is-home"><span aria-hidden="true">🏠</span> ${esc(tr('home'))}</span>
+      <span class="cal-legend-item is-away"><span aria-hidden="true">✈️</span> ${esc(tr('away'))}</span>
+      <span class="cal-legend-item is-pause"><span aria-hidden="true">📅</span> ${esc(tr('cal_legend_pause'))}</span>
+    </div>
     <div class="cal-box-list" id="season-calendar-list">${upcoming.length ? calRenderByMonth(upcoming, box) : `<p class="row-meta" style="padding:4px 0">${tr('cal_no_upcoming')}</p>`}</div>
     ${past.length ? `
     <div class="cal-box-list" id="season-calendar-rest" style="display:none;margin-top:8px">${calRenderByMonth(past, box)}</div>
@@ -1568,6 +1601,7 @@ const STRINGS = {
     round_label:'Round {n}',
     show_less:'Show less',
     season_calendar_title:'Season Calendar', view_full_calendar:'View past events',
+    cal_legend_pause:'No football',
     cal_no_upcoming:'No upcoming matches, tournaments or breaks.',
     cal_folga_note:'A friendly may still be arranged on this date — wait for further notice from the coach.',
     cal_break_note:'A tournament may be organized during this period — wait for further notice from the coach.',
@@ -1656,6 +1690,7 @@ const STRINGS = {
     round_label:'Jornada {n}',
     show_less:'Mostrar menos',
     season_calendar_title:'Calendário da Época', view_full_calendar:'Ver eventos passados',
+    cal_legend_pause:'Sem futebol',
     cal_no_upcoming:'Sem jogos, torneios ou pausas por vir.',
     cal_folga_note:'Pode ainda ser marcado um amigável nesta data — aguarda indicação do treinador.',
     cal_break_note:'Pode ser organizado um torneio durante este período — aguarda indicação do treinador.',
