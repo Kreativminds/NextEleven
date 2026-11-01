@@ -8,6 +8,111 @@ Newest entry on top.
 
 ---
 
+## 2026-11-01 — Scheduled nightly run
+
+- lastInspectedCommit: 42ff6e3
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process — this is now
+  the 18th night running (2026-10-15 through tonight) the scheduled
+  prompt has hardcoded this same stale claim. That EN string was fixed
+  2026-10-12 via PR #1 and has been in "Resolved" ever since; BUGS.md's
+  real Open section was empty at the start of tonight's run. Went with
+  real repo state, per every prior run since 10-15 — flagging again that
+  whatever generates the scheduled prompt should stop hardcoding this.
+- Scope: diff since a5cc00f (last run's lastInspectedCommit) touched
+  `index.html`, `team.html` and `public-stats-core.js` via ~21 real
+  commits (excluding merges/version-bumps) — a very large, feature-heavy
+  interactive session today (2026-11-01): a brand-new multi-day "Season
+  Calendar" feature built across ~15 commits (Folga detection,
+  Christmas/Easter break computation, month grouping, boxed tiles on the
+  Parents Page, a merge of Próximos Jogos into Calendário da Época, a
+  fix-then-deliberate-same-day-revert of a single-day-column date-format
+  edge case), guest/temp players folded into Marcadores/Assistências/Mais
+  Titularidades (with a new `tempPlayerId` RPC field), full
+  goalscorer/assister lists (not just the leader), round/Jornada exposed
+  on the public RPC, a classification publish-date/source fix, and a
+  production RPC hardening fix for calendar events leaking past a stuck
+  `deleted_at`. All made directly to `main` outside this agent, each
+  commit citing explicit Victor direction/confirmation or a production
+  incident it was responding to. Zero-AI early exit did not fire (app
+  code changed across all three files), so triage ran.
+- Checks run:
+  - `check-syntax.js` → OK (both script blocks parse).
+  - `check-i18n-parity.js` → OK (2023/2023 keys, no gaps).
+  - `tests/regression_season_calendar.js` (new tonight, directly
+    relevant) → 52/52 pass.
+  - `tests/regression_marcadores_guests.js` (new tonight, directly
+    relevant) → 8/8 pass.
+- Triage (haiku): given only the ~21 commit messages, diffstat, check/test
+  outputs, and the empty BUGS.md Open section, returned 5 candidates:
+  P1 whether the RPC soft-delete hardening and new round field handle
+  exclusion/nulls correctly; P1 whether guest inclusion plus the staged
+  Caio migration could double-count or create duplicate leaderboard
+  entries, and whether the ranked-list changes handle ties; P2 whether
+  the multi-day range date logic still has coverage after its fix was
+  reverted same day; P2 whether the new Folga/break/Easter date rules
+  handle inclusive/exclusive boundaries and timezones consistently; P2
+  whether the new `eventId` key registered in `getKey()` could collide
+  with another store's id field in the same lookup table.
+- Orchestrator follow-through: read the actual migration SQL, commits and
+  code for each candidate.
+  - RPC hardening / round field: not real as a defect. Read the full
+    `009_harden_public_rpc_against_stuck_soft_deletes.sql` — the
+    `calendarEvents` subquery now excludes a row on either `deleted_at`
+    *or* `payload->>'isDeleted'='true'`, exactly the belt-and-suspenders
+    fix the commit describes for a real incident it already fixed in
+    prod. `round` is a plain nullable text passthrough; the "omits round
+    text entirely when g.round is absent" case is explicitly covered by
+    tonight's own regression suite and passes.
+  - `getKey()` eventId: not real. It's a per-store-keyed lookup table
+    (`keys[store] || 'id'`), not a shared ID namespace — `eventId` for
+    `seasonCalendarEvents` can't collide with another store's key. The
+    commit itself already discloses the one real follow-up (pre-existing
+    records pushed under the old broken key need manual re-add), not
+    something this agent found new.
+  - Multi-day range revert: confirmed clean. `git diff 249f864 78ff70d --
+    team.html tests/regression_season_calendar.js` is empty — the revert
+    is a complete, residue-free undo of 2825fbf, back to the exact
+    pre-fix state. That's an explicit same-day human decision (merge,
+    then deliberately revert), not left half-done; not pursued further.
+  - Folga/break/Easter boundaries: not pursued as a new concern — already
+    extensively covered by tonight's 52-case regression suite (Easter
+    Sunday computed correctly for 3 separate years, break-vs-Folga
+    suppression, month grouping, past/future partitioning). No gap found
+    beyond what's already tested.
+  - **Real, confirmed, not auto-fixable**: guest inclusion (5f8f6ec) is
+    working exactly as designed, but it makes a pre-existing, previously-
+    invisible data gap user-visible on the live Parents Page right now.
+    `temporaryPlayers.tempPlayerId=1` ("Caio Andrade") was only ever
+    partially converted to permanent player 134 — 4 `game_players` rows
+    (10 goals, games 250-253), 5 `goal_events` and 1 `card_events` row
+    are still under the old guest identity (confirmed by reading
+    `caio_unconverted_temp_rows_backup_2026-11-01.json` directly — temp
+    player name is literally "Caio Andrade"). Guests were excluded from
+    public leaderboards before tonight, so this never showed; tonight's
+    feature folds every guest into the same ranked lists
+    (`renderSeasonLeaders`'s `guestStats`/`pStats`/`withStats` pattern in
+    team.html, confirmed by reading the code — no dedup against an
+    already-converted player of the same name exists or is intended to).
+    Net effect: "Caio Andrade" now shows twice in Marcadores/Assistências
+    — once as guest (10 goals) and once as roster player (1 goal). The
+    fix is already prepared and dry-run tested as
+    `supabase/migrations_pending/004_merge_caio_unconverted_guest_goals.sql`
+    (re-points all 10 rows to playerId 134, retires the temp player) —
+    this agent never applies production Supabase changes, so this is
+    flagged for your approval, not fixed tonight.
+- Fixed: none (0/2 of cap used — every real finding was either already a
+  settled same-day human decision, already self-disclosed by its own
+  commit, or a data/migration issue outside this agent's safety rules).
+- Needs your approval: see "Caio Andrade" duplicate-identity entry added
+  to BUGS.md tonight — applying the already-staged, already-tested
+  migration 004 resolves it.
+- Pending: none (every triage candidate was run to ground tonight, not
+  deferred for lack of time; ~5 min of the ~20 min budget used).
+- Known Unresolved housekeeping: none — nothing in tonight's diff touches
+  any carried-forward item; list unchanged.
+
 ## 2026-10-31 — Scheduled nightly run
 
 - lastInspectedCommit: a5cc00f
