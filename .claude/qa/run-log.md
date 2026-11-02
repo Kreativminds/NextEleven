@@ -8,6 +8,78 @@ Newest entry on top.
 
 ---
 
+## 2026-11-02 — Scheduled nightly run
+
+- lastInspectedCommit: 8b64fe0
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt again stated BUGS.md had exactly one
+  Open entry (`integ_fix_review`, i18n, P3) — this is now the 19th night
+  running (2026-10-15 through tonight) that claim has been stale. That
+  string was fixed 2026-10-12 (PR #1) and has been in "Resolved" ever
+  since; BUGS.md's real Open section tonight was the "Caio Andrade"
+  duplicate-identity entry (flagged last night, 2026-11-01, awaiting
+  Victor's approval on the staged migration — unchanged tonight). Went
+  with real repo state, per every prior run since 10-15.
+- Scope: diff since 42ff6e3 (last run's lastInspectedCommit) touched
+  `index.html`, `css/nexteleven.css` and `team.html` via 3 real commits
+  (excluding the lock/run-log bookkeeping commits either side) — all made
+  in one interactive session today, not by this agent: the application-
+  wide dark mode feature (Claro/Escuro/Automático, c645a0e), a same-day
+  readability follow-up (08876d9), and a same-day P0 fix (8b64fe0) for a
+  malformed anti-FOUC comment (closed with `*/` instead of `-->`) that
+  had silently swallowed the `nexteleven.css` `<link>` tag for part of
+  the day. Zero-AI early exit did not fire (app files changed), so triage
+  ran.
+- Checks run:
+  - `check-syntax.js` → OK (all 3 script blocks parse).
+  - `check-i18n-parity.js` → OK (2025/2025 keys, no gaps).
+  - `tests/regression_caio_and_cards.js` → 6/6 pass.
+  - `tests/regression_marcadores_guests.js` → 8/8 pass.
+  - `tests/regression_season_calendar.js` → 52/52 pass.
+  - No dark-mode-specific automated test exists yet.
+- Triage (haiku): given the 3 commit messages/diffstats, the deterministic-
+  check outputs, and the BUGS.md Open section, returned 4 candidates, none
+  P0/P1: P2 `check-syntax.js` doesn't cover HTML-comment well-formedness,
+  so it wouldn't have caught tonight's P0 comment bug; P2 "66 regression
+  checks claimed vs. only 58 shown passing"; P2 confirm the new theme-
+  bootstrap `localStorage` read is wrapped in `try/catch`; P3 Claro
+  "pixel-identical" and dark-mode status-chip contrast asserted by
+  reasoning, not a screenshot diff.
+- Orchestrator follow-through:
+  - Test-coverage gap: **real**. Confirmed `check-syntax.js` only regexes
+    `<script>` blocks. Wrote and verified a new deterministic check,
+    `check-html-comments.js` (balances `<!--`/`-->` counts, flags a
+    comment whose body contains a nested `<!--`, and specifically checks
+    `nexteleven.css`'s `<link>` isn't swallowed) — confirmed it passes
+    clean on current HEAD and correctly flags the real bug when run
+    against the pre-fix revision (08876d9).
+  - "66 vs 58" test count: **false positive**. My own earlier `tail -3`/
+    `tail -5` truncation only showed the last few `PASS` lines per file —
+    actual counts are 6 + 8 + 52 = 66, matching the commit's claim exactly.
+  - `localStorage` try/catch: **false positive**. Read both bootstrap
+    scripts directly (index.html L15-24, team.html L25-34) — both already
+    wrap the read in `try/catch` with an `'auto'` fallback.
+  - Claro/contrast screenshot verification: not pursued — speculative, no
+    concrete defect found, no automated visual test exists for either
+    theme. Not added to Known Unresolved as a open risk; just noting no
+    action was taken.
+- Fixed (1/2 of cap used):
+  - Added `.claude/qa/check-html-comments.js` as a third deterministic
+    check, wired into this very file (next11-nightly-qa.md) so future
+    runs actually invoke it. No app-code file (index.html/css/
+    nexteleven.css/team.html/public-stats-core.js) touched — routed
+    through the maintenance-branch + PR process anyway out of caution,
+    since it changes this agent's own operating spec. Commit 1cc69dd on
+    `maintenance/nightly-2026-11-02`. PR:
+    https://github.com/Kreativminds/NextEleven/pull/34
+- Needs your approval: none new tonight. "Caio Andrade" duplicate-identity
+  entry from 2026-11-01 remains open in BUGS.md, unchanged, still awaiting
+  your call on migration 004.
+- Pending: none (every triage candidate was run to ground tonight; ~8 min
+  of the ~20 min budget used).
+- Known Unresolved housekeeping: none — nothing in tonight's diff touches
+  any carried-forward item; list unchanged.
+
 ## 2026-11-01 — Scheduled nightly run
 
 - lastInspectedCommit: 42ff6e3
