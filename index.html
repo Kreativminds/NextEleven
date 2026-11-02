@@ -7,10 +7,25 @@
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NextEleven</title>
+<!-- Dark mode (Claro/Escuro/Automático): set the data-theme attribute
+     before the stylesheet loads/paints, so the correct theme renders on
+     first paint with no flash of the wrong one. Automático's live
+     reaction to OS changes needs no script at all — it's handled by the
+     @media(prefers-color-scheme) rules in css/nexteleven.css. */
+<script>
+(function(){
+  try{
+    var v = localStorage.getItem('ne_theme');
+    document.documentElement.setAttribute('data-theme', (v==='light'||v==='dark') ? v : 'auto');
+  }catch(e){
+    document.documentElement.setAttribute('data-theme','auto');
+  }
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/nexteleven.css?v=2942482db489">
+<link rel="stylesheet" href="css/nexteleven.css?v=360a119b7d4c">
 </head>
 <body>
 
@@ -167,6 +182,7 @@
     <button class="nav-link" data-section="settings" data-nav-icon="settings"><span data-nav-label>Settings</span></button>
     <button class="nav-link" data-section="help" data-nav-icon="help"><span data-nav-label>Help</span></button>
     <button class="nav-link" id="adminNavBtn" data-section="admin" data-nav-icon="admin" style="display:none;background:rgba(255,200,0,.15);color:#ffd700"><span data-nav-label>Admin</span></button>
+    <button class="nav-account-btn" id="themeToggleBtn" data-theme-toggle onclick="NeTheme.cycle()" title="Claro / Escuro / Automático">🌓</button>
     <button class="nav-account-btn" id="navAccountBtn" onclick="toggleNavAccountMenu(event)" title="">&#128100;</button>
   </div>
   <button class="hamburger" id="hamburger" aria-label="Menu">
@@ -187,6 +203,7 @@
   <button class="nav-link" data-section="settings" data-nav-icon="settings"><span data-nav-label>Settings</span></button>
   <button class="nav-link" data-section="help" data-nav-icon="help"><span data-nav-label>Help</span></button>
   <button class="nav-link" id="adminNavBtnMobile" data-section="admin" data-nav-icon="admin" style="display:none;color:#ffd700"><span data-nav-label>Admin</span></button>
+  <button class="nav-link" onclick="NeTheme.cycle()"><span data-theme-toggle>🌓</span> <span data-i18n="set_appearance_title">Appearance</span></button>
   <div style="border-top:1px solid rgba(255,255,255,.15);margin-top:6px;padding-top:6px">
     <div id="mobileAccountInfo" style="padding:8px 12px;font-size:11px;color:#9aa5b1"></div>
     <button class="nav-link" onclick="handleLogout()" data-nav-icon="log-out"><span data-i18n="acc_btn_logout">Log Out</span></button>
@@ -690,6 +707,35 @@
 
 <script>
 'use strict';
+
+// ══════════════════════════════════════════════════════════════════════════════
+// THEME (Claro / Escuro / Automático) — dark-mode controller.
+// Preference is saved to localStorage only; no account/DB involvement.
+// Automático's live reaction to OS changes is handled entirely by the
+// @media(prefers-color-scheme) rules in css/nexteleven.css — this object
+// only persists the manual choice and keeps visible theme controls (the
+// compact header toggle, the Settings segmented control) in sync with it.
+// The <head> inline script (before the stylesheet) applies the saved
+// choice before first paint to avoid a flash of the wrong theme.
+// Deliberately duplicated in team.html rather than factored into a
+// shared file — these are two independent, standalone pages.
+// ══════════════════════════════════════════════════════════════════════════════
+const NeTheme = {
+  KEY: 'ne_theme',
+  get() { try { const v = localStorage.getItem(this.KEY); return (v === 'light' || v === 'dark') ? v : 'auto'; } catch(e) { return 'auto'; } },
+  icon(theme) { return theme === 'light' ? '☀️' : theme === 'dark' ? '🌙' : '🌓'; },
+  apply(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    document.querySelectorAll('[data-theme-toggle]').forEach(btn => { btn.textContent = this.icon(theme); });
+    document.querySelectorAll('[data-theme-option]').forEach(btn => { btn.setAttribute('aria-pressed', btn.getAttribute('data-theme-option') === theme ? 'true' : 'false'); });
+  },
+  set(theme) { try { localStorage.setItem(this.KEY, theme); } catch(e) {} this.apply(theme); },
+  cycle() {
+    const order = ['auto', 'light', 'dark'];
+    this.set(order[(order.indexOf(this.get()) + 1) % order.length]);
+  },
+};
+document.addEventListener('DOMContentLoaded', () => NeTheme.apply(NeTheme.get()));
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CONFIG
@@ -6695,6 +6741,10 @@ const TR = {
     opp_dropdown_no_match:'No match — type a name and tap below to add it',
     opp_import_dupes_skipped:'already in catalogue, skipped',
 
+    // ── APPEARANCE / THEME ──
+    set_appearance_title:'Appearance',
+    set_appearance_hint:'Choose how NextEleven looks on this device.',
+
     // ── ACCOUNT / AUTH ──
     acc_title:'Account',
     acc_logged_in_as:'Logged in as',
@@ -8168,6 +8218,10 @@ const TR = {
     opp_dropdown_add_new:'+ Adicionar novo adversário:',
     opp_dropdown_no_match:'Sem correspondência — escreva um nome e toque abaixo para o adicionar',
     opp_import_dupes_skipped:'já no catálogo, ignorado(s)',
+
+    // ── APPEARANCE / THEME ──
+    set_appearance_title:'Aparência',
+    set_appearance_hint:'Escolha o aspeto do NextEleven neste dispositivo.',
 
     // ── ACCOUNT / AUTH ──
     acc_title:'Conta',
@@ -21271,6 +21325,23 @@ const Render = (() => {
     };
 
     el.innerHTML = `
+      <!-- Appearance — dark mode. Always visible at the top, same as
+           Account below: it's a device-level preference, not something
+           that belongs inside one of the data/season tabs. Labels are
+           deliberately Claro/Escuro/Automático regardless of UI language
+           (NEXT ELEVEN dark-mode spec). -->
+      <div class="settings-section">
+        <h3>&#127762; ${I18n.t('set_appearance_title')}</h3>
+        <div class="card">
+          <p style="font-size:12px;color:var(--muted);margin:0 0 10px">${I18n.t('set_appearance_hint')}</p>
+          <div class="theme-seg" role="group" aria-label="${I18n.t('set_appearance_title')}">
+            <button type="button" class="theme-seg-btn" data-theme-option="light" onclick="NeTheme.set('light')">Claro</button>
+            <button type="button" class="theme-seg-btn" data-theme-option="dark" onclick="NeTheme.set('dark')">Escuro</button>
+            <button type="button" class="theme-seg-btn" data-theme-option="auto" onclick="NeTheme.set('auto')">Automático</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Account — always visible at the top of Settings, not buried in a sub-tab -->
       <div class="settings-section">
         <h3>&#128100; ${I18n.t('acc_title')}</h3>
@@ -21723,6 +21794,7 @@ const Render = (() => {
     updateSeasonNamePreview();
     renderAccountCard();
     renderShareTeamCard();
+    NeTheme.apply(NeTheme.get()); // sync the freshly-rendered Appearance control's pressed state
 
     // Update sync status bar and pending count
     Sync.updateSyncUI();

@@ -1,13 +1,15 @@
 /* ── RESET & BASE ─────────────────────────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;width:100%;font-family:'Montserrat',Arial,sans-serif;font-size:14px;background:#EEF2F8;color:#111;overflow-x:hidden;max-width:100vw;overscroll-behavior-x:none}
+html,body{height:100%;width:100%;font-family:'Montserrat',Arial,sans-serif;font-size:14px;background:var(--bg);color:var(--text);overflow-x:hidden;max-width:100vw;overscroll-behavior-x:none}
 button{font-family:'Montserrat',Arial,sans-serif;cursor:pointer}
-input,select,textarea{font-family:'Montserrat',Arial,sans-serif;font-size:13px}
-a{color:#111;text-decoration:none}
+input,select,textarea{font-family:'Montserrat',Arial,sans-serif;font-size:13px;background:var(--surface);color:var(--text)}
+a{color:var(--text);text-decoration:none}
 
 /* ── VARIABLES ────────────────────────────────────────────────────────────── */
 :root{
-  /* NextEleven brand palette */
+  /* NextEleven brand palette — unchanged between Claro/Escuro (Victor,
+     2026-11-02 dark-mode spec: "Preserve the existing NextEleven red and
+     navy brand identity"). */
   --black:#B23333;
   --black-dark:#8f2828;
   --navy:#0F1E2E;
@@ -18,18 +20,132 @@ a{color:#111;text-decoration:none}
   --blue:#0f3f8f;
   --blue-dark:#0a2c66;
   --blue-bg:#d6e3fa;
+  --blue-bg-hover:#c2d4f2;
   --dark:#333333;
   --mid:#6B7280;
   --muted:#999999;
   --border:#dddddd;
   --border-dark:#bbbbbb;
+  --border-light:#eeeeee;
   --bg:#EEF2F8;
   --surface:#ffffff;
+  /* "Elevated" floating panels (dropdown menus, dialogs, modal forms) —
+     identical to --surface in Claro (no light-mode change), given its own
+     variable so dark mode can lift them a shade above --surface, per the
+     dark-mode colour table. */
+  --surface-elevated:#ffffff;
+  /* A step between --bg and --surface for muted section backgrounds
+     (kanban columns) that currently sit on their own near-white tone. */
+  --surface-alt:#f8f8f8;
   --highlight:#f5e9e9;
+  /* Secondary body copy (roadmap card descriptions) that was previously a
+     one-off #666, distinct enough from --muted (#999) to need its own
+     variable rather than being folded into it. */
+  --text-tertiary:#666666;
+  /* Primary page text — previously hardcoded directly on html/body/a
+     instead of going through a variable, so dark mode had nothing to
+     override. */
+  --text:#111111;
+  /* Player Card popup's dark-on-light fact values (#222) — distinct from
+     --dark (#333) by one shade, kept exact rather than folded in so Claro
+     stays pixel-identical. */
+  --pc-text:#222222;
+  /* Round icon chip background (Player Card facts, position pill) — same
+     principle as --surface-alt: cosmetically identical to its previous
+     hardcoded value, now overridable. */
+  --icon-bg:#f0f0f0;
+  /* Who Played row's "currently selected" tint — pale pink in Claro, a
+     subtle brand-red wash in Escuro rather than staying pale-on-dark. */
+  --active-highlight:#fbf3f3;
+  /* Danger Zone's pale red-tinted panel — same "subtle brand-red wash in
+     Escuro" treatment as --active-highlight above. */
+  --danger-border:#e8c8c8;
+  --danger-bg:#fffafa;
   --radius:3px;
   --shadow:0 1px 3px rgba(0,0,0,0.1);
   --nav-h:52px;
 }
+
+/* ── DARK MODE (Claro / Escuro / Automático) ─────────────────────────────────
+   Victor, 2026-11-02: "Implement a complete, consistent dark mode... use
+   Automático as the default when no preference has been saved... respond
+   to changes in the device's appearance setting without requiring a page
+   refresh."
+
+   Three states are driven by one html[data-theme] attribute, set by a
+   synchronous inline script in <head> (before this stylesheet loads, so
+   there is no flash of the wrong theme) from the saved localStorage
+   preference — "light", "dark", or "auto" (the default when nothing has
+   been saved yet):
+     - data-theme="light" → forces the variables below to stay unset; Claro
+       always matches today's existing appearance exactly.
+     - data-theme="dark"  → the dark variable block applies unconditionally.
+     - data-theme="auto" (or no attribute at all) → the @media block below
+       applies the SAME dark variables, but only when the OS itself prefers
+       dark — and because @media (prefers-color-scheme) is a live media
+       query, not a one-time JS read, Automático reacts instantly to an OS
+       theme change with no page refresh and no JS listener needed.
+   The two blocks are intentionally identical in content — plain CSS has
+   no way to share them without a second selector, and duplicating a
+   values-only variable list is far cheaper than duplicating component
+   rules, which is why every component below targets a variable instead of
+   its own colour. */
+:root[data-theme="dark"]{
+  --bg:#111827;
+  --surface:#1F2937;
+  --surface-elevated:#253247;
+  --surface-alt:#1a2432;
+  --text:#F9FAFB;
+  --dark:#F9FAFB;
+  --pc-text:#F9FAFB;
+  --mid:#B6C3D6;
+  --muted:#B6C3D6;
+  --text-tertiary:#B6C3D6;
+  --border:#374151;
+  --border-dark:#4b5563;
+  --border-light:#2b3544;
+  --icon-bg:#2b3544;
+  --highlight:#27374a;
+  --blue:#5b8def;
+  --blue-dark:#9db8e8;
+  --blue-bg:#1c3252;
+  --blue-bg-hover:#234266;
+  --active-highlight:rgba(178,51,51,.18);
+  --danger-border:#5c2f2f;
+  --danger-bg:rgba(178,51,51,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]):not([data-theme="dark"]){
+    --bg:#111827;
+    --surface:#1F2937;
+    --surface-elevated:#253247;
+    --surface-alt:#1a2432;
+    --text:#F9FAFB;
+    --dark:#F9FAFB;
+    --pc-text:#F9FAFB;
+    --mid:#B6C3D6;
+    --muted:#B6C3D6;
+    --text-tertiary:#B6C3D6;
+    --border:#374151;
+    --border-dark:#4b5563;
+    --border-light:#2b3544;
+    --icon-bg:#2b3544;
+    --highlight:#27374a;
+    --blue:#5b8def;
+    --blue-dark:#9db8e8;
+    --blue-bg:#1c3252;
+    --blue-bg-hover:#234266;
+    --active-highlight:rgba(178,51,51,.18);
+    --danger-border:#5c2f2f;
+    --danger-bg:rgba(178,51,51,.08);
+  }
+}
+/* Rows whose background intentionally stays a fixed pale tint in both
+   themes (import preview ok/warn/err) must keep fixed dark text too — the
+   tint and the text are a self-contained pair, not something that should
+   follow --dark's theme flip. Written once, outside any theme block, so
+   it is correct in Claro, Escuro and Automático alike with no duplication. */
+.row-ok td,.row-warn td,.row-err td{color:#333}
 
 /* ── LAYOUT ───────────────────────────────────────────────────────────────── */
 #app{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh;max-width:100vw;overflow-x:hidden}
@@ -77,7 +193,7 @@ nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--nav
 .hamburger{display:none;flex-direction:column;gap:4px;cursor:pointer;padding:6px;background:none;border:none}
 .hamburger span{display:block;width:22px;height:2px;background:#fff;transition:.2s}
 .mobile-menu{display:none;position:fixed;top:var(--nav-h);left:0;right:0;background:var(--navy);z-index:99;padding:8px;flex-direction:column;gap:2px}
-.nav-account-menu{position:fixed;top:var(--nav-h);right:12px;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.18);z-index:101;min-width:220px;padding:14px}
+.nav-account-menu{position:fixed;top:var(--nav-h);right:12px;background:var(--surface-elevated);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.18);z-index:101;min-width:220px;padding:14px}
 .nav-account-menu .nam-email{font-size:12px;font-weight:700;color:var(--dark);word-break:break-all;margin-bottom:2px}
 .nav-account-menu .nam-note{font-size:11px;color:var(--muted);margin-bottom:10px}
 .mobile-menu.open{display:flex}
@@ -128,7 +244,7 @@ nav{position:fixed;top:0;left:0;right:0;height:var(--nav-h);background:var(--nav
 .table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:auto;box-shadow:var(--shadow);margin-bottom:16px}
 table{width:100%;border-collapse:collapse;min-width:400px}
 th{background:var(--blue-bg);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--blue-dark);padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
-th:hover{background:#c2d4f2}
+th:hover{background:var(--blue-bg-hover)}
 th.sort-asc::after{content:" ▲";font-size:9px}
 th.sort-desc::after{content:" ▼";font-size:9px}
 td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;color:var(--dark);vertical-align:middle}
@@ -156,7 +272,7 @@ tr:hover td{background:var(--highlight)}
 .btn:hover{opacity:.85}
 .btn-primary{background:var(--black);color:#fff}
 .btn-secondary{background:none;border:1px solid var(--blue);color:var(--blue)}
-.btn-danger{background:none;border:1px solid #ddd;color:#b03030;font-size:11px;padding:5px 10px}
+.btn-danger{background:none;border:1px solid var(--border);color:#b03030;font-size:11px;padding:5px 10px}
 .btn-sm{padding:4px 9px;font-size:11px}
 .btn-icon{padding:5px 8px;font-size:13px}
 .btn-group{display:flex;gap:8px;flex-wrap:wrap}
@@ -168,7 +284,7 @@ tr:hover td{background:var(--highlight)}
 .form-group{display:flex;flex-direction:column;gap:4px}
 .form-group.full{grid-column:1/-1}
 .form-group label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
-.form-group input,.form-group select,.form-group textarea{border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;font-size:13px;color:var(--black);background:#fff;transition:border-color .15s}
+.form-group input,.form-group select,.form-group textarea{border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;font-size:13px;color:var(--black);background:var(--surface);transition:border-color .15s}
 .form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--black)}
 .form-group textarea{resize:vertical;min-height:70px}
 .form-group input[type=checkbox]{width:16px;height:16px;cursor:pointer;margin-top:2px}
@@ -221,7 +337,7 @@ tr:hover td{background:var(--highlight)}
 /* ── WHO PLAYED LIST ── */
 .who-played-list{display:flex;flex-direction:column;gap:6px}
 .wp-row{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:6px;background:var(--surface);overflow:hidden;transition:border-color .15s,background .15s}
-.wp-row.wp-active{border-color:var(--black);background:#fbf3f3}
+.wp-row.wp-active{border-color:var(--black);background:var(--active-highlight,#fbf3f3)}
 .wp-row.wp-unavailable{opacity:.55;background:var(--bg)}
 .wp-row.wp-unavailable .wp-info{cursor:not-allowed}
 .wp-status-pill{flex-shrink:0;white-space:nowrap;margin-left:auto;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;background:#fde8e8;color:#b03030}
@@ -231,7 +347,7 @@ tr:hover td{background:var(--highlight)}
 .wp-name{flex:1;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:80px}
 .wp-pos{font-size:11px;color:var(--muted)}
 .wp-role-toggle{display:flex;gap:6px;padding:0 14px 12px}
-.wp-role-btn{flex:1;padding:8px;border:1px solid var(--border);border-radius:5px;background:#fff;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
+.wp-role-btn{flex:1;padding:8px;border:1px solid var(--border);border-radius:5px;background:var(--surface);font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
 .wp-role-btn.wp-role-active{background:var(--black);color:#fff;border-color:var(--black)}
 .wp-role-pill{flex-shrink:0;white-space:nowrap;padding:4px 10px;border-radius:12px;font-size:10px;font-weight:700;border:none;cursor:pointer;margin-left:auto}
 .wp-role-starter{background:var(--black);color:#fff}
@@ -262,7 +378,7 @@ tr:hover td{background:var(--highlight)}
 .goal-info{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
 .badge-assist-tag{font-size:10px;font-weight:700;background:#e8f0fe;color:#1a56c4;padding:2px 7px;border-radius:3px;flex-shrink:0}
 .goal-stepper{display:flex;align-items:center;gap:10px;flex-shrink:0}
-.stepper-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:#fff;font-size:18px;font-weight:700;color:var(--dark);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.stepper-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:var(--surface);font-size:18px;font-weight:700;color:var(--dark);cursor:pointer;display:flex;align-items:center;justify-content:center}
 .stepper-btn:disabled{opacity:.3;cursor:not-allowed}
 .stepper-btn-add{background:var(--black);color:#fff;border-color:var(--black)}
 .stepper-count{font-size:18px;font-weight:700;min-width:24px;text-align:center}
@@ -306,11 +422,11 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .leader-name{font-size:13px;font-weight:700;margin-bottom:6px;white-space:normal;line-height:1.2}
 .leader-stat-val{font-size:30px;font-weight:800;line-height:1}
 .leader-stat-lbl{font-size:9px;font-weight:700;letter-spacing:1px;opacity:.85;margin-top:2px;text-transform:uppercase}
-.leader-feature-photo{width:90px;flex-shrink:0;background:#ddd;position:relative;overflow:hidden}
+.leader-feature-photo{width:90px;flex-shrink:0;background:var(--border);position:relative;overflow:hidden}
 .leader-feature-photo img{width:100%;height:100%;object-fit:cover;display:block}
 .leader-photo-fallback{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#fff;background:linear-gradient(135deg,#8a8f98,#6b7280)}
 .leader-list-card{padding:4px 14px!important}
-.leader-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #eee}
+.leader-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light)}
 .leader-row:last-child{border-bottom:none}
 .leader-rank{font-size:12px;color:#999;font-weight:700;width:16px;flex-shrink:0}
 .leader-row-name{flex:1;font-size:13px;font-weight:700;color:var(--dark);white-space:normal;line-height:1.2}
@@ -351,7 +467,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .info-row:last-child{border-bottom:none}
 .info-row .ir-label{color:var(--muted);font-size:12px}
 .info-row .ir-value{font-weight:600}
-.danger-zone{border:1px solid #e8c8c8;border-radius:var(--radius);padding:16px;background:#fffafa}
+.danger-zone{border:1px solid var(--danger-border);border-radius:var(--radius);padding:16px;background:var(--danger-bg)}
 /* Danger Zone tab — visually distinguished from the nine benign Settings
    tabs so a destructive area isn't identical to Brand Assets. Colour only:
    position, label, order, switching and every confirmation flow are
@@ -369,18 +485,18 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 
 /* ── ADMIN / ROADMAP ─────────────────────────────────────────────────────── */
 .kanban-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;align-items:start}
-.kanban-col{background:#f8f8f8;border-radius:4px;padding:10px}
+.kanban-col{background:var(--surface-alt);border-radius:4px;padding:10px}
 .kanban-col-header{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#fff;padding:6px 10px;border-radius:3px;margin-bottom:10px;text-align:center}
 .kanban-col-header.backlog{background:#999}
 .kanban-col-header.in-progress{background:#1a56c4}
 .kanban-col-header.testing{background:#b07a00}
 .kanban-col-header.deployed{background:#2a7a3b}
 .kanban-col-header.cancelled{background:#b03030}
-.roadmap-card{background:#fff;border:1px solid #ddd;border-radius:3px;padding:10px;margin-bottom:8px;cursor:pointer;transition:box-shadow .15s}
+.roadmap-card{background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:10px;margin-bottom:8px;cursor:pointer;transition:box-shadow .15s}
 .roadmap-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.12)}
-.roadmap-card .rc-title{font-size:12px;font-weight:700;margin-bottom:4px}
-.roadmap-card .rc-meta{font-size:10px;color:#999;display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
-.roadmap-card .rc-desc{font-size:11px;color:#666;margin-top:4px}
+.roadmap-card .rc-title{font-size:12px;font-weight:700;margin-bottom:4px;color:var(--text)}
+.roadmap-card .rc-meta{font-size:10px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.roadmap-card .rc-desc{font-size:11px;color:var(--text-tertiary);margin-top:4px}
 .type-badge{padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700}
 .type-Bug{background:#fde8e8;color:#b03030}
 .type-Feature{background:#e8f0fe;color:#1a56c4}
@@ -395,7 +511,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .priority-P5{color:#999}
 .rm-form-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;z-index:300;overflow-y:auto;padding:20px}
 .rm-form-overlay.open{display:flex}
-.rm-form{background:#fff;border-radius:4px;width:680px;max-width:95vw;padding:24px;box-shadow:0 8px 40px rgba(0,0,0,.2)}
+.rm-form{background:var(--surface-elevated);border-radius:4px;width:680px;max-width:95vw;padding:24px;box-shadow:0 8px 40px rgba(0,0,0,.2);color:var(--text)}
 
 /* ── PLAYER CARD POPUP ── */
 .pc-photo{width:56px;height:56px;border-radius:6px;object-fit:cover;background:#fff;flex-shrink:0;border:2px solid rgba(255,255,255,.4)}
@@ -437,24 +553,24 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .pc-shirt{font-size:12px;opacity:.85;margin-top:2px}
 .pc-close{position:absolute;top:14px;right:16px;background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;opacity:.8}
 .pc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:6px}
-.pc-card{display:flex;align-items:center;gap:8px;background:var(--surface,#fff);border:1px solid var(--border);border-radius:6px;padding:8px}
-.pc-card-icon{width:28px;height:28px;border-radius:50%;background:#f0f0f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;font-weight:800;color:#555}
-.pc-card-label{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#999}
-.pc-card-value{font-size:12px;font-weight:700;color:#222;margin-top:1px}
+.pc-card{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px}
+.pc-card-icon{width:28px;height:28px;border-radius:50%;background:var(--icon-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;font-weight:800;color:var(--muted)}
+.pc-card-label{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.pc-card-value{font-size:12px;font-weight:700;color:var(--pc-text);margin-top:1px}
 .pc-stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
-.pc-stat{text-align:center;background:var(--surface,#fff);border:1px solid var(--border);border-radius:6px;padding:8px 4px}
+.pc-stat{text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 4px}
 .pc-stat-icon{font-size:13px;margin-bottom:3px}
-.pc-stat-value{font-size:15px;font-weight:800}
-.pc-stat-label{font-size:7.5px;font-weight:700;text-transform:uppercase;color:#999;margin-top:1px}
+.pc-stat-value{font-size:15px;font-weight:800;color:var(--pc-text)}
+.pc-stat-label{font-size:7.5px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-top:1px}
 @media(max-width:480px){ .pc-stats-grid{grid-template-columns:repeat(3,1fr)} }
-.pc-body{padding:18px 20px}
+.pc-body{padding:18px 20px;background:var(--surface);color:var(--text)}
 .pc-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#a23b3b;border-bottom:2px solid #a23b3b;padding-bottom:6px;margin-bottom:12px;display:inline-block}
-.pc-row{padding:8px 0;border-bottom:1px solid #eee}
+.pc-row{padding:8px 0;border-bottom:1px solid var(--border-light)}
 .pc-row:last-child{border-bottom:none}
-.pc-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#999;margin-bottom:2px}
-.pc-value{font-size:14px;color:#222;display:flex;align-items:center;gap:6px}
-.pc-footer{padding:14px 20px;border-top:1px solid #eee;display:flex;justify-content:flex-end}
-.rm-form h2{font-size:16px;font-weight:700;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid #ddd}
+.pc-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:2px}
+.pc-value{font-size:14px;color:var(--pc-text);display:flex;align-items:center;gap:6px}
+.pc-footer{padding:14px 20px;border-top:1px solid var(--border-light);display:flex;justify-content:flex-end}
+.rm-form h2{font-size:16px;font-weight:700;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border)}
 /* ── PRINT ────────────────────────────────────────────────────────────────── */
 @media print{
   nav,.breadcrumb,.hamburger,.mobile-menu,.btn,.back-btn,.search-bar,.form-panel,.page-header .btn-group,#toast,.dialog-overlay{display:none!important}
@@ -520,20 +636,26 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 }
 
 /* ── FILE LABEL BUTTON ────────────────────────────────────────────────────── */
-.file-label-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;background:#fff;border:1px solid #bbb;border-radius:3px;font-size:13px;font-weight:700;color:var(--black);cursor:pointer;transition:background .15s}
-.file-label-btn:hover{background:#f0f0f0}
+.file-label-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;background:var(--surface);border:1px solid var(--border-dark);border-radius:3px;font-size:13px;font-weight:700;color:var(--black);cursor:pointer;transition:background .15s}
+.file-label-btn:hover{background:var(--icon-bg)}
 /* ── IMPORT TABS ──────────────────────────────────────────────────────────── */
-.import-tab{padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;color:#999;border-bottom:2px solid transparent;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none;white-space:nowrap;flex-shrink:0}
-.tab-bar-row{display:flex;gap:0;border-bottom:2px solid #ddd;margin-bottom:20px;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;align-items:stretch}
+.import-tab{padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none;white-space:nowrap;flex-shrink:0}
+.tab-bar-row{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;align-items:stretch}
 .import-tab.active-tab{color:var(--black);border-bottom-color:var(--black)}
+/* ── APPEARANCE (dark mode) — Settings segmented control ────────────────────
+   Built entirely from already-themed variables, so it needs no dedicated
+   dark-mode overrides of its own. */
+.theme-seg{display:inline-flex;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:3px}
+.theme-seg-btn{border:none;background:none;font-family:inherit;font-size:12px;font-weight:700;padding:7px 14px;border-radius:6px;cursor:pointer;color:var(--muted)}
+.theme-seg-btn[aria-pressed="true"]{background:var(--black);color:#fff}
 /* ── IMPORT BADGE ─────────────────────────────────────────────────────────── */
 .badge-ok{background:#e6f4ea;color:#2a7a3b;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700;display:inline-block}
 .badge-skip{background:#f0f0f0;color:#888;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700;display:inline-block}
 .badge-warn{background:#fff3cd;color:#856404;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700;display:inline-block}
 .badge-err{background:#fde8e8;color:#b03030;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:700;display:inline-block}
 .import-preview-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
-.import-preview-table th{background:var(--blue-bg);padding:5px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--blue-dark);border-bottom:1px solid #ddd}
-.import-preview-table td{padding:5px 8px;border-bottom:1px solid #eee}
+.import-preview-table th{background:var(--blue-bg);padding:5px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--blue-dark);border-bottom:1px solid var(--border)}
+.import-preview-table td{padding:5px 8px;border-bottom:1px solid var(--border-light)}
 .row-ok{background:#f0faf2}.row-warn{background:#fffbe6}.row-skip{opacity:.6}.row-err{background:#fff0f0}
 
 /* ── CLOUD SYNC ───────────────────────────────────────────────────────────── */
@@ -557,7 +679,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .pos-pill{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:2px;background:#f0f0f0;color:#555;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
 
 /* ── LOADING ──────────────────────────────────────────────────────────────── */
-#loading{position:fixed;inset:0;background:#fff;display:flex;align-items:center;justify-content:center;z-index:999;flex-direction:column;gap:12px}
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:999;flex-direction:column;gap:12px}
 #loading p{font-size:13px;color:var(--muted)}
 .spinner{width:32px;height:32px;border:3px solid #ccc;border-top-color:var(--black);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
