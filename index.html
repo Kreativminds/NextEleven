@@ -34,7 +34,7 @@
   <div class="spinner" id="splashSpinner"></div>
   <p>Loading...</p>
 </div>
-<div id="syncFailureScreen" style="display:none;position:fixed;inset:0;background:#fff;z-index:1000;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:24px;text-align:center">
+<div id="syncFailureScreen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:1000;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:24px;text-align:center">
   <div style="font-size:36px">&#9888;</div>
   <div style="font-weight:800;font-size:16px" id="syncFailureTitle"></div>
   <p style="font-size:13px;color:var(--muted);max-width:320px" id="syncFailureBody"></p>
@@ -77,7 +77,7 @@
   <div style="max-width:380px;width:100%">
     <div style="text-align:center;margin-bottom:28px">
       <div class="nav-logo-mark" style="width:48px;height:48px;margin:0 auto 12px"><span style="font-size:20px">11</span></div>
-      <div style="font-size:20px;font-weight:800;color:var(--navy)" translate="no">Next<span style="color:var(--black)">Eleven</span></div>
+      <div style="font-size:20px;font-weight:800;color:var(--navy-accent)" translate="no">Next<span style="color:var(--black-accent)">Eleven</span></div>
     </div>
     <div class="card" id="authGateCard" style="padding:24px"></div>
   </div>
@@ -371,7 +371,7 @@
 
         <!-- Collapsed by default. A normal league match never needs opening. -->
         <details id="gf-more-details" style="margin:4px 0 14px;border:1px solid var(--border);border-radius:var(--radius)">
-          <summary style="padding:10px 12px;cursor:pointer;font-size:13px;font-weight:600;color:var(--navy);list-style:none">
+          <summary style="padding:10px 12px;cursor:pointer;font-size:13px;font-weight:600;color:var(--navy-accent);list-style:none">
             <span data-i18n="games_more_details">Additional match details</span>
           </summary>
           <div style="padding:0 12px 12px">
@@ -1242,11 +1242,11 @@ function renderNextGameCarousel(upcomingGames, containerId, showArrivalTime, act
       ${renderSingleNextGameCard(game, showArrivalTime, true, scope)}
       ${actionButtonHtml ? `<div class="btn-group" style="margin-top:14px">${actionButtonHtml}</div>` : ''}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
-        <button type="button" onclick="shiftHomeCarousel('${scope}',-1,${games.length})" ${idx===0?'disabled':''} style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:#fff;font-size:16px;cursor:pointer;${idx===0?'opacity:.3':''}" aria-label="${I18n.t('home_carousel_prev')}">&#8249;</button>
+        <button type="button" onclick="shiftHomeCarousel('${scope}',-1,${games.length})" ${idx===0?'disabled':''} style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:var(--surface);font-size:16px;cursor:pointer;${idx===0?'opacity:.3':''}" aria-label="${I18n.t('home_carousel_prev')}">&#8249;</button>
         <div style="display:flex;gap:6px">
           ${games.map((g,i) => `<span style="width:7px;height:7px;border-radius:50%;background:${i===idx?'#111':'#ddd'}"></span>`).join('')}
         </div>
-        <button type="button" onclick="shiftHomeCarousel('${scope}',1,${games.length})" ${idx===games.length-1?'disabled':''} style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:#fff;font-size:16px;cursor:pointer;${idx===games.length-1?'opacity:.3':''}" aria-label="${I18n.t('home_carousel_next')}">&#8250;</button>
+        <button type="button" onclick="shiftHomeCarousel('${scope}',1,${games.length})" ${idx===games.length-1?'disabled':''} style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:var(--surface);font-size:16px;cursor:pointer;${idx===games.length-1?'opacity:.3':''}" aria-label="${I18n.t('home_carousel_next')}">&#8250;</button>
       </div>
       <div style="text-align:center;font-size:10px;color:var(--muted);margin-top:6px">${I18n.t('home_carousel_count', {current: idx+1, total: games.length})}</div>
     </div>`;
@@ -1667,7 +1667,7 @@ async function renderWizardStepYear() {
           <label>${I18n.t('set_lbl_start_year')}</label>
           <input id="wiz-startyear" type="number" min="2000" max="2100" value="${proposedYear}" oninput="wizardUpdateNamePreview()">
           <div style="font-size:11px;color:var(--muted);margin-top:4px">${I18n.t('set_season_name_preview')} <strong id="wiz-name-preview">${buildSeasonName(proposedYear)}</strong></div>
-          ${yearAlreadyTaken ? `<div style="font-size:11px;color:#b03030;margin-top:4px">${I18n.t('wiz_warn_year_taken')}</div>` : ''}
+          ${yearAlreadyTaken ? `<div style="font-size:11px;color:var(--red-accent);margin-top:4px">${I18n.t('wiz_warn_year_taken')}</div>` : ''}
         </div>
 
         <div class="form-actions" style="margin-top:16px">
@@ -1709,7 +1709,7 @@ function renderWizardStepAgeGroup() {
         <p style="font-size:13px;color:var(--muted);margin-bottom:16px">${I18n.t('wiz_age_group_hint')}</p>
 
         <div class="form-group" style="background:#fbf3d9;border:1px solid #d9c26b;border-radius:6px;padding:12px">
-          <label style="font-weight:700">${I18n.t('set_lbl_age_group')}</label>
+          <label style="font-weight:700;color:#6b5416">${I18n.t('set_lbl_age_group')}</label>
           ${renderAgeGroupField('wiz-agegroup', 'wiz-agegroup-other', prev.ageGroup||'')}
         </div>
 
@@ -3956,7 +3956,7 @@ function renderAuthGate() {
          no fields, no OR divider, no tabs. -->
     <div id="authScreen-welcome">
       <div style="text-align:center;margin-bottom:22px">
-        <div style="font-size:19px;font-weight:800;color:var(--navy)">${I18n.t('acc_welcome_title')}</div>
+        <div style="font-size:19px;font-weight:800;color:var(--navy-accent)">${I18n.t('acc_welcome_title')}</div>
         <p style="font-size:13px;color:var(--muted);margin-top:6px">${I18n.t('acc_welcome_subtitle')}</p>
       </div>
 
@@ -3974,7 +3974,7 @@ function renderAuthGate() {
               style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px;border:1px dashed var(--border)">${I18n.t('demo_try')}</button>
 
       <div style="text-align:center;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
-        <a href="#" onclick="event.preventDefault();showAuthScreen('player')" style="font-size:13px;color:var(--navy);font-weight:600;text-decoration:none">${I18n.t('acc_player_access_link')} &rsaquo;</a>
+        <a href="#" onclick="event.preventDefault();showAuthScreen('player')" style="font-size:13px;color:var(--navy-accent);font-weight:600;text-decoration:none">${I18n.t('acc_player_access_link')} &rsaquo;</a>
       </div>
 
       <p style="font-size:10.5px;color:var(--muted);margin-top:18px;text-align:center;line-height:1.5">${I18n.t('acc_legal_footer')}</p>
@@ -3991,13 +3991,13 @@ function renderAuthGate() {
         <div class="form-group full"><label>${I18n.t('acc_lbl_email')}</label><input id="acc-email" type="email" placeholder="you@example.com" autocomplete="email"></div>
         <div class="form-group full"><label>${I18n.t('acc_lbl_password')}</label><input id="acc-password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
       </div>
-      <div id="acc-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
+      <div id="acc-error" style="display:none;font-size:12px;color:var(--red-accent);margin-bottom:10px"></div>
       <div style="text-align:center;margin-bottom:14px">
         <a href="#" onclick="event.preventDefault();handleForgotPassword()" style="font-size:12px;color:var(--muted);text-decoration:underline">${I18n.t('acc_forgot_password')}</a>
       </div>
       <button class="btn btn-primary" id="acc-submit-btn" style="width:100%" onclick="handleAccountSubmit()">${I18n.t('acc_btn_login')}</button>
       <div style="text-align:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)">
-        ${I18n.t('acc_no_account_yet')} <a href="#" onclick="event.preventDefault();showAuthScreen('signup')" style="color:var(--navy);font-weight:600;text-decoration:none">${I18n.t('acc_btn_signup')}</a>
+        ${I18n.t('acc_no_account_yet')} <a href="#" onclick="event.preventDefault();showAuthScreen('signup')" style="color:var(--navy-accent);font-weight:600;text-decoration:none">${I18n.t('acc_btn_signup')}</a>
       </div>
     </div>
 
@@ -4018,7 +4018,7 @@ function renderAuthGate() {
         <div class="form-group full"><label>${I18n.t('acc_lbl_confirm_password')}</label><input id="signup-confirm-password" type="password" placeholder="••••••••" autocomplete="new-password"></div>
       </div>
       <div id="password-strength-checklist" style="font-size:11.5px;color:var(--muted);margin-bottom:14px;line-height:1.9"></div>
-      <div id="signup-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
+      <div id="signup-error" style="display:none;font-size:12px;color:var(--red-accent);margin-bottom:10px"></div>
       <button class="btn btn-primary" id="signup-submit-btn" style="width:100%" onclick="handleSignupSubmit()">${I18n.t('acc_btn_create_account')}</button>
     </div>
 
@@ -4039,7 +4039,7 @@ function renderAuthGate() {
           </div>
         </div>
       </div>
-      <div id="player-pin-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
+      <div id="player-pin-error" style="display:none;font-size:12px;color:var(--red-accent);margin-bottom:10px"></div>
       <button class="btn btn-primary" id="player-login-btn" style="width:100%" onclick="handlePlayerPinSubmit()">${I18n.t('acc_btn_player_login')}</button>
       <p style="font-size:11px;color:var(--muted);margin-top:14px;text-align:center">${I18n.t('acc_player_pin_note')}</p>
     </div>
@@ -4477,7 +4477,7 @@ async function renderShareTeamCard() {
     try {
       existing = await Sync.getTeamShareLink(season.seasonId);
     } catch(err) {
-      return `<div class="card" style="margin-bottom:10px"><div style="font-weight:700;font-size:13px">${esc(season.seasonName)}</div><p style="font-size:12px;color:#b03030">${esc(err.message)}</p></div>`;
+      return `<div class="card" style="margin-bottom:10px"><div style="font-weight:700;font-size:13px">${esc(season.seasonName)}</div><p style="font-size:12px;color:var(--red-accent)">${esc(err.message)}</p></div>`;
     }
 
     const isCurrent = season.seasonId === State.currentSeasonId;
@@ -4527,7 +4527,7 @@ async function renderShareTeamCard() {
             {v:'initial_surname', l:I18n.t('set_share_name_initial_surname'), ex:'L. Mabere'},
             {v:'hidden',     l:I18n.t('set_share_name_hidden_opt'), ex:I18n.t('set_share_preview_hidden_example')},
           ].map(opt => `
-            <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid ${nameMode===opt.v?'var(--navy)':'var(--border)'};border-radius:6px;cursor:pointer;min-height:44px;background:${nameMode===opt.v?'rgba(15,30,46,.04)':'transparent'}">
+            <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid ${nameMode===opt.v?'var(--navy-accent)':'var(--border)'};border-radius:6px;cursor:pointer;min-height:44px;background:${nameMode===opt.v?'rgba(15,30,46,.04)':'transparent'}">
               <input type="radio" name="nameMode-${season.seasonId}" value="${opt.v}" ${nameMode===opt.v?'checked':''} onchange="handlePrivacyPreviewUpdate(${season.seasonId})" style="width:18px;height:18px;flex-shrink:0">
               <span style="flex:1;font-size:13px">${opt.l}</span>
               <span style="font-size:11px;color:var(--muted)">${esc(opt.ex)}</span>
@@ -4611,7 +4611,7 @@ function handlePrivacyPreviewUpdate(seasonId) {
   document.querySelectorAll(`#nameModeGroup-${seasonId} label`).forEach(lbl => {
     const input = lbl.querySelector('input');
     const selected = input && input.checked;
-    lbl.style.borderColor = selected ? 'var(--navy)' : 'var(--border)';
+    lbl.style.borderColor = selected ? 'var(--navy-accent)' : 'var(--border)';
     lbl.style.background = selected ? 'rgba(15,30,46,.04)' : 'transparent';
   });
 }
@@ -4678,7 +4678,7 @@ async function renderAccountCard() {
       <div class="form-group full"><label>${I18n.t('acc_lbl_email')}</label><input id="acc-email" type="email" placeholder="you@example.com" autocomplete="email"></div>
       <div class="form-group full"><label>${I18n.t('acc_lbl_password')}</label><input id="acc-password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     </div>
-    <div id="acc-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
+    <div id="acc-error" style="display:none;font-size:12px;color:var(--red-accent);margin-bottom:10px"></div>
     <button class="btn btn-primary" id="acc-submit-btn" onclick="handleAccountSubmit()">${I18n.t('acc_btn_login')}</button>
   `;
 }
@@ -4717,7 +4717,7 @@ async function renderAccountCodeBlock() {
             <input id="claim-code-input" type="text" maxlength="20" placeholder="e.g. SMITH123" style="flex:1;min-width:120px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:14px;letter-spacing:1px;text-transform:uppercase">
             <button class="btn btn-primary btn-sm" onclick="handleClaimAccountCode()">${I18n.t('acc_btn_claim_code')}</button>
           </div>
-          <div id="claim-code-error" style="display:none;font-size:11px;color:#b03030;margin-top:6px"></div>
+          <div id="claim-code-error" style="display:none;font-size:11px;color:var(--red-accent);margin-top:6px"></div>
         </div>
       `}
     `;
@@ -4771,7 +4771,7 @@ function renderPasswordResetScreen() {
       <div class="form-group full"><label>${I18n.t('acc_reset_new_password')}</label><input id="reset-new-password" type="password" placeholder="••••••••" autocomplete="new-password" oninput="updatePasswordStrengthUI('reset-new-password','reset-password-strength-checklist')"></div>
     </div>
     <div id="reset-password-strength-checklist" style="font-size:11.5px;color:var(--muted);margin-bottom:14px;line-height:1.9"></div>
-    <div id="reset-error" style="display:none;font-size:12px;color:#b03030;margin-bottom:10px"></div>
+    <div id="reset-error" style="display:none;font-size:12px;color:var(--red-accent);margin-bottom:10px"></div>
     <button class="btn btn-primary" style="width:100%" onclick="handleCompletePasswordReset()">${I18n.t('acc_reset_submit')}</button>
   `;
   updatePasswordStrengthUI('reset-new-password', 'reset-password-strength-checklist');
@@ -5469,7 +5469,7 @@ async function onOpponentNameInputChange(value) {
   if (!match) { hint.style.display = 'none'; return; }
   hint.style.display = '';
   hint.innerHTML = `${I18n.t('opp_dup_possible')} <strong>${esc(match.opponentName)}</strong>
-    &nbsp;<a href="#" onclick="event.preventDefault();useExistingOpponentInForm(${match.opponentId})" style="color:var(--black);text-decoration:underline">${I18n.t('opp_dup_use_existing')}</a>
+    &nbsp;<a href="#" onclick="event.preventDefault();useExistingOpponentInForm(${match.opponentId})" style="color:var(--black-accent);text-decoration:underline">${I18n.t('opp_dup_use_existing')}</a>
     &nbsp;·&nbsp;
     <a href="#" onclick="event.preventDefault();confirmCreateOpponentAnyway()" style="color:var(--muted);text-decoration:underline">${I18n.t('opp_dup_create_anyway')}</a>`;
 }
@@ -5833,7 +5833,7 @@ function onOpponentInputChange(value) {
   const isExactMatch = names.some(n => n.toLowerCase() === trimmed.toLowerCase());
   if (trimmed && !isExactMatch) {
     hint.style.display = '';
-    hint.innerHTML = `${I18n.t('opp_dropdown_add_new')} <a href="#" onclick="event.preventDefault();quickAddOpponentFromGameForm('${esc(trimmed).replace(/'/g,"\\'")}')" style="color:var(--black);font-weight:700">${esc(trimmed)}</a>`;
+    hint.innerHTML = `${I18n.t('opp_dropdown_add_new')} <a href="#" onclick="event.preventDefault();quickAddOpponentFromGameForm('${esc(trimmed).replace(/'/g,"\\'")}')" style="color:var(--black-accent);font-weight:700">${esc(trimmed)}</a>`;
   } else {
     hint.style.display = 'none';
   }
@@ -7043,7 +7043,7 @@ const TR = {
     pp_assist_by:'Assist by',
     pp_not_called_up_section:'Not called up',
     games_ground_autofilled:'&#10003; Auto-filled from season Home Ground: {ground}',
-    games_no_home_ground_set:'No Home Ground set for this season yet. <a href="#" onclick="event.preventDefault();Nav.go(\'settings\')" style="color:var(--black);font-weight:700">Set one in Settings</a> to auto-fill this field next time.',
+    games_no_home_ground_set:'No Home Ground set for this season yet. <a href="#" onclick="event.preventDefault();Nav.go(\'settings\')" style="color:var(--black-accent);font-weight:700">Set one in Settings</a> to auto-fill this field next time.',
     set_lbl_home_ground:'Home Ground',
     set_lbl_age_group:'Age Group',
     set_lbl_club_name:'Club Name', set_lbl_club_logo:'Club Logo URL',
@@ -8521,7 +8521,7 @@ const TR = {
     pp_assist_by:'Assistência de',
     pp_not_called_up_section:'Não convocados',
     games_ground_autofilled:'&#10003; Preenchido automaticamente a partir do Recinto da época: {ground}',
-    games_no_home_ground_set:'Ainda não definiu o Recinto desta época. <a href="#" onclick="event.preventDefault();Nav.go(\'settings\')" style="color:var(--black);font-weight:700">Defina um nas Definições</a> para preencher automaticamente da próxima vez.',
+    games_no_home_ground_set:'Ainda não definiu o Recinto desta época. <a href="#" onclick="event.preventDefault();Nav.go(\'settings\')" style="color:var(--black-accent);font-weight:700">Defina um nas Definições</a> para preencher automaticamente da próxima vez.',
     set_lbl_home_ground:'Recinto',
     set_lbl_age_group:'Escalão',
     set_lbl_club_name:'Nome do Clube', set_lbl_club_logo:'URL do Logótipo do Clube',
@@ -10383,7 +10383,7 @@ async function handleScanIntegrity() {
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">${esc(r.problem)}</div>
         <div style="font-weight:700;font-size:14px;margin-top:2px">${esc(r.record)}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(r.fix)}</div>
-        <div style="font-size:11px;font-weight:700;color:#b03030;margin-top:6px">${I18n.t('integ_status_pending')}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--red-accent);margin-top:6px">${I18n.t('integ_status_pending')}</div>
       </div>
     `).join('')}
   `;
@@ -10467,7 +10467,7 @@ async function renderInvalidPositionSection() {
   }
 
   el.innerHTML = `
-    <div class="card" style="background:#fbf3d9;border:1px solid #d9c26b">
+    <div class="card card-tip">
       <div class="card-title">${I18n.t('ipr_title')}</div>
       <p style="font-size:12px;color:#8a6d1e;margin-bottom:12px">${I18n.t('ipr_hint')}</p>
       ${flagged.map(r => `
@@ -10493,11 +10493,11 @@ async function renderIdentityReviewSection() {
   }
 
   el.innerHTML = `
-    <div class="card" style="margin-bottom:14px;background:#fbf3d9;border:1px solid #d9c26b">
+    <div class="card card-tip" style="margin-bottom:14px">
       <div class="card-title">${I18n.t('idr_title')}</div>
       <p style="font-size:12px;color:#8a6d1e;margin-bottom:12px">${I18n.t('idr_hint')}</p>
       ${_playerIdentityGroups.map((group, gi) => `
-        <div class="card" style="margin-bottom:10px;background:#fff">
+        <div class="card" style="margin-bottom:10px;background:var(--surface)">
           <div style="font-weight:700;font-size:14px;margin-bottom:8px">${esc(group.displayName)}</div>
           ${group.rows.map((r, ri) => `
             <label style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
@@ -10620,7 +10620,7 @@ async function renderSeasonAuditResults() {
       return `
       <div class="card" style="margin-bottom:8px;${!canSelect?'opacity:0.85':''}">
         <div style="display:flex;gap:10px;align-items:flex-start">
-          ${canSelect ? `<input type="checkbox" class="season-audit-checkbox" data-key="${seasonAuditIssueKey(issue)}" style="margin-top:4px">` : `<span style="width:16px;flex-shrink:0;text-align:center;color:#b03030" title="${I18n.t('audit_not_resolvable')}">&#9888;</span>`}
+          ${canSelect ? `<input type="checkbox" class="season-audit-checkbox" data-key="${seasonAuditIssueKey(issue)}" style="margin-top:4px">` : `<span style="width:16px;flex-shrink:0;text-align:center;color:var(--red-accent)" title="${I18n.t('audit_not_resolvable')}">&#9888;</span>`}
           <div style="flex:1">
             <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700">${esc(issue.recordType)}</div>
             <div style="font-weight:700;font-size:14px">${esc(issue.name)}</div>
@@ -10636,7 +10636,7 @@ async function renderSeasonAuditResults() {
               <div style="margin-top:8px;padding:8px;background:#fbe9e9;border-radius:4px">
                 <div style="font-size:11px;font-weight:700;color:#b03030;margin-bottom:4px">${I18n.t('audit_unresolved_players_label')}</div>
                 ${issue._unresolvedPlayers.map(u => `
-                  <div style="font-size:12px;margin-bottom:4px">
+                  <div style="font-size:12px;margin-bottom:4px;color:#333">
                     ${esc(u.playerName || I18n.t('audit_unknown_player'))} — ${esc(u.reason)}
                     <button class="btn btn-secondary btn-sm" style="margin-left:6px" onclick="handleCreateDestinationPlayer(${i}, ${u.playerId})">${I18n.t('audit_btn_create_destination_player')}</button>
                   </div>
@@ -11770,11 +11770,11 @@ async function openDrillDetailPopup(drillKey, playerId, mode, rowIndex) {
         <div style="margin-bottom:6px"><strong>${I18n.t('tr_drill_progression')}:</strong> ${esc(drill.progression||'—')}</div>
         <div style="color:var(--muted)">${I18n.t('drill_equipment_prefix')} ${esc(drill.equipment||'—')}</div>
       </div>
-      <div style="background:#f8f8f8;border-radius:6px;padding:10px;margin-bottom:14px">
+      <div style="background:var(--surface-alt);border-radius:6px;padding:10px;margin-bottom:14px">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px">${I18n.t('drill_kpis_tracked')}</div>
         ${(drill.kpiFields||[]).map(f => `<span class="pos-pill" style="margin:0 4px 4px 0">${esc(f.label)}</span>`).join('') || `<span style="font-size:11px;color:var(--muted)">—</span>`}
       </div>
-      <div style="background:#f8f8f8;border-radius:6px;padding:10px;margin-bottom:14px">
+      <div style="background:var(--surface-alt);border-radius:6px;padding:10px;margin-bottom:14px">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:8px">${I18n.t('drill_history_title')}</div>
         ${history.totalAttempts === 0 ? `
           <p style="font-size:12px;color:var(--muted);margin:0">${I18n.t('drill_history_none')}</p>
@@ -12462,7 +12462,10 @@ function showImagePreview(imageUrl) {
     // fallback (a plain soccer-ball glyph, matching the pattern already
     // used for club/team logos elsewhere tonight) and label it clearly.
     img.replaceWith(Object.assign(document.createElement('div'), {
-      style: 'width:200px;height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:13px;gap:8px',
+      // Lives inside the always-white image-preview lightbox below (not
+      // --surface), so its text stays fixed too rather than following
+      // --muted, which turns light in Escuro and would vanish here.
+      style: 'width:200px;height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;border:1px solid var(--border);border-radius:8px;color:#999999;font-size:13px;gap:8px',
       innerHTML: '<span style="font-size:40px">&#9917;</span><span>Image could not be loaded</span>',
     }));
   };
@@ -12471,7 +12474,8 @@ function showImagePreview(imageUrl) {
   closeBtn.type = 'button';
   closeBtn.setAttribute('aria-label', 'Close preview');
   closeBtn.textContent = '✕';
-  closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:40px;height:40px;border-radius:50%;background:#fff;color:var(--dark);border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center';
+  // Same always-white lightbox backdrop as above — fixed text colour to match.
+  closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:40px;height:40px;border-radius:50%;background:#fff;color:#333333;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center';
   closeBtn.onclick = closeImagePreview;
 
   overlay.appendChild(img);
@@ -12499,7 +12503,7 @@ async function renderBrandingAssetFields() {
     const currentUrl = branding[def.key] || '';
     return `
     <div class="card" style="margin-bottom:12px">
-      <div class="card-title" style="margin-top:0;display:flex;align-items:center;gap:8px">${I18n.t(def.labelKey)}${def.reserved ? `<span class="badge" style="background:#f0f0f0;color:var(--muted);font-size:9px;font-weight:700;text-transform:none">${I18n.t('set_branding_reserved')}</span>` : ''}</div>
+      <div class="card-title" style="margin-top:0;display:flex;align-items:center;gap:8px">${I18n.t(def.labelKey)}${def.reserved ? `<span class="badge" style="background:#f0f0f0;color:#666;font-size:9px;font-weight:700;text-transform:none">${I18n.t('set_branding_reserved')}</span>` : ''}</div>
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;flex-wrap:wrap">
         <div style="width:110px;height:110px;border-radius:8px;background:#f5f5f5;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0${currentUrl ? ';cursor:pointer' : ''}"${currentUrl ? ` onclick="showImagePreview('${esc(currentUrl)}')" role="button" tabindex="0" aria-label="View larger image"` : ''}>
           ${currentUrl
@@ -13456,7 +13460,7 @@ function calRenderPreview() {
   const confirmed = _cal.events.filter(e => e.status === 'confirmed' && calEventIsLive(e));
   const items = calBuildTimeline(confirmed, _cal.games, _cal.tournaments);
   return `
-    <div class="card" style="margin-bottom:14px;background:#f8f8f8">
+    <div class="card" style="margin-bottom:14px;background:var(--surface-alt)">
       <div class="card-title">${I18n.t('cal_preview_title')}</div>
       ${items.length ? `<div class="timeline-list">${items.map(it => `
         <div class="timeline-item">
@@ -13648,7 +13652,7 @@ function clsSetScopeField(field, value) {
 
 function clsRenderTable(rows, editable) {
   const body = (rows || []).map((r, i) => {
-    const hiStyle = r.isOurTeam ? ' style="background:#fff7e6"' : '';
+    const hiStyle = r.isOurTeam ? ' style="background:#fff7e6;color:#333"' : '';
     if (editable) {
       return `<tr${hiStyle}>
         <td><input type="number" value="${r.position ?? ''}" oninput="clsEditCell(${i},'position',this.value)" style="width:44px"></td>
@@ -13668,7 +13672,7 @@ function clsRenderTable(rows, editable) {
     // left-border accent on the row — the same quiet "this one matters"
     // treatment used elsewhere (e.g. .leader-feature-card), not a filled
     // badge/box sitting next to (and overlapping) the team name.
-    const posStyle = r.isOurTeam ? ' style="background:#fff7e6;border-left:3px solid var(--black)"' : '';
+    const posStyle = r.isOurTeam ? ' style="background:#fff7e6;color:#333;border-left:3px solid var(--black)"' : '';
     const teamLabel = r.isOurTeam
       ? `<strong>${esc(Classification.cleanTeamName(r.teamName || ''))}</strong>`
       : esc(Classification.cleanTeamName(r.teamName || ''));
@@ -13968,8 +13972,8 @@ function clsRenderValidationPanel() {
   }
   if (val.info.length) {
     html += `<div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:var(--radius);background:#f5f5f5">
-      <strong style="font-size:12px;color:var(--muted)">${I18n.t('cls_validation_info_title')}</strong>
-      <ul style="margin:6px 0 0 18px;font-size:12px;color:var(--muted)">${val.info.map(x => `<li>${esc(x.message)}${x.teamName ? ' — ' + esc(x.teamName) : ''}</li>`).join('')}</ul>
+      <strong style="font-size:12px;color:#666">${I18n.t('cls_validation_info_title')}</strong>
+      <ul style="margin:6px 0 0 18px;font-size:12px;color:#666">${val.info.map(x => `<li>${esc(x.message)}${x.teamName ? ' — ' + esc(x.teamName) : ''}</li>`).join('')}</ul>
     </div>`;
   }
   if (!val.blocking.length && !val.warnings.length && !val.info.length) {
@@ -14015,7 +14019,7 @@ function clsRenderReconcilePanel() {
     html += `<div class="table-wrap" style="margin-top:8px"><table><thead><tr><th></th><th>${esc(_cls.sourceDraft.sourceName || I18n.t('cls_source_name'))}</th><th>NextEleven</th></tr></thead><tbody>`;
     rec.comparison.forEach(c => {
       const mismatch = c.match === false;
-      html += `<tr${mismatch ? ' style="background:#fff8e1"' : ''}><td>${esc(fieldLabel(c.field))}</td><td>${c.imported ?? '—'}</td><td>${c.internal ?? '—'}</td></tr>`;
+      html += `<tr${mismatch ? ' style="background:#fff8e1;color:#92650a"' : ''}><td>${esc(fieldLabel(c.field))}</td><td>${c.imported ?? '—'}</td><td>${c.internal ?? '—'}</td></tr>`;
     });
     html += `</tbody></table></div>`;
     html += `<div style="font-size:11px;color:var(--muted);margin-top:6px">${I18n.t('cls_reconcile_note')}</div>`;
@@ -14543,7 +14547,7 @@ async function renderHomeCompletedView(season) {
   </div>` : ''}
 
   ${achievements.length ? `
-  <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
+  <div class="card card-achieve">
     <div class="card-title">${I18n.t('home_completed_achievements')}</div>
     ${achievements.map(a => `<div class="info-row"><span class="ir-label">&#127942; ${esc(a.title)}</span><span class="ir-value">${a.date?fmtDate(a.date):''}</span></div>`).join('')}
   </div>` : ''}
@@ -15188,7 +15192,7 @@ async function renderTournamentPlayerSelection(tournament) {
     return `<div onclick="toggleTournamentPlayer(${tournament.tournamentId},${p.playerId})" style="display:block;width:100%;box-sizing:border-box;border:1px solid #ccc;border-radius:6px;background:${checked?'#fbf3f3':'#ffffff'};padding:12px 14px;margin-bottom:6px;cursor:pointer">
       <span style="display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:50%;background:${checked?'#000':'#eee'};color:${checked?'#fff':'#111'};font-size:12px;font-weight:700">${esc(p.shirtNumber||'—')}</span>
       <span style="display:inline-block;margin-left:10px;font-size:14px;font-weight:600;color:#111">${esc(shortName(p.fullName))}</span>
-      ${checked?'<span style="float:right;color:#2a7a3b;font-size:16px;font-weight:700">&#10003;</span>':''}
+      ${checked?'<span style="float:right;color:var(--green-accent);font-size:16px;font-weight:700">&#10003;</span>':''}
     </div>`;
   }).join('');
   if (typeof gdDebugLog === 'function' && allPlayers[0]) {
@@ -15940,8 +15944,8 @@ async function renderPackBuilderDrillList() {
     totalDuration += duration;
     return `
       <div class="wp-row"><div class="wp-info" style="cursor:default">
-        <button type="button" onclick="moveDrillUp(_packBuilderDrillRefs,${i},renderPackBuilderDrillList)" ${i===0?'disabled':''} style="width:22px;height:18px;border:1px solid var(--border);border-radius:3px;background:#fff;cursor:pointer;font-size:9px;line-height:1;flex-shrink:0;${i===0?'opacity:.35':''}" aria-label="${I18n.t('tr_move_up')}">&#9650;</button>
-        <button type="button" onclick="moveDrillDown(_packBuilderDrillRefs,${i},renderPackBuilderDrillList)" ${i===_packBuilderDrillRefs.length-1?'disabled':''} style="width:22px;height:18px;border:1px solid var(--border);border-radius:3px;background:#fff;cursor:pointer;font-size:9px;line-height:1;flex-shrink:0;margin-right:6px;${i===_packBuilderDrillRefs.length-1?'opacity:.35':''}" aria-label="${I18n.t('tr_move_down')}">&#9660;</button>
+        <button type="button" onclick="moveDrillUp(_packBuilderDrillRefs,${i},renderPackBuilderDrillList)" ${i===0?'disabled':''} style="width:22px;height:18px;border:1px solid var(--border);border-radius:3px;background:var(--surface);cursor:pointer;font-size:9px;line-height:1;flex-shrink:0;${i===0?'opacity:.35':''}" aria-label="${I18n.t('tr_move_up')}">&#9650;</button>
+        <button type="button" onclick="moveDrillDown(_packBuilderDrillRefs,${i},renderPackBuilderDrillList)" ${i===_packBuilderDrillRefs.length-1?'disabled':''} style="width:22px;height:18px;border:1px solid var(--border);border-radius:3px;background:var(--surface);cursor:pointer;font-size:9px;line-height:1;flex-shrink:0;margin-right:6px;${i===_packBuilderDrillRefs.length-1?'opacity:.35':''}" aria-label="${I18n.t('tr_move_down')}">&#9660;</button>
         <span class="wp-name">${esc(name)}</span>
         <button type="button" class="btn btn-danger btn-sm" style="margin-left:auto" onclick="removePackBuilderDrill(${i})">${I18n.t('tr_btn_remove_drill')}</button>
       </div></div>`;
@@ -16067,7 +16071,7 @@ async function openPackDetail(packId, viewAs) {
       </div>
       <p style="font-size:12px;color:var(--muted);margin-bottom:12px">${esc(pack.description||'')}</p>
       ${(pack.skillsTrained||[]).length ? `<div style="margin-bottom:12px">${pack.skillsTrained.map(s=>`<span class="pos-pill" style="margin:0 4px 4px 0">${esc(s)}</span>`).join('')}</div>` : ''}
-      <div style="background:#f8f8f8;border-radius:6px;padding:10px;margin-bottom:14px">
+      <div style="background:var(--surface-alt);border-radius:6px;padding:10px;margin-bottom:14px">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px">${I18n.t('pack_drills_included')}</div>
         ${drillNames.map(n => `<div style="font-size:12px;padding:2px 0">${esc(n)}</div>`).join('') || `<span style="font-size:11px;color:var(--muted)">—</span>`}
       </div>
@@ -16218,7 +16222,7 @@ async function renderDrillPickerFilterChips(playerId, mode, rowIndex) {
   const difficulties = [...new Set(DRILL_LIBRARY.map(d => d.difficulty))];
 
   const chip = (label, active, onclick) =>
-    `<button type="button" onclick="${onclick}" style="font-size:11px;padding:5px 10px;border-radius:20px;border:1px solid ${active?'var(--black)':'var(--border)'};background:${active?'var(--black)':'#fff'};color:${active?'#fff':'var(--dark)'};cursor:pointer">${esc(label)}</button>`;
+    `<button type="button" onclick="${onclick}" style="font-size:11px;padding:5px 10px;border-radius:20px;border:1px solid ${active?'var(--black)':'var(--border)'};background:${active?'var(--black)':'var(--surface)'};color:${active?'#fff':'var(--dark)'};cursor:pointer">${esc(label)}</button>`;
 
   el.innerHTML = `
     ${chip(I18n.t('drill_picker_favourites_chip'), _pickerState.favouritesOnly, `toggleDrillPickerFavouritesOnly(${playerId},'${mode}',${rowIndex ?? 'null'})`)}
@@ -16382,7 +16386,7 @@ const COMPLETION_STATUS_STYLE = {
 function completionStatusButton(statusKey, currentStatus, onclickCall) {
   const s = COMPLETION_STATUS_STYLE[statusKey];
   const isSelected = currentStatus === statusKey;
-  return `<button type="button" onclick="${onclickCall}" style="min-height:44px;padding:8px 6px;border-radius:8px;border:2px solid ${isSelected?s.color:'var(--border)'};background:${isSelected?s.bg:'#fff'};color:${isSelected?s.color:'var(--dark)'};font-size:12px;font-weight:${isSelected?'700':'500'};cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;width:100%;min-width:0;box-sizing:border-box">
+  return `<button type="button" onclick="${onclickCall}" style="min-height:44px;padding:8px 6px;border-radius:8px;border:2px solid ${isSelected?s.color:'var(--border)'};background:${isSelected?s.bg:'var(--surface)'};color:${isSelected?s.color:'var(--dark)'};font-size:12px;font-weight:${isSelected?'700':'500'};cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;width:100%;min-width:0;box-sizing:border-box">
     <span style="font-size:15px;flex-shrink:0">${s.icon}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${I18n.t('tr_status_'+statusKey)}</span>
   </button>`;
 }
@@ -16638,12 +16642,12 @@ async function renderExtendedStats(playerId) {
           <div style="border:1px solid var(--border);border-radius:3px;margin-bottom:8px;overflow:hidden">
             <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:${hasData?'#f0faf2':'#f8f8f8'};cursor:pointer" onclick="toggleExtStatForm(${playerId},${g.gameId})">
               <div>
-                <span style="font-weight:700;font-size:12px">${roundLabel(g)?roundLabel(g)+' · ':''}${g.date?fmtDate(g.date):'—'} vs ${esc(g.opponent)}</span>
-                <span style="font-size:11px;color:var(--muted);margin-left:8px">${homeAwayLabel(g.homeAway)}</span>
+                <span style="font-weight:700;font-size:12px;color:#222">${roundLabel(g)?roundLabel(g)+' · ':''}${g.date?fmtDate(g.date):'—'} vs ${esc(g.opponent)}</span>
+                <span style="font-size:11px;color:#666;margin-left:8px">${homeAwayLabel(g.homeAway)}</span>
               </div>
               <div style="display:flex;gap:8px;align-items:center">
-                ${hasData ? `<span style="font-size:10px;color:#2a7a3b;font-weight:700">✓ ${I18n.t('ext_stats_entered')}</span>` : `<span style="font-size:10px;color:var(--muted)">${I18n.t('ext_no_stats_yet')}</span>`}
-                <span style="font-size:11px;color:var(--muted)">▼</span>
+                ${hasData ? `<span style="font-size:10px;color:#2a7a3b;font-weight:700">✓ ${I18n.t('ext_stats_entered')}</span>` : `<span style="font-size:10px;color:#666">${I18n.t('ext_no_stats_yet')}</span>`}
+                <span style="font-size:11px;color:#666">▼</span>
               </div>
             </div>
             <div id="ext-form-${playerId}-${g.gameId}" style="display:none;padding:12px">
@@ -18009,8 +18013,8 @@ function occurrenceRowHtml(o, playerId, viewAs, isGuardian) {
         <button class="btn btn-secondary btn-sm" style="padding:2px 7px;min-width:26px" onclick="toggleTrainingGroup('${gid}',this)">&#9656;</button>
         <div style="flex:1;min-width:160px">
           <div style="font-size:13px;font-weight:700">${esc(sr.titleOverride || I18n.t('tr_rec_title'))}
-            ${sr.status==='stopped' ? `<span style="font-size:10px;color:#b03030;font-weight:400"> · ${I18n.t('tr_rec_stopped',{date:fmtDate(sr.stoppedAt)})}</span>` : ''}
-            ${sr.__paused ? `<span style="font-size:10px;color:#8a6d3b;font-weight:400"> · ${I18n.t('tr_rec_paused')}</span>` : ''}
+            ${sr.status==='stopped' ? `<span style="font-size:10px;color:var(--red-accent);font-weight:400"> · ${I18n.t('tr_rec_stopped',{date:fmtDate(sr.stoppedAt)})}</span>` : ''}
+            ${sr.__paused ? `<span style="font-size:10px;color:var(--amber-accent);font-weight:400"> · ${I18n.t('tr_rec_paused')}</span>` : ''}
           </div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(describeRecurrence(sr))}</div>
           <div style="font-size:11px;color:var(--muted)">${mine.length} ${I18n.t('tr_group_occurrences')}${next?` · ${I18n.t('tr_rec_next',{date:fmtDate(next.date)})}`:''}${adh.adherencePct!==null?` · ${I18n.t('tr_adherence')} ${adh.adherencePct}%`:''}</div>
@@ -18316,9 +18320,9 @@ function stepTrainingDrillField(index, fieldKey, delta, rerenderFn) {
 function renderKpiStepper(value, onDecClick, onIncClick, onTypeInput, disabled) {
   return `
     <div style="display:flex;align-items:center;gap:4px">
-      <button type="button" onclick="${onDecClick}" ${disabled?'disabled':''} style="width:36px;height:36px;flex-shrink:0;border-radius:8px;border:1px solid var(--border);background:#fff;font-size:18px;font-weight:700;cursor:pointer;${disabled?'opacity:.4':''}">&minus;</button>
+      <button type="button" onclick="${onDecClick}" ${disabled?'disabled':''} style="width:36px;height:36px;flex-shrink:0;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:18px;font-weight:700;cursor:pointer;${disabled?'opacity:.4':''}">&minus;</button>
       <input type="number" min="0" value="${value??0}" oninput="${onTypeInput}" style="width:100%;min-width:0;text-align:center;padding:6px 4px;border:1px solid var(--border);border-radius:6px;font-size:14px;font-weight:700" ${disabled?'disabled':''}>
-      <button type="button" onclick="${onIncClick}" ${disabled?'disabled':''} style="width:36px;height:36px;flex-shrink:0;border-radius:8px;border:1px solid var(--border);background:#fff;font-size:18px;font-weight:700;cursor:pointer;${disabled?'opacity:.4':''}">+</button>
+      <button type="button" onclick="${onIncClick}" ${disabled?'disabled':''} style="width:36px;height:36px;flex-shrink:0;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:18px;font-weight:700;cursor:pointer;${disabled?'opacity:.4':''}">+</button>
     </div>`;
 }
 
@@ -18358,10 +18362,10 @@ async function renderTrainingDrillRows(playerId, mode = 'plan') {
       <div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;${isDisabledLook?'background:#faf5f0':''}">
         <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
           <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">
-            <button type="button" onclick="moveDrillUp(_trainingFormDrills,${i},()=>renderTrainingDrillRows(${playerId},'${mode}'))" ${i===0?'disabled':''} style="width:24px;height:20px;border:1px solid var(--border);border-radius:3px;background:#fff;cursor:pointer;font-size:10px;line-height:1;${i===0?'opacity:.35':''}" aria-label="${I18n.t('tr_move_up')}">&#9650;</button>
-            <button type="button" onclick="moveDrillDown(_trainingFormDrills,${i},()=>renderTrainingDrillRows(${playerId},'${mode}'))" ${i===_trainingFormDrills.length-1?'disabled':''} style="width:24px;height:20px;border:1px solid var(--border);border-radius:3px;background:#fff;cursor:pointer;font-size:10px;line-height:1;${i===_trainingFormDrills.length-1?'opacity:.35':''}" aria-label="${I18n.t('tr_move_down')}">&#9660;</button>
+            <button type="button" onclick="moveDrillUp(_trainingFormDrills,${i},()=>renderTrainingDrillRows(${playerId},'${mode}'))" ${i===0?'disabled':''} style="width:24px;height:20px;border:1px solid var(--border);border-radius:3px;background:var(--surface);cursor:pointer;font-size:10px;line-height:1;${i===0?'opacity:.35':''}" aria-label="${I18n.t('tr_move_up')}">&#9650;</button>
+            <button type="button" onclick="moveDrillDown(_trainingFormDrills,${i},()=>renderTrainingDrillRows(${playerId},'${mode}'))" ${i===_trainingFormDrills.length-1?'disabled':''} style="width:24px;height:20px;border:1px solid var(--border);border-radius:3px;background:var(--surface);cursor:pointer;font-size:10px;line-height:1;${i===_trainingFormDrills.length-1?'opacity:.35':''}" aria-label="${I18n.t('tr_move_down')}">&#9660;</button>
           </div>
-          <button type="button" style="flex:1;min-width:0;text-align:left;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px" onclick="openDrillLibraryPicker(${playerId},'${mode}',${i})" ${isDisabledLook?'disabled':''}>
+          <button type="button" style="flex:1;min-width:0;text-align:left;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px" onclick="openDrillLibraryPicker(${playerId},'${mode}',${i})" ${isDisabledLook?'disabled':''}>
             <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(rowLabel)}</span>
             <span style="font-size:10px;color:var(--muted);flex-shrink:0">${I18n.t('drill_btn_change')}</span>
           </button>
@@ -18380,7 +18384,7 @@ async function renderTrainingDrillRows(playerId, mode = 'plan') {
         </div>` : ''}
 
         ${detailDrill ? `
-        <div style="background:#f8f8f8;border-radius:4px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--dark)">
+        <div style="background:var(--surface-alt);border-radius:4px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--dark)">
           <div style="margin-bottom:4px"><strong>${I18n.t('tr_drill_objective')}:</strong> ${esc(detailDrill.objective)}</div>
           <div style="margin-bottom:4px"><strong>${I18n.t('tr_drill_instructions')}:</strong> ${esc(detailDrill.instructions)}</div>
           <div style="margin-bottom:4px"><strong>${I18n.t('tr_drill_coaching_points')}:</strong> ${esc(detailDrill.coachingPoints)}</div>
@@ -18526,13 +18530,13 @@ async function openTrainingViewer(sessionId, viewAs) {
         const isDisabledLook = status === 'skipped' || status === 'missed';
         return `<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;${isDisabledLook?'background:#faf5f0':''}">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-            <span style="font-size:12px;font-weight:700">${esc(label)}</span>
+            <span style="font-size:12px;font-weight:700${isDisabledLook?';color:#5a4a2e':''}">${esc(label)}</span>
             <span class="pos-pill" style="${isDisabledLook?'background:#f0d9c0;color:#8a5a20':''}">${I18n.t('tr_status_'+status)}</span>
           </div>
           <div style="display:flex;gap:14px;flex-wrap:wrap">
             ${fields.map(f => {
               const fLabel = (libDrill || customDrill) ? f.label : drillFieldLabel(d.drillType,f.key);
-              return `<div style="font-size:11px;color:var(--muted)">${esc(fLabel)}: <strong style="color:var(--dark)">${esc(String(d[f.key]??'—'))}</strong></div>`;
+              return `<div style="font-size:11px;color:${isDisabledLook?'#7a6a4a':'var(--muted)'}">${esc(fLabel)}: <strong style="color:${isDisabledLook?'#4a3a1a':'var(--dark)'}">${esc(String(d[f.key]??'—'))}</strong></div>`;
             }).join('')}
           </div>
         </div>`;
@@ -18610,10 +18614,10 @@ async function renderTrainingCompletionRows() {
       <div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;${isDisabledLook?'background:#faf5f0':''}">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">
-            <button type="button" onclick="moveDrillUp(_trainingFormDrills,${i},renderTrainingCompletionRows)" ${i===0?'disabled':''} style="width:24px;height:20px;border:1px solid var(--border);border-radius:3px;background:#fff;cursor:pointer;font-size:10px;line-height:1;${i===0?'opacity:.35':''}" aria-label="${I18n.t('tr_move_up')}">&#9650;</button>
-            <button type="button" onclick="moveDrillDown(_trainingFormDrills,${i},renderTrainingCompletionRows)" ${i===_trainingFormDrills.length-1?'disabled':''} style="width:24px;height:20px;border:1px solid var(--border);border-radius:3px;background:#fff;cursor:pointer;font-size:10px;line-height:1;${i===_trainingFormDrills.length-1?'opacity:.35':''}" aria-label="${I18n.t('tr_move_down')}">&#9660;</button>
+            <button type="button" onclick="moveDrillUp(_trainingFormDrills,${i},renderTrainingCompletionRows)" ${i===0?'disabled':''} style="width:24px;height:20px;border:1px solid var(--border);border-radius:3px;background:var(--surface);cursor:pointer;font-size:10px;line-height:1;${i===0?'opacity:.35':''}" aria-label="${I18n.t('tr_move_up')}">&#9650;</button>
+            <button type="button" onclick="moveDrillDown(_trainingFormDrills,${i},renderTrainingCompletionRows)" ${i===_trainingFormDrills.length-1?'disabled':''} style="width:24px;height:20px;border:1px solid var(--border);border-radius:3px;background:var(--surface);cursor:pointer;font-size:10px;line-height:1;${i===_trainingFormDrills.length-1?'opacity:.35':''}" aria-label="${I18n.t('tr_move_down')}">&#9660;</button>
           </div>
-          <div style="font-size:13px;font-weight:700;flex:1">${esc(label)}</div>
+          <div style="font-size:13px;font-weight:700;flex:1${isDisabledLook?';color:#5a4a2e':''}">${esc(label)}</div>
         </div>
         <div style="margin-bottom:8px">
           <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px">${I18n.t('tr_completion_status')}</label>
@@ -18840,7 +18844,7 @@ async function renderPlayerPortalHome() {
   el.innerHTML = `
     <div class="page-header"><div><h1>${I18n.t('pp_home_title')}</h1><div class="page-header-sub">${esc(shortName(player.fullName))}</div></div></div>
 
-    ${isOffSeason ? `<div class="card" style="background:#e8f0fe;border-color:#b8d4f8;text-align:center;margin-bottom:12px"><div style="font-size:24px">&#127774;</div><div style="font-weight:700;margin-top:4px">${esc(offSeasonMessage)}</div></div>` : ''}
+    ${isOffSeason ? `<div class="card" style="background:#e8f0fe;border-color:#b8d4f8;text-align:center;margin-bottom:12px"><div style="font-size:24px">&#127774;</div><div style="font-weight:700;margin-top:4px;color:#1a56c4">${esc(offSeasonMessage)}</div></div>` : ''}
 
     <div class="card" style="text-align:center;cursor:pointer" onclick="openPlayerCardPopup(${playerId})">
       <div style="font-size:13px;font-weight:700">&#127917; ${I18n.t('pp_view_my_card')}</div>
@@ -19029,7 +19033,7 @@ async function renderPlayerPortalGames() {
 
   el.innerHTML = `
     <div class="page-header"><div><h1>${I18n.t('pp_nav_games')}</h1></div></div>
-    ${isOffSeason ? `<div class="card" style="background:#e8f0fe;border-color:#b8d4f8;text-align:center;margin-bottom:14px"><div style="font-size:24px">&#9917;</div><div style="font-weight:700;margin-top:4px">${I18n.t('pp_off_season_title')}</div><p style="font-size:12px;color:var(--muted);margin-top:2px">${I18n.t('pp_off_season_desc')}</p></div>` : ''}
+    ${isOffSeason ? `<div class="card" style="background:#e8f0fe;border-color:#b8d4f8;text-align:center;margin-bottom:14px"><div style="font-size:24px">&#9917;</div><div style="font-weight:700;margin-top:4px;color:#1a56c4">${I18n.t('pp_off_season_title')}</div><p style="font-size:12px;color:#4a6a94;margin-top:2px">${I18n.t('pp_off_season_desc')}</p></div>` : ''}
     ${!games.length ? `<div class="empty"><strong>${isOffSeason ? I18n.t('pp_off_season_games_empty') : I18n.t('games_no_games_title')}</strong></div>` : `
     <div class="who-played-list">
       ${games.map(g => {
@@ -20060,7 +20064,7 @@ const Render = (() => {
 
     } catch(err) {
       console.error('Home render error:', err);
-      el.innerHTML = `<div class="empty"><strong>Home page error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;text-align:left;white-space:pre-wrap">${esc(err.message)}\n\n${esc(err.stack||'')}</p></div>`;
+      el.innerHTML = `<div class="empty"><strong>Home page error</strong><p style="color:var(--red-accent);font-family:monospace;font-size:11px;text-align:left;white-space:pre-wrap">${esc(err.message)}\n\n${esc(err.stack||'')}</p></div>`;
     }
   }
 
@@ -20430,7 +20434,7 @@ const Render = (() => {
         <td>${p.secondaryPosition||'—'}</td>
         <td>${p.dominantFoot||'—'}</td>
         <td>${p.dateOfBirth?fmtDate(p.dateOfBirth):'—'}</td>
-        <td>${injury?`<span class="badge" style="background:#fde8e8;color:#b03030" title="${esc(injuryTypeLabel(injury.injuryType)||'')} ${esc(injury.notes||'')}">&#129460; ${esc(availabilityStatusLabel(injury.status))}</span>`:`<span style="color:#2a7a3b;font-size:11px">&#10003; ${I18n.t('squad_status_fit')}</span>`}</td>
+        <td>${injury?`<span class="badge" style="background:#fde8e8;color:#b03030" title="${esc(injuryTypeLabel(injury.injuryType)||'')} ${esc(injury.notes||'')}">&#129460; ${esc(availabilityStatusLabel(injury.status))}</span>`:`<span style="color:var(--green-accent);font-size:11px">&#10003; ${I18n.t('squad_status_fit')}</span>`}</td>
         <td style="white-space:nowrap">
           <button class="btn btn-secondary btn-sm" onclick="editPlayer(${p.playerId})" aria-label="${I18n.t('squad_act_edit')}">&#9998; <span>${I18n.t('common_edit')}</span></button>
           <button class="btn btn-secondary btn-sm" style="margin-left:4px" aria-haspopup="menu" aria-expanded="false"
@@ -20715,7 +20719,7 @@ const Render = (() => {
         <button class="import-tab ${currentTab==='cards'?'active-tab':''}" id="gdtab-cards" onclick="switchSimpleTab(${gameId},'cards')">${I18n.t('gd_tab_cards')}</button>
         ${game.tournamentId ? `<button class="import-tab ${currentTab==='penalties'?'active-tab':''}" id="gdtab-penalties" onclick="switchSimpleTab(${gameId},'penalties')">${I18n.t('gd_tab_penalties')}</button>` : ''}
       </div>
-      <div style="font-size:11px;color:#2a7a3b;margin-bottom:10px">&#10003; ${I18n.t('gd_autosave_note')}</div>
+      <div style="font-size:11px;color:var(--green-accent);margin-bottom:10px">&#10003; ${I18n.t('gd_autosave_note')}</div>
 
       ${debugOn ? `<div id="gdDebugPanel" style="background:#111;color:#0f0;font-family:monospace;font-size:10px;padding:10px;border-radius:4px;margin-bottom:14px;white-space:pre-wrap;line-height:1.5">DEBUG: waiting for first action...</div>` : ''}
 
@@ -20771,7 +20775,7 @@ const Render = (() => {
     const archivedBanner = lor.isActive ? '' : `
       <div class="card" style="background:#f0f0f0;border-color:#ddd;display:flex;align-items:center;gap:10px;padding:10px 14px">
         <span style="font-size:16px">&#128451;</span>
-        <span style="font-size:13px;color:var(--muted)">${I18n.t('tp_archived_notice')}</span>
+        <span style="font-size:13px;color:#666">${I18n.t('tp_archived_notice')}</span>
       </div>`;
 
     if (sub) sub.textContent = State.currentSeason.seasonName;
@@ -21066,10 +21070,10 @@ const Render = (() => {
               : availabilityStatusLabel(inj?.status);
             return `<div class="info-row">
               <span class="ir-label">${esc(shortName(p.fullName))}</span>
-              <span class="ir-value" style="color:#b03030">${reason}${inj?.startDate?' · '+fmtDate(inj.startDate):''}</span>
+              <span class="ir-value" style="color:var(--red-accent)">${reason}${inj?.startDate?' · '+fmtDate(inj.startDate):''}</span>
             </div>`;
           }).join('')}
-        ` : `<p style="font-size:12px;color:#2a7a3b;font-weight:700;margin-bottom:0">${I18n.t('ts_injuries_none_active')}</p>`}
+        ` : `<p style="font-size:12px;color:var(--green-accent);font-weight:700;margin-bottom:0">${I18n.t('ts_injuries_none_active')}</p>`}
         ${playersWithHistory.length ? `
           <p style="font-size:11px;color:var(--muted);margin-top:12px;margin-bottom:0">${I18n.t('ts_injuries_season_total', {n: allInjuriesThisSeason.length, players: playersWithHistory.length})}</p>
         ` : ''}
@@ -21216,12 +21220,12 @@ const Render = (() => {
             const key = fields[i];
             const active = sortKey === key;
             const arrow = active ? (sortDir==='asc'?' ▲':' ▼') : '';
-            const stickyStyle = i===0 ? 'position:sticky;left:0;background:#fff;z-index:1;' : '';
-            return `<th style="${stickyStyle}font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#999;padding:5px 8px;text-align:${i===0?'left':'center'};border-bottom:1px solid #ddd;white-space:nowrap;cursor:pointer;user-select:none" onclick="playerTableSort('${tableId}','${key}')">${h}${arrow}</th>`;
+            const stickyStyle = i===0 ? 'position:sticky;left:0;background:var(--surface);z-index:1;' : '';
+            return `<th style="${stickyStyle}font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);padding:5px 8px;text-align:${i===0?'left':'center'};border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none" onclick="playerTableSort('${tableId}','${key}')">${h}${arrow}</th>`;
           }).join('')}</tr></thead>
           <tbody>${sorted.map((p,i)=>`<tr>${fields.map((f,fi)=>{
-            const stickyStyle = fi===0 ? 'position:sticky;left:0;background:#fff;z-index:1;' : '';
-            return `<td style="${stickyStyle}padding:7px 8px;font-size:12px;border-bottom:1px solid #eee;white-space:nowrap;${fi===0?'font-weight:700':'text-align:center'}" ${fi===0?`title="${esc(p[f])}"`:''}>${fi===0?`${i+1}. ${esc(shortName(p[f]))}`:p[f]||0}</td>`;
+            const stickyStyle = fi===0 ? 'position:sticky;left:0;background:var(--surface);z-index:1;' : '';
+            return `<td style="${stickyStyle}padding:7px 8px;font-size:12px;border-bottom:1px solid var(--border-light);white-space:nowrap;${fi===0?'font-weight:700':'text-align:center'}" ${fi===0?`title="${esc(p[f])}"`:''}>${fi===0?`${i+1}. ${esc(shortName(p[f]))}`:p[f]||0}</td>`;
           }).join('')}</tr>`).join('')}</tbody>
         </table>
         </div>
@@ -21380,7 +21384,7 @@ const Render = (() => {
           // a direct historical import, rather than by finishing the
           // wizard itself).
           if (!draft || seasons.length > 0) return '';
-          return `<div class="card" style="margin-bottom:12px;background:#fbf3d9;border:1px solid #d9c26b">
+          return `<div class="card card-tip" style="margin-bottom:12px">
             <div class="card-title">${I18n.t('ftw_resume_title')}</div>
             <p style="font-size:12px;color:#8a6d1e;margin-bottom:10px">${I18n.t('ftw_resume_hint')}</p>
             <div style="display:flex;gap:8px">
@@ -21499,7 +21503,7 @@ const Render = (() => {
                   <button class="btn btn-secondary btn-sm" onclick="handleReopenSeason()">${I18n.t('recap_btn_reopen')}</button>
                 </div>
               ` : `
-                <span class="badge" style="background:#f0f4f8;color:var(--muted);margin-bottom:8px;display:inline-block">${I18n.t('recap_status_active')}</span>
+                <span class="badge" style="background:#f0f4f8;color:#5a7ba8;margin-bottom:8px;display:inline-block">${I18n.t('recap_status_active')}</span>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
                   <button class="btn btn-secondary btn-sm" onclick="handlePreviewRecap()">${I18n.t('recap_btn_preview')}</button>
                   <button class="btn btn-primary btn-sm" onclick="handleCompleteSeason()">${I18n.t('recap_btn_complete')}</button>
@@ -21859,10 +21863,13 @@ const Render = (() => {
           <div style="font-size:13px;line-height:1.7;color:var(--dark)">${s.content}</div>
         </div>`).join('')}
 
+      <!-- Fixed pale-grey background in both themes (not --surface), so its
+           text stays fixed too rather than following --navy/--black/--mid/
+           --muted, which turn light in Escuro and would vanish here. -->
       <div class="card" style="background:#f8f8f8;margin-bottom:14px;text-align:center">
-        <div style="font-weight:800;font-size:15px;color:var(--navy)" translate="no">Next<span style="color:var(--black)">Eleven</span></div>
-        <div style="font-size:10px;font-weight:600;letter-spacing:1px;color:var(--mid);text-transform:uppercase;margin:4px 0 10px">Track. Develop. Improve.</div>
-        <div style="font-size:12px;color:var(--muted)">
+        <div style="font-weight:800;font-size:15px;color:#0F1E2E" translate="no">Next<span style="color:#B23333">Eleven</span></div>
+        <div style="font-size:10px;font-weight:600;letter-spacing:1px;color:#6B7280;text-transform:uppercase;margin:4px 0 10px">Track. Develop. Improve.</div>
+        <div style="font-size:12px;color:#999999">
           Version ${CONFIG.APP_VERSION} &nbsp;·&nbsp; Schema v${CONFIG.SCHEMA_VERSION} &nbsp;·&nbsp;
           ${I18n.t('help_footer_built_for')}
         </div>
@@ -25448,8 +25455,8 @@ const ActionMenu = (() => {
 
   function _itemHtml(a, mobile) {
     if (a.divider) return `<div role="separator" style="height:1px;background:var(--border);margin:6px 0"></div>`;
-    const colour = a.tone === 'danger' ? '#b03030' : a.tone === 'warn' ? '#a06a00'
-                 : a.current ? 'var(--navy)' : 'var(--dark)';
+    const colour = a.tone === 'danger' ? 'var(--red-accent)' : a.tone === 'warn' ? 'var(--amber-accent)'
+                 : a.current ? 'var(--navy-accent)' : 'var(--dark)';
     const pad  = mobile ? '15px 18px' : '9px 12px';
     const size = mobile ? '15px' : '13px';
     const bg   = a.current ? 'var(--light)' : 'none';
@@ -25493,18 +25500,18 @@ const ActionMenu = (() => {
     menu.setAttribute('role','menu');
     if (opts?.ariaLabel) menu.setAttribute('aria-label', opts.ariaLabel);
     menu.innerHTML = (mobile && opts?.title
-        ? `<div style="padding:14px 18px 8px;font-size:13px;font-weight:700;color:var(--navy);border-bottom:1px solid var(--border)">${esc(opts.title)}</div>`
+        ? `<div style="padding:14px 18px 8px;font-size:13px;font-weight:700;color:var(--navy-accent);border-bottom:1px solid var(--border)">${esc(opts.title)}</div>`
         : '')
       + actions.map(a => _itemHtml(a, mobile)).join('');
 
     // z-index sits above every overlay in the app so the sheet can never be
     // covered, and the menu is appended to <body> so no ancestor can clip it.
     if (mobile) {
-      menu.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483001;background:#fff;'
+      menu.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483001;background:var(--surface-elevated);'
         + 'border-radius:14px 14px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.18);'
         + 'padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));max-height:80vh;overflow-y:auto';
     } else {
-      menu.style.cssText = 'position:fixed;z-index:2147483001;background:#fff;border:1px solid var(--border);'
+      menu.style.cssText = 'position:fixed;z-index:2147483001;background:var(--surface-elevated);border:1px solid var(--border);'
         + 'border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.14);min-width:200px;padding:5px 0';
     }
     document.body.appendChild(menu);
@@ -25627,7 +25634,7 @@ async function renderSeasonResources(seasonId, filterOpts) {
       ${resources.length ? resources.map((r, i) => `
         <div class="info-row" style="${r.isActive===false?'opacity:.55':''}">
           <div style="flex:1;min-width:0">
-            <a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" style="font-weight:700;font-size:13px;text-decoration:none;color:var(--black)">${esc(r.title)}</a>
+            <a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" style="font-weight:700;font-size:13px;text-decoration:none;color:var(--black-accent)">${esc(r.title)}</a>
             <div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(r.category||'')}${r.notes?' · '+esc(r.notes):''}</div>
           </div>
           <div style="display:flex;gap:4px;flex-shrink:0">
@@ -26678,7 +26685,7 @@ async function renderSquadListTab(gameId) {
               <span class="wp-name" title="${esc(p.fullName)}">${esc(shortName(p.fullName))} ${p.trackingStatus==='tracked'?`<span class="badge badge-lor">${esc(p.trackingLabel||'★')}</span>`:''}</span>
               ${avail ? `<span class="wp-status-pill" title="${esc(avail.notes||'')}">${esc(availabilityStatusLabel(avail.status))}</span>`
                 : calledUp ? (()=>{ const _pos = gp.positionPlayed || p.primaryPosition || '—'; return `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" title="${esc(_pos)}" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},${p.playerId},null)">${esc(POSITION_ABBR[_pos] || _pos)}</span>`; })() : ''}
-              ${(calledUp&&!avail)?'<span style="margin-left:6px;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
+              ${(calledUp&&!avail)?'<span style="margin-left:6px;color:var(--green-accent);font-size:16px">&#10003;</span>':''}
             </div>
           </div>`;
         }).join('')}
@@ -26697,7 +26704,7 @@ async function renderSquadListTab(gameId) {
               <span class="wp-name" title="${esc(tp.name)}">${esc(tp.name)} <span class="pos-pill">${I18n.t('gd_guest_badge')}</span></span>
               ${avail ? `<span class="wp-status-pill" title="${esc(avail.notes||'')}">${esc(availabilityStatusLabel(avail.status))}</span>`
                 : calledUp ? (()=>{ const _pos = gp.positionPlayed || tp.preferredPosition || '—'; return `<span class="pos-pill" style="margin-left:auto;font-size:8px;padding:1px 5px;cursor:pointer" title="${esc(_pos)}" onclick="event.stopPropagation();openPositionPickerForGame(${gameId},null,${tp.tempPlayerId})">${esc(POSITION_ABBR[_pos] || _pos)}</span>`; })() : ''}
-              ${(calledUp&&!avail)?'<span style="margin-left:6px;color:#2a7a3b;font-size:16px">&#10003;</span>':''}
+              ${(calledUp&&!avail)?'<span style="margin-left:6px;color:var(--green-accent);font-size:16px">&#10003;</span>':''}
             </div>
           </div>`;
         }).join('')}
@@ -26706,7 +26713,7 @@ async function renderSquadListTab(gameId) {
     gdDebugLog(`squad tab: innerHTML written, ${el.querySelectorAll('.wp-row').length} rows`);
   } catch(err) {
     gdDebugLog(`SQUAD TAB ERROR: ${err.message}`);
-    el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;white-space:pre-wrap">${esc(err.message)}</p></div>`;
+    el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:var(--red-accent);font-family:monospace;font-size:11px;white-space:pre-wrap">${esc(err.message)}</p></div>`;
   }
 }
 
@@ -27055,7 +27062,7 @@ async function renderStartingXITab(gameId) {
     gdDebugLog(`xi tab: innerHTML written, ${el.querySelectorAll('.wp-row').length} rows`);
   } catch(err) {
     gdDebugLog(`XI TAB ERROR: ${err.message}`);
-    el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;white-space:pre-wrap">${esc(err.message)}</p></div>`;
+    el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:var(--red-accent);font-family:monospace;font-size:11px;white-space:pre-wrap">${esc(err.message)}</p></div>`;
   }
 }
 
@@ -27305,7 +27312,7 @@ async function renderSimpleGoalsTab(gameId) {
             <div style="font-size:10px;color:var(--muted)">${I18n.t('gd_our_score_hint')}</div>
           </div>
           <div style="display:flex;align-items:center;gap:6px">
-            <input type="number" min="0" max="50" value="${hasOurScoreOverride ? esc(String(game.ourScore)) : ''}" placeholder="${esc(I18n.t('gd_our_score_auto_placeholder', {n: autoOurScore}))}" style="width:64px;font-size:18px;font-weight:700;text-align:center;border:1px solid ${hasOurScoreOverride?'var(--navy)':'var(--border)'};border-radius:6px;padding:6px" onchange="simpleSetOurScore(${gameId},this.value)">
+            <input type="number" min="0" max="50" value="${hasOurScoreOverride ? esc(String(game.ourScore)) : ''}" placeholder="${esc(I18n.t('gd_our_score_auto_placeholder', {n: autoOurScore}))}" style="width:64px;font-size:18px;font-weight:700;text-align:center;border:1px solid ${hasOurScoreOverride?'var(--navy-accent)':'var(--border)'};border-radius:6px;padding:6px" onchange="simpleSetOurScore(${gameId},this.value)">
           </div>
         </div>
         ${hasOurScoreOverride ? `<div style="margin-top:6px;text-align:right"><button type="button" onclick="simpleSetOurScore(${gameId},'')" style="background:none;border:none;color:var(--muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:2px 0">${I18n.t('gd_our_score_clear')}</button></div>` : ''}
@@ -27319,9 +27326,9 @@ async function renderSimpleGoalsTab(gameId) {
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div style="font-size:11px;color:var(--muted)">${I18n.t('gd_own_goal_hint')}</div>
           <div style="display:flex;align-items:center;gap:8px">
-            <button type="button" onclick="adjustOwnGoalsForUs(${gameId},-1)" ${!(game?.ownGoalsForUs>0)?'disabled':''} style="width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:#fff;font-size:16px;font-weight:700;cursor:pointer;${!(game?.ownGoalsForUs>0)?'opacity:.35':''}">&minus;</button>
+            <button type="button" onclick="adjustOwnGoalsForUs(${gameId},-1)" ${!(game?.ownGoalsForUs>0)?'disabled':''} style="width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:16px;font-weight:700;cursor:pointer;${!(game?.ownGoalsForUs>0)?'opacity:.35':''}">&minus;</button>
             <span style="font-size:13px;min-width:20px;text-align:center">${game?.ownGoalsForUs||0}</span>
-            <button type="button" onclick="adjustOwnGoalsForUs(${gameId},1)" style="width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:#fff;font-size:16px;font-weight:700;cursor:pointer">+</button>
+            <button type="button" onclick="adjustOwnGoalsForUs(${gameId},1)" style="width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:16px;font-weight:700;cursor:pointer">+</button>
           </div>
         </div>
       </div>`;
@@ -27384,7 +27391,7 @@ async function renderSimpleGoalsTab(gameId) {
     gdDebugLog(`goals tab: innerHTML written, ${el.querySelectorAll('.goal-row').length} rows`);
   } catch(err) {
     gdDebugLog(`GOALS TAB ERROR: ${err.message}`);
-    el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;white-space:pre-wrap">${esc(err.message)}</p></div>`;
+    el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:var(--red-accent);font-family:monospace;font-size:11px;white-space:pre-wrap">${esc(err.message)}</p></div>`;
   }
 }
 
@@ -27811,7 +27818,7 @@ async function renderPenaltiesTab(gameId) {
       </div>
     `;
   } catch(err) {
-    el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:#b03030;font-family:monospace;font-size:11px;white-space:pre-wrap">${esc(err.message)}</p></div>`;
+    el.innerHTML = `<div class="empty"><strong>Display error</strong><p style="color:var(--red-accent);font-family:monospace;font-size:11px;white-space:pre-wrap">${esc(err.message)}</p></div>`;
   }
 }
 
@@ -28522,8 +28529,8 @@ async function init() {
       console.error('[init] Missing IndexedDB stores after open:', missing);
       document.getElementById('loading').innerHTML = `
         <div style="text-align:center;padding:24px;max-width:340px">
-          <p style="color:#b03030;font-weight:700;margin-bottom:10px">Database needs an update</p>
-          <p style="font-size:12px;color:#666;margin-bottom:16px">A new version added features that need a one-time database upgrade. Missing: ${missing.join(', ')}</p>
+          <p style="color:var(--red-accent);font-weight:700;margin-bottom:10px">Database needs an update</p>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:16px">A new version added features that need a one-time database upgrade. Missing: ${missing.join(', ')}</p>
           <button class="btn btn-primary" onclick="location.reload(true)">Reload App</button>
         </div>`;
       return;

@@ -64,6 +64,22 @@ a{color:var(--text);text-decoration:none}
   --radius:3px;
   --shadow:0 1px 3px rgba(0,0,0,0.1);
   --nav-h:52px;
+  /* --black itself stays untouched (brand-preservation) wherever it pairs
+     with its own background or border — this is only for the few places
+     the brand red is plain TEXT sitting directly on --surface/--bg: in
+     Claro identical to --black, in Escuro a brighter, WCAG-checked red
+     (Victor, 2026-11-02 readability follow-up: low-contrast coloured
+     labels/forms). */
+  --black-accent:#B23333;
+  /* Same split for --navy: stays untouched as the nav bar's own fixed
+     background, but needed its own readable variant everywhere it's
+     plain text or a selection border on --surface/--bg (auth screen,
+     account menu, settings) — near-black navy text was unreadable once
+     that surface itself went dark. */
+  --navy-accent:#0F1E2E;
+  --red-accent:#b03030;
+  --amber-accent:#a06a00;
+  --green-accent:#2a7a3b;
 }
 
 /* ── DARK MODE (Claro / Escuro / Automático) ─────────────────────────────────
@@ -113,6 +129,11 @@ a{color:var(--text);text-decoration:none}
   --active-highlight:rgba(178,51,51,.18);
   --danger-border:#5c2f2f;
   --danger-bg:rgba(178,51,51,.08);
+  --black-accent:#F87171;
+  --navy-accent:#C7D6EC;
+  --red-accent:#F87171;
+  --amber-accent:#FBBF24;
+  --green-accent:#4ADE80;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]):not([data-theme="dark"]){
@@ -138,6 +159,11 @@ a{color:var(--text);text-decoration:none}
     --active-highlight:rgba(178,51,51,.18);
     --danger-border:#5c2f2f;
     --danger-bg:rgba(178,51,51,.08);
+    --black-accent:#F87171;
+    --navy-accent:#C7D6EC;
+    --red-accent:#F87171;
+    --amber-accent:#FBBF24;
+    --green-accent:#4ADE80;
   }
 }
 /* Rows whose background intentionally stays a fixed pale tint in both
@@ -250,7 +276,7 @@ th.sort-desc::after{content:" ▼";font-size:9px}
 td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;color:var(--dark);vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:var(--highlight)}
-.td-bold{font-weight:700;color:var(--black)}
+.td-bold{font-weight:700;color:var(--black-accent)}
 .td-center{text-align:center}
 .td-num{text-align:center;font-variant-numeric:tabular-nums}
 .td-muted{color:var(--muted)}
@@ -284,7 +310,7 @@ tr:hover td{background:var(--highlight)}
 .form-group{display:flex;flex-direction:column;gap:4px}
 .form-group.full{grid-column:1/-1}
 .form-group label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
-.form-group input,.form-group select,.form-group textarea{border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;font-size:13px;color:var(--black);background:var(--surface);transition:border-color .15s}
+.form-group input,.form-group select,.form-group textarea{border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;font-size:13px;color:var(--black-accent);background:var(--surface);transition:border-color .15s}
 .form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--black)}
 .form-group textarea{resize:vertical;min-height:70px}
 .form-group input[type=checkbox]{width:16px;height:16px;cursor:pointer;margin-top:2px}
@@ -342,7 +368,7 @@ tr:hover td{background:var(--highlight)}
 .wp-row.wp-unavailable .wp-info{cursor:not-allowed}
 .wp-status-pill{flex-shrink:0;white-space:nowrap;margin-left:auto;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;background:#fde8e8;color:#b03030}
 .wp-info{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;user-select:none}
-.wp-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#eee;font-size:12px;font-weight:700;flex-shrink:0}
+.wp-num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#eee;color:#333;font-size:12px;font-weight:700;flex-shrink:0}
 .wp-row.wp-active .wp-num{background:var(--black);color:#fff}
 .wp-name{flex:1;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:80px}
 .wp-pos{font-size:11px;color:var(--muted)}
@@ -451,7 +477,7 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 
 /* ── BACK BUTTON ──────────────────────────────────────────────────────────── */
 .back-btn{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--mid);cursor:pointer;margin-bottom:14px;background:none;border:none;padding:0}
-.back-btn:hover{color:var(--black)}
+.back-btn:hover{color:var(--black-accent)}
 
 /* ── TIMELINE ─────────────────────────────────────────────────────────────── */
 .timeline-list{display:flex;flex-direction:column;gap:10px}
@@ -459,6 +485,17 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 .timeline-item .ti-title{font-weight:700;font-size:13px}
 .timeline-item .ti-meta{font-size:11px;color:var(--muted);margin-top:2px}
 .timeline-item .ti-desc{font-size:12px;color:var(--dark);margin-top:6px}
+/* Fixed-tone info cards: their background stays the same warm pale tone in
+   both themes (a deliberate "hint" / "achievement" accent), so any text
+   that sits directly on it (not inside a themed .timeline-item/.surface)
+   needs its own fixed colour rather than the themed defaults — otherwise
+   dark mode's light text lands on this permanently pale card and vanishes. */
+.card-tip{background:#fbf3d9;border:1px solid #d9c26b}
+.card-tip .card-title{color:#8a6d1e}
+.card-achieve{background:#faf7f0;border-color:#e2d9c4}
+.card-achieve .card-title{color:#8a7a52}
+.card-achieve .ir-label{color:#3a3326}
+.card-achieve .ir-value{color:#3a3326}
 
 /* ── SETTINGS ─────────────────────────────────────────────────────────────── */
 .settings-section{margin-bottom:24px}
@@ -636,12 +673,12 @@ tr:hover td.col-sticky-num,tr:hover td.col-sticky-name{background:var(--highligh
 }
 
 /* ── FILE LABEL BUTTON ────────────────────────────────────────────────────── */
-.file-label-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;background:var(--surface);border:1px solid var(--border-dark);border-radius:3px;font-size:13px;font-weight:700;color:var(--black);cursor:pointer;transition:background .15s}
+.file-label-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;background:var(--surface);border:1px solid var(--border-dark);border-radius:3px;font-size:13px;font-weight:700;color:var(--black-accent);cursor:pointer;transition:background .15s}
 .file-label-btn:hover{background:var(--icon-bg)}
 /* ── IMPORT TABS ──────────────────────────────────────────────────────────── */
 .import-tab{padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none;white-space:nowrap;flex-shrink:0}
 .tab-bar-row{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;align-items:stretch}
-.import-tab.active-tab{color:var(--black);border-bottom-color:var(--black)}
+.import-tab.active-tab{color:var(--black-accent);border-bottom-color:var(--black-accent)}
 /* ── APPEARANCE (dark mode) — Settings segmented control ────────────────────
    Built entirely from already-themed variables, so it needs no dedicated
    dark-mode overrides of its own. */
