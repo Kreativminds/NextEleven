@@ -59,6 +59,26 @@
                                    left unchanged by design */
     --skel-a:#eee;             /* skeleton shimmer gradient stops */
     --skel-b:#f5f5f5;
+    /* "-accent" variables: the SAME green/red/amber/brand-red used as plain
+       TEXT or a decorative border directly on a dynamic surface (--surface
+       / --bg / the page), as opposed to --green/--red/--amber/--black
+       themselves, which stay exactly as-is when paired with their own
+       matching pale -bg chip (badges, date chips) — that pairing is
+       self-contained and already reads fine regardless of the page theme,
+       so it is deliberately left untouched. Victor, 2026-11-02 (readability
+       follow-up): "Keep the green, red and amber colour coding, but use
+       brighter, accessible variants in dark mode." Light-mode default is
+       identical to the base colour, so Claro is unaffected. */
+    --green-accent:#2a7a4e;
+    --red-accent:#b03030;
+    --amber-accent:#7a5f18;
+    --black-accent:#B23333;
+    /* Club-crest watermarks (background + classification-card corner mark)
+       — unchanged asset, only their opacity is themed: a pale logo at the
+       same opacity reads noticeably stronger against a dark page, so dark
+       mode dims it further to stay "subtle and decorative". */
+    --watermark-opacity:0.06;
+    --watermark-opacity-card:0.12;
   }
   /* Dark theme (Escuro, forced) — see NEXT ELEVEN dark-mode spec. Values
      from the spec: bg #111827, surface #1F2937, elevated #253247,
@@ -78,6 +98,14 @@
     --navy-text:#C7D6EC;
     --skel-a:#2b3544;
     --skel-b:#374151;
+    /* Brightened, WCAG AA-checked against both --bg #111827 and --surface
+       #1F2937 (≥4.5:1 for normal text in every case below). */
+    --green-accent:#4ADE80;
+    --red-accent:#F87171;
+    --amber-accent:#FBBF24;
+    --black-accent:#F87171;
+    --watermark-opacity:0.035;
+    --watermark-opacity-card:0.07;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]):not([data-theme="dark"]){
@@ -91,6 +119,12 @@
       --navy-text:#C7D6EC;
       --skel-a:#2b3544;
       --skel-b:#374151;
+      --green-accent:#4ADE80;
+      --red-accent:#F87171;
+      --amber-accent:#FBBF24;
+      --black-accent:#F87171;
+      --watermark-opacity:0.035;
+      --watermark-opacity-card:0.07;
     }
   }
   *{box-sizing:border-box}
@@ -104,6 +138,31 @@
   .team-header h1{font-size:22px;margin:0 0 2px;font-weight:800}
   .team-header .sub{font-size:13px;color:var(--muted)}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:12px}
+  /* Season/previous achievements — a deliberately warm, pale-cream
+     call-out card (not the plain --surface), same idea as a -bg chip:
+     self-contained and fixed in both themes, so its own text needs its
+     own fixed, always-readable colours rather than following --dark/
+     --muted, which would turn light in Escuro and vanish against this
+     pale background. */
+  .highlight-card{background:#faf7f0;border-color:#e2d9c4}
+  .highlight-card .row-name{color:#3a3326}
+  .highlight-card .row-meta{color:#8a7a52}
+  .highlight-card .card-title{color:#8a7a52}
+  /* Club-crest watermarks — same unchanged logo asset in both themes,
+     only the opacity is themed (dimmer in Escuro, see --watermark-opacity*
+     above): a pale crest at a fixed opacity reads noticeably stronger
+     against a dark page than it does on the original white one. */
+  .club-watermark-bg{opacity:var(--watermark-opacity)}
+  .club-watermark-card{opacity:var(--watermark-opacity-card)}
+  /* Birthday call-out — same fixed, self-contained pale-yellow pattern as
+     .highlight-card above: the card's own colour (inherited by the plain
+     message/name text that sets none of its own) plus explicit overrides
+     for .row-meta and .birthday-card-sub, which otherwise set their own
+     --muted and would turn light in Escuro. */
+  .birthday-card{background:#fef6e0;border-color:#f0d98a;color:#4a3d05}
+  .birthday-card .row-name{color:#4a3d05}
+  .birthday-card .row-meta,
+  .birthday-card .birthday-card-sub{color:#8a7020}
   .card-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
   .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .stat-grid.cols-3{grid-template-columns:1fr 1fr 1fr}
@@ -116,7 +175,16 @@
      Victor shared. box-green highlights the "best of" achievement tiles
      the same way that reference highlighted its best-streak tiles. */
   .stat-grid.boxed > div{background:var(--tile-bg);border-radius:8px;padding:10px 8px;text-align:center}
+  /* Achievement highlight tile — pale green stays the highlight (and the
+     bg/text pairing is already proven to work, since it's the same one
+     .badge-W etc. use elsewhere), explicit here only because .stat-value/
+     .stat-label set no colour of their own and would otherwise inherit
+     --dark, which turns light in Escuro and goes invisible against this
+     fixed pale background. Victor, 2026-11-02 (readability follow-up):
+     "pale green statistic tiles where white text is almost invisible". */
   .stat-grid.boxed > div.box-green{background:var(--green-bg)}
+  .stat-grid.boxed > div.box-green .stat-label,
+  .stat-grid.boxed > div.box-green .stat-value{color:var(--green)}
   .stat-grid.boxed .stat-value{font-size:18px}
   /* Season Calendar — same light-tile "boxed" look as .stat-grid.boxed
      above (reused colour/radius), one tile per calendar item instead of
@@ -135,9 +203,9 @@
      use, so the icons/colours are explained before parents meet them. */
   .cal-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;font-weight:700;margin:2px 0 10px}
   .cal-legend-item{display:inline-flex;align-items:center;gap:4px}
-  .cal-legend-item.is-home{color:var(--green)}
-  .cal-legend-item.is-away{color:var(--red)}
-  .cal-legend-item.is-pause{color:var(--amber)}
+  .cal-legend-item.is-home{color:var(--green-accent)}
+  .cal-legend-item.is-away{color:var(--red-accent)}
+  .cal-legend-item.is-pause{color:var(--amber-accent)}
   /* display:flex so the tile can carry the same .match-card-date column
      as match cards (Victor, 2026-11-01: "the folga dates are not the
      same as the others") — .cal-box-body holds the title/meta/note that
@@ -167,14 +235,14 @@
      this dark color"), on a 4px left border in that same solid accent
      colour — the chip is the pale tint, the border is the full-strength
      colour, same pairing .badge-W/.match-card-ha already use elsewhere. */
-  .cal-box.cal-pause{border-left-color:var(--amber)}
+  .cal-box.cal-pause{border-left-color:var(--amber-accent)}
   .cal-box.cal-pause .match-card-date{background:var(--amber-bg);color:var(--amber)}
-  .cal-box.cal-pause .cal-box-title{color:var(--amber)}
-  .cal-box.cal-pause .cal-box-meta{color:var(--amber)}
-  .cal-box.cal-milestone{border-left-color:var(--green)}
+  .cal-box.cal-pause .cal-box-title{color:var(--amber-accent)}
+  .cal-box.cal-pause .cal-box-meta{color:var(--amber-accent)}
+  .cal-box.cal-milestone{border-left-color:var(--green-accent)}
   .cal-box.cal-milestone .match-card-date{background:var(--green-bg);color:var(--green)}
-  .cal-box.cal-milestone .cal-box-title{color:var(--green)}
-  .cal-box.cal-milestone .cal-box-meta{color:var(--green)}
+  .cal-box.cal-milestone .cal-box-title{color:var(--green-accent)}
+  .cal-box.cal-milestone .cal-box-meta{color:var(--green-accent)}
   /* Month grouping (Victor, 2026-11-01 mockup): a dark-navy header per
      month — same navy already used for .app-header/.summary-card
      elsewhere on this page, not a new colour — with a dynamically
@@ -191,8 +259,8 @@
      colour AND icon AND text label for home/away, never colour alone.
      Opponent/venue text wraps rather than truncates — long names (a
      validation requirement) must stay fully readable on mobile. */
-  .match-card{display:flex;gap:0;background:var(--surface);border-radius:10px;padding:0;border:1px solid var(--border);border-left:4px solid var(--green);box-shadow:0 1px 3px rgba(16,24,40,.08);position:relative;overflow:hidden}
-  .match-card.is-away{border-left-color:var(--red)}
+  .match-card{display:flex;gap:0;background:var(--surface);border-radius:10px;padding:0;border:1px solid var(--border);border-left:4px solid var(--green-accent);box-shadow:0 1px 3px rgba(16,24,40,.08);position:relative;overflow:hidden}
+  .match-card.is-away{border-left-color:var(--red-accent)}
   /* Dual colouring (Victor, 2026-11-01 mockup: "a color for the date and
      another for the content") — the date chip carries the home/away
      colour (green/red) as its own background; the content area stays a
@@ -213,8 +281,8 @@
   .match-card-opponent{font-weight:700;font-size:13px;overflow-wrap:anywhere}
   .match-card-ha{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:11px;margin-top:4px;color:var(--dark)}
   .match-card-ha-pill{display:inline-flex;align-items:center;gap:3px;font-weight:700}
-  .match-card-ha.is-home .match-card-ha-pill{color:var(--green)}
-  .match-card-ha.is-away .match-card-ha-pill{color:var(--red)}
+  .match-card-ha.is-home .match-card-ha-pill{color:var(--green-accent)}
+  .match-card-ha.is-away .match-card-ha-pill{color:var(--red-accent)}
   .match-card-venue{color:var(--muted);overflow-wrap:anywhere}
   .match-card-dir{margin-top:5px;font-size:11px}
   /* Jornada/round — "discreet", so it sits tucked in the card's own
@@ -324,6 +392,9 @@
   .carousel-dot span{display:block;width:7px;height:7px;margin:0 auto;border-radius:50%;background:var(--border)}
   .carousel-dot[aria-selected="true"] span{background:var(--black)}
   @media (prefers-reduced-motion: reduce){.carousel-track{transition:none}}
+  /* Always sits inside the fixed pale-yellow birthday card below (never on
+     --surface), so this stays the plain (non-accent) amber — that card's
+     background never changes with the theme either. */
   .bday-count{font-size:12px;font-weight:700;color:var(--amber);margin-top:6px}
   .comp-table{width:100%;border-collapse:collapse;font-size:12px}
   .comp-table th{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;text-align:right;padding:3px 0}
@@ -367,7 +438,12 @@
   .classification-table td:nth-child(2){text-align:left;font-weight:600;white-space:normal}
   .classification-table .cls-pos{font-weight:700;color:var(--muted)}
   .classification-table .cls-pts{font-weight:800}
-  .classification-table tr.cls-own td{background:var(--amber-bg)}
+  /* Own-team row — a self-contained pale-amber highlight like the -bg
+     chips elsewhere, fixed in both themes, so every cell's text needs a
+     fixed, always-readable colour too (overrides --muted on .cls-pos,
+     and the inherited --dark default elsewhere, which both turn light in
+     Escuro and would otherwise vanish against this fixed background). */
+  .classification-table tr.cls-own td{background:var(--amber-bg);color:#333}
   /* Position and Team stay pinned while the rest of the table scrolls
      horizontally, so a name never disappears off-screen on a narrow
      phone. Both columns get a fixed width so the second column's `left`
@@ -395,7 +471,7 @@
   .cls-preview-info{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
   .cls-preview-team{font-weight:700;font-size:16px;color:var(--navy-text);overflow-wrap:break-word}
   .cls-preview-points{font-size:13px;color:var(--dark);margin-top:3px}
-  .cls-preview-points b{color:var(--red);font-size:18px;font-weight:800}
+  .cls-preview-points b{color:var(--red-accent);font-size:18px;font-weight:800}
   .cls-preview-status{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#8a6d1f;background:var(--amber-bg);border-radius:20px;padding:4px 10px;margin-top:8px;width:fit-content}
   .cls-preview-bottom{display:flex;align-items:stretch;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
   .cls-preview-stats{display:flex;flex:1;min-width:0}
@@ -760,7 +836,7 @@ function renderCardEventsStrip(g, players) {
 function renderClubWatermark(season) {
   const logoUrl = season?.clubLogoUrl;
   if (!logoUrl) return '';
-  return `<img src="${esc(logoUrl)}" alt="" aria-hidden="true" style="position:fixed;top:90px;left:50%;transform:translateX(-50%);width:min(70vw,320px);height:min(70vw,320px);max-width:100%;object-fit:contain;opacity:0.06;pointer-events:none;z-index:0;user-select:none">`;
+  return `<img src="${esc(logoUrl)}" alt="" aria-hidden="true" class="club-watermark-bg" style="position:fixed;top:90px;left:50%;transform:translateX(-50%);width:min(70vw,320px);height:min(70vw,320px);max-width:100%;object-fit:contain;pointer-events:none;z-index:0;user-select:none">`;
 }
 
 function isGameLive(g, season) {
@@ -1139,7 +1215,7 @@ function registerDirectionsTarget(mapUrl, name, address) {
 function directionsLinkHtml(mapUrl, name, address) {
   if (!mapUrl && !name && !address) return '';
   const idx = registerDirectionsTarget(mapUrl, name, address);
-  return `<a href="#" onclick="openDirectionsChooser(${idx});return false;" style="color:var(--black);font-weight:700;text-decoration:none;white-space:nowrap">${esc(tr('get_directions'))} &#8594;</a>`;
+  return `<a href="#" onclick="openDirectionsChooser(${idx});return false;" style="color:var(--black-accent);font-weight:700;text-decoration:none;white-space:nowrap">${esc(tr('get_directions'))} &#8594;</a>`;
 }
 // Pulls lat/lng out of a FULL Google Maps URL when present. Short links
 // (maps.app.goo.gl/...) never match — their path carries no coordinates,
@@ -2084,10 +2160,10 @@ function renderHappyBirthdaySlide(todayBirthdays) {
     const template = pickStable(pool, `${todayStr}-${b.playerId}`);
     const message = template.split('{name}').join(esc(shortName(b.fullName)));
     return `
-    <div class="card" style="background:#fef6e0;border-color:#f0d98a;text-align:center">
+    <div class="card birthday-card" style="text-align:center">
       <div style="font-size:28px" aria-hidden="true">🎂</div>
       <div style="font-size:13px;white-space:pre-line;overflow-wrap:anywhere;margin-top:6px;line-height:1.5">${message}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:8px">${tr('turns_today', {n: b.turningAge})}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</div>
+      <div style="font-size:11px;margin-top:8px" class="birthday-card-sub">${tr('turns_today', {n: b.turningAge})}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</div>
     </div>`;
   }
 
@@ -2103,7 +2179,7 @@ function renderHappyBirthdaySlide(todayBirthdays) {
     : (T.birthday_msg_pool_shared_opener0_many || STRINGS.en.birthday_msg_pool_shared_opener0_many);
   const message = template.split('{names}').join(esc(names)).split('{opener0}').join(opener0);
   return `
-    <div class="card" style="background:#fef6e0;border-color:#f0d98a;text-align:center">
+    <div class="card birthday-card" style="text-align:center">
       <div style="font-size:28px" aria-hidden="true">🎂</div>
       <div style="font-size:13px;white-space:pre-line;overflow-wrap:anywhere;margin-top:6px;line-height:1.5">${message}</div>
     </div>`;
@@ -2122,7 +2198,7 @@ function renderBirthdayInfoSlide(birthdays) {
   // rather than picking just one.
   if (thisWeekBirthdays.length) {
     return `
-    <div class="card" style="background:#fef6e0;border-color:#f0d98a">
+    <div class="card birthday-card">
       <h2 class="card-title" style="color:#7a5f18;margin-top:0;font-size:11px"><span aria-hidden="true">🎂</span> ${thisWeekBirthdays.length>1 ? tr('birthdays_this_week_pl') : tr('birthdays_this_week')}</h2>
       ${thisWeekBirthdays.map(b => `<div class="row">
         <span class="row-name">${esc(shortName(b.fullName))}${b.shirtNumber ? ' · #' + esc(b.shirtNumber) : ''}</span>
@@ -2138,10 +2214,10 @@ function renderBirthdayInfoSlide(birthdays) {
   const num = b.shirtNumber ? ' · #' + esc(b.shirtNumber) : '';
   const when = b.daysUntil === 1 ? tr('tomorrow') : tr('in_days', {n: b.daysUntil});
   return `
-  <div class="card" style="background:#fef6e0;border-color:#f0d98a">
+  <div class="card birthday-card">
     <h2 class="card-title" style="color:#7a5f18;margin-top:0;font-size:11px"><span aria-hidden="true">🎂</span> ${tr('next_birthday')}</h2>
     <div style="font-weight:700;font-size:15px">${name}${num}</div>
-    <div style="font-size:12px;color:var(--muted);margin-top:3px">${fmtBirthday(b)} · ${tr('turning', {n: b.turningAge})}</div>
+    <div style="font-size:12px;margin-top:3px" class="birthday-card-sub">${fmtBirthday(b)} · ${tr('turning', {n: b.turningAge})}</div>
     <div class="bday-count">${when}</div>
   </div>`;
 }
@@ -2231,13 +2307,13 @@ function renderRecap(el, data) {
     </div>` : ''}
 
     ${(data.seasonHighlights && data.seasonHighlights.length) ? `
-    <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
+    <div class="card highlight-card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_highlights')}</h2>
       ${data.seasonHighlights.map(a => `<div class="row"><span class="row-name"><span aria-hidden="true">🏆</span> ${esc(a.title)}</span><span class="row-meta">${a.date?fmtDate(a.date):''}</span></div>`).join('')}
     </div>` : ''}
 
     <div class="card" style="text-align:center">
-      <a href="${esc(backUrl)}" style="font-size:13px;font-weight:700;color:var(--red);text-decoration:none">← Back to Team Page</a>
+      <a href="${esc(backUrl)}" style="font-size:13px;font-weight:700;color:var(--red-accent);text-decoration:none">← Back to Team Page</a>
     </div>
 
     <div class="footer-note">${tr('footer_recap')}</div>
@@ -2255,7 +2331,7 @@ function renderRecap(el, data) {
 function renderClubLogo(season) {
   const logoUrl = season?.clubLogoUrl;
   if (!logoUrl) return '';
-  return `<img src="${esc(logoUrl)}" alt="" aria-hidden="true" style="position:absolute;top:50%;right:-10px;transform:translateY(-50%);width:160px;height:160px;object-fit:contain;opacity:0.12;pointer-events:none;z-index:0">`;
+  return `<img src="${esc(logoUrl)}" alt="" aria-hidden="true" class="club-watermark-card" style="position:absolute;top:50%;right:-10px;transform:translateY(-50%);width:160px;height:160px;object-fit:contain;pointer-events:none;z-index:0">`;
 }
 
 function applyTeamPageBranding(appBranding) {
@@ -2835,9 +2911,9 @@ function render(el, data) {
         const kickoff = new Date(`${next.date}T${next.gameTime || '00:00'}`);
         const daysLeft = Math.round((kickoff - new Date()) / (1000*60*60*24));
         if (isNaN(kickoff) || daysLeft < 0) return '';
-        if (daysLeft === 0) return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">${tr('today')}</div>`;
-        if (daysLeft === 1) return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">${tr('tomorrow')}</div>`;
-        return `<div style="font-size:12px;font-weight:700;color:var(--black);margin-top:6px">${tr('days_remaining', {n: daysLeft})}</div>`;
+        if (daysLeft === 0) return `<div style="font-size:12px;font-weight:700;color:var(--black-accent);margin-top:6px">${tr('today')}</div>`;
+        if (daysLeft === 1) return `<div style="font-size:12px;font-weight:700;color:var(--black-accent);margin-top:6px">${tr('tomorrow')}</div>`;
+        return `<div style="font-size:12px;font-weight:700;color:var(--black-accent);margin-top:6px">${tr('days_remaining', {n: daysLeft})}</div>`;
       })()}
     </div>` : '';
   const birthdays = dedupePlayerRows(data.birthdays || []);
@@ -3091,15 +3167,15 @@ function render(el, data) {
     <div class="card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('availability')}</h2>
       <div class="stat-grid">
-        <div><div class="stat-label">${tr('available')}</div><div class="stat-value" style="color:var(--green)">${availableCount}</div></div>
-        <div><div class="stat-label">${tr('unavailable')}</div><div class="stat-value" style="color:var(--red)">${unavailableCount}</div></div>
+        <div><div class="stat-label">${tr('available')}</div><div class="stat-value" style="color:var(--green-accent)">${availableCount}</div></div>
+        <div><div class="stat-label">${tr('unavailable')}</div><div class="stat-value" style="color:var(--red-accent)">${unavailableCount}</div></div>
       </div>
       ${unavailableList.length ? `
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         ${unavailableList.map(p => `<div class="row">
           <span class="squad-num">${p.shirtNumber||'—'}</span>
           <span class="row-name">${esc(shortName(p.fullName))}${p.primaryPosition?' · '+esc(posName(p.primaryPosition)):''}</span>
-          <span class="row-meta" style="color:var(--red)">${tr('unavailable')}</span>
+          <span class="row-meta" style="color:var(--red-accent)">${tr('unavailable')}</span>
         </div>`).join('')}
       </div>` : ''}
     </div>`;
@@ -3149,7 +3225,7 @@ function render(el, data) {
 
     <div class="pane" data-tab="team">
     ${(data.seasonHighlights && data.seasonHighlights.length) ? `
-    <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
+    <div class="card highlight-card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('season_highlights')}</h2>
       ${data.seasonHighlights.map(a => `<div class="row">
         <span class="row-name"><span aria-hidden="true">🏆</span> ${esc(a.title)}</span>
@@ -3161,7 +3237,7 @@ function render(el, data) {
 
     <div class="pane" data-tab="history">
     ${(data.previousAchievements && data.previousAchievements.length) ? `
-    <div class="card" style="background:#faf7f0;border-color:#e2d9c4">
+    <div class="card highlight-card">
       <h2 class="card-title" style="margin-top:0;font-size:11px">${tr('prev_achievements')}</h2>
       ${data.previousAchievements.map(a => `<div class="row">
         <span class="row-name"><span aria-hidden="true">🏆</span> ${esc(a.title)}</span>
