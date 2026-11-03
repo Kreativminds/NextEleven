@@ -8,6 +8,89 @@ Newest entry on top.
 
 ---
 
+## 2026-11-03 — Scheduled nightly run
+
+- lastInspectedCommit: c20951a
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt once again asserted BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3). As of this morning's
+  manual correction (see the entry right below this one), BUGS.md's real
+  Open section is actually empty — the "Caio Andrade" entry that had been
+  Open since 2026-11-01 was moved to Resolved today. Went with real repo
+  state (zero Open entries), per every prior run since 10-15.
+- Process note: the concurrency-lock step was missed at the very start of
+  this run (went straight to reading it, never wrote the `"status":"running"`
+  state before starting work). No actual collision occurred — this was the
+  only session running — but flagging the process gap so it isn't repeated.
+- Scope: diff since 8b64fe0 (last run's lastInspectedCommit) touched
+  `index.html` and `team.html` via one real commit (b85561f, "Add automatic
+  weather forecast for the next match on the parent page", merged via PR
+  #35 in an interactive session today, not by this agent) plus bookkeeping
+  commits either side (lock, BUGS.md correction, PR #34 merge). Zero-AI
+  early exit did not fire (app files changed), so triage ran.
+- Checks run:
+  - `check-syntax.js` → OK (all 3 script blocks parse).
+  - `check-i18n-parity.js` → OK (2030/2030 keys, no gaps).
+  - `check-html-comments.js` → OK (both files balanced, no swallowed tags).
+  - `tests/regression_caio_and_cards.js` → 3/3 pass.
+  - `tests/regression_marcadores_guests.js` → 3/3 pass.
+  - `tests/regression_next_game_weather.js` → 3/3 pass.
+  - `tests/regression_season_calendar.js` → 52/52 pass.
+- Triage (haiku): given commit b85561f's full diff (index.html + team.html),
+  the deterministic-check outputs, and the (empty) BUGS.md Open section,
+  returned 2 candidates: P2 "away-match weather forecast never shows" (it
+  independently grepped the repo and confirmed `next.opponentLat`/
+  `opponentLng` — read by `renderNextGameWeather` in team.html — are never
+  written anywhere; the admin side only ever writes `venueLat`/`venueLng`
+  onto the opponent record); P3 "Home Ground coordinates only settable via
+  the season Edit form, not any season-creation path" (unverified by
+  triage, flagged as possibly expected).
+- Orchestrator follow-through:
+  - Away-weather field mismatch: **confirmed, real, root-caused further**.
+    This isn't just a client-side naming slip — the public page calls the
+    Supabase RPC `get_public_team_data` directly (team.html L1603), and
+    that RPC's JSON builder (current version: `supabase/migrations_pending/
+    009_harden_public_rpc_against_stuck_soft_deletes.sql`) denormalizes
+    `opponentMapUrl` from the opponent's `payload->>'mapUrl'` but has no
+    equivalent for `venueLat`/`venueLng`. So `next.opponentLat`/`opponentLng`
+    are `undefined` for every away game returned by the real production
+    RPC, full stop — no client-side fix is possible, the data is never in
+    the payload the page receives. Confirmed no other file sets these
+    fields (`grep -rn "opponentLat\|opponentLng"` → only the one read site
+    in team.html and the test fixtures, which set them directly and so
+    never exercise the real gap).
+  - Home Ground coords creation-path gap: **confirmed, real**. Grepped
+    every `homeGround`-setting call site: `wiz-homeground` (renewal
+    wizard), `ftw-club-ground` (First-Time Wizard), and `sf-homeground`
+    (manual "no seasons yet" create form) all had no coordinates
+    counterpart; only the season Edit form (added in b85561f) did.
+- Fixed (1/2 of cap used):
+  - Added a matching Home Ground coordinates input to all three
+    season-creation paths (renewal wizard, First-Time Wizard, manual
+    create), reusing last night's existing i18n keys and validation
+    pattern, wired through to `homeGroundLat`/`homeGroundLng` on the
+    `seasons` record each path writes. Commit 883b45f on
+    `maintenance/nightly-2026-11-03`. Re-ran all 3 deterministic checks +
+    all 4 regression suites after the change — still all green. PR:
+    https://github.com/Kreativminds/NextEleven/pull/36
+- Needs your approval:
+  - Away-match weather forecast is completely dead in production (P2,
+    confirmed) — see root cause above. Fix requires extending the public
+    `get_public_team_data` RPC (a new `supabase/migrations_pending/010...`
+    migration, following the exact pattern of `opponentMapUrl` in 009) to
+    also return `opponentLat`/`opponentLng` sourced from the opponent's
+    `venueLat`/`venueLng`. Not drafted or staged tonight: this is the one
+    public RPC every part of team.html depends on, and this agent has no
+    live Supabase connection to verify a new version of it against the
+    real schema before handing you SQL to run — safer for you or an
+    interactive session to draft and check it directly. Home-match weather
+    (season `homeGroundLat`/`Lng`, read straight off the `season` object
+    already in the RPC payload) is unaffected and works today.
+- Pending: none else — both triage candidates were run to ground tonight.
+  ~9 min of the ~20 min budget used.
+- Known Unresolved housekeeping: none — nothing in tonight's diff touches
+  any carried-forward item; list unchanged.
+
 ## 2026-11-03 — Correction (manual, interactive session, not the nightly schedule)
 
 - Victor asked to action the two items from the 2026-11-02 report: merge PR #34 and resolve the "Caio Andrade" BUGS.md entry.
