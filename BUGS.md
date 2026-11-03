@@ -9,14 +9,16 @@ How this works:
 
 ## Open
 
-### "Caio Andrade" appears twice in Marcadores/Assistências on the Parents Page — once as roster player, once as unconverted guest
-- Reported: 2026-11-01 (found by the nightly QA run, not by Victor)
-- Status: Open — flagged, not fixed (data/migration issue, not a code bug; this agent never touches production Supabase data)
-- What's happening: tonight's new "include guest/temp players in Marcadores" feature (commit 5f8f6ec) correctly folds every guest's stats into the public leaderboards. But `temporaryPlayers.tempPlayerId=1` ("Caio Andrade") was only ever partially converted to permanent player 134 back in migration 001 — 4 historical `game_players` rows (games 250/251/252/253, 10 goals total), 5 `goal_events` and 1 `card_events` row are still sitting under the old guest identity, and the temp player record itself was never retired. That gap was invisible before tonight because guests were excluded from the public leaderboards; now that they're included, both identities show up side by side: "Caio Andrade" the guest (10 goals) and "Caio Andrade" the roster player (1 goal, 2026-10-31) — same name, two separate entries.
-- Fix already prepared and dry-run tested, awaiting your approval: `supabase/migrations_pending/004_merge_caio_unconverted_guest_goals.sql` re-points all 10 rows to playerId 134 and retires the temp player. Backup of every affected row: `supabase/migrations_pending/caio_unconverted_temp_rows_backup_2026-11-01.json`. Applying it resolves the duplicate and brings Caio's season total to the correct 11 goals.
-- Note: `supabase/migrations_pending/README.md` only documents migrations 001/002 — it's now 7 migrations behind (003-009 undocumented there). Worth a tidy-up pass when convenient; not urgent.
+(none)
 
 ## Resolved
+
+### "Caio Andrade" appears twice in Marcadores/Assistências on the Parents Page — once as roster player, once as unconverted guest
+- Reported: 2026-11-01 (found by the nightly QA run, not by Victor)
+- Status: Fixed in production — but not by the staged migration below, and not by this agent. Verified 2026-11-03 by querying production directly: `temporary_players` row for `tempPlayerId=1` ("Caio Andrade") already shows `deleted_at`/`isDeleted`/`convertedToPlayerId=134` set, timestamped **2026-11-01 08:52:22 UTC** — hours before that evening's nightly run even flagged this as "Open, awaiting approval." All 4 `game_players` rows, 5 `goal_events` and 1 `card_events` row are already re-pointed to playerId 134; `playerId=134`'s season goal total is already the correct 11. Someone (most likely Victor, outside any agent session) applied the real fix directly to Supabase the same morning the gap was found — this file and two consecutive nightly reports (2026-11-01, 2026-11-02) just never got updated to reflect that, and kept re-describing an already-closed issue as open.
+- The staged migration, `supabase/migrations_pending/004_merge_caio_unconverted_guest_goals.sql`, was never actually run — it's now a no-op (its WHERE clauses match 0 rows against current production state) and is left in place only as documentation of what was done. Backup of the pre-fix rows: `supabase/migrations_pending/caio_unconverted_temp_rows_backup_2026-11-01.json`.
+- Lesson for future runs: this agent's "Open" write-up was based on reading the migration file and the backup JSON (both static, point-in-time), never on re-querying live production — so it couldn't detect that the underlying data had already changed. Worth remembering that a BUGS.md entry describing a *data* gap (as opposed to a code gap) can go stale the moment someone fixes the data directly, with no commit to signal it.
+- Note: `supabase/migrations_pending/README.md` only documents migrations 001/002 — it's now 7 migrations behind (003-009 undocumented there). Worth a tidy-up pass when convenient; not urgent.
 
 ### Admin season disciplinary stats (yellow/red cards) no longer update once a card is logged via the new Cards tab
 - Reported: 2026-10-26 (found by the nightly QA run, not by Victor)
