@@ -1229,6 +1229,71 @@ function extractLatLngFromMapUrl(url) {
   if (!m) return null;
   return { lat: m[1], lng: m[2] };
 }
+
+// Next-match weather forecast — purely decorative, never blocks or alters
+// anything else on the page. Shows nothing (leaves #nextGameWeather empty)
+// whenever a forecast genuinely can't be shown: no saved coordinates for
+// that side of the fixture (home ground in Settings, or the opponent's
+// venue on their record — both optional, set once), the match falling
+// outside Open-Meteo's ~16-day daily forecast horizon, or any network
+// failure. A missing forecast is a normal, expected state here, not an
+// error — so none of those cases ever show a broken-looking widget.
+async function renderNextGameWeather(next, season) {
+  const box = document.getElementById('nextGameWeather');
+  if (!box || !next || !next.date) return;
+
+  const isHome = next.homeAway === 'Home';
+  const lat = parseFloat(isHome ? season?.homeGroundLat : next.opponentLat);
+  const lng = parseFloat(isHome ? season?.homeGroundLng : next.opponentLng);
+  if (!isFinite(lat) || !isFinite(lng)) return;
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const daysOut = Math.round((new Date(`${next.date}T00:00:00`) - today) / 86400000);
+  if (isNaN(daysOut) || daysOut < 0 || daysOut > 15) return;
+
+  const cacheKey = `ne_wx_${lat}_${lng}_${next.date}`;
+  try {
+    const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+    if (cached && (Date.now() - cached.ts) < 2 * 60 * 60 * 1000) {
+      box.innerHTML = cached.html;
+      return;
+    }
+  } catch (e) { /* localStorage unavailable (private mode etc.) — just skip the cache */ }
+
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}`
+      + `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max`
+      + `&timezone=auto&start_date=${next.date}&end_date=${next.date}`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const json = await res.json();
+    const d = json.daily;
+    if (!d || !Array.isArray(d.time) || !d.time.length) return;
+    const icon = weatherEmojiForCode(d.weathercode[0]);
+    const hi = Math.round(d.temperature_2m_max[0]);
+    const lo = Math.round(d.temperature_2m_min[0]);
+    const rain = Math.round(d.precipitation_probability_max[0]);
+    const html = `<div style="font-size:12px;color:var(--muted);margin-top:2px">${icon} ${hi}&deg;/${lo}&deg;C &middot; ${rain}% ${tr('wx_rain_chance')}</div>`;
+    box.innerHTML = html;
+    try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), html })); } catch (e) {}
+  } catch (e) {
+    // Network blocked/unreachable — stay silent, never show a broken state.
+  }
+}
+// Open-Meteo's WMO weather codes collapsed to one emoji per family —
+// matches the emoji-first style already used throughout this page
+// (🎂, 🏆, ⚽...) instead of adding translatable weather-condition text.
+function weatherEmojiForCode(code) {
+  if (code === 0) return '☀️';
+  if (code === 1 || code === 2 || code === 3) return '🌤️';
+  if (code === 45 || code === 48) return '🌫️';
+  if ([51,53,55,56,57,80,81,82].includes(code)) return '🌦️';
+  if ([61,63,65,66,67].includes(code)) return '🌧️';
+  if ([71,73,75,77,85,86].includes(code)) return '🌨️';
+  if ([95,96,99].includes(code)) return '⛈️';
+  return '🌡️';
+}
+
 function openDirectionsChooser(idx) {
   const t = _dirTargets[idx];
   if (!t) return;
@@ -1740,7 +1805,7 @@ const STRINGS = {
     match_summary_badge:'FINAL', opponent_goal:'Opponent goal',
     card_opponent:'Opponent', card_second_yellow_note:'(2nd yellow)',
     yellow_cards:'Yellow Cards', red_cards:'Red Cards',
-    next_match:'Next Match', today:'Today', tomorrow:'Tomorrow', days_remaining:'{n} days remaining', get_directions:'Directions',
+    next_match:'Next Match', today:'Today', tomorrow:'Tomorrow', days_remaining:'{n} days remaining', get_directions:'Directions', wx_rain_chance:'chance of rain',
     choose_nav_app:'Open directions in', open_google_maps:'Google Maps', open_waze:'Waze', cancel:'Cancel',
     next_birthday:'Next Birthday', birthdays_this_week:'Birthday This Week', birthdays_this_week_pl:'Birthdays This Week',
     happy_birthday:'Happy Birthday, {name}!', turning:'Turning {n}', turning_today:'Turning {n} today',
@@ -1831,7 +1896,7 @@ const STRINGS = {
     match_summary_badge:'FINAL', opponent_goal:'Golo do adversário',
     card_opponent:'Adversário', card_second_yellow_note:'(2º amarelo)',
     yellow_cards:'Cartões Amarelos', red_cards:'Cartões Vermelhos',
-    next_match:'Próximo Jogo', today:'Hoje', tomorrow:'Amanhã', days_remaining:'Faltam {n} dias', get_directions:'Direções',
+    next_match:'Próximo Jogo', today:'Hoje', tomorrow:'Amanhã', days_remaining:'Faltam {n} dias', get_directions:'Direções', wx_rain_chance:'de chuva',
     choose_nav_app:'Abrir direções em', open_google_maps:'Google Maps', open_waze:'Waze', cancel:'Cancelar',
     next_birthday:'Próximo Aniversário', birthdays_this_week:'Aniversário Esta Semana', birthdays_this_week_pl:'Aniversários Esta Semana',
     happy_birthday:'Parabéns, {name}!', turning:'Faz {n} anos', turning_today:'Faz {n} anos hoje',
@@ -2915,6 +2980,7 @@ function render(el, data) {
         if (daysLeft === 1) return `<div style="font-size:12px;font-weight:700;color:var(--black-accent);margin-top:6px">${tr('tomorrow')}</div>`;
         return `<div style="font-size:12px;font-weight:700;color:var(--black-accent);margin-top:6px">${tr('days_remaining', {n: daysLeft})}</div>`;
       })()}
+      <div id="nextGameWeather"></div>
     </div>` : '';
   const birthdays = dedupePlayerRows(data.birthdays || []);
   // Pinned carousel content. A birthday that falls on the actual current
@@ -3265,6 +3331,11 @@ function render(el, data) {
   el.innerHTML = html;
   applyTabs(el);
   applyCarousel(el);
+
+  // Fire-and-forget: the Next Match card above already rendered without
+  // it, so a slow/blocked/missing forecast never delays or breaks the
+  // rest of the page — it just leaves the placeholder div empty.
+  renderNextGameWeather(next, season);
 
   // Live score bar, pinned to the top of the page while a game is on —
   // both teams and the running score, tap to jump to the live card. It
