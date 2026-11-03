@@ -9,7 +9,7 @@ You are the nightly maintenance run for NextEleven. You run once a day, unattend
 
 ## Ground truth about this project (don't re-discover this every run)
 - Static site: `index.html` (admin app), `team.html` (public Parents Page), `css/nexteleven.css`, `public-stats-core.js`. No build step, no package.json, no CI.
-- Client-side IndexedDB + Supabase sync. No automated test framework exists yet — `.claude/qa/check-syntax.js` and `.claude/qa/check-i18n-parity.js` are the only deterministic checks available; run them first, every time, before anything else.
+- Client-side IndexedDB + Supabase sync. No automated test framework exists yet — `.claude/qa/check-syntax.js`, `.claude/qa/check-i18n-parity.js` and `.claude/qa/check-html-comments.js` are the only deterministic checks available; run them first, every time, before anything else.
 - Deployed via GitHub Pages directly from the `main` branch — a push to `main` is a production deploy. This is exactly why this agent never pushes to `main` directly.
 - Conventions for actually fixing something in this codebase are documented in `.claude/agents/bug-fixer.md` — read it before touching index.html.
 
@@ -35,12 +35,13 @@ You are the nightly maintenance run for NextEleven. You run once a day, unattend
 
 ## Scope — don't read the whole app every night
 1. Read `.claude/qa/run-log.md` for the last run's `lastInspectedCommit`. Run `git log <lastInspectedCommit>..HEAD --oneline` to see what actually changed since then (first run ever: skip this, there's no prior baseline yet — rely on steps 2-3 instead of a full audit).
-2. Run the two deterministic checks:
+2. Run the three deterministic checks:
    ```
    node .claude/qa/check-syntax.js index.html
    node .claude/qa/check-i18n-parity.js index.html
+   node .claude/qa/check-html-comments.js index.html team.html
    ```
-   These cost no AI tokens and catch real, mechanical defects (broken script syntax, missing translation keys).
+   These cost no AI tokens and catch real, mechanical defects (broken script syntax, missing translation keys, a malformed HTML comment silently swallowing a `<script>`/`<link>` tag — added 2026-11-02 after exactly that took down index.html's stylesheet for a day).
 3. Read `BUGS.md` for `Status: Open` entries — these are Victor's own reports and take priority over anything you might otherwise go looking for.
 4. Check `.claude/qa/run-log.md`'s "Known Unresolved" section so you don't re-analyze something already triaged and left open on purpose.
 
@@ -49,7 +50,7 @@ Do not open and read index.html end-to-end "just in case."
 ### Zero-AI early exit — check this BEFORE spawning any subagent
 If ALL of the following hold, skip straight to "Nothing to do" — do not spawn the haiku triage subagent, do not spend any AI reasoning on this run:
 - the git diff since `lastInspectedCommit` touches none of `index.html`, `css/nexteleven.css`, `team.html`, `public-stats-core.js` (unrelated commits, e.g. doc/bookkeeping-only changes, don't count as "changed");
-- both deterministic checks pass;
+- all three deterministic checks pass;
 - `BUGS.md` has no `Status: Open` entries;
 - "Known Unresolved" has nothing worth reconsidering.
 Only if at least one of these isn't true do you proceed to triage — there's actually something to look at.
@@ -81,7 +82,7 @@ If a real issue falls into one of these categories, or the fix would touch logic
 **Phase A — inspect** (see "Scope" above).
 **Phase B — prioritize**: rank everything found, pick up to 2.
 **Phase C — fix**: for each selected item — branch (create or reuse today's `maintenance/nightly-<date>`), investigate, apply the minimal fix per bug-fixer.md's conventions, commit it on that branch alone.
-**Phase D — validate**: re-run both deterministic checks after each fix. If either now fails because of your change, revert that specific commit and move the item to "Needs your approval" instead — never leave a broken commit on the branch.
+**Phase D — validate**: re-run all three deterministic checks after each fix. If any now fails because of your change, revert that specific commit and move the item to "Needs your approval" instead — never leave a broken commit on the branch.
 **Phase E — report**: update `.claude/qa/run-log.md` (new entry: date, lastInspectedCommit = current HEAD on main, what was found, what was fixed, what's still open) and `BUGS.md` (move any resolved entries, add new ones found tonight). Push the maintenance branch and open the PR if you made any commits to it. Update and push the lock file on main. Produce the final message.
 
 ## "Nothing to do"
@@ -93,5 +94,5 @@ Victor's preferred shape — short, operational, scannable:
 - **Found**: bullet list, each with priority tag.
 - **Fixed**: bullet list, each with the commit hash and PR link.
 - **Needs your approval**: bullet list, each with why it wasn't auto-fixed.
-- **Tests run**: the two deterministic checks (always), plus anything else actually executed.
+- **Tests run**: the three deterministic checks (always), plus anything else actually executed.
 - **Pending**: anything found but not reached due to the 2-fix cap.
