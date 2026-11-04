@@ -3917,18 +3917,56 @@ async function migrateClubTeams() {
   return { created, linked, errors };
 }
 
+// GATE 3 (dev branch only, not yet deployed): seedOpponentsIfEmpty() used to
+// write AFL_SUB14_II_DIVISAO_SEED straight into this user's own `opponents`
+// table on every empty-local-store event (new device, cache clear, PWA
+// reinstall). That write is what created the recurring duplicate-opponent
+// problem — the per-user name-uniqueness index only blocks a second ACTIVE
+// copy, so once an earlier copy of a name was soft-deleted by the app's own
+// integrity-repair pass, the next empty-local-store event could reseed it as
+// a brand-new active row with no error. Retired, not patched: it no longer
+// writes anything to `opponents` at all. Federation clubs now live in the
+// shared, read-only `federation_clubs` table (synced for display only, see
+// syncFederationClubsIfStale / getFederationClubs below) and are never
+// copied into any individual user's own catalogue.
 async function seedOpponentsIfEmpty() {
-  const existing = await DB.getAll('opponents');
-  if (existing.length > 0) return; // never overwrite — this only runs once on a truly empty catalogue
-  for (const name of AFL_SUB14_II_DIVISAO_SEED) {
-    await DB.put('opponents', {
-      opponentName: name,
-      ageGroup: 'Sub-14',
-      level: 'AFL II Divisão',
-      logoUrl: null,
-      notes: null,
-    });
+  console.warn('[seedOpponentsIfEmpty] retired — federation clubs now come from the shared catalogue, see syncFederationClubsIfStale()');
+}
+
+// Refreshes the small, read-only, shared federation-club catalogue cache.
+// Unlike every other table, federation_clubs has no user_id — it is the
+// same for everyone — so it deliberately does NOT go through the per-user
+// SYNC_STORES delta-sync loop. It is fetched at most once per 24h (or when
+// the cache is empty) and stored under a single appMeta key, never written
+// into the user's own `opponents` table.
+const FEDERATION_CLUBS_CACHE_KEY = 'federationClubsCache';
+const FEDERATION_CLUBS_REFRESH_MS = 24 * 60 * 60 * 1000;
+
+async function syncFederationClubsIfStale() {
+  try {
+    const cached = await DB.get('appMeta', FEDERATION_CLUBS_CACHE_KEY);
+    const fresh = cached?.value?.fetchedAt && (Date.now() - cached.value.fetchedAt) < FEDERATION_CLUBS_REFRESH_MS;
+    if (fresh) return cached.value.clubs;
+    if (!Sync.isConfigured() || !navigator.onLine || !Auth.isLoggedIn()) {
+      // Offline / logged out / not configured: keep using whatever is
+      // already cached (possibly nothing, on a genuinely first-ever,
+      // offline launch — the picker then just shows this user's own
+      // opponents, same as the app behaves for any other table offline).
+      return cached?.value?.clubs || [];
+    }
+    const clubs = await Sync.fetchFederationClubs();
+    await DB.put('appMeta', { metaKey: FEDERATION_CLUBS_CACHE_KEY, value: { clubs, fetchedAt: Date.now() } });
+    return clubs;
+  } catch (err) {
+    console.error('[syncFederationClubsIfStale] failed, falling back to cache:', err);
+    const cached = await DB.get('appMeta', FEDERATION_CLUBS_CACHE_KEY);
+    return cached?.value?.clubs || [];
   }
+}
+
+async function getFederationClubs() {
+  const cached = await DB.get('appMeta', FEDERATION_CLUBS_CACHE_KEY);
+  return cached?.value?.clubs || [];
 }
 
 // ── OPPONENTS CATALOGUE — SETTINGS TAB ───────────────────────────────────────
@@ -5487,17 +5525,40 @@ async function findOpponentNameCollision(name) {
   return all.find(o => o.opponentId !== selfId && normalizeOpponentName(o.opponentName) === normalized) || null;
 }
 
+// GATE 3 (dev branch only): same collision check as findOpponentNameCollision,
+// but against the shared federation catalogue instead of this user's own
+// opponents table — used so the manual "Add Opponent" form (a second entry
+// point, independent of quickAddOpponentFromGameForm) can't recreate the
+// same kind of shadow duplicate either.
+async function findFederationClubNameCollision(name) {
+  const normalized = normalizeOpponentName(name);
+  if (!normalized) return null;
+  const clubs = await getFederationClubs();
+  return clubs.find(fc => normalizeOpponentName(fc.official_name) === normalized) || null;
+}
+
 async function onOpponentNameInputChange(value) {
   _opponentDupOverride = false; // typing again always clears a prior override
   const hint = document.getElementById('opp-name-hint');
   if (!hint) return;
   const match = await findOpponentNameCollision(value);
-  if (!match) { hint.style.display = 'none'; return; }
-  hint.style.display = '';
-  hint.innerHTML = `${I18n.t('opp_dup_possible')} <strong>${esc(match.opponentName)}</strong>
-    &nbsp;<a href="#" onclick="event.preventDefault();useExistingOpponentInForm(${match.opponentId})" style="color:var(--black-accent);text-decoration:underline">${I18n.t('opp_dup_use_existing')}</a>
-    &nbsp;·&nbsp;
-    <a href="#" onclick="event.preventDefault();confirmCreateOpponentAnyway()" style="color:var(--muted);text-decoration:underline">${I18n.t('opp_dup_create_anyway')}</a>`;
+  if (match) {
+    hint.style.display = '';
+    hint.innerHTML = `${I18n.t('opp_dup_possible')} <strong>${esc(match.opponentName)}</strong>
+      &nbsp;<a href="#" onclick="event.preventDefault();useExistingOpponentInForm(${match.opponentId})" style="color:var(--black-accent);text-decoration:underline">${I18n.t('opp_dup_use_existing')}</a>
+      &nbsp;·&nbsp;
+      <a href="#" onclick="event.preventDefault();confirmCreateOpponentAnyway()" style="color:var(--muted);text-decoration:underline">${I18n.t('opp_dup_create_anyway')}</a>`;
+    return;
+  }
+  const fcMatch = await findFederationClubNameCollision(value);
+  if (fcMatch) {
+    hint.style.display = '';
+    hint.innerHTML = `${I18n.t('opp_dup_possible')} <strong>${esc(fcMatch.official_name)}</strong> (shared federation catalogue)
+      &nbsp;·&nbsp;
+      <a href="#" onclick="event.preventDefault();confirmCreateOpponentAnyway()" style="color:var(--muted);text-decoration:underline">${I18n.t('opp_dup_create_anyway')}</a>`;
+    return;
+  }
+  hint.style.display = 'none';
 }
 
 async function useExistingOpponentInForm(id) {
@@ -5847,9 +5908,19 @@ async function populateOpponentDatalist() {
   const list = document.getElementById('gf-opp-list');
   if (!list) return;
   const all = await DB.getAll('opponents');
-  all.sort((a,b) => (a.opponentName||'').localeCompare(b.opponentName||''));
-  list.innerHTML = all.map(o => `<option value="${esc(o.opponentName)}"></option>`).join('');
-  window._opponentCatalogueNames = all.map(o => o.opponentName);
+  // GATE 3 (dev branch only): union this user's own opponents with the
+  // shared, read-only federation catalogue, so a club on the shared list
+  // is offered the same way without ever being copied into this user's
+  // own table. De-duplicated by name — a local row always wins display
+  // (it may carry notes/edits this user made) when both sides have the
+  // same name.
+  const federationClubs = await getFederationClubs();
+  const localNamesLower = new Set(all.map(o => (o.opponentName || '').toLowerCase()));
+  const federationOnly = federationClubs.filter(fc => !localNamesLower.has((fc.official_name || '').toLowerCase()));
+  const names = all.map(o => o.opponentName).concat(federationOnly.map(fc => fc.official_name)).filter(Boolean);
+  names.sort((a, b) => a.localeCompare(b));
+  list.innerHTML = names.map(n => `<option value="${esc(n)}"></option>`).join('');
+  window._opponentCatalogueNames = names;
 }
 
 // As the user types, show a small inline hint + shortcut if what they've
@@ -5872,7 +5943,17 @@ function onOpponentInputChange(value) {
 
 async function quickAddOpponentFromGameForm(name) {
   try {
-    await DB.put('opponents', { opponentName: name, ageGroup: null, level: null, logoUrl: null, notes: null });
+    // GATE 3 (dev branch only): if this exact name is already a real
+    // federation club in the shared catalogue, do NOT create a local
+    // shadow copy — this is the exact UI-level step that used to let a
+    // typed name re-create a federation-import duplicate. The club is
+    // already offered via the datalist (populateOpponentDatalist), so
+    // there is nothing to add.
+    const federationClubs = await getFederationClubs();
+    const isFederationClub = federationClubs.some(fc => (fc.official_name || '').toLowerCase() === name.trim().toLowerCase());
+    if (!isFederationClub) {
+      await DB.put('opponents', { opponentName: name, ageGroup: null, level: null, logoUrl: null, notes: null });
+    }
     Toast.show(I18n.t('opp_added'));
     await populateOpponentDatalist();
     document.getElementById('gf-opp-newhint').style.display = 'none';
@@ -5888,7 +5969,26 @@ async function quickAddOpponentFromGameForm(name) {
 async function findOpponentByName(name) {
   if (!name) return null;
   const all = await DB.getAll('opponents');
-  return all.find(o => (o.opponentName||'').toLowerCase() === name.trim().toLowerCase()) || null;
+  const local = all.find(o => (o.opponentName||'').toLowerCase() === name.trim().toLowerCase());
+  if (local) return local;
+  // GATE 3 (dev branch only): step 2 of the same two-step resolution used
+  // server-side in resolve_opponent_lookup() — fall back to the shared
+  // federation catalogue before giving up, so a club that was never
+  // copied into this user's own table (because quickAddOpponentFromGameForm
+  // now skips that copy) still resolves a logo/map here. Shaped to match
+  // the fields callers of this function already expect from a local row.
+  const federationClubs = await getFederationClubs();
+  const fc = federationClubs.find(c => (c.official_name||'').toLowerCase() === name.trim().toLowerCase());
+  if (!fc) return null;
+  return {
+    opponentName: fc.official_name,
+    mapUrl: fc.map_url,
+    venueLat: fc.venue_lat,
+    venueLng: fc.venue_lng,
+    logoUrl: fc.logo_url,
+    ageGroup: null, level: null, notes: null,
+    _fromFederationCatalogue: true,
+  };
 }
 
 // ── MOST USED LINEUP ─────────────────────────────────────────────────────────
@@ -24193,6 +24293,14 @@ const Sync = (() => {
   function getStatus() { return { status:_status, lastSync:_lastSync, pendingCount:_pendingCount, configured:isConfigured(), online:isOnline() }; }
   function fmtDateTime(d) { if(!d)return'—'; return new Date(d).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
 
+  // GATE 3 (dev branch only, not yet deployed): federation_clubs has no
+  // user_id — it is the same shared, read-only list for every account — so
+  // this is a plain GET with no user_id filter, unlike every other table's
+  // pull(). Called from syncFederationClubsIfStale(), at most once per 24h.
+  async function fetchFederationClubs() {
+    return await supabaseRequest('GET', 'federation_clubs', null, {}) || [];
+  }
+
   // ── DELETE ALL CLOUD ROWS FOR THE LOGGED-IN USER ─────────────────────────
   async function supabaseDelete(table) {
     if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
@@ -24212,7 +24320,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, fetchAdminUserOverview, fetchAdminOverviewStats, fetchAdminDemoStats, touchLastActive, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, stopTimers, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, fetchAdminUserOverview, fetchAdminOverviewStats, fetchAdminDemoStats, touchLastActive, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, stopTimers, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping, fetchFederationClubs };
 })();
 
 function attachEvents() {
@@ -28782,6 +28890,11 @@ async function continueAppLoadAfterLogin() {
     // Seed the opponents catalogue once, only if it's genuinely empty —
     // never overwrites or duplicates anything the user has already added.
     try { await seedOpponentsIfEmpty(); } catch(e) { console.error('[init] opponent seed failed:', e); }
+    // GATE 3 (dev branch only): replaces the old local reseed with a read
+    // of the shared, read-only federation catalogue — never written into
+    // this user's own `opponents` table. Safe to call on every load; it
+    // no-ops unless the 24h cache is stale.
+    try { await syncFederationClubsIfStale(); } catch(e) { console.error('[init] federation catalogue sync failed:', e); }
     try { await migrateClubTeams(); } catch(e) { console.error('[init] club/team migration failed:', e); }
     try { await migrateCareerPlayerIds(); } catch(e) { console.error('[init] careerPlayerId migration failed:', e); }
 
