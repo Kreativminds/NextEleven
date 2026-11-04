@@ -1,0 +1,28 @@
+-- Gate 4 finding (task #150/#156): resolve_opponent_lookup(uuid, text) was
+-- made callable by anon/authenticated earlier in Gate 4 ONLY to exercise it
+-- over real PostgREST RPC for testing (that grant did not exist in the
+-- Gate 3 local-dev design). Supabase's own security advisor flagged it
+-- (anon_security_definer_function_executable /
+-- authenticated_security_definer_function_executable), and a live test
+-- confirmed the real risk: because the function is SECURITY DEFINER and
+-- takes user_id as a plain caller-supplied parameter (not derived from
+-- auth.uid()), ANY unauthenticated caller who has or guesses a user's UUID
+-- could read that user's private opponent map/venue/logo data, completely
+-- bypassing RLS on the underlying opponents/team_alias_mappings tables.
+--
+-- This is applied only to the disposable Gate 4 test project
+-- (tqpykeuuzcqudqtfrqmc), to leave it in a safe end state. It is NOT
+-- applied to production, and production must never carry an anon/
+-- authenticated/PUBLIC execute grant on this function in its current
+-- (p_user_id-as-parameter) form. See the Gate 4 report's "Risks" section
+-- for the recommended production design (SECURITY INVOKER, or call it only
+-- from inside an already token-gated function such as
+-- get_public_team_data, never expose it as its own public RPC).
+--
+-- NOTE on the fix itself: revoking EXECUTE from anon/authenticated alone
+-- was NOT sufficient and was caught only by re-testing live -- Postgres
+-- grants EXECUTE on a new function to PUBLIC by default, and every role
+-- is implicitly a member of PUBLIC, so the function stayed callable until
+-- PUBLIC's own grant was revoked too.
+revoke execute on function public.resolve_opponent_lookup(uuid, text) from anon, authenticated;
+revoke execute on function public.resolve_opponent_lookup(uuid, text) from public;
