@@ -8,6 +8,56 @@ Newest entry on top.
 
 ---
 
+## 2026-11-04 — Scheduled nightly run
+
+- lastInspectedCommit: 9414d70
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt once again asserted BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3 — actually resolved back on
+  2026-10-12, PR #1). This is now the 20+ consecutive night that stored
+  prompt has been wrong. Went with real repo state instead, per every
+  prior run since 10-15. Attempted `update_trigger` again to correct the
+  stored prompt (reworded step 3 to read BUGS.md live instead of
+  asserting its contents) — blocked again by the same "Cowork Scheduled
+  Task Write" permission classifier as the 2026-11-03 attempt. Left
+  undone; flagging for Victor to fix directly or re-authorize.
+- Also flagging: this schedule started 2026-10-12 as a stated 7-day trial
+  for Victor to review before deciding whether to keep it. It has now run
+  nightly for 24 days past that start date with no sign (in this log) that
+  the trial review happened. Not acted on — just surfacing it.
+- Scope: diff since c20951a (last run's lastInspectedCommit) touched only
+  QA/bookkeeping (lock file, run-log/BUGS.md entries from last night's
+  wrap-up, tonight's lock-running commit) — none of index.html,
+  css/nexteleven.css, team.html, public-stats-core.js changed.
+- Checks run:
+  - `check-syntax.js` → OK (all 3 script blocks parse).
+  - `check-i18n-parity.js` → OK (2030/2030 keys, no gaps).
+  - `check-html-comments.js` → OK (both files balanced, no swallowed tags).
+  - `tests/regression_caio_and_cards.js` → 6/6 pass.
+  - `tests/regression_marcadores_guests.js` → 8/8 pass.
+  - `tests/regression_next_game_weather.js` → 11/11 pass.
+  - `tests/regression_season_calendar.js` → 52/52 pass.
+- Zero-AI early exit did not fire: app files unchanged and all checks
+  green, but BUGS.md still has one `Status: Open` entry (the away-weather
+  RPC gap, carried from last night, already fully root-caused and awaiting
+  Victor's call) — so triage ran per spec.
+- Triage (haiku): given the (empty, bookkeeping-only) diff, the check
+  outputs, and the existing Open entry's full text, returned no new P0-P1
+  candidates. Two minor notes, both resolved without further action: (a)
+  suggested confirming the pending migration file matches the live RPC
+  before drafting a fix — already the documented reason this item awaits
+  an interactive session with DB access, nothing new; (b) flagged commit
+  ordering in the diff summary as "odd" — false alarm, it's just newest-
+  first `git log` output (tonight's own lock-running commit sorts above
+  last night's lock-idle/wrap-up commits, which is correct).
+- Fixed: none (nothing new to fix; 0/2 of cap used).
+- Needs your approval: unchanged — away-match weather forecast RPC gap
+  (see 2026-11-03 entry below and BUGS.md Open section) still awaiting
+  your call; no new information tonight.
+- Pending: none else.
+- Known Unresolved housekeeping: none — nothing in tonight's diff touches
+  any carried-forward item; list unchanged.
+
 ## 2026-11-03 — Scheduled nightly run
 
 - lastInspectedCommit: c20951a
