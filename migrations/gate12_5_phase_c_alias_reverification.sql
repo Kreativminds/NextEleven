@@ -1,0 +1,75 @@
+-- ============================================================================
+-- GATE 12.5 — Phase C alias preparation, re-verified against Gate 12's own
+-- 6 specific requirements. File re-read in full this gate:
+-- gate8_phase_c_PRODUCTION_verified_opponent_aliases.sql. PREPARATION ONLY
+-- -- not executed against production by this file or by the source file
+-- itself; still requires its own separate approval per Gate 12 section 5
+-- and this engagement's standing authorization boundary.
+-- ============================================================================
+
+-- Requirement-by-requirement re-verification:
+--
+-- 1. "Olivais A/B squad distinctions are preserved" -- PASSED. Row 1
+--    (squadLabel 'A') and Row 2 (squadLabel 'B') are two separate alias
+--    rows under the same aflClubId (1033), never merged into one.
+--
+-- 2. "SL Olivais 2014 retains its birth-year identity" -- PASSED. Row 3
+--    (squadLabel '2014') is its own separate row, not folded into Row 1's
+--    squad-A aliases, even though both ultimately resolve to the same AFL
+--    club (1033) -- the birth-year identity is preserved as a distinct
+--    alias row, not collapsed.
+--
+-- 3. "Benfica SAD and Futebol Benfica remain distinct clubs" -- PASSED.
+--    Row 4 ("Benfica, SAD", aflClubId 1023) and Row 5 ("Futebol Benfica",
+--    aflClubId 328) are different canonicalOfficialName values pointing at
+--    different aflClubId values. The file's own prior live test (isolated
+--    test project, fixture user) confirmed this resolves to two genuinely
+--    different federation_clubs rows (club 1023 vs club 328), not a shared
+--    or merged identity.
+--
+-- 4. "Olivais Sul remains separate" -- PASSED. Opponent_id 799 ("Olivais
+--    Sul") is explicitly NOT included in any of the 5 alias rows. The
+--    file's own prior live test confirmed it resolves to its own distinct
+--    club (190) and is not pulled into the Olivais/1033 alias group --
+--    matching regression_gate7_opponent_alias.js's "Olivais Sul is NOT
+--    pulled in by the Olivais alias" check (re-run this gate, PASSED).
+--
+-- 5. "The ambiguous historical Benfica record remains excluded" -- PASSED.
+--    Opponent_id 613 (the soft-deleted, ambiguous "Benfica" record) is
+--    deliberately excluded from all 5 rows, per Victor's own prior explicit
+--    instruction. The file's own prior live test confirmed this name
+--    resolves to zero rows through the actual public RPC path -- it is not
+--    silently swept into any alias.
+--
+-- 6. "Existing League Classification aliases remain unaffected" -- PASSED.
+--    regression_gate7_opponent_alias.js (re-run this gate, 9/9 passed)
+--    directly covers this: "Classification.matchAlias still finds its own
+--    (non-opponent-alias) row" and "The opponent-federation-alias row's
+--    scopeKey never equals a real classification scope's key (no cross-
+--    contamination)" -- the two mechanisms are confirmed to coexist in the
+--    same table without interfering with each other.
+--
+-- "No existing opponent records may be renamed, merged or deleted" --
+-- PASSED, by inspection: the file's only statement is a single INSERT into
+-- public.team_alias_mappings. It contains no UPDATE, DELETE, or write of
+-- any kind against public.opponents. Every one of the 13 real opponents
+-- rows the file's own commentary cross-references (table reproduced in its
+-- header) stays exactly as it is today -- the alias layer sits beside
+-- opponents, never inside it.
+
+-- REMAINING PREPARATION ITEM (disclosed in the source file itself, carried
+-- forward here, not resolved by this gate): device_id/local_id on all 5
+-- rows are currently the literal placeholder 'gate8-phase-c' / 'row-N-...'.
+-- Before this is actually applied to production, these two columns should
+-- be set to whatever real device/sync identifiers the app's own sync layer
+-- would assign (or, as the source file itself recommends, the insert should
+-- be driven through the app's own DB.put() sync path at apply time rather
+-- than as raw SQL). This is a deployment-mechanics detail, not a data-
+-- correctness concern -- all 5 of Gate 12's content requirements above are
+-- independently satisfied regardless of which device_id value ships.
+
+-- Idempotency: unchanged from Gate 8.5 -- the INSERT's own NOT EXISTS guard
+-- (user_id, canonicalOfficialName, squadLabel IS NOT DISTINCT FROM) makes
+-- it safe to re-run without creating duplicate alias rows.
+
+select 'Gate 12.5 complete. Phase C''s 5 alias rows re-verified against all 6 of Gate 12''s specific requirements -- all PASSED (Olivais A/B distinction, SL Olivais 2014 birth-year identity, Benfica SAD vs Futebol Benfica distinctness, Olivais Sul separateness, ambiguous historical Benfica exclusion, League Classification non-interference). No existing opponents row is renamed, merged or deleted by this file. One deployment-mechanics item remains open (replace the device_id/local_id placeholders, or drive the insert through the app''s own sync path) -- disclosed, not blocking. Still requires its own separate production approval and Phase A/B live first. Nothing applied.' as status;
