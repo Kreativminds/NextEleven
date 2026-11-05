@@ -5901,6 +5901,61 @@ async function getDrillHistoryForPlayer(drillKey, playerId, seasonId) {
 }
 
 // ── OPPONENT DROPDOWN — ADD/EDIT GAME FORM ───────────────────────────────────
+// GATE 8.4 — feature flag: keeps the federation catalogue out of this
+// picker until a release has verified alias mappings in place. Without
+// this, Phase B (frontend federation-club integration) deploying ahead
+// of Phase C (verified aliases) would surface a generic catalogue entry
+// ("Olivais") alongside a user's own, differently-spelled historical
+// opponents ("Olivais 'A'", "SL Olivais") with no way yet to recognise
+// them as the same club — exactly the "duplicate-looking option" Gate 7
+// flagged. Flip to true only once Phase C's alias rows are live; until
+// then Phase A (DB) and Phase B (this code) can both ship safely with
+// the merge logic present but dormant, matching every user's existing
+// picker exactly as it is today.
+const FEDERATION_CATALOGUE_PICKER_ENABLED = false;
+
+// GATE 8.4 — pure function (no DOM, no DB) so it can be unit-tested with
+// both enabled=true and enabled=false without needing to mutate the
+// FEDERATION_CATALOGUE_PICKER_ENABLED constant from outside.
+//   localOpponents   — this user's own `opponents` rows (array of {opponentName,...})
+//   federationClubs  — the shared catalogue (array of {official_name,...})
+//   aliasRows        — this user's `teamAliasMappings` rows (mixed kinds)
+//   enabled          — the feature-flag value to apply
+// Returns the de-duplicated, sorted list of names for the datalist.
+function computeOpponentPickerNames(localOpponents, federationClubs, aliasRows, enabled) {
+  const names = localOpponents.map(o => o.opponentName).filter(Boolean);
+  if (enabled) {
+    const localNamesLower = new Set(localOpponents.map(o => (o.opponentName || '').toLowerCase()));
+    // A federation club is suppressed from the "catalogue-only" additions
+    // whenever either:
+    //   (a) its official_name exact-matches a local opponent name (the
+    //       original rule — a local row always wins display, since it may
+    //       carry this user's own notes/edits), or
+    //   (b) this user has a verified opponent_federation_alias row whose
+    //       canonicalOfficialName is this club — meaning the user already
+    //       has one or more disambiguated local names (e.g. "Olivais 'A'",
+    //       "SL Olivais") standing in for it, so the bare catalogue name
+    //       would be a second, ambiguous way to pick the same club and
+    //       must not appear as a separate option. Squad distinctions are
+    //       preserved automatically by this rule: each squad's own local
+    //       name keeps appearing, only the generic, squad-less catalogue
+    //       entry is hidden once that club has been aliased.
+    const aliasedFederationNamesLower = new Set(
+      (aliasRows || [])
+        .filter(a => a.kind === 'opponent_federation_alias')
+        .map(a => (a.canonicalOfficialName || '').toLowerCase())
+        .filter(Boolean)
+    );
+    const federationOnly = federationClubs.filter(fc => {
+      const lower = (fc.official_name || '').toLowerCase();
+      return !localNamesLower.has(lower) && !aliasedFederationNamesLower.has(lower);
+    });
+    names.push(...federationOnly.map(fc => fc.official_name).filter(Boolean));
+  }
+  names.sort((a, b) => a.localeCompare(b));
+  return names;
+}
+
 // Populates the <datalist> backing the Opponent field with every catalogue
 // name, so typing offers autocomplete suggestions while still allowing any
 // free-text name for a one-off opponent that isn't catalogued.
@@ -5908,17 +5963,13 @@ async function populateOpponentDatalist() {
   const list = document.getElementById('gf-opp-list');
   if (!list) return;
   const all = await DB.getAll('opponents');
-  // GATE 3 (dev branch only): union this user's own opponents with the
+  // GATE 3/7 (dev branch only): union this user's own opponents with the
   // shared, read-only federation catalogue, so a club on the shared list
   // is offered the same way without ever being copied into this user's
-  // own table. De-duplicated by name — a local row always wins display
-  // (it may carry notes/edits this user made) when both sides have the
-  // same name.
-  const federationClubs = await getFederationClubs();
-  const localNamesLower = new Set(all.map(o => (o.opponentName || '').toLowerCase()));
-  const federationOnly = federationClubs.filter(fc => !localNamesLower.has((fc.official_name || '').toLowerCase()));
-  const names = all.map(o => o.opponentName).concat(federationOnly.map(fc => fc.official_name)).filter(Boolean);
-  names.sort((a, b) => a.localeCompare(b));
+  // own table — gated by FEDERATION_CATALOGUE_PICKER_ENABLED (see above).
+  const federationClubs = FEDERATION_CATALOGUE_PICKER_ENABLED ? await getFederationClubs() : [];
+  const aliasRows = FEDERATION_CATALOGUE_PICKER_ENABLED ? await DB.getAll('teamAliasMappings') : [];
+  const names = computeOpponentPickerNames(all, federationClubs, aliasRows, FEDERATION_CATALOGUE_PICKER_ENABLED);
   list.innerHTML = names.map(n => `<option value="${esc(n)}"></option>`).join('');
   window._opponentCatalogueNames = names;
 }
