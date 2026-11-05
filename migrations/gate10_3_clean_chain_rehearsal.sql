@@ -1,0 +1,172 @@
+-- ============================================================================
+-- GATE 10.3 — clean migration-chain rehearsal, from true zero, in exact
+-- proposed production order. NOTHING in this file touches production.
+-- ============================================================================
+--
+-- ENVIRONMENT: Supabase Free tier does not support database branching, and
+-- the org is already at its 2-active-project cap (confirmed firsthand,
+-- Gate 9.1) -- a brand-new disposable project is not available. Per
+-- Victor's own instruction ("Create a clean, isolated schema or equivalent
+-- disposable test environment"), this rehearsal uses a brand-new schema,
+-- `gate10_clean`, inside the existing isolated test project
+-- (tqpykeuuzcqudqtfrqmc) -- never used before this gate, containing none of
+-- the accumulated ad-hoc state from Gates 4-9's own iterative debugging in
+-- that project's `public` schema.
+--
+-- WHAT WAS REHEARSED, in the exact order Gate 9.8 proposes for production:
+--   [1] gate3_federation_catalogue.sql           -- federation_clubs, federation_club_competitions, RLS, 23-row-ready schema
+--   [3] gate4_federation_clubs_seed.sql           -- 23 clubs
+--   [4] gate4_remediation_federation_clubs_full_roster.sql -- +20 clubs (43 total), federation_club_venues table, Carregado rename
+--   [7] gate5_federation_venue_validation.sql     -- 42 venue rows (2024/25 source), locality
+--   [8] gate5_resolution_afl_official_2026_27.sql -- the authoritative 2026/27 reconciliation: squad-letter-stripping, +49 new clubs (92 total), competition registrations with squad_label, Gate-8.2-fixed venue insert, venue-table rebuild + unique constraints
+-- All five applied from a schema that had never seen any of these objects
+-- before -- not a replay of already-converged state, and not dependent on
+-- any manual fix performed ad hoc during Gates 3-9.
+--
+-- NOT REHEARSED HERE, carried forward from Gate 8/9's own already-executed,
+-- already-passing evidence -- limitation stated explicitly, per Victor's own
+-- instruction ("if a fully clean rehearsal isn't possible, document the
+-- limitation"):
+--   - gate4_remediation_secure_opponent_lookup.sql -- an early resolver
+--     version, explicitly superseded in the same release by gate8's
+--     corrected one (Gate 9.8 already noted this; applying the superseded
+--     version first and overwriting it adds no new information).
+--   - gate5_resolution's own opponents-table dedup work (not the federation
+--     catalogue) -- operates on the shared `opponents` table's real
+--     historical duplicate data, which does not exist in a meaningful form
+--     in a brand-new schema; this was already executed and independently
+--     verified (idempotency, real unique-violation test) in Gates 7-8, and
+--     redoing it here would test the same SQL against synthetic data that
+--     proves nothing new.
+--   - The full get_public_team_data RPC integration end-to-end -- already
+--     executed LIVE against real staging data in Gate 9.2. Re-wiring it to
+--     read federation data from a differently-named schema while reading
+--     per-user data from the shared `public` schema would test an artifact
+--     of this test method (a cross-schema boundary that does not exist in
+--     production, where everything is in one `public` schema), not
+--     anything about the real deployment. The resolver's SQL logic itself
+--     (_opponent_lookup_for_user) was read and reasoned through directly
+--     instead (see below) rather than re-executed under this artificial
+--     split.
+--
+-- ============================================================================
+-- RESULT 1 (PASS) -- schema, data, and registration checklist
+-- ============================================================================
+--   - federation_clubs: 92 rows (matches the ~92-club figure cited
+--     throughout Gates 8-9). Unique index on afl_club_id holds throughout
+--     (every insert used its real on-conflict guard; zero errors).
+--   - federation_clubs.official_name: squad letters correctly stripped for
+--     every club the 2026/27 document covers (verified: Olivais, Carregado,
+--     Alta Lisboa, Vila Verde, Sacavenense, Alverca, Belenenses, EF Belém,
+--     Santa Maria, Sporting SAD, Desp. O. Moscavide, Casa Pia, Povoense,
+--     Col. São João Brito, Ponte Frielas, Mafra, Malveira, Águias Musgueira
+--     all land on their base name, no trailing "A"/"B"/"C"/"FF").
+--   - federation_club_competitions: squad_label correctly carries the A/B/C/
+--     FF distinction per (season, division, série) instead -- spot-checked
+--     Olivais directly: two rows, (II Divisão, Série 2, squad A) and (III
+--     Divisão, Série 3, squad B), club name unsuffixed in both. A/B/C squad
+--     distinctions ARE preserved at the competition-registration level, not
+--     lost by the name cleanup.
+--   - Constraints/FKs: federation_club_competitions.club_id and
+--     federation_club_venues.club_id both correctly enforce
+--     references .. federation_clubs(id) on delete cascade (proved by
+--     construction -- every insert's JOIN against federation_clubs
+--     succeeded; no orphaned row is possible).
+--   - RLS: federation_clubs, federation_club_competitions, and the final
+--     federation_club_venues all have RLS enabled with a public-read-only
+--     policy, matching production's intended shape exactly.
+--
+-- ============================================================================
+-- RESULT 2 (FAIL — genuine, newly-discovered defect, found ONLY by this
+-- clean rehearsal) -- federation_club_venues ends up with DUPLICATE rows
+-- for every club covered by both the 2024/25 source ([7]) and the 2026/27
+-- source ([8]), and migration [8]'s own "defense in depth" unique
+-- constraint FAILS TO APPLY when run in this exact order.
+-- ============================================================================
+--
+-- MECHANISM: [7] (gate5_federation_venue_validation.sql) inserts venue rows
+-- with afl_venue_code left NULL (that column did not exist until later).
+-- [8] (gate5_resolution_afl_official_2026_27.sql)'s own idempotency guard
+-- for its venue insert is:
+--   where not exists (select 1 from federation_club_venues ev
+--                      where ev.club_id = fc.id and ev.afl_venue_code = g.venue_number)
+-- In SQL, `NULL = anything` is never true, so this guard can NEVER see an
+-- existing NULL-coded row from [7] as "already present" -- every club that
+-- appears in BOTH sources gets a second, duplicate venue row inserted by
+-- [8], one with afl_venue_code=NULL (from [7]) and one with the real code
+-- (from [8]), both naming the exact same physical venue.
+--
+-- MEASURED, this rehearsal (from true zero, exact file order):
+--   federation_club_venues after [7]:  43 rows (all afl_venue_code IS NULL)
+--   federation_club_venues after [8]'s insert: 135 rows total
+--     (43 untouched old rows + 92 new rows from [8] -- not one is recognized
+--     as a duplicate of the other)
+--   37 of the 92 clubs in the new 2026/27 data end up with 2 (or, for
+--   multi-venue clubs, 3-4) venue rows where exactly 1 is correct --
+--   confirmed directly: Tojal, Olivais Sul, Bobadelense, Carregado,
+--   Torreense, Sacavenense, Benfica SAD, Olivais, Sporting SAD, Vila Verde,
+--   Povoense, Santa Maria, Vitória, Malveira, Atlético, Casa Pia, Col. São
+--   João Brito, Catujalense, CD Mafra, Desp. O. Moscavide, Venda Pinheiro,
+--   Belenenses, Futebol Benfica, Santa Iria, Unidos, Oriental, Janitas,
+--   Alverca, Alta Lisboa, Bobadelense, Col Pedro Arrupe, EF Belém, Camarate,
+--   AD Pastéis, Ponte Frielas, Ericeirense, Castanheira, Alenquer.
+--
+-- [8]'s own later rebuild step (rename -> recreate -> `distinct on
+-- (club_id, afl_venue_code)`) does NOT fix this either: the duplicate pair
+-- for a given club has DIFFERENT (club_id, afl_venue_code) keys (one NULL,
+-- one a real code), so `DISTINCT ON` treats them as two separate groups and
+-- keeps BOTH. Proved directly this gate: rebuilding exactly as the file
+-- specifies still produces 135 rows, not 92.
+--
+-- [8]'s first "defense in depth" constraint,
+--   unique (club_id, afl_venue_code)
+-- also does NOT catch this: Postgres treats every NULL as distinct from
+-- every other value (including other NULLs) for uniqueness purposes, so a
+-- (club_id, NULL) row and a (club_id, '23') row never conflict. Proved
+-- directly this gate: this ALTER TABLE ... ADD CONSTRAINT succeeded without
+-- error despite the 37+ duplicate pairs already present.
+--
+-- [8]'s SECOND "defense in depth" constraint,
+--   unique (club_id, venue_name)
+-- DOES correctly detect the problem -- and this gate proved it would make
+-- the real production deployment of file [8] FAIL outright when run in
+-- this exact documented order against a clean start:
+--   ERROR: 23505: could not create unique index
+--   "federation_club_venues_club_venuename_unique_clean"
+--   DETAIL: Key (club_id, venue_name)=(<Santa Maria's club_id>,
+--   Complexo Lúdico União D. R. Santa Maria) is duplicated.
+-- This is a REAL constraint-violation error, not a simulated one -- the
+-- exact statement from the real file, run against genuinely duplicated
+-- data this rehearsal produced by following the documented order exactly.
+--
+-- WHY THIS WAS NEVER SEEN BEFORE: the existing isolated test project's
+-- `public` schema (where all of Gates 4-9's exploratory work actually
+-- happened) was never built by applying these files once, in this order,
+-- from zero. It accumulated through iterative, ad-hoc debugging across
+-- several gates, including at least one earlier rename-rebuild cycle of
+-- federation_club_venues that this review did not have full file-level
+-- visibility into. That accumulated state happens to be clean today -- but
+-- that cleanliness depends on exactly the kind of undocumented manual
+-- correction Victor's Gate 10 instruction asked this rehearsal to rule out.
+-- A fresh production deployment, following the written files in the
+-- written order with no human intervening to patch things along the way,
+-- would NOT reach that same clean state -- it would hit a real constraint
+-- violation partway through file [8].
+--
+-- RECOMMENDATION (not applied -- this is a finding for Victor's decision,
+-- not a fix made unilaterally): before this release ships, file [7] or [8]
+-- needs a real fix, one of:
+--   (a) have [7] also populate afl_venue_code (it has the data -- the
+--       "Source venue number (unconfirmed)" values are already in each
+--       row's free-text `notes`), so [8]'s existing guard naturally
+--       recognizes the overlap, or
+--   (b) change [8]'s guard to also check venue_name (not afl_venue_code
+--       alone) before inserting, or
+--   (c) add a one-time cleanup step to [8] that resolves a club's NULL-
+--       coded row into the matching coded row (updating afl_venue_code in
+--       place) instead of inserting a second row.
+-- Any of the three would make the sequence produce exactly 92 venue rows,
+-- with no duplicate, from a true clean start.
+--
+-- ============================================================================
+select 'Gate 10.3 clean rehearsal complete. PASS: federation_clubs (92 rows, squad letters correctly moved to federation_club_competitions.squad_label), competition registrations (A/B/C/FF distinctions preserved), RLS/constraints/FK structure all correct when the 5 federation-catalogue migration files are applied in exact proposed order from a genuinely empty schema. FAIL -- genuine, newly-found defect: federation_club_venues ends up with 135 rows instead of the expected 92, because migration [8]''s own idempotency guard and first unique constraint cannot see migration [7]''s NULL-coded rows as duplicates of its own coded rows for the same 37+ clubs; [8]''s SECOND unique constraint correctly detects this and would make a real production deployment of file [8], run in this exact order from a clean start, FAIL with a real 23505 unique-violation error. This was invisible in the existing test project only because its state was reached through ad-hoc manual correction across Gates 4-9, not by applying these files once in order -- exactly the kind of hidden dependency this rehearsal was commissioned to rule out. Recommend fixing [7] or [8] (three concrete options given above) before this release ships. Carried forward, not re-rehearsed here (documented limitation): the superseded early resolver, the opponents-table dedup work, and full RPC integration -- all already executed and verified live in Gates 7-9.' as status;
