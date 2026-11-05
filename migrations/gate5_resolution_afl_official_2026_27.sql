@@ -252,18 +252,38 @@ where not exists (
     and coalesce(fcc.squad_label,'') = coalesce(s.squad_label,'')
 );
 
--- ── 5. Venues: one row per distinct (club, venue_name) pair this source  ──
--- ── confirms, whether or not the club already had a venue on file.       ──
+-- ── 5. Venues: one row per (club, venue_name) pair this source confirms, ──
+-- ── whether or not the club already had a venue on file.                 ──
+--
+-- GATE 7 FIX: the first version of this step de-duplicated with
+-- `select distinct afl_club_id, venue_name, ... venue_number, division,
+-- series, squad_label from _gate5_staging` -- but a single physical venue
+-- (e.g. Vila Verde / Campo Afonso Araujo Sommer) legitimately appears in
+-- staging once per série (II-S1 squad A, III-S6 squad B, III-S5 squad C),
+-- so that DISTINCT never collapsed to one row per venue, and the `not
+-- exists` guard below it only protects against a SECOND RUN -- within one
+-- INSERT...SELECT, Postgres does not see rows the same statement is still
+-- inserting, so every staging row for that venue passed the "not already
+-- there" check on the FIRST run and all of them got inserted. Found via
+-- Gate 7's count reconciliation (139 venue rows but only 119 distinct
+-- (club, venue_name) pairs -- 20 exact duplicates, all multi-série clubs).
+-- Fixed here by grouping on (club, venue_name) directly and aggregating
+-- every série/squad that confirms it into one note.
 insert into public.federation_club_venues (club_id, venue_name, pitch_length_m, pitch_width_m, surface, notes)
-select fc.id, v.venue_name, v.pitch_length_m, v.pitch_width_m, v.surface,
-  'Locality: ' || v.locality || '. Source venue number (unconfirmed as an official ID -- see federation_clubs.afl_venue_id/afl_venue_code note): ' || v.venue_number ||
-  '. Confirmed by the official AFL 2026/27 Sub-14 Divisão ' || v.division || ' Série ' || v.series ||
-  coalesce(' (squad "' || v.squad_label || '")', '') || ' document.'
-from (select distinct afl_club_id, venue_name, pitch_length_m, pitch_width_m, surface, locality, venue_number, division, series, squad_label from public._gate5_staging) v
-join public.federation_clubs fc on fc.afl_club_id = v.afl_club_id
+select fc.id, g.venue_name, min(g.pitch_length_m), min(g.pitch_width_m), min(g.surface),
+  'Locality: ' || min(g.locality) ||
+  '. Source venue number (unconfirmed as an official ID -- see federation_clubs.afl_venue_id/afl_venue_code note): ' || min(g.venue_number) ||
+  '. Confirmed by the official AFL 2026/27 Sub-14 documents for: ' ||
+  string_agg(distinct
+    (case g.division when 'II' then 'II Divisão' when 'III' then 'III Divisão' end) || ' Série ' || g.series ||
+    coalesce(' (squad "' || g.squad_label || '")', ''),
+    '; ') || '.'
+from public._gate5_staging g
+join public.federation_clubs fc on fc.afl_club_id = g.afl_club_id
 where not exists (
-  select 1 from public.federation_club_venues ev where ev.club_id = fc.id and ev.venue_name = v.venue_name
-);
+  select 1 from public.federation_club_venues ev where ev.club_id = fc.id and ev.venue_name = g.venue_name
+)
+group by fc.id, g.venue_name;
 
 -- Not DROPped: a DROP in this headless session has no one to answer the
 -- destructive-statement confirmation and auto-cancels (same issue hit
