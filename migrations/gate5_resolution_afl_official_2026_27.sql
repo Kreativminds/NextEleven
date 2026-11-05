@@ -252,6 +252,58 @@ where not exists (
     and coalesce(fcc.squad_label,'') = coalesce(s.squad_label,'')
 );
 
+-- ── 4b. GATE 11 FIX (root-cause fix for the Gate 10.3 defect, part 2):  ──
+-- ── supersede stale/unconfirmed legacy venue rows IN PLACE.             ──
+--
+-- gate5_federation_venue_validation.sql's own Gate 11 fix leaves
+-- afl_venue_code NULL on exactly two rows (afl_club_id 4421 "Janitas" and
+-- 391 "Oriental") because this reconciliation's official 2026/27 data
+-- shows those two clubs at a DIFFERENT venue than that earlier file
+-- recorded -- i.e. the club's venue genuinely changed/was corrected
+-- between documents, not a second physical pitch. Without this step,
+-- step 5 below would INSERT a brand-new row for the current venue
+-- alongside the old, now-wrong one, producing exactly the kind of
+-- duplicate Gate 10.3 found. Instead: any club with a pre-existing
+-- NULL-code row that (a) this reconciliation DOES have confirmed data
+-- for, and (b) that confirmed data is not already a name-match for the
+-- existing row, has that single stale row updated in place to the
+-- current, confirmed venue -- not duplicated. This never touches a club
+-- with no 2026/27 coverage (those 8 clubs' legacy rows are correctly left
+-- exactly as they are -- still unconfirmed, still a single row each), and
+-- never merges two different clubs' identities (matched strictly by
+-- afl_club_id).
+with stale as (
+  select ev.id as venue_id, fc.afl_club_id,
+    (
+      select g.venue_number
+      from public._gate5_staging g
+      where g.afl_club_id = fc.afl_club_id
+      order by g.venue_number::int
+      limit 1
+    ) as new_code
+  from public.federation_club_venues ev
+  join public.federation_clubs fc on fc.id = ev.club_id
+  where ev.afl_venue_code is null
+    and exists (select 1 from public._gate5_staging g where g.afl_club_id = fc.afl_club_id)
+    and not exists (
+      select 1 from public._gate5_staging g
+      where g.afl_club_id = fc.afl_club_id
+        and public.gate11_normalize_venue_name(g.venue_name) = public.gate11_normalize_venue_name(ev.venue_name)
+    )
+)
+update public.federation_club_venues ev
+set venue_name = g.venue_name,
+    afl_venue_code = g.venue_number,
+    pitch_length_m = g.pitch_length_m,
+    pitch_width_m = g.pitch_width_m,
+    surface = g.surface,
+    afl_venue_code_unconfirmed_note = coalesce(ev.afl_venue_code_unconfirmed_note || ' ', '') ||
+      'GATE 11 SUPERSEDE: updated in place from a prior unconfirmed legacy venue (' || ev.venue_name ||
+      ') once the official AFL 2026/27 document showed this club at a different, confirmed venue this season -- not duplicated.'
+from stale s
+join public._gate5_staging g on g.afl_club_id = s.afl_club_id and g.venue_number = s.new_code
+where ev.id = s.venue_id;
+
 -- ── 5. Venues: one row per (club, official venue number) pair this      ──
 -- ── source confirms, whether or not the club already had a venue on    ──
 -- ── file.                                                               ──
@@ -307,7 +359,25 @@ select fc.id,
 from public._gate5_staging g
 join public.federation_clubs fc on fc.afl_club_id = g.afl_club_id
 where not exists (
-  select 1 from public.federation_club_venues ev where ev.club_id = fc.id and ev.afl_venue_code = g.venue_number
+  -- GATE 11 FIX: the original guard (ev.afl_venue_code = g.venue_number
+  -- alone) is what let Gate 10.3's defect through -- NULL never equals
+  -- anything in SQL, so a pre-existing NULL-coded row could never be seen
+  -- as "already present." The 4b step above resolves the two rows that
+  -- would otherwise have hit this; this added OR-branch is defense in
+  -- depth for any future row that still has no confirmed code on either
+  -- side, matched by normalized venue name within the same club only (so
+  -- it can never merge two different clubs' venues, and never collapses a
+  -- club's genuinely distinct second/third pitch, since those have
+  -- different venue names, not just different formatting).
+  select 1 from public.federation_club_venues ev
+  where ev.club_id = fc.id
+    and (
+      ev.afl_venue_code = g.venue_number
+      or (
+        (ev.afl_venue_code is null or g.venue_number is null)
+        and public.gate11_normalize_venue_name(ev.venue_name) = public.gate11_normalize_venue_name(g.venue_name)
+      )
+    )
 )
 group by fc.id, g.venue_number;
 
@@ -402,3 +472,32 @@ alter table public.federation_club_venues_pre_dedup2_20261105 enable row level s
 --     Pastéis and Oriental; 1641 under both Belenenses and EF Belém --
 --     confirming clubs sharing a physical venue remain distinct.
 select 'Gate 8.2 venue reconciliation complete: 119 -> 102 distinct -> 92 official baseline + 10 genuine extra venues, fully explained; idempotency and constraint verified live' as status;
+
+-- ============================================================================
+-- GATE 11 CORRECTION to the Gate 8.2 reconciliation narrative directly above:
+-- ============================================================================
+-- That narrative lists "Janitas (4421): 2 -- 1782, 2193" and "Oriental
+-- (391): 2 -- 2009, 1945 (1945 shared with AD Pastéis)" as 2 of the "10
+-- genuine extra venues" for multi-pitch clubs. They are NOT genuine second
+-- pitches -- 1782 (Janitas) and 1945-for-Oriental are exactly the stale,
+-- superseded legacy values this Gate 11 fix now resolves in place (see
+-- the "4b" supersede step above and gate5_federation_venue_validation
+-- .sql's matching Gate 11 fix note). The existing isolated test project's
+-- "92" therefore already quietly absorbed this defect as if it were 2
+-- legitimate extra rows, rather than genuinely reconciling it -- this is
+-- consistent with Gate 10.3's finding that the existing test project's
+-- clean-looking state depended on undocumented accumulated history, not
+-- on these files actually being correct in isolation. With the Gate 11
+-- fix applied, the true count of clubs with a genuine, officially-
+-- confirmed SECOND/THIRD pitch in the SAME 2026/27 season is 7, not 9:
+-- CD Mafra (277, 3 venues), Alta Lisboa (4887, 2), Alverca (471, 2),
+-- Belenenses (327, 2, shared with EF Belém), Benfica SAD (1023, 2), EF
+-- Belém (5647, 2, shared with Belenenses), Sacavenense (1017, 2). Janitas
+-- and Oriental each correctly end up with exactly ONE current venue row
+-- (their stale legacy row superseded in place, not duplicated).
+--
+-- GATE 11 CLEAN-REHEARSAL VERIFICATION (from a genuinely fresh schema that
+-- has never seen any prior gate's manual correction -- see
+-- gate11_1_clean_chain_rehearsal.sql for the full rehearsal record):
+--   [results recorded in gate11_1_clean_chain_rehearsal.sql]
+select 'Gate 11 fix applied: afl_venue_code populated in gate5_federation_venue_validation.sql for every cross-document-confirmed row; 2 stale/superseded legacy rows (Janitas, Oriental) are now corrected in place instead of duplicated; normalized-name fallback matching added as defense in depth. Full clean-schema verification recorded separately in gate11_1_clean_chain_rehearsal.sql.' as gate11_status;
