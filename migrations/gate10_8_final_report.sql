@@ -1,0 +1,146 @@
+-- ============================================================================
+-- GATE 10.8 — FINAL GATE 10 REPORT
+-- NextEleven federation catalogue + production security remediation
+-- All items below use Passed / Failed / Blocked / Not Tested consistently.
+-- NOTHING in this file is executed against production.
+-- ============================================================================
+
+-- 1. PRODUCTION SECURITY PRE-CHECK RESULTS — PASSED (all 5 checks)
+--   See migrations/gate10_1_merge_plan_tmp_precheck_evidence.sql.
+--   Zero app-code references; zero functions/triggers/views depend on it;
+--   pg_cron not installed; zero pre-existing RLS policies (clean default-
+--   deny); 35 rows confirmed preserved; zero FKs reference the table;
+--   Supabase's own advisor flags it as the ONLY "RLS disabled" finding in
+--   the project. AWAITING SEPARATE APPROVAL to execute the one statement.
+
+-- 2. CORRECTED SEED MIGRATION + IDEMPOTENCY EVIDENCE — PASSED
+--   See migrations/gate10_2... . File already had ON CONFLICT DO NOTHING
+--   since Gate 4 (Gate 9.8's claim otherwise was wrong, corrected this
+--   gate). Added a conflict-report step. Ran twice for real: before=93,
+--   after run 1=93, after run 2=93, 0 inserted both times, 23/23 target
+--   rows present, no duplicates. 2 of 23 rows have a seed-vs-existing name
+--   mismatch (Carregado "B" vs Carregado; Desp. O. Moscavide abbreviation)
+--   -- both confirmed harmless; the Carregado one is explained and
+--   resolved by a LATER migration in the real chain (see item 3).
+
+-- 3. CLEAN MIGRATION-CHAIN REHEARSAL RESULTS — FAILED (1 defect found)
+--   See migrations/gate10_3_clean_chain_rehearsal.sql. Rehearsed in a
+--   brand-new schema, never touched by prior gates' ad-hoc work, in exact
+--   proposed production order, from true zero.
+--   PASSED: federation_clubs converges to 92 rows, squad letters correctly
+--   moved to federation_club_competitions.squad_label, A/B/C/FF
+--   distinctions preserved, RLS/FKs/afl_club_id uniqueness all hold.
+--   FAILED: federation_club_venues ends up with 135 rows instead of 92.
+--   Migration [7] inserts rows with afl_venue_code=NULL; migration [8]'s
+--   own idempotency guard and first unique constraint both key on
+--   afl_venue_code, and NULL never equals anything in SQL, so 37+ clubs
+--   get duplicate venue rows. [8]'s SECOND unique constraint (club_id,
+--   venue_name) correctly detects this and throws a REAL 23505
+--   unique-violation error -- proving a clean production deployment of
+--   this exact file sequence would fail outright, not just look messy.
+--   This was invisible in the existing test project only because its
+--   state came from ad-hoc manual fixes across Gates 4-9, not from
+--   running these files once in order.
+--   RELEASE-BLOCKING until fixed. 3 concrete fix options given in the
+--   file; none applied (Victor's decision).
+
+-- 4. RECONCILED REGRESSION TEST INVENTORY — RESOLVED, no real gap
+--   See migrations/gate10_4... . All 7 test files are byte-identical
+--   between the commit that claimed "99 checks" and today. Re-running
+--   both (historical files + historical team.html/public-stats-core.js,
+--   and today's files) produces the SAME result both times: 99 checks, 7
+--   files, 0 failures (6/9/8/5/8/11/52 per file). The "60" figure from
+--   Gate 9 could not be traced to any real run in this engagement's
+--   history -- assessed as a Gate 9 reporting error, not a coverage loss.
+--   Authoritative count: 99 / 7 files / 0 failures.
+
+-- 5. OUTSTANDING INTEGRATION TEST COVERAGE
+--   See migrations/gate10_5... . Status for all 5 named items, each with
+--   a reproducible manual procedure + expected results:
+--     Live Supabase HTTP/RLS enforcement             : BLOCKED (structural sandbox network policy, re-confirmed this gate)
+--     Multi-device synchronization                   : NOT TESTED
+--     Parent and coach interfaces                     : NOT TESTED
+--     Public-sharing under real authenticated sessions : BLOCKED (same root cause)
+--     Offline-to-online synchronization                : NOT TESTED
+--   No network restriction bypassed, no security control weakened.
+
+-- 6. VERIFIED PRODUCTION BASELINE — PASSED, zero drift
+--   See migrations/gate10_6... . Re-confirmed fresh, read-only, third
+--   independent capture now (Gate 8.9, 9.8, 10.6), all identical:
+--   games=27, game_players=143, goal_events=10, card_events=4, players=20,
+--   team_share_links=3 (1 enabled), opponents=160. Match-results (1/27
+--   season-6 games played so far) and attendance (130/143 called-up) added
+--   as explicit lines. 188-vs-143 stays fully documented (Gate 9.4),
+--   consistently resolved to 143 since -- no unexplained difference.
+
+-- 7. FINAL DEPLOYMENT SCRIPTS AND SEQUENCE
+--   See migrations/gate10_7_final_release_package.sql. Workstream 1
+--   ready pending separate approval. Workstream 2 Phase A NOT READY
+--   (item 3's defect must be fixed + re-rehearsed first); B/C/D sequenced
+--   and ready, with expected row counts, verification queries, and
+--   non-destructive rollback for every phase.
+
+-- 8. REMAINING RISKS AND BLOCKERS
+--   - BLOCKING: the Gate 10.3 venue-dedup defect (item 3) -- must be
+--     fixed in file [7] or [8] and re-verified before Phase A ships.
+--   - Known, accepted limitation (unchanged since Gate 8.3): federation_
+--     clubs.map_url/venue_lat/venue_lng/logo_url remain 0-for-92
+--     populated -- a federation/alias-resolved opponent will show no map
+--     pin/logo on the public page until this is separately enriched. Not
+--     a regression, not blocking, already disclosed.
+--   - 5 integration scenarios remain BLOCKED/NOT TESTED in this sandbox
+--     (item 5) -- manual procedures given, not yet executed by a human
+--     with real device/network access.
+--   - The 21 of 44 original 2024/25-roster clubs never matched to an
+--     existing opponent (Gate 4's own honest-scope note) remain
+--     unresolved -- not part of this release's scope, flagged again for
+--     visibility.
+--   - Historical opponent cleanup (182-row duplicate set) remains
+--     explicitly out of scope, per Victor's standing instruction.
+
+-- 9. GITHUB COMMITS AND CHANGED FILES (this gate, branch
+--    feature/opponent-federation-catalogue)
+--   f87e548  Gate 10.1 -- merge_plan_tmp pre-check evidence
+--   0e61331  Gate 10.2 -- seed migration conflict-report + idempotency proof
+--   7e99f62  Gate 10.3 -- clean chain rehearsal (venue-dedup defect found)
+--   d31d06e  Gate 10.4 -- regression count reconciliation (99, not 60)
+--   abf61f6  Gate 10.5 -- outstanding integration limitations
+--   b60461e  Gate 10.6 -- production baseline reconfirmation
+--   ee008cb  Gate 10.7 -- final release package
+--   (this file)  Gate 10.8 -- this report
+--   All on the feature branch; nothing merged to main; nothing applied to
+--   production.
+
+-- 10. EXPLICIT PRODUCTION APPROVAL REQUESTS
+--   REQUEST A: approve executing, against production, exactly:
+--     ALTER TABLE public.opponents_merge_plan_tmp ENABLE ROW LEVEL SECURITY;
+--     (pre-check evidence in item 1 / gate10_1 file; independent of
+--     everything else in this release)
+--   REQUEST B: none yet for the federation release -- Phase A has an open
+--     defect (item 3) that must be fixed and re-verified first. Once
+--     fixed, this report's Decision 2 below will need to be revisited
+--     before Phase A/B/C/D approval is requested.
+
+-- ============================================================================
+-- DECISION 1 — SECURITY REMEDIATION: READY FOR PRODUCTION APPROVAL
+-- ============================================================================
+-- The isolated RLS fix (opponents_merge_plan_tmp) is safe. All 5 of
+-- Victor's required pre-checks pass with direct evidence. Requesting his
+-- explicit, separate approval (REQUEST A above) to apply it.
+
+-- ============================================================================
+-- DECISION 2 — FEDERATION RELEASE: NOT YET READY
+-- ============================================================================
+-- The complete federation catalogue implementation is NOT ready for
+-- coordinated production deployment. One concrete, reproducible defect
+-- (item 3 / Gate 10.3) would cause a real constraint-violation failure
+-- partway through Phase A if deployed today. Everything else reviewed
+-- this gate -- the corrected seed migration, the regression suite, the
+-- outstanding-limitations inventory, the production baseline, and the
+-- rest of the release package -- is in good shape and does not block.
+-- Recommended path: fix file [7] or [8] per the 3 options in
+-- gate10_3_clean_chain_rehearsal.sql, re-run a second clean rehearsal to
+-- confirm 92/92/no-duplicate, then this release is ready for Victor's
+-- Phase A/B/C/D approval.
+
+select 'Gate 10 report complete. Decision 1: security remediation ready for approval. Decision 2: federation release not yet ready -- one concrete, reproducible venue-dedup defect found by the clean rehearsal must be fixed and re-verified first. No production change has been made.' as status;
