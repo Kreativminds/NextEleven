@@ -8,6 +8,68 @@ Newest entry on top.
 
 ---
 
+## 2026-11-05 — Scheduled nightly run
+
+- lastInspectedCommit: f4b79cd
+- Trigger: scheduled nightly run.
+- Process note: the concurrency-lock step was missed at the very start of
+  this run again (read `lock.json`, confirmed idle, but never wrote the
+  `"status":"running"` state before starting work — same gap flagged on
+  2026-11-03). No actual collision occurred. Flagging again so the step
+  gets built into the habit rather than re-noted each time it's skipped.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process — this is now
+  20+ consecutive nights (2026-10-15 through tonight) that stored prompt
+  has been wrong. That string was resolved back on 2026-10-12 (PR #1).
+  BUGS.md's real Open section tonight holds one entry: the away-match
+  weather forecast RPC gap (flagged 2026-11-03, already fully
+  root-caused, awaiting Victor's call) — unchanged since. Went with real
+  repo state, per every prior run since 10-15. A second `update_trigger`
+  attempt to fix the stored prompt was not retried tonight (blocked twice
+  already, 11-03 and 11-04, by the same permission classifier) —
+  resurfacing for Victor to action directly rather than re-attempting a
+  third time.
+- Scope: diff since 9414d70 (last run's lastInspectedCommit) was 3
+  commits (0fab96a/e176cc7 last night's own report+lock-idle, f4b79cd
+  "Create CNAME" — a GitHub Pages custom-domain config, committed outside
+  this agent) — none of index.html, css/nexteleven.css, team.html, or
+  public-stats-core.js changed.
+- Checks run:
+  - `check-syntax.js` → OK (all 3 script blocks parse).
+  - `check-i18n-parity.js` → OK (2030/2030 keys, no gaps).
+  - `check-html-comments.js` → OK (both files balanced, no swallowed tags).
+  - `tests/regression_caio_and_cards.js` → 3/3 pass.
+  - `tests/regression_marcadores_guests.js` → 3/3 pass.
+  - `tests/regression_next_game_weather.js` → 3/3 pass.
+  - `tests/regression_season_calendar.js` → 52/52 pass.
+- Zero-AI early exit did not fire: app files unchanged and all checks
+  green, but BUGS.md still has one `Status: Open` entry (the away-weather
+  RPC gap, unchanged) — so triage ran per spec, cheapest path (diff
+  summary + check outputs + the one Open entry's text only).
+- Triage (haiku): no new P0-P1 candidates. One P2 "verify, low
+  confidence" note: `f4b79cd` adds a root CNAME file (`next11.pt`),
+  which is deploy-affecting (binds the GitHub Pages site to a custom
+  domain) but isn't covered by any deterministic check or regression
+  suite.
+- Orchestrator follow-through on the CNAME note: the commit message
+  ("Create CNAME") is GitHub's own default commit message when a custom
+  domain is set via the repo's Pages settings UI — strong evidence this
+  was a deliberate action (most likely Victor, directly on GitHub, not
+  through any agent session), not an accident. Attempted to confirm DNS
+  independently (`dig`, `curl https://next11.pt`) — not possible from
+  this sandbox (`dig` not installed, outbound curl to the bare domain
+  blocked by the egress proxy, 403). Leaving this as an FYI only, not a
+  "Needs approval" item — nothing here looks like a defect, just an
+  unverifiable-from-here config change worth Victor's own one-glance
+  confirmation that next11.pt resolves correctly.
+- Fixed: none (nothing new to fix; 0/2 of cap used).
+- Needs your approval: unchanged — away-match weather forecast RPC gap
+  (see 2026-11-03 entry) still awaiting your call; no new information
+  tonight.
+- Pending: none else.
+- Known Unresolved housekeeping: none — nothing in tonight's diff touches
+  any carried-forward item; list unchanged.
+
 ## 2026-11-04 — Scheduled nightly run
 
 - lastInspectedCommit: 9414d70
