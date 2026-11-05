@@ -1,0 +1,186 @@
+-- ============================================================================
+-- GATE 10.7 — final coordinated release package. Consolidates Gate 9.5/9.6/
+-- 9.8's already-proven material with Gate 10's two new findings (the
+-- Workstream 1 security pre-check and the Workstream 2 venue-dedup defect).
+-- NOTHING in this file is executed against production.
+-- ============================================================================
+
+-- ============================================================================
+-- WORKSTREAM 1 (INDEPENDENT OF EVERYTHING BELOW) — production security fix
+-- ============================================================================
+-- File: migrations/gate3_merge_plan_tmp_rls_fix.sql
+-- Statement: ALTER TABLE public.opponents_merge_plan_tmp ENABLE ROW LEVEL SECURITY;
+-- Pre-check evidence: migrations/gate10_1_merge_plan_tmp_precheck_evidence.sql
+-- Status: READY, pending Victor's SEPARATE explicit approval (requested in
+-- Gate 10.1 and again in this gate's chat message). Not gated on anything
+-- in Phase A-D below, and should not be bundled with them.
+-- Rollback: ALTER TABLE public.opponents_merge_plan_tmp DISABLE ROW LEVEL SECURITY;
+-- (reverts to today's exact state -- no data is ever touched by either
+-- direction of this statement).
+
+-- ============================================================================
+-- WORKSTREAM 2 — federation catalogue release
+-- ============================================================================
+--
+-- *** RELEASE STATUS: NOT READY. Phase A has one open, concrete blocker
+-- (Gate 10.3) that must be fixed before Phase A is applied to production. ***
+--
+-- ---------------------------------------------------------------------------
+-- PHASE A — Federation database (schema, official data, security, RPC
+-- plumbing that Phase B depends on, but not yet wired into the live app)
+-- ---------------------------------------------------------------------------
+-- Exact execution order:
+--   [1] migrations/gate3_federation_catalogue.sql
+--   [3] migrations/gate4_federation_clubs_seed.sql  (now carries a
+--       conflict-report step, Gate 10.2 -- run the report, review any
+--       output, then the insert)
+--   [4] migrations/gate4_remediation_federation_clubs_full_roster.sql
+--   [7] migrations/gate5_federation_venue_validation.sql  *** NEEDS THE
+--       GATE 10.3 FIX before this ships -- see below ***
+--   [8] migrations/gate5_resolution_afl_official_2026_27.sql  *** NEEDS
+--       THE GATE 10.3 FIX before this ships -- see below ***
+--   [9] migrations/gate8_security_hardening_and_public_page_fix.sql, PART 1
+--       only (the REVOKE statements -- part 2's resolver function is Phase
+--       B plumbing, listed there instead to keep this list's own
+--       dependency order honest)
+--
+-- NOT part of production Phase A, explicitly: migrations/
+-- gate4_remediation_secure_opponent_lookup.sql (superseded in the same
+-- release by gate8's corrected resolver -- applying then immediately
+-- overwriting it adds nothing) and migrations/
+-- gate4_resolve_opponent_lookup_grant_lockdown.sql (revokes a grant on a
+-- function that only ever existed on the disposable test project --
+-- confirmed this gate: production has no federation tables and therefore
+-- no resolve_opponent_lookup function to revoke anything from yet; this
+-- file's own header already scopes it to the test project only).
+--
+-- *** THE GATE 10.3 FIX, required before [7]/[8] ship: *** without it, a
+-- clean deployment of this exact sequence produces 135 federation_club_
+-- venues rows instead of 92, and migration [8]'s own second unique
+-- constraint throws a real 23505 error partway through (proven this gate,
+-- see migrations/gate10_3_clean_chain_rehearsal.sql for the full
+-- reproduction). Recommend option (a) from that file -- have [7] also
+-- populate afl_venue_code from the venue number already present in its own
+-- `notes` text -- as the least invasive fix, applied to [7] before this
+-- release, re-tested with a second clean rehearsal before sign-off.
+--
+-- Expected row counts after a CORRECTED Phase A (production is at zero for
+-- all of these today -- confirmed via direct inspection, Gate 9.8 and
+-- re-confirmed this gate):
+--   federation_clubs              : 0 -> 92
+--   federation_club_competitions  : 0 -> ~109 (one row per club/season/
+--                                    division/série/squad-label combination
+--                                    the official 2026/27 document states)
+--   federation_club_venues        : 0 -> 92 (NOT 135 -- only correct once
+--                                    the Gate 10.3 fix is applied)
+--   opponents.federation_club_id  : unchanged (new nullable column only,
+--                                    every existing row stays NULL until an
+--                                    explicit future backfill)
+-- Every other production table: byte-identical before and after (Phase A
+-- is purely additive new tables/columns plus REVOKEs; it reads, never
+-- writes, any existing row).
+--
+-- Verification queries (run immediately after applying Phase A):
+--   select count(*) from public.federation_clubs;                 -- expect 92
+--   select count(*) from public.federation_club_competitions;      -- expect ~109
+--   select count(*) from public.federation_club_venues;            -- expect 92, NOT 135
+--   select count(distinct (club_id, afl_venue_code)) = count(*)
+--     from public.federation_club_venues where afl_venue_code is not null; -- expect true
+--   select count(*) from public.games;      -- expect 182 (unchanged)
+--   select count(*) from public.game_players; -- expect 321 or whatever the
+--     fresh Gate 10.6 figure is at the moment of deployment (read-only
+--     check, not a fixed number -- the point is it must be UNCHANGED by
+--     this migration, not that it must equal today's snapshot forever)
+--
+-- Rollback (non-destructive, no DROP per this engagement's standing rule):
+--   revoke all federation_clubs/_competitions/_venues policies and disable
+--   RLS-public-read by replacing the policy with `using (false)`, OR
+--   simplest: revoke SELECT from anon/authenticated on the 3 tables --
+--   makes the whole catalogue invisible to every client again, with zero
+--   data loss and zero impact on any other table (nothing else references
+--   these tables except the Phase B resolver, which itself degrades
+--   gracefully to "no federation/alias match" per Gate 8's rollback
+--   testing -- see Phase B rollback below).
+--
+-- ---------------------------------------------------------------------------
+-- PHASE B — Application integration (frontend + public-sharing RPC patch)
+-- ---------------------------------------------------------------------------
+-- Exact execution order (after Phase A is corrected and verified):
+--   [9] migrations/gate8_security_hardening_and_public_page_fix.sql, PART 2
+--       (CREATE OR REPLACE public._opponent_lookup_for_user)
+--   [10] migrations/gate8_phase_b_PRODUCTION_PATCH_get_public_team_data.sql
+--   [12] index.html (as committed on this branch) -- FEDERATION_CATALOGUE_
+--        PICKER_ENABLED=false ships by default; this is a pure frontend
+--        deploy, no DB statement.
+--
+-- Expected result: zero behaviour change for any opponent that resolves
+-- via a local opponents-table match (proven, Gate 9.2, live execution --
+-- step 1 of the resolver is byte-identical to today's inline query). The
+-- only new behaviour is additive: an opponent resolvable only through the
+-- new catalogue/alias now gets map/venue/logo data where it previously
+-- showed none -- and even that is empty today, since
+-- federation_clubs.map_url/venue_lat/venue_lng/logo_url remain 0-for-92
+-- populated (documented data-population gap, Gate 8.3, unchanged by this
+-- release).
+--
+-- Verification queries:
+--   select prosrc from pg_proc where proname = '_opponent_lookup_for_user'; -- confirm deployed
+--   -- Execute get_public_team_data with a known-good real share_token and
+--   -- confirm the response shape is unchanged for an ordinary, already-
+--   -- working opponent (no new/missing fields beyond the additive
+--   -- opponentLogoUrl).
+--
+-- Rollback (proven live, Gate 9.6): CREATE OR REPLACE
+-- public.get_public_team_data back to its pre-patch body (kept in git
+-- history, commit prior to the gate8_phase_b file). No DROP, no data
+-- change, immediate effect, no orphaned dependency.
+--
+-- ---------------------------------------------------------------------------
+-- PHASE C — Verified aliases (Victor's real account only)
+-- ---------------------------------------------------------------------------
+-- File: migrations/gate8_phase_c_PRODUCTION_verified_opponent_aliases.sql
+-- 5 rows, for user_id 563dea01-03a6-4e74-8cac-131cb39ccd97 only.
+-- EXPLICITLY REQUIRES ITS OWN SEPARATE APPROVAL per the Gate 10 instruction
+-- ("You may not: insert production aliases") -- listed here for sequencing
+-- only, NOT authorized by this file.
+-- Must run AFTER Phase B is live (inert otherwise) and after Phase A's
+-- aflClubId values exist in federation_clubs (confirmed non-fatal even if
+-- not, Gate 9.8 -- resolves to no match, not an error).
+-- Excludes "Olivais Sul" and the ambiguous historical "Benfica" record, per
+-- Victor's own instruction -- unchanged, re-confirmed this gate (file
+-- re-read in full).
+-- device_id/local_id are placeholders in the file -- recommend driving this
+-- through the app's own sync path (DB.put()) at deployment time rather
+-- than raw SQL, per the file's own header.
+--
+-- Verification: select count(*) from public.team_alias_mappings
+--   where user_id = '563dea01-03a6-4e74-8cac-131cb39ccd97'
+--     and payload->>'kind' = 'opponent_federation_alias'; -- expect 5
+--
+-- Rollback: soft-delete the 5 rows (set deleted_at = now()) -- the app's
+-- own sync model already treats deleted_at as "gone" everywhere else, so
+-- this is the one rollback method in this whole package that follows the
+-- app's own convention rather than introducing a new one. No DROP, no hard
+-- DELETE.
+--
+-- ---------------------------------------------------------------------------
+-- PHASE D — Feature activation
+-- ---------------------------------------------------------------------------
+-- A pure frontend flag flip: FEDERATION_CATALOGUE_PICKER_ENABLED = true in
+-- index.html. No DB statement. Tested as a real integration test against a
+-- scratch copy with real DB-backed populateOpponentDatalist() (Gate 9.5,
+-- 7/7 checks passed) -- duplicate suppression and squad distinctions both
+-- verified.
+-- Should only ship once Phases A (corrected)/B/C are live and verified --
+-- this is the only phase with user-visible behaviour change, so it is the
+-- one Victor should watch most closely after deploying.
+--
+-- Rollback: flip the flag back to false. No DB statement, no data change,
+-- instant effect on next page load.
+--
+-- Historical opponent cleanup (182-row duplicate set) remains explicitly
+-- OUT OF SCOPE for this entire release, per Victor's own repeated
+-- instruction -- nothing in Phases A-D merges or deletes any historical
+-- opponent row.
+
+select 'Gate 10.7 complete. Release package assembled for both workstreams. Workstream 1 (merge_plan_tmp RLS) is ready pending separate approval. Workstream 2 Phase A is NOT ready -- the Gate 10.3 venue-dedup defect must be fixed in file [7] or [8] and re-verified with a second clean rehearsal before Phase A ships; Phases B/C/D are otherwise ready in the order and with the row counts/verification queries/rollback procedures given above, with Phase C requiring its own separate approval (production alias inserts) and Phase D being the only user-visible change.' as status;
