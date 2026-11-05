@@ -5978,7 +5978,29 @@ async function findOpponentByName(name) {
   // now skips that copy) still resolves a logo/map here. Shaped to match
   // the fields callers of this function already expect from a local row.
   const federationClubs = await getFederationClubs();
-  const fc = federationClubs.find(c => (c.official_name||'').toLowerCase() === name.trim().toLowerCase());
+  const needle = name.trim().toLowerCase();
+  let fc = federationClubs.find(c => (c.official_name||'').toLowerCase() === needle);
+  // GATE 7: step 3 — opponent/federation-club alias resolution. Covers a
+  // name this user's own opponent list and the federation catalogue both
+  // fail to match directly (e.g. "Olivais 'A'" or "SL Olivais" vs the
+  // catalogue's unqualified "Olivais") via a verified alias row.
+  //
+  // Reuses the existing team_alias_mappings table/teamAliasMappings store —
+  // additive, not a schema change — but with its own row shape, kept
+  // deliberately separate from the League Classification feature that
+  // already owns this store (Classification.matchAlias / scopeKey /
+  // clsAliasRecordsForScope). These rows are tagged kind:'opponent_
+  // federation_alias' (classification rows never set `kind`, so they're
+  // invisible to this lookup) and carry competitionType:
+  // '__opponent_federation_alias__' (never 'League', so
+  // Classification.scopeKey(a) can never equal a real classification
+  // scope's key — clsAliasRecordsForScope never returns them either).
+  // Each side only ever sees its own rows.
+  if (!fc) {
+    const aliasRows = await DB.getAll('teamAliasMappings');
+    const hit = aliasRows.find(a => a.kind === 'opponent_federation_alias' && (a.aliases||[]).includes(needle));
+    if (hit) fc = federationClubs.find(c => (c.official_name||'').toLowerCase() === (hit.canonicalOfficialName||'').toLowerCase());
+  }
   if (!fc) return null;
   return {
     opponentName: fc.official_name,
