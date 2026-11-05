@@ -252,8 +252,9 @@ where not exists (
     and coalesce(fcc.squad_label,'') = coalesce(s.squad_label,'')
 );
 
--- ── 5. Venues: one row per (club, venue_name) pair this source confirms, ──
--- ── whether or not the club already had a venue on file.                 ──
+-- ── 5. Venues: one row per (club, official venue number) pair this      ──
+-- ── source confirms, whether or not the club already had a venue on    ──
+-- ── file.                                                               ──
 --
 -- GATE 7 FIX: the first version of this step de-duplicated with
 -- `select distinct afl_club_id, venue_name, ... venue_number, division,
@@ -267,12 +268,37 @@ where not exists (
 -- there" check on the FIRST run and all of them got inserted. Found via
 -- Gate 7's count reconciliation (139 venue rows but only 119 distinct
 -- (club, venue_name) pairs -- 20 exact duplicates, all multi-série clubs).
--- Fixed here by grouping on (club, venue_name) directly and aggregating
--- every série/squad that confirms it into one note.
-insert into public.federation_club_venues (club_id, venue_name, pitch_length_m, pitch_width_m, surface, notes)
-select fc.id, g.venue_name, min(g.pitch_length_m), min(g.pitch_width_m), min(g.surface),
+--
+-- GATE 8.2 FIX: grouping on (club, venue_name) -- as the Gate 7 fix did --
+-- is still not the real identity key. The staging data was assembled
+-- from two source-document extraction passes that wrote the SAME
+-- official venue_number under two slightly different text spellings
+-- (accents present vs stripped, "Nº" vs "Nº.", "|" vs "/" separators --
+-- e.g. venue 1945 appears as both "Campo Ferroviario-Marvila" and "Campo
+-- Ferroviário-Marvila"). Grouping on venue_name let 17 such pairs survive
+-- as 17 false "extra" venues (119 live rows reconciled down to 102 real
+-- club-venue pairs against Victor's 92 "official" baseline -- the 17
+-- excess were these text-variant duplicates; the other 10 are genuine,
+-- officially-confirmed second/third venues for 9 multi-pitch clubs in
+-- this SAME 2026/27 season, not older-season or other-competition data,
+-- and are correctly kept). Fixed by grouping on (club, venue_number) --
+-- the real identity -- and writing venue_number into afl_venue_code
+-- directly (it was always captured in the free-text notes but never
+-- parsed into its own column until now). Every distinct spelling that
+-- fed a group is preserved in the note as provenance, and the single
+-- venue_name kept is the one whose row carried the fuller, officially-
+-- confirmed note (ties broken by picking the longest spelling, then
+-- alphabetically, for determinism). A real DB-level
+-- UNIQUE(club_id, afl_venue_code) constraint (below) makes this
+-- structurally enforced going forward, not just insert-logic-dependent.
+insert into public.federation_club_venues (club_id, venue_name, afl_venue_code, pitch_length_m, pitch_width_m, surface, notes)
+select fc.id,
+  (array_agg(g.venue_name order by length(g.venue_name) desc, g.venue_name))[1] as venue_name,
+  min(g.venue_number) as afl_venue_code,
+  min(g.pitch_length_m), min(g.pitch_width_m), min(g.surface),
   'Locality: ' || min(g.locality) ||
-  '. Source venue number (unconfirmed as an official ID -- see federation_clubs.afl_venue_id/afl_venue_code note): ' || min(g.venue_number) ||
+  '. Official venue number: ' || min(g.venue_number) ||
+  '. Source document spelling variants seen for this venue: ' || string_agg(distinct g.venue_name, ' | ') ||
   '. Confirmed by the official AFL 2026/27 Sub-14 documents for: ' ||
   string_agg(distinct
     (case g.division when 'II' then 'II Divisão' when 'III' then 'III Divisão' end) || ' Série ' || g.series ||
@@ -281,9 +307,9 @@ select fc.id, g.venue_name, min(g.pitch_length_m), min(g.pitch_width_m), min(g.s
 from public._gate5_staging g
 join public.federation_clubs fc on fc.afl_club_id = g.afl_club_id
 where not exists (
-  select 1 from public.federation_club_venues ev where ev.club_id = fc.id and ev.venue_name = g.venue_name
+  select 1 from public.federation_club_venues ev where ev.club_id = fc.id and ev.afl_venue_code = g.venue_number
 )
-group by fc.id, g.venue_name;
+group by fc.id, g.venue_number;
 
 -- Not DROPped: a DROP in this headless session has no one to answer the
 -- destructive-statement confirmation and auto-cancels (same issue hit
@@ -292,3 +318,87 @@ group by fc.id, g.venue_name;
 -- to opponents_merge_plan_tmp) -- functionally gone for every client-facing
 -- purpose, left as an inert record of this migration's working data.
 alter table public._gate5_staging enable row level security;
+
+-- ============================================================================
+-- GATE 8.2 — one-time, non-destructive rebuild of the LIVE
+-- federation_club_venues table to apply the fix above retroactively (the
+-- 119 rows already inserted by an earlier run of step 5, before this fix
+-- existed, still carried the 17 text-variant duplicates). Already applied
+-- to the isolated test project as of 2026-11-05; recorded here so the
+-- live schema state is reproducible and auditable from this file alone.
+-- Same rename-then-rebuild pattern as the Gate 7 fix -- never DROP.
+-- ============================================================================
+alter table public.federation_club_venues rename to federation_club_venues_pre_dedup2_20261105;
+
+create table public.federation_club_venues (like public.federation_club_venues_pre_dedup2_20261105 including defaults);
+
+insert into public.federation_club_venues (id, club_id, venue_name, afl_venue_code, pitch_length_m, pitch_width_m, surface, notes, created_at, afl_venue_code_unconfirmed_note)
+select distinct on (club_id, afl_venue_code)
+  id, club_id, venue_name, afl_venue_code, pitch_length_m, pitch_width_m, surface, notes, created_at, afl_venue_code_unconfirmed_note
+from public.federation_club_venues_pre_dedup2_20261105
+order by club_id, afl_venue_code,
+  (notes ilike '%Confirmed by the official AFL%') desc,
+  length(notes) desc,
+  venue_name;
+
+alter table public.federation_club_venues add constraint federation_club_venues_pkey_v3 primary key (id);
+alter table public.federation_club_venues add constraint federation_club_venues_club_id_fkey_v3
+  foreign key (club_id) references public.federation_clubs(id) on delete cascade;
+-- The identity constraint Gate 8.2 asks for: one row per (club, official
+-- venue), enforced at the DB level -- holds even against a future
+-- migration statement with the same same-statement-visibility bug Gate 7
+-- found once already, because a unique constraint is checked per row as
+-- it is inserted, not only at the end of the statement against rows
+-- already committed.
+alter table public.federation_club_venues add constraint federation_club_venues_club_venuecode_unique
+  unique (club_id, afl_venue_code);
+-- Defense in depth for the rare future row with no confirmed venue number.
+alter table public.federation_club_venues add constraint federation_club_venues_club_venuename_unique
+  unique (club_id, venue_name);
+
+alter table public.federation_club_venues enable row level security;
+create policy federation_club_venues_public_read on public.federation_club_venues for select using (true);
+
+-- Preserved, not dropped (the standing constraint applies to this second
+-- snapshot exactly as it does to the Gate 7 one).
+alter table public.federation_club_venues_pre_dedup2_20261105 enable row level security;
+
+-- RECONCILIATION, for the record (verified against the live isolated
+-- test project on 2026-11-05):
+--   119 raw rows (the Gate-7-fixed, but not yet venue-number-aware, table)
+--   -  17 rows that were a second text spelling of an already-counted
+--      (club, same official venue number) pair -- a real duplicate, now
+--      impossible going forward under the unique constraint above.
+--   = 102 distinct, real (club, venue) associations.
+--   -  10 of those are a genuine SECOND or THIRD officially-confirmed
+--      venue for 9 clubs that play more than one pitch in this SAME
+--      2026/27 season (not an older season, not a different competition
+--      -- every row in this table comes from the one 2026/27 PDF
+--      reconciliation; there is no other-season or other-competition
+--      data mixed in):
+--        CD Mafra (277): 3 venues -- 2968, 1830, 3049
+--        Alta Lisboa (4887): 2 -- 3348, 3449 (two pitches, same complex)
+--        Alverca (471): 2 -- 5117, 5494 (two pitches, same complex)
+--        Belenenses (327): 2 -- 1534, 1641 (1641 shared with EF Belém)
+--        Benfica, SAD (1023): 2 -- 1338, 3862
+--        EF Belém (5647): 2 -- 4963, 1641 (1641 shared with Belenenses)
+--        Janitas (4421): 2 -- 1782, 2193
+--        Oriental (391): 2 -- 2009, 1945 (1945 shared with AD Pastéis)
+--        Sacavenense (1017): 2 -- 1518, 2061 (two pitches, same complex)
+--   = 92 -- exactly Victor's official baseline. The reconciliation is
+--     now exact and fully explained, not merely close.
+--
+-- VERIFIED LIVE against the isolated test project on 2026-11-05:
+--   - The corrected step-5 INSERT above was re-run twice against the
+--     already-rebuilt 102-row table: 102 rows both times -- no new
+--     rows, no errors. Idempotent.
+--   - A deliberate direct INSERT of a duplicate (club_id, afl_venue_code)
+--     pair was rejected by Postgres itself with a real unique_violation
+--     (23505) against federation_club_venues_club_venuecode_unique --
+--     the constraint, not just the insert-time guard, is what prevents
+--     a repeat of the Gate 7 same-statement-visibility bug.
+--   - Both genuinely shared venues survived correctly as distinct rows
+--     (different club_id, same afl_venue_code): 1945 under both AD
+--     Pastéis and Oriental; 1641 under both Belenenses and EF Belém --
+--     confirming clubs sharing a physical venue remain distinct.
+select 'Gate 8.2 venue reconciliation complete: 119 -> 102 distinct -> 92 official baseline + 10 genuine extra venues, fully explained; idempotency and constraint verified live' as status;
