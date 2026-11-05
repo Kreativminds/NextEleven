@@ -22,8 +22,15 @@
 -- WORKSTREAM 2 — federation catalogue release
 -- ============================================================================
 --
--- *** RELEASE STATUS: NOT READY. Phase A has one open, concrete blocker
--- (Gate 10.3) that must be fixed before Phase A is applied to production. ***
+-- *** RELEASE STATUS (GATE 11 UPDATE): READY for Phase A/B/C/D approval. ***
+-- Gate 10.3's blocker (the venue-dedup defect) has been root-cause fixed and
+-- re-verified by a SECOND clean-schema rehearsal (Gate 11.1,
+-- migrations/gate11_1_clean_chain_rehearsal.sql): 0 errors, 0 constraint
+-- violations, from a genuinely empty schema, in exact proposed production
+-- order, run twice. See that file and migrations/gate5_federation_venue_
+-- validation.sql / gate5_resolution_afl_official_2026_27.sql (both edited
+-- this gate) for the fix itself. Phases A/B/C/D below are updated
+-- accordingly; nothing has been applied to production.
 --
 -- ---------------------------------------------------------------------------
 -- PHASE A — Federation database (schema, official data, security, RPC
@@ -35,10 +42,12 @@
 --       conflict-report step, Gate 10.2 -- run the report, review any
 --       output, then the insert)
 --   [4] migrations/gate4_remediation_federation_clubs_full_roster.sql
---   [7] migrations/gate5_federation_venue_validation.sql  *** NEEDS THE
---       GATE 10.3 FIX before this ships -- see below ***
---   [8] migrations/gate5_resolution_afl_official_2026_27.sql  *** NEEDS
---       THE GATE 10.3 FIX before this ships -- see below ***
+--   [7] migrations/gate5_federation_venue_validation.sql  (GATE 11 FIXED
+--       VERSION -- afl_venue_code now populated for every cross-document-
+--       confirmed row; see below)
+--   [8] migrations/gate5_resolution_afl_official_2026_27.sql  (GATE 11
+--       FIXED VERSION -- new "4b" supersede step + two-tier dedup guard;
+--       see below)
 --   [9] migrations/gate8_security_hardening_and_public_page_fix.sql, PART 1
 --       only (the REVOKE statements -- part 2's resolver function is Phase
 --       B plumbing, listed there instead to keep this list's own
@@ -54,25 +63,44 @@
 -- no resolve_opponent_lookup function to revoke anything from yet; this
 -- file's own header already scopes it to the test project only).
 --
--- *** THE GATE 10.3 FIX, required before [7]/[8] ship: *** without it, a
--- clean deployment of this exact sequence produces 135 federation_club_
--- venues rows instead of 92, and migration [8]'s own second unique
--- constraint throws a real 23505 error partway through (proven this gate,
--- see migrations/gate10_3_clean_chain_rehearsal.sql for the full
--- reproduction). Recommend option (a) from that file -- have [7] also
--- populate afl_venue_code from the venue number already present in its own
--- `notes` text -- as the least invasive fix, applied to [7] before this
--- release, re-tested with a second clean rehearsal before sign-off.
+-- *** THE GATE 10.3 DEFECT, NOW FIXED (GATE 11): *** without the fix, a
+-- clean deployment of this exact sequence produced 135 federation_club_
+-- venues rows instead of a correct, fully-explained total, and migration
+-- [8]'s own second unique constraint threw a real 23505 error partway
+-- through (Gate 10.3, see gate10_3_clean_chain_rehearsal.sql). Root cause:
+-- file [7] left afl_venue_code NULL on every row, and [8]'s dedup guard
+-- keyed on afl_venue_code -- NULL never equals anything in SQL. FIX
+-- APPLIED (Gate 11): [7] now populates afl_venue_code wherever an
+-- independent, later, official 2026/27 document confirms the same (club,
+-- venue_number) pair; [8] gained a new "4b" step that supersedes the 2
+-- rows whose venue genuinely changed (Janitas, Oriental) in place instead
+-- of duplicating them. RE-VERIFIED by a second clean-schema rehearsal --
+-- see gate11_1_clean_chain_rehearsal.sql: 0 errors, 0 constraint
+-- violations, run twice for idempotency.
 --
--- Expected row counts after a CORRECTED Phase A (production is at zero for
--- all of these today -- confirmed via direct inspection, Gate 9.8 and
+-- Expected row counts after the CORRECTED Phase A (production is at zero
+-- for all of these today -- confirmed via direct inspection, Gate 9.8 and
 -- re-confirmed this gate):
---   federation_clubs              : 0 -> 92
---   federation_club_competitions  : 0 -> ~109 (one row per club/season/
+--   federation_clubs              : 0 -> 92 (matches Victor's "92 total
+--                                    federation clubs" target exactly)
+--   federation_club_competitions  : 0 -> 109 (one row per club/season/
 --                                    division/série/squad-label combination
 --                                    the official 2026/27 document states)
---   federation_club_venues        : 0 -> 92 (NOT 135 -- only correct once
---                                    the Gate 10.3 fix is applied)
+--   federation_club_venues        : 0 -> 100 (92 official 2026/27
+--                                    club-to-venue associations -- matching
+--                                    Victor's "92 distinct official
+--                                    club-to-venue associations" and "87
+--                                    distinct official venue identifiers"
+--                                    targets exactly -- PLUS 8 genuine
+--                                    historical rows for clubs the current
+--                                    2026/27 documents do not cover at all,
+--                                    correctly kept unconfirmed rather than
+--                                    invented or discarded; full breakdown
+--                                    in gate11_1_clean_chain_rehearsal.sql.
+--                                    NOT 135 -- that was the pre-fix defect
+--                                    -- and NOT forced to exactly 92 either,
+--                                    per Victor's own instruction not to
+--                                    force that number.)
 --   opponents.federation_club_id  : unchanged (new nullable column only,
 --                                    every existing row stays NULL until an
 --                                    explicit future backfill)
@@ -80,13 +108,18 @@
 -- is purely additive new tables/columns plus REVOKEs; it reads, never
 -- writes, any existing row).
 --
--- Verification queries (run immediately after applying Phase A):
---   select count(*) from public.federation_clubs;                 -- expect 92
---   select count(*) from public.federation_club_competitions;      -- expect ~109
---   select count(*) from public.federation_club_venues;            -- expect 92, NOT 135
---   select count(distinct (club_id, afl_venue_code)) = count(*)
---     from public.federation_club_venues where afl_venue_code is not null; -- expect true
---   select count(*) from public.games;      -- expect 182 (unchanged)
+-- Verification queries (run immediately after applying Phase A -- PRE- and
+-- POST-deployment, since every one of these is also safe to run beforehand
+-- against production as-is, where federation_clubs/_competitions/_venues
+-- do not exist yet, to confirm the starting state is genuinely zero):
+--   PRE:  select count(*) from information_schema.tables where table_schema='public' and table_name like 'federation_%'; -- expect 0 rows before Phase A
+--   POST: select count(*) from public.federation_clubs;                 -- expect 92
+--   POST: select count(*) from public.federation_club_competitions;      -- expect 109
+--   POST: select count(*) from public.federation_club_venues;            -- expect 100 (NOT 135, and not forced to 92 -- see the breakdown above)
+--   POST: select count(distinct (club_id, afl_venue_code)) = count(*)
+--     from public.federation_club_venues where afl_venue_code is not null; -- expect true (no duplicate coded pairs)
+--   POST: select count(*) from public.federation_club_venues where afl_venue_code is null; -- expect 8 (the genuine, explained, unconfirmed legacy rows)
+--   POST: select count(*) from public.games;      -- expect 182 (unchanged)
 --   select count(*) from public.game_players; -- expect 321 or whatever the
 --     fresh Gate 10.6 figure is at the moment of deployment (read-only
 --     check, not a fixed number -- the point is it must be UNCHANGED by
@@ -182,5 +215,35 @@
 -- OUT OF SCOPE for this entire release, per Victor's own repeated
 -- instruction -- nothing in Phases A-D merges or deletes any historical
 -- opponent row.
+--
+-- ============================================================================
+-- FEATURE-FLAG ACTIVATION CONDITIONS (GATE 11.8)
+-- ============================================================================
+--   FEDERATION_CATALOGUE_PICKER_ENABLED: ships FALSE by default with Phase B
+--     (zero behaviour change for every existing user -- proven, Gate 9.5/9.6
+--     and reconfirmed this gate's regression re-run, 99/7/0). Should only be
+--     flipped TRUE (Phase D) once Phases A (corrected)/B/C are live and
+--     verified in production -- flipping it earlier would expose unverified
+--     federation-only clubs (no verified alias, no map/logo data yet) in the
+--     live picker. No other condition gates it technically; this is a
+--     sequencing/judgment condition, not a system check.
+--   Phase C (verified aliases) activation condition: requires Phase B live
+--     first (inert otherwise -- the alias rows do nothing until the
+--     resolver that reads them is deployed) and its own separate approval
+--     (production alias inserts), per Victor's standing authorization
+--     boundary.
+--
+-- ============================================================================
+-- OUTSTANDING MANUAL TESTS (GATE 11.8 -- carried from Gate 10.5, unchanged
+-- this gate -- none of these are affected by the venue fix, which touches
+-- only pre-deployment migration SQL, not any live application path)
+-- ============================================================================
+--   1. Live Supabase HTTP/RLS enforcement               : BLOCKED (sandbox network policy -- manual curl procedure in gate10_5_outstanding_integration_limitations.sql)
+--   2. Multi-device synchronization                     : NOT TESTED (manual procedure in that same file)
+--   3. Parent and coach interfaces                       : NOT TESTED (manual procedure in that same file)
+--   4. Public-sharing under real authenticated sessions   : BLOCKED (same root cause as #1)
+--   5. Offline-to-online synchronization                 : NOT TESTED (manual procedure in that same file)
+-- All five need a human with real device/network access to execute; none
+-- is bypassed or worked around with a weakened security control.
 
-select 'Gate 10.7 complete. Release package assembled for both workstreams. Workstream 1 (merge_plan_tmp RLS) is ready pending separate approval. Workstream 2 Phase A is NOT ready -- the Gate 10.3 venue-dedup defect must be fixed in file [7] or [8] and re-verified with a second clean rehearsal before Phase A ships; Phases B/C/D are otherwise ready in the order and with the row counts/verification queries/rollback procedures given above, with Phase C requiring its own separate approval (production alias inserts) and Phase D being the only user-visible change.' as status;
+select 'Gate 11.8 update complete. Release package now reflects the Gate 11 venue-dedup fix: Workstream 1 (merge_plan_tmp RLS) still ready pending separate approval. Workstream 2 is now READY for Phase A/B/C/D approval -- the Gate 10.3 defect is fixed and re-verified by a second clean rehearsal (0 errors, 0 constraint violations, idempotent). Expected federation_club_venues count corrected to 100 (92 official + 8 explained legacy), not 92 or 135. Feature-flag activation conditions and the 5 outstanding manual tests are listed explicitly above. Phase C still requires its own separate approval for production alias inserts; Phase D remains the only user-visible change.' as status;
