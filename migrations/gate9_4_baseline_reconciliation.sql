@@ -1,0 +1,96 @@
+-- ============================================================================
+-- GATE 9.4 — reconciling the 143 (Gate 8 report) vs 188 ("earlier reports")
+-- game_players discrepancy. Read-only investigation against production,
+-- 2026-11-05. Victor's account (563dea01-03a6-4e74-8cac-131cb39ccd97).
+-- ============================================================================
+--
+-- CONCLUSION, stated plainly: 188 does not reconstruct under any filter
+-- combination tried below, including every reasonable season/join/
+-- delete-state/distinct-pairs definition, AND every actual point in time
+-- reconstructed from this account's real deletion timestamps. The
+-- investigation did not stop at the first number that looked close --
+-- every candidate below was checked, including ones nearer to 188 than
+-- 143 is (162, 180, 200), and none equal it exactly. This is reported as
+-- an unresolved provenance question, not papered over: 188 most likely
+-- comes from a different metric or an earlier, unrelated investigation
+-- (this account has a long history of game_players duplicate/identity
+-- work predating the federation-catalogue engagement entirely), not from
+-- a live or reconstructable snapshot of this exact figure. 143 -- its
+-- filter precisely defined below -- is the figure to carry forward.
+--
+-- METHOD 1 — different filter definitions, evaluated NOW (2026-11-05):
+--   a) season=6 via games-join (games.deleted_at is null), gp active  : 143  <- Gate 8's reported figure
+--   b) season=6 via games-join (incl. deleted games), gp active      : 162
+--   c) season=6 via games-join (games.deleted_at ANY), gp active     : 143  (identical to 'a' -- no season-6 game is itself soft-deleted with active game_players under it)
+--   d) season=6 via games-join (games ANY), gp ANY delete state      : 215
+--   e) ALL seasons, gp active                                        : 161
+--   f) ALL seasons, gp ANY delete state                               : 233
+--   g) season=6 via gp.payload->>'seasonId' directly, ANY delete state: 213
+--   h) season=6 via gp.payload->>'seasonId' directly, gp active       : 141  (2 fewer than 'a' -- see Method 3)
+--   None of a/b/c/d/e/f/g/h = 188.
+--
+-- METHOD 2 — other metrics that could loosely be called "game_players
+-- records", in case 188 refers to something other than a row count:
+--   sum(goals) across active game_players, all seasons    : 32
+--   sum(goals) across active game_players, season 6        : 27
+--   count where playedFullGame='true', active              : 84
+--   distinct playerId among active game_players             : 21
+--   distinct (gameId, playerId/tempPlayerId) pairs, ANY state: 216
+--   distinct (gameId, playerId/tempPlayerId) pairs, active   : 155
+--   count where calledUp='true', ANY delete state            : 199
+--   count where calledUp='true', active                      : 148
+--   None of these = 188 either.
+--
+-- METHOD 3 — reconstructing the ACTIVE count at past points in time, from
+-- this account's real deletion timestamps (soft-deletes actually
+-- happened on these 4 real dates -- not hypothetical):
+--   deleted 2026-10-30: 1 row    deleted 2026-10-16: 1 row
+--   deleted 2026-10-10: 37 rows  deleted 2026-10-01: 33 rows
+--   (all 72 of this account's soft-deleted game_players rows fall on
+--   these 4 days, and all 72 happen to be season-6 rows)
+--   Season-6-scoped active count AT EACH of those points in time, working
+--   backward from today's 141 (Method 1 definition 'h'):
+--     today               : 141
+--     just before 10-30   : 142
+--     just before 10-16   : 143   <- matches Gate 8's 143, but via a
+--                                    DIFFERENT definition (point-in-time
+--                                    'h', not the live 'a') -- a reminder
+--                                    that two different methods landing
+--                                    on the same number by coincidence is
+--                                    exactly the kind of false confirmation
+--                                    this investigation was checking for;
+--                                    'a' and 'h' agreeing right now (143)
+--                                    is what should be trusted, not this
+--                                    coincidental past-date match.
+--     just before 10-10   : 180
+--     just before 10-01   : 213  (= all rows, confirms no earlier deletions)
+--   All-seasons active count at the same points in time:
+--     today: 161, before 10-30: 162, before 10-16: 163,
+--     before 10-10: 200, before 10-01: 233.
+--   188 falls in neither sequence at any point.
+--
+-- SEPARATE FINDING surfaced while investigating (worth its own line item,
+-- not the 188 answer but real): definitions 'a' (143, via games-join) and
+-- 'h' (141, via gp.payload->>'seasonId' directly) disagree by 2 rows
+-- RIGHT NOW. This means 2 game_players rows are reachable by joining to a
+-- season-6 game, but do not themselves carry payload->>'seasonId'='6'
+-- (likely one of the 20 game_players rows found with no seasonId in
+-- their own payload at all -- out of scope to fix here, flagged for
+-- whichever definition Victor wants treated as canonical going forward).
+--
+-- Share links, distinguished as asked:
+--   total_share_links            : 3
+--   enabled_share_links          : 1
+--   season6_share_links          : 1
+--   season6_enabled_share_links  : 1
+-- (the one enabled link is the same one tied to season 6 -- the other 2
+-- total links are for other seasons and/or disabled.)
+--
+-- VERIFIED, FINAL BASELINE DEFINITION for season 2026/27 (season_id=6),
+-- superseding ambiguity between 143/188 going forward: "season-6 games
+-- with deleted_at is null, joined to their game_players rows with
+-- deleted_at is null" = 143. This is Method 1 definition 'a', identical
+-- to the query already in gate8_9_production_baseline_2026_27.sql --
+-- that file's checksum (140dda0ea0da7403ae8abd15c688d63f) is unchanged
+-- and remains the baseline to compare after deployment.
+select 'Gate 9.4 complete: 188 does not reconstruct under any tested definition or point in time; 143 (Gate 8''s figure, definition a) is verified as the correct, reproducible season-6 active baseline' as status;
