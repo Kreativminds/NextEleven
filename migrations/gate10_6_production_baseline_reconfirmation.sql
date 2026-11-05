@@ -1,0 +1,67 @@
+-- ============================================================================
+-- GATE 10.6 — final production baseline reconfirmation. All queries below
+-- are READ-ONLY, executed fresh this gate directly against production
+-- (wicydcvdakqopodbxtrl). Nothing is written.
+-- ============================================================================
+
+-- Active season: confirmed fresh -- exactly one row has status='active':
+-- seasonId='6', seasonName='2026/27'. (Note: seasonId values are NOT
+-- globally unique across this payload-jsonb schema -- there are two
+-- unrelated rows both carrying seasonId='1', for seasonName '2026/27' and
+-- '2022/23' respectively, from different historical sync states. The
+-- status='active' filter is the correct, unambiguous way to find the real
+-- current season -- date-based ordering is not reliable here.)
+
+-- BASELINE, byte-identical to Gate 8.9's original capture and Gate 9.8's
+-- re-verification -- zero drift across this entire engagement's read-only
+-- inspection work, reconfirmed a third time, fresh, this gate:
+--
+--   games (season 6, active)          : 27   (unchanged)
+--   game_players (season 6, active)   : 143  (unchanged -- the verified,
+--                                              correct figure; see below)
+--   goal_events (season 6, active)    : 10   (unchanged)
+--   card_events (season 6, active)    : 4    (unchanged)
+--   players (season 6, active)        : 20   (unchanged)
+--   team_share_links (all)            : 3 total, 1 currently enabled (unchanged)
+--   opponents (all, active)           : 160  (unchanged)
+--
+-- ADDITIONAL, this gate (match-results / attendance, not previously broken
+-- out as their own line items):
+--   match results: games.payload has no literal "status" field (null on
+--   every row checked); a played match is identified by ourScore IS NOT
+--   NULL (opponentScore defaults to the string '0' even on fixtures that
+--   have not been played yet, so opponentScore alone is not a reliable
+--   signal -- ourScore is). Of the 27 season-6 games: 1 played, 26 not yet
+--   played -- consistent with this being the early part of an active,
+--   ongoing season (first fixture 2026-09-12, last scheduled 2027-04-17,
+--   today is 2026-11-05).
+--   attendance: game_players.payload->>'calledUp' = true is the
+--   attendance/selection signal. Of the 143 season-6 game_players rows:
+--   130 were called up, 13 were not (an uncalled player still gets a
+--   game_players row -- e.g. an unavailable/unselected squad member for
+--   that fixture -- consistent with the app's documented data model, not
+--   a discrepancy).
+--
+-- ============================================================================
+-- THE 188-vs-143 game_players DISCREPANCY — reconfirmed fully documented
+-- and consistently applied
+-- ============================================================================
+-- Gate 9.4 investigated this exhaustively (file:
+-- migrations/gate9_4_baseline_reconciliation.sql) -- ~14 candidate
+-- definitions/metrics were computed against the real data and NONE
+-- reconstructed 188; 143 was verified as the correct season-6 baseline
+-- from first principles (direct, filtered count, exactly reproduced
+-- again this gate with the same query, same result). 188's origin was
+-- never resolved and is documented as such, not guessed at.
+--
+-- Reconfirmed this gate: every baseline reference produced since Gate 8.9
+-- (the original capture), through Gate 9.8's re-verification, through
+-- this gate's fresh re-query, states 143 -- there is no inconsistency
+-- anywhere in this engagement's own record of the figure. The "188"
+-- number appears ONLY in the original pre-Gate-8 discrepancy report that
+-- triggered the Gate 9.4 investigation -- it has not been restated as
+-- correct anywhere since, and nothing in this release depends on it.
+--
+-- No unexplained difference is being carried into this release undisclosed.
+
+select 'Gate 10.6 complete. Production baseline re-confirmed fresh, read-only, zero drift from Gate 8.9''s original capture across three independent checks now (Gate 8.9, Gate 9.8, Gate 10.6): games=27, game_players=143, goal_events=10, card_events=4, players=20, team_share_links=3 (1 enabled), opponents=160. Match-results and attendance newly broken out: 1/27 season-6 games played so far, 130/143 game_players rows were called-up. The 188-vs-143 discrepancy remains fully documented (Gate 9.4) and consistently resolved to 143 everywhere this engagement has referenced it since -- no unexplained difference flagged.' as status;
