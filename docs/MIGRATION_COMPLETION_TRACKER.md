@@ -8,19 +8,19 @@ Updated 2026-11-06. **No production deployment, data changes, merges or release 
 |---|---|---|---|
 | FED-01 | In progress | 101 active games all matched to exactly one opponent; 56 federation-linked; 45 unlinked across 14 names | Verify each candidate against federation competition registration, not name similarity |
 | FED-02 | In progress | 16 duplicate federation identity groups, 22 redundant opponent rows, 30 game references | Link historical games to canonical federation IDs; verify 2026/27 fixtures and account isolation; no physical deletion before verified backup |
-| FED-03 | Prepared, not deployed | PR #38, guarded game-link table and backfill migrations | Test migrations on isolated database and verify table, policies, rollback and idempotency |
+| FED-03 | Isolated schema and backfill tested, not deployed | Link schema applied on isolated project, RLS and trigger active; SLO Benfica and Olivais A linked to the same Olivais federation ID; backfill rerun idempotent; wrong owner, club and historical name rejected | Validate positive backfill against faithful production fixture snapshot before release |
 | FED-04 | Prepared, not deployed | PR #38, addition/deletion review UI and RLS | Test administrator-only decisions, notifications and local team classification; protect original historical names |
 
 ## Priority 1: integration and release security
 
 | ID | Status | Acceptance evidence | Next action |
 |---|---|---|---|
-| SEC-01 | Open | Cross-account authorization tests for all new review tables and federation RPCs | Run anonymous, user A, user B and admin permission matrix |
+| SEC-01 | In progress | Federation link table denies authenticated INSERT/UPDATE/DELETE; negative cross-account, wrong club and wrong historical name mutations rejected in isolated tests | Run anonymous, user A, user B and admin matrix for addition/deletion review tables and RPCs |
 | SYNC-01 | Open | Offline and multi-device sync behavior, collision recovery, no data loss | Reproduce and regression-test multi-account cases; review existing SYNC-008 |
 | INT-01 | Open | PR #36 reports away-match weather RPC/field mismatch | Compare actual RPC signature with admin form, prepare isolated fix and tests |
 | UX-01 | Open | Federation picker, Settings catalogue, parent fixtures and admin workflows | Browser regression with duplicated aliases, Olivais Sul separation, season 2026/27 and missing clubs |
 
-## Priority 2: Gate 13 disaster recovery
+## Deferred improvement, not a release prerequisite: Gate 13 disaster recovery
 
 | ID | Status | Acceptance evidence | Next action |
 |---|---|---|---|
