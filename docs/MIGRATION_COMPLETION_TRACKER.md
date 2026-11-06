@@ -83,3 +83,7 @@ A task is complete only after implementation, isolated tests, negative tests, ev
 - 160 active opponents: 123 linked, 37 unlinked.
 - Federation catalogue: one Olivais, one Olivais Sul, distinct club IDs.
 - Structural preflight gate passed (zero ambiguous game matches; separate Olivais identities). **Not** a production-data migration rehearsal, deployment or signoff. Full release remains blocked on 45 pending links, duplicate reconciliation and integrated regression.
+
+## Additional scope AS-06: isolated security advisor triage (2026-11-06)
+
+Status: **In progress**, outside original 33 tasks. Supabase isolated-project security advisors identified 9 RLS-without-policy informational findings (several test/restore tables), 10 mutable function search paths, 2 extensions in public, 2 token-based public-team SECURITY DEFINER RPCs executable by anon/authenticated, and disabled leaked-password protection. These are findings requiring intent/impact assessment, **not confirmed exploits**. In particular, public-team RPCs may intentionally support public token access: do not revoke them without checking the app contract. The private `app_private.can_admin_delete_opponent` helper is not executable by anon and is executable by authenticated, as designed for RLS evaluation. No production settings changed. Relevant references: https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable and https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection.
