@@ -107,3 +107,7 @@ Status: **In progress**, outside original 33 tasks. Supabase isolated-project se
 ## Original task #17 complete security regression (2026-11-06)
 
 Status: **In progress**, not passed. Tested isolated non-admin B: no admin membership visibility, no cross-account deletion requests, no cross-account addition requests (all true). Added reproducible `tests/sql/opponent_review_nonadmin_rls_isolated.sql` in commit `beb519c0`. Still required: seeded positive/negative admin matrix, browser workflows, authenticated/anonymous RPC and approval state transitions. No production changes.
+
+## Original application regression verification (2026-11-06)
+
+PR #38 commit `0602d2d` GitHub Actions run **42303343163**, job **128186413995**, succeeded. All three Node checks and SQL fixture-presence assertion passed. This supports the implementation of original task #18 (federation picker) and #20 (match save/edit protection), but the picker remains feature-flagged off and no browser end-to-end test has been completed. Neither task can be marked Passed yet. No production change.
