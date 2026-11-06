@@ -95,6 +95,9 @@ BEGIN
  IF (SELECT auth.uid()) IS DISTINCT FROM OLD.user_id THEN
    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.user_id IS DISTINCT FROM OLD.user_id
       OR NEW.payload IS DISTINCT FROM OLD.payload
+      OR NEW.device_id IS DISTINCT FROM OLD.device_id
+      OR NEW.local_id IS DISTINCT FROM OLD.local_id
+      OR NEW.federation_club_id IS DISTINCT FROM OLD.federation_club_id
       OR NEW.created_at IS DISTINCT FROM OLD.created_at
       OR NEW.updated_at IS DISTINCT FROM OLD.updated_at THEN
      RAISE EXCEPTION 'Administrator may change only deletion timestamp';
