@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS public.opponent_addition_requests (
  CONSTRAINT addition_review_consistency CHECK (
  (status='pending' AND reviewed_by IS NULL AND reviewed_at IS NULL AND decision_reason IS NULL AND federation_club_id IS NULL)
  OR (status<>'pending' AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL
- AND length(trim(decision_reason))>0 AND (status='verified')=(federation_club_id IS NOT NULL)))
+ AND length(trim(decision_reason))>0 AND (status='verified')=(federation_club_id IS NOT NULL)
+ AND (status<>'verified' OR proposed_type='federation')))
 );
 ALTER TABLE public.opponent_addition_requests ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.opponent_addition_requests FROM anon,authenticated;
@@ -33,7 +34,8 @@ CREATE POLICY addition_request_review ON public.opponent_addition_requests FOR U
  (SELECT 1 FROM public.opponent_deletion_admins a WHERE a.user_id=(SELECT auth.uid())))
  WITH CHECK (status IN ('verified','local','rejected') AND reviewed_by=(SELECT auth.uid())
  AND reviewed_at IS NOT NULL AND length(trim(decision_reason))>0
- AND ((status='verified')=(federation_club_id IS NOT NULL)));
+ AND ((status='verified')=(federation_club_id IS NOT NULL))
+ AND (status<>'verified' OR proposed_type='federation'));
 CREATE OR REPLACE FUNCTION public.lock_opponent_addition_request_identity()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public,pg_temp AS $$
 BEGIN
