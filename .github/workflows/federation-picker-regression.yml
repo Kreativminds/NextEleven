@@ -9,6 +9,7 @@ on:
       - '.github/workflows/federation-picker-regression.yml'
       - 'supabase/migrations/20261106*.sql'
       - 'tests/sql/federation_*.sql'
+      - 'tests/sql/opponent_review_*.sql'
   workflow_dispatch:
 jobs:
   picker:
@@ -26,5 +27,6 @@ jobs:
         run: |
           test -s tests/sql/federation_link_negative_isolated.sql
           test -s tests/sql/federation_link_rls_matrix_isolated.sql
+          test -s tests/sql/opponent_review_nonadmin_rls_isolated.sql
           test -s supabase/migrations/20261106200000_game_opponent_federation_links.sql
           test -s supabase/migrations/20261106203000_backfill_verified_game_federation_links.sql
