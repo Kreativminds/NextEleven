@@ -5609,6 +5609,15 @@ async function saveOpponentFromForm() {
   if (existingId) {
     data.opponentId = parseInt(existingId);
     const existingOpponent = await DB.get('opponents', data.opponentId);
+    // Historical fixtures reference the literal opponent name. A rename without
+    // migrating every fixture would silently break their opponent lookup.
+    if (existingOpponent && existingOpponent.opponentName !== name) {
+      const games = await DB.getAll('games');
+      if (games.some(game => game.opponent === existingOpponent.opponentName)) {
+        Toast.error('This opponent is used by existing fixtures. Its name cannot be changed without migrating match references.');
+        return;
+      }
+    }
     // Keep legacy metadata intact even though age/division are no longer editable.
     data.ageGroup = existingOpponent?.ageGroup || null;
     data.level = existingOpponent?.level || null;
