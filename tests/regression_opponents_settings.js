@@ -42,4 +42,10 @@ assert(save.includes('const match = await findOpponentNameCollision(name);'),'Sa
 assert(!save.includes('if (!_opponentDupOverride)'),'Duplicate bypass cannot disable checks');
 assert(save.includes('existingOpponent?.ageGroup'),'Existing age-group metadata retained');
 assert(save.includes('existingOpponent?.level'),'Existing division metadata retained');
+const deletion=html.slice(html.indexOf('async function deleteOpponent('),html.indexOf('// ── TRAINING SESSIONS',html.indexOf('async function deleteOpponent(')));
+assert(deletion.includes("DB.getAll('games')"),'Deletion checks existing games');
+assert(deletion.includes('game.opponent === opponent.opponentName'),'Deletion checks exact historical opponent references');
+assert(deletion.includes('if (referenced)'),'Referenced opponent cannot be deleted');
+assert(deletion.includes('latestGames.some('),'Deletion rechecks references after confirmation');
+assert(deletion.indexOf('if (referenced)') < deletion.indexOf("DB.softDelete('opponents', id)"),'Delete is blocked before any write');
 console.log('PASS: settings aliases, verified Olivais grouping, badge removal, duplicate enforcement and metadata preservation');
