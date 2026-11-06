@@ -1743,6 +1743,11 @@ function renderWizardStepGroundDuration() {
         </div>
 
         <div class="form-group">
+          <label>${I18n.t('set_lbl_homeground_coords')}${infoTip('tip_homeground_coords')}</label>
+          <input id="wiz-homeground-coords" type="text" placeholder="e.g. 38.736946, -9.160745" value="${esc(formatCoordsPair(prev.homeGroundLat, prev.homeGroundLng))}">
+        </div>
+
+        <div class="form-group">
           <label>${I18n.t('set_lbl_match_duration')}</label>
           <select id="wiz-duration-select" onchange="document.getElementById('wiz-duration-custom').style.display=this.value==='custom'?'block':'none'">
             <option value="" ${!prev.defaultMatchDurationMins?'selected':''}>${I18n.t('duration_default_90')}</option>
@@ -1764,7 +1769,11 @@ function renderWizardStepGroundDuration() {
 function wizardConfirmGroundDuration() {
   const durationSel = document.getElementById('wiz-duration-select')?.value;
   const durationCustom = document.getElementById('wiz-duration-custom')?.value;
+  const homeGroundCoords = parseCoordsInput(document.getElementById('wiz-homeground-coords')?.value);
+  if (homeGroundCoords === null) { Toast.error(I18n.t('set_err_invalid_coords')); return; }
   _seasonWizardState.draftSeason.homeGround = document.getElementById('wiz-homeground')?.value.trim() || null;
+  _seasonWizardState.draftSeason.homeGroundLat = homeGroundCoords.lat;
+  _seasonWizardState.draftSeason.homeGroundLng = homeGroundCoords.lng;
   _seasonWizardState.draftSeason.defaultMatchDurationMins = durationSel === 'custom' ? (parseInt(durationCustom) || null) : (parseInt(durationSel) || null);
   renderWizardStepShirtColor();
 }
@@ -2259,6 +2268,10 @@ function renderFTWStepClub() {
           <input id="ftw-club-ground" type="text" placeholder="e.g. Campo SL Olivais" value="${esc(c.homeGround||'')}">
         </div>
         <div class="form-group">
+          <label>${I18n.t('set_lbl_homeground_coords')}${infoTip('tip_homeground_coords')}</label>
+          <input id="ftw-club-ground-coords" type="text" placeholder="e.g. 38.736946, -9.160745" value="${esc(formatCoordsPair(c.homeGroundLat, c.homeGroundLng))}">
+        </div>
+        <div class="form-group">
           <label>${I18n.t('set_lbl_shirt_color')}</label>
           <input id="ftw-club-shirt" type="color" value="${esc(c.shirtColor||'#B23333')}" style="width:44px;height:36px;padding:2px;border:1px solid var(--border);border-radius:4px">
         </div>
@@ -2277,12 +2290,16 @@ async function ftwConfirmClub() {
   if (!category) { Toast.error(I18n.t('ftw_err_age_group_required')); return; }
   const country = readCountryField('ftw-club-country', 'ftw-club-country-other');
   if (!country) { Toast.error(I18n.t('ftw_err_country_required')); return; }
+  const homeGroundCoords = parseCoordsInput(document.getElementById('ftw-club-ground-coords')?.value);
+  if (homeGroundCoords === null) { Toast.error(I18n.t('set_err_invalid_coords')); return; }
   _firstTimeWizardState.club = {
     name,
     category,
     country,
     logoUrl: document.getElementById('ftw-club-logo')?.value.trim() || null,
     homeGround: document.getElementById('ftw-club-ground')?.value.trim() || null,
+    homeGroundLat: homeGroundCoords.lat,
+    homeGroundLng: homeGroundCoords.lng,
     shirtColor: document.getElementById('ftw-club-shirt')?.value || '#B23333',
   };
   await ftwGoToStep(2);
@@ -2700,6 +2717,8 @@ async function ftwFinalizeSetup() {
       clubTeamId,
       clubName: s.club.name,
       homeGround: s.club.homeGround || null,
+      homeGroundLat: s.club.homeGroundLat ?? null,
+      homeGroundLng: s.club.homeGroundLng ?? null,
       ageGroup: s.season.ageGroup || null,
       defaultMatchDurationMins: s.season.defaultMatchDurationMins || null,
       shirtColor: (s.club.shirtColor && s.club.shirtColor.toUpperCase() !== '#B23333') ? s.club.shirtColor : null,
@@ -21449,6 +21468,7 @@ const Render = (() => {
             </div>
             <div class="form-group"><label>${I18n.t('set_lbl_club_name')} *</label><input id="sf-club" type="text" placeholder="e.g. SL Olivais"></div>
             <div class="form-group"><label>${I18n.t('set_lbl_home_ground')}</label><input id="sf-homeground" type="text" placeholder="e.g. Campo SL Olivais"></div>
+            <div class="form-group"><label>${I18n.t('set_lbl_homeground_coords')}${infoTip('tip_homeground_coords')}</label><input id="sf-homeground-coords" type="text" placeholder="e.g. 38.736946, -9.160745"></div>
             <div class="form-group"><label>${I18n.t('set_lbl_age_group')}</label>${renderAgeGroupField('sf-age', 'sf-age-other', '')}</div>
             <div class="form-group"><label>${I18n.t('ftw_lbl_country')} *</label>${renderCountryField('sf-country', 'sf-country-other', '')}</div>
             <div class="form-group"><label>${I18n.t('set_lbl_match_duration')}</label>
@@ -28378,6 +28398,8 @@ document.addEventListener('click', async e => {
     if (!clubNameInput) { Toast.error(I18n.t('set_err_club_required')); return; }
     const countryInput = readCountryField('sf-country', 'sf-country-other');
     if (!countryInput) { Toast.error(I18n.t('ftw_err_country_required')); return; }
+    const homeGroundCoordsInput = parseCoordsInput(document.getElementById('sf-homeground-coords')?.value);
+    if (homeGroundCoordsInput === null) { Toast.error(I18n.t('set_err_invalid_coords')); return; }
     // Block creating a second season for a year that already has one —
     // this was previously silently allowed, and created exactly the
     // "two seasons both called 2026/27" problem that's confusing to
@@ -28415,6 +28437,8 @@ document.addEventListener('click', async e => {
       clubTeamId,
       clubName: clubNameInput,
       homeGround: document.getElementById('sf-homeground')?.value.trim()||null,
+      homeGroundLat: homeGroundCoordsInput.lat,
+      homeGroundLng: homeGroundCoordsInput.lng,
       ageGroup: readAgeGroupField('sf-age', 'sf-age-other'),
       defaultMatchDurationMins: readDurationFromForm('sf-duration-select', 'sf-duration-custom'),
       shirtColor: (shirtColorInput && shirtColorInput.value !== '#b23333' && shirtColorInput.value !== '#B23333') ? shirtColorInput.value : null,
