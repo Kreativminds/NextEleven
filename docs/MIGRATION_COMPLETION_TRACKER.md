@@ -127,3 +127,9 @@ Production read-only integrity check: **101 active games, 101 unique owner-scope
 ## Task #19 approved deletion and notification execution (2026-11-06)
 
 Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authenticated verified administrator only, approved request required, exact single opponent identity, transactional soft-delete and status completion, preserving historical fixtures. Isolated Supabase role A (admin)/B (requester) transaction passed and rolled back; non-admin RPC call rejected. Implemented `20261106213000_opponent_review_notifications.sql`: durable admin submission inbox events, requester decision events and distinct final completion events. Isolated approval -> completion produced both user events; rolled back. Notification identity trigger prevents recipient/message forgery. **Still pending for #19:** wire inbox and approved-deletion RPC into actual application interface, then verify end-to-end browser + authenticated Data API. Original tally stays 14/33, no production mutation.
+
+## Final manual Go: deletion completion notification role matrix (2026-11-06)
+
+- Added `tests/sql/opponent_deletion_completion_notifications_isolated.sql`, commit `6a8ed8185c4704422384a9d8c29c603a16e79f15`.
+- Executed on isolated project `tqpykeuuzcqudqtfrqmc` with rollback-only authenticated user B and admin A: submission inbox, admin approval, rejected premature completion, completion RPC, requester decision and completion events, and admin-only notification visibility all passed (SQL returned no errors).
+- This is genuine isolated database role-matrix evidence, not app browser/API integration. Task #19 remains In progress pending application UI integration and end-to-end acceptance; task #17 remains In progress pending complete security regression. Original tally unchanged at 14/33 Passed (42%). Production untouched.
