@@ -5398,6 +5398,17 @@ function opponentCatalogueDisplayKey(name) {
     'fut benfica': 'futebol benfica',
     '3fff': '3f'
   };
+  // Only strip squad letters for clubs confirmed in the federation catalogue.
+  // Never apply this to arbitrary names: e.g. Olivais Sul and Benfica B
+  // could refer to distinct registered clubs.
+  const federationVerifiedSquadClubs = new Set([
+    'belenenses', 'cultural', 'damaiense', 'santa maria',
+    'ef belem', 'cf estrela', 'sacavenense'
+  ]);
+  const squadMatch = normalized.match(/^(.*?) ([abc])$/);
+  if (squadMatch && federationVerifiedSquadClubs.has(squadMatch[1])) {
+    return squadMatch[1];
+  }
   return knownAliases[normalized] || normalized;
 }
 
