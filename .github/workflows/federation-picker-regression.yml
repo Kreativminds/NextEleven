@@ -4,6 +4,7 @@ on:
     paths:
       - 'index.html'
       - 'tests/regression_federation_picker_release.js'
+      - 'tests/browser_federation_picker.js'
       - 'tests/regression_federation_match_save_contract.js'
       - 'tests/regression_opponents_settings.js'
       - '.github/workflows/federation-picker-regression.yml'
@@ -23,6 +24,12 @@ jobs:
       - run: node tests/regression_federation_picker_release.js
       - run: node tests/regression_federation_match_save_contract.js
       - run: node tests/regression_opponents_settings.js
+      - name: Install Chromium test runner
+        run: |
+          npm install --no-save --no-package-lock playwright@1.58.2
+          npx playwright install --with-deps chromium
+      - name: Browser federation picker acceptance
+        run: node tests/browser_federation_picker.js
       - name: Verify federation SQL test fixtures and migrations are tracked
         run: |
           test -s tests/sql/federation_link_negative_isolated.sql
