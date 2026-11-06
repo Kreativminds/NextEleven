@@ -54,4 +54,11 @@ assert(!workflow.includes("DB.softDelete('opponents'"),'Neither user nor reviewe
 assert(!html.includes('async function deleteOpponent('),'Direct deletion action is removed');
 assert(render.includes('requestOpponentDeletion('),'Settings offers deletion request');
 assert(render.includes('reviewOpponentDeletionRequest('),'Settings includes admin review queue');
+const addition=html.slice(html.indexOf('async function requestOpponentAddition('),html.indexOf('async function requestOpponentDeletion('));
+assert(addition.includes("Sync.supabaseRequest('POST', 'opponent_addition_requests'"),'User can propose a club');
+assert(addition.includes("proposed_type: local ? 'local' : 'federation'"),'Local teams identified separately');
+assert(addition.includes("Sync.supabaseRequest('PATCH', 'opponent_addition_requests'"),'Administrator can review proposal');
+assert(addition.includes('federation_club_id:'),'Verified outcome links federation club');
+assert(!addition.includes("DB.put('opponents'"),'Proposal review does not modify fixtures or opponent catalogue');
+assert(render.includes('requestOpponentAddition()'),'Settings displays club suggestion action');
 console.log('PASS: federation grouping, no direct delete, reviewed deletion requests and historical fixture protection');
