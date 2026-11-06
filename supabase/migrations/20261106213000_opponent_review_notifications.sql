@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS public.opponent_review_notifications (
  recipient_id uuid NOT NULL REFERENCES auth.users(id),
  request_id uuid NOT NULL,
  request_kind text NOT NULL CHECK(request_kind IN ('addition','deletion')),
- event_type text NOT NULL CHECK(event_type IN ('submitted','decided')),
+ event_type text NOT NULL CHECK(event_type IN ('submitted','decided','completed')),
  message text NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now(),
  read_at timestamptz,
@@ -31,7 +31,7 @@ BEGIN
    VALUES(admin_id,NEW.id,kind,event_name,body) ON CONFLICT DO NOTHING;
   END LOOP;
  ELSIF NEW.status IS DISTINCT FROM OLD.status AND NEW.status<>'pending' THEN
-  event_name:='decided'; recipient:=NEW.requester_id;
+  event_name:=CASE WHEN NEW.status='completed' THEN 'completed' ELSE 'decided' END; recipient:=NEW.requester_id;
   body:='Your '||kind||' request for '||label||' was '||NEW.status||'. '||coalesce(NEW.decision_reason,'');
   INSERT INTO public.opponent_review_notifications(recipient_id,request_id,request_kind,event_type,message)
   VALUES(recipient,NEW.id,kind,event_name,body) ON CONFLICT DO NOTHING;
