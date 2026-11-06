@@ -22,3 +22,9 @@ Read-only catalogue cross-reference. These are **candidates**, not confirmed off
 Olivais = 2048d15c-37b2-4d9b-8be6-c063dc57378d. Olivais Sul = 461ac75e-a34c-46f9-8b45-8e4d982ca559. These **must never merge**.
 
 Next: validate each candidate against official federation team registration and competition, then perform a transactionally guarded backfill with complete backup and active-season regression checks. No production data changed by this audit.
+
+## Competition cross-check, 2026/27 Sub-14 III Divisão Série 3
+
+13 registered club squads: 3F, AD Pastéis, Alta Lisboa (B), CF Estrela (B), Cultural (A), Damaiense (B), Desp. O. Moscavide (B), Olivais (B), Oriental (B), Palmense, Sacavenense (B), Santa Maria (B), Tenente Valdez.
+
+This competition evidence supports Alta Lisboa B and Desp. O. Moscavide B as registered entries, but does **not** alone establish that every historical alias is that same registered squad. The club catalogue must display a single Olivais entry, with squad B retained only in the competition registration. Olivais Sul is a separate federation club and is not in this series list.
