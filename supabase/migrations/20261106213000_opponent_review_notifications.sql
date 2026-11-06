@@ -15,7 +15,9 @@ CREATE INDEX IF NOT EXISTS opponent_review_notifications_inbox ON public.opponen
 ALTER TABLE public.opponent_review_notifications ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.opponent_review_notifications FROM anon,authenticated;
 GRANT SELECT,UPDATE ON public.opponent_review_notifications TO authenticated;
+DROP POLICY IF EXISTS opponent_review_notification_read ON public.opponent_review_notifications;
 CREATE POLICY opponent_review_notification_read ON public.opponent_review_notifications FOR SELECT TO authenticated USING(recipient_id=(SELECT auth.uid()));
+DROP POLICY IF EXISTS opponent_review_notification_mark_read ON public.opponent_review_notifications;
 CREATE POLICY opponent_review_notification_mark_read ON public.opponent_review_notifications FOR UPDATE TO authenticated USING(recipient_id=(SELECT auth.uid())) WITH CHECK(recipient_id=(SELECT auth.uid()));
 CREATE OR REPLACE FUNCTION public.opponent_review_notify() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $fn$
 DECLARE admin_id uuid; kind text; label text; event_name text; recipient uuid; body text;
@@ -42,3 +44,22 @@ CREATE TRIGGER opponent_addition_review_notify AFTER INSERT OR UPDATE OF status 
 DROP TRIGGER IF EXISTS opponent_deletion_review_notify ON public.opponent_deletion_requests;
 CREATE TRIGGER opponent_deletion_review_notify AFTER INSERT OR UPDATE OF status ON public.opponent_deletion_requests FOR EACH ROW EXECUTE FUNCTION public.opponent_review_notify();
 -- Inbox consumption/UI and read_at immutability enforcement require separate acceptance checks.
+
+-- Users can acknowledge their own inbox entries, not forge messages or reassign recipients.
+CREATE OR REPLACE FUNCTION public.lock_opponent_review_notification_identity()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $fn$
+BEGIN
+ IF NEW.id IS DISTINCT FROM OLD.id OR NEW.recipient_id IS DISTINCT FROM OLD.recipient_id
+ OR NEW.request_id IS DISTINCT FROM OLD.request_id OR NEW.request_kind IS DISTINCT FROM OLD.request_kind
+ OR NEW.event_type IS DISTINCT FROM OLD.event_type OR NEW.message IS DISTINCT FROM OLD.message
+ OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+  RAISE EXCEPTION 'Notification identity is immutable';
+ END IF;
+ IF OLD.read_at IS NOT NULL AND NEW.read_at IS DISTINCT FROM OLD.read_at THEN
+  RAISE EXCEPTION 'Read acknowledgement cannot be reversed';
+ END IF;
+ RETURN NEW;
+END $fn$;
+DROP TRIGGER IF EXISTS lock_opponent_review_notification_identity ON public.opponent_review_notifications;
+CREATE TRIGGER lock_opponent_review_notification_identity BEFORE UPDATE ON public.opponent_review_notifications
+ FOR EACH ROW EXECUTE FUNCTION public.lock_opponent_review_notification_identity();
