@@ -9,7 +9,7 @@ Updated 2026-11-06. **No production deployment, data changes, merges or release 
 | FED-01 | In progress | 101 active games all matched to exactly one opponent; 56 federation-linked; 45 unlinked across 14 names | Verify each candidate against federation competition registration, not name similarity |
 | FED-02 | In progress | 16 duplicate federation identity groups, 22 redundant opponent rows, 30 game references | Link historical games to canonical federation IDs; verify 2026/27 fixtures and account isolation; no physical deletion before verified backup |
 | FED-03 | Isolated schema and backfill tested, not deployed | Link schema applied on isolated project, RLS and trigger active; SLO Benfica and Olivais A linked to the same Olivais federation ID; backfill rerun idempotent; wrong owner, club and historical name rejected | Validate positive backfill against faithful production fixture snapshot before release |
-| FED-04 | Partially deployed, verification pending | Production read-only inspection confirms deletion review table and identity/deletion-protection triggers active; hard DELETE privilege and DELETE policy absent; addition review table absent; exactly one super_admin exists | Test deletion review end-to-end and isolated addition review before deployment; verify notifications and local team classification |
+| FED-04 | Partially deployed, isolated addition tests passed | Production deletion review protection active, addition review absent; isolated addition schema applied; requester insert passed; forged requester rejected; non-admin review updated zero rows; admin review passed | Test deletion review end-to-end, notifications and local classification; approve addition deployment separately |
 
 ## Priority 1: integration and release security
 
