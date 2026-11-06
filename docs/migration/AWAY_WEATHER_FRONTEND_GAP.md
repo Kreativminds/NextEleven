@@ -1,5 +1,5 @@
-# Away weather: additional frontend gap
+# Away-weather frontend status: verification pending
 
-Read-only GitHub inspection on 2026-11-06 shows `team.html` on the default branch reads `next.opponentLat` / `next.opponentLng`, while `index.html` on that same branch contains **zero references** to `venueLat` or `venueLng`. This is consistent with production having zero active opponents with those fields. The QA log references a separate PR #35 for adding coordinate-entry UI, but its merge/deployment status has not yet been independently verified. Do not assume that functionality is present on the default branch or in production.
+Correction 2026-11-06: the GitHub connector returned `index.html` with an empty content body, despite a valid blob SHA. The prior claim that the default branch contains zero `venueLat` / `venueLng` references was therefore unsupported and is withdrawn. Do not infer that coordinate-entry UI is absent or that PR #35 is unmerged based on this response.
 
-Follow-up release dependency: reconcile PR #35 and #36, validate opponent coordinate entry and persistence, then test the already-updated production RPC in an isolated environment. Do not reapply the redundant RPC migration.
+Verified facts: production `get_public_team_data` includes `opponentLat` and `opponentLng`; all 160 active opponent records lack `venueLat` / `venueLng` keys. Next steps: fetch `index.html` via a reliable source or smaller retrieval mechanism, inspect PR #35/#36 merge status, and test the opponent coordinate save/sync flow. No production changes.
