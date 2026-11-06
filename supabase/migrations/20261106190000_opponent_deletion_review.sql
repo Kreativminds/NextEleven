@@ -3,7 +3,16 @@
 CREATE TABLE IF NOT EXISTS public.opponent_deletion_admins (
   user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE
 );
-ALTER TABLE public.opponent_deletion_admins ENABLE ROW LEVEL SECURITY;\nDO $\nDECLARE admin_count integer;\nBEGIN\n SELECT count(*) INTO admin_count FROM public.profiles WHERE role='super_admin';\n IF admin_count<>1 THEN RAISE EXCEPTION 'Expected exactly one verified super_admin, found %',admin_count; END IF;\n INSERT INTO public.opponent_deletion_admins(user_id)\n SELECT id FROM public.profiles WHERE role='super_admin'\n ON CONFLICT (user_id) DO NOTHING;\nEND $;
+ALTER TABLE public.opponent_deletion_admins ENABLE ROW LEVEL SECURITY;
+DO $$
+DECLARE admin_count integer;
+BEGIN
+ SELECT count(*) INTO admin_count FROM public.profiles WHERE role='super_admin';
+ IF admin_count<>1 THEN RAISE EXCEPTION 'Expected exactly one verified super_admin, found %',admin_count; END IF;
+ INSERT INTO public.opponent_deletion_admins(user_id)
+ SELECT id FROM public.profiles WHERE role='super_admin'
+ ON CONFLICT (user_id) DO NOTHING;
+END $$;
 REVOKE ALL ON public.opponent_deletion_admins FROM anon, authenticated;
 GRANT SELECT ON public.opponent_deletion_admins TO authenticated;
 DROP POLICY IF EXISTS opponent_deletion_admin_self_read ON public.opponent_deletion_admins;
