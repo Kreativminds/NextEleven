@@ -21,7 +21,7 @@ CREATE OR REPLACE FUNCTION public.opponent_review_notify() RETURNS trigger LANGU
 DECLARE admin_id uuid; kind text; label text; event_name text; recipient uuid; body text;
 BEGIN
  kind:=CASE WHEN TG_TABLE_NAME='opponent_addition_requests' THEN 'addition' ELSE 'deletion' END;
- label:=CASE WHEN kind='addition' THEN NEW.proposed_name ELSE NEW.opponent_name END;
+ label:=CASE WHEN kind='addition' THEN to_jsonb(NEW)->>'proposed_name' ELSE to_jsonb(NEW)->>'opponent_name' END;
  IF TG_OP='INSERT' THEN
   event_name:='submitted'; body:='New '||kind||' request: '||label;
   FOR admin_id IN SELECT user_id FROM public.opponent_deletion_admins LOOP
