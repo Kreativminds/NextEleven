@@ -1,0 +1,28 @@
+// Run: node tests/regression_opponents_settings.js
+// Source-level safeguards for Settings > Opponents Database. No database writes.
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const html=fs.readFileSync(require('node:path').join(__dirname,'..','index.html'),'utf8');
+const start=html.indexOf('function opponentCatalogueDisplayKey(name) {');
+const end=html.indexOf('async function renderOpponentsTab()',start);
+assert(start>=0&&end>start,'Settings alias function present');
+const context={};
+vm.createContext(context);
+vm.runInContext(html.slice(start,end),context);
+const key=name=>vm.runInContext('opponentCatalogueDisplayKey('+JSON.stringify(name)+')',context);
+assert.equal(key('Alta Lisboa'),key('Alta de Lisboa'));
+assert.equal(key('Atlético'),key('Atlético CP'));
+assert.notEqual(key('Olivais "A"'),key('Olivais "B"'));
+assert.notEqual(key('Olivais Sul'),key('SL Olivais'));
+const render=html.slice(end,html.indexOf('// Set only by the',end));
+assert(render.includes('const groups = new Map()'),'Groups aliases for display');
+assert(render.includes('group.length > 1'),'Duplicate records individually accessible');
+assert(!render.includes('o.ageGroup?'),'No age-group badge');
+assert(!render.includes('o.level?'),'No division badge');
+const save=html.slice(html.indexOf('async function saveOpponentFromForm()'),html.indexOf('async function deleteOpponent('));
+assert(save.includes('const match = await findOpponentNameCollision(name);'),'Save checks duplicates');
+assert(!save.includes('if (!_opponentDupOverride)'),'Duplicate bypass cannot disable checks');
+assert(save.includes('existingOpponent?.ageGroup'),'Existing age-group metadata retained');
+assert(save.includes('existingOpponent?.level'),'Existing division metadata retained');
+console.log('PASS: settings aliases, squad separation, badge removal, duplicate enforcement and metadata preservation');
