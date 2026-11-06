@@ -1,4 +1,5 @@
--- Administrator identity is derived from the existing verified profiles.super_admin role.\n-- Abort if the role assignment is absent or ambiguous.
+-- Administrator identity is derived from the existing verified profiles.super_admin role.
+-- Abort if the role assignment is absent or ambiguous.
 -- This migration does not delete or rename opponents or fixtures.
 CREATE TABLE IF NOT EXISTS public.opponent_deletion_admins (
   user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE
@@ -81,7 +82,12 @@ DROP TRIGGER IF EXISTS lock_opponent_deletion_request_identity ON public.opponen
 CREATE TRIGGER lock_opponent_deletion_request_identity BEFORE UPDATE ON public.opponent_deletion_requests
  FOR EACH ROW EXECUTE FUNCTION public.lock_opponent_deletion_request_identity();
 
--- Critical: revoke hard DELETE from regular users and remove the legacy DELETE policy.\n-- RLS alone is insufficient while the own_rows_delete policy remains active.\nREVOKE DELETE ON public.opponents FROM anon, authenticated;\nDROP POLICY IF EXISTS own_rows_delete ON public.opponents;\n\n-- Critical: stop direct soft-deletion by regular users even via REST/sync.
+-- Critical: revoke hard DELETE from regular users and remove the legacy DELETE policy.
+-- RLS alone is insufficient while the own_rows_delete policy remains active.
+REVOKE DELETE ON public.opponents FROM anon, authenticated;
+DROP POLICY IF EXISTS own_rows_delete ON public.opponents;
+
+-- Critical: stop direct soft-deletion by regular users even via REST/sync.
 -- Explicitly permit the authenticated owner to maintain other fields.
 CREATE OR REPLACE FUNCTION public.prevent_unreviewed_opponent_deletion()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public,pg_temp AS $$
@@ -98,6 +104,5 @@ DROP TRIGGER IF EXISTS prevent_unreviewed_opponent_deletion ON public.opponents;
 CREATE TRIGGER prevent_unreviewed_opponent_deletion BEFORE UPDATE ON public.opponents
  FOR EACH ROW EXECUTE FUNCTION public.prevent_unreviewed_opponent_deletion();
 
--- ADMIN CONFIGURATION REQUIRED, using the actual verified auth.users UUID:
--- INSERT INTO public.opponent_deletion_admins(user_id) VALUES ('<verified-owner-uuid>');
--- No privileged identity is inferred from user-controlled metadata or email.
+-- Admin allowlist is populated from the single verified super_admin profile.
+-- Never infer admin privilege from user-controlled metadata or email.
