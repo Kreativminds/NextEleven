@@ -5625,7 +5625,24 @@ async function saveOpponentFromForm() {
 }
 
 async function deleteOpponent(id) {
+  const opponent = await DB.get('opponents', id);
+  if (!opponent) return;
+  // Games retain their opponent as a historical name, not a foreign key.
+  // Never remove the only record resolving a played or scheduled fixture.
+  // This guard applies to ALL seasons, including the active 2026/27 season.
+  const games = await DB.getAll('games');
+  const referenced = games.some(game => game.opponent === opponent.opponentName);
+  if (referenced) {
+    Toast.error('This opponent is used by existing fixtures. Keep it to preserve match history.');
+    return;
+  }
   Confirm.show(I18n.t('opp_confirm_delete_title'), I18n.t('opp_confirm_delete_body'), async () => {
+    // Recheck after confirmation: another fixture may have been saved meanwhile.
+    const latestGames = await DB.getAll('games');
+    if (latestGames.some(game => game.opponent === opponent.opponentName)) {
+      Toast.error('This opponent is now used by a fixture and cannot be deleted.');
+      return;
+    }
     await DB.softDelete('opponents', id);
     Toast.show(I18n.t('ch_deleted'));
     await renderOpponentsTab();
