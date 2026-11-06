@@ -45,6 +45,10 @@ Updated 2026-11-06. **No production deployment, data changes, merges or release 
 - No renaming or deleting historical fixture opponent names during migration; preserve 2026/27 season, scores, events and standings.
 - Gate 13 test project tqpykeuuzcqudqtfrqmc is isolated; production project wicydcvdakqopodbxtrl remains read-only for migration work.
 
+## Fresh isolated-environment discovery (2026-11-06)
+
+A read-only `information_schema.tables` comparison of production and isolated project revealed that the **project root** of tqpykeuuzcqudqtfrqmc contains only 26 public base tables, while production contains 44 public base tables (including operational staging tables). Production-only application tables include `roadmap_items`, `profiles`, `player_game_stats`, `training_sessions`, `training_packs`, `events`, `backups` and others. The isolated project also has test-only tables. This is **not evidence that the named `gate13_restore` branch is incomplete**: branch-level inspection is required. Do not run full DR parity against the project root and mislabel it a restore test. Verify the actual branch identifier and compare the same schema/snapshot before re-running DR gates.
+
 ## Evidence register
 
 - PR #37: https://github.com/Kreativminds/NextEleven/pull/37
