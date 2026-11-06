@@ -119,3 +119,7 @@ PR #38 commit `0602d2d` GitHub Actions run **42303343163**, job **128186413995**
 ## Original task #19 browser verification (2026-11-06)
 
 GitHub Actions run **42304845242** (#88), commit `51c736cc817fbc8e0715b51527a9232793b118f9`, completed **success**. Both Chromium browser checks and three Node regression suites passed. The new `tests/browser_opponent_approval.js` exercises user federation/local proposals, deletion requests, administrator rejection reasons, and confirms no direct opponent mutation from the tested handlers. The browser test uses mocked transport and does not verify live database role policies, delivered administrator notifications, user notification delivery, or complete approved-deletion execution. **Task #19 remains In progress**, not Passed, until those acceptance gaps close. Original scope remains **14/33 (42%)**. No production changes.
+
+## Original task #20 match save/edit protection (2026-11-06)
+
+Production read-only integrity check: **101 active games, 101 unique owner-scoped opponent matches, 0 missing, 0 ambiguous**. Existing `tests/regression_federation_match_save_contract.js` checks preservation of game ID, UUID, creation/kickoff timestamps, opponent score, local backup and sync scheduling, and is green in GitHub Actions run #88. This is baseline evidence, not browser save/edit execution or a production migration rehearsal. **Task #20 remains In progress** until real create/edit browser flows and rollback/history protection are verified. No production changes.
