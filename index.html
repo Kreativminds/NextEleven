@@ -5452,6 +5452,8 @@ async function renderOpponentsTab() {
     // A non-linked alias can inherit an identity only when exactly one
     // federation club matches. Ambiguous aliases remain independent.
     const resolvedId = linkedId || (candidates?.size === 1 ? [...candidates][0] : null);
+    // A verified club and a local-only club must never share an identity.
+    // Preserve the original local record and fixture name for historical lookup.
     const key = resolvedId ? 'federation:' + resolvedId : 'local:' + (alias || String(opponent.opponentId));
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(opponent);
