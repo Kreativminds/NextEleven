@@ -5515,7 +5515,7 @@ async function renderOpponentsTab() {
                 <summary style="cursor:pointer">${group.length} existing records, manage individually</summary>
                 ${group.map(record => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0">
                   <span>${esc(record.opponentName)}</span>
-                  <button class="btn btn-secondary btn-sm" onclick="editOpponent(${record.opponentId})">${I18n.t('common_edit')}</button>
+                  <span style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="editOpponent(${record.opponentId})">${I18n.t('common_edit')}</button><button class="btn btn-secondary btn-sm" onclick="requestOpponentDeletion(${record.opponentId})" ${requestsByOpponent.has(String(record.opponentId)) ? 'disabled' : ''}>${requestsByOpponent.has(String(record.opponentId)) ? 'Requested' : 'Request deletion'}</button></span>
                 </div>`).join('')}
               </details>` : ''}
             </div>
