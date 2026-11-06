@@ -21,6 +21,9 @@ assert.notEqual(key('Olivais "A"'),key('Olivais'),'Squad A must remain distingui
 const render=html.slice(end,html.indexOf('// Set only by the',end));
 assert(render.includes('const groups = new Map()'),'Groups aliases for display');
 assert(render.includes('group.length > 1'),'Duplicate records individually accessible');
+assert(render.includes('group.map(record =>'),'Every grouped opponent retains its own edit control');
+assert(render.includes('editOpponent(${record.opponentId})'),'Each grouped record is independently editable');
+assert(render.includes('const o = group[0]'),'Representative card is presentation only');
 assert(!render.includes('o.ageGroup?'),'No age-group badge');
 assert(!render.includes('o.level?'),'No division badge');
 const save=html.slice(html.indexOf('async function saveOpponentFromForm()'),html.indexOf('async function deleteOpponent('));
