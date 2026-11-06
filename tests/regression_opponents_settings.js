@@ -61,4 +61,8 @@ assert(addition.includes("Sync.supabaseRequest('PATCH', 'opponent_addition_reque
 assert(addition.includes('federation_club_id:'),'Verified outcome links federation club');
 assert(!addition.includes("DB.put('opponents'"),'Proposal review does not modify fixtures or opponent catalogue');
 assert(render.includes('requestOpponentAddition()'),'Settings displays club suggestion action');
+assert(render.includes("select: 'local_id,payload,federation_club_id'"),'Catalogue loads authoritative federation IDs');
+assert(render.includes("user_id: 'eq.' + Auth.getUserId()"),'Cloud lookup is scoped to the signed-in account');
+assert(render.includes("const key = resolvedId ? 'federation:' + resolvedId"),'Federation club ID drives grouping');
+assert(render.includes("candidates?.size === 1"),'Ambiguous unlinked aliases are not merged');
 console.log('PASS: federation grouping, no direct delete, reviewed deletion requests and historical fixture protection');
