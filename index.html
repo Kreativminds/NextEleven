@@ -5417,11 +5417,42 @@ async function renderOpponentsTab() {
   if (!el) return;
   const all = await DB.getAll('opponents');
   all.sort((a,b) => (a.opponentName||'').localeCompare(b.opponentName||''));
-  // One visible card per verified display identity. Every underlying row remains
-  // editable through its own control inside the expanded duplicate details.
+  // Federation IDs are the authoritative club identity. Name aliases are a
+  // fallback for offline/unlinked records, never a replacement for club IDs.
+  // Keep every historical opponent record intact to preserve fixture names.
+  const federationIdsByLocalId = new Map();
+  if (Sync.isConfigured() && Auth.isLoggedIn()) {
+    try {
+      const cloud = await Sync.supabaseRequest('GET', 'opponents', null, {
+        select: 'local_id,payload,federation_club_id', user_id: 'eq.' + Auth.getUserId(),
+        deleted_at: 'is.null', limit: '1000'
+      });
+      for (const row of cloud) {
+        const id = row.payload?.opponentId ?? row.local_id;
+        if (id != null && row.federation_club_id) federationIdsByLocalId.set(String(id), row.federation_club_id);
+      }
+    } catch(err) { console.warn('Federation identity lookup unavailable; using local catalogue:', err); }
+  }
   const groups = new Map();
+  const aliasFederationIds = new Map();
   for (const opponent of all) {
-    const key = opponentCatalogueDisplayKey(opponent.opponentName) || String(opponent.opponentId);
+    const id = federationIdsByLocalId.get(String(opponent.opponentId));
+    if (id) {
+      const alias = opponentCatalogueDisplayKey(opponent.opponentName);
+      if (alias) {
+        if (!aliasFederationIds.has(alias)) aliasFederationIds.set(alias, new Set());
+        aliasFederationIds.get(alias).add(id);
+      }
+    }
+  }
+  for (const opponent of all) {
+    const alias = opponentCatalogueDisplayKey(opponent.opponentName);
+    const linkedId = federationIdsByLocalId.get(String(opponent.opponentId));
+    const candidates = aliasFederationIds.get(alias);
+    // A non-linked alias can inherit an identity only when exactly one
+    // federation club matches. Ambiguous aliases remain independent.
+    const resolvedId = linkedId || (candidates?.size === 1 ? [...candidates][0] : null);
+    const key = resolvedId ? 'federation:' + resolvedId : 'local:' + (alias || String(opponent.opponentId));
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(opponent);
   }
