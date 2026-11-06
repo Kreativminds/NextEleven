@@ -34,7 +34,7 @@ Updated 2026-11-06. **No production deployment, data changes, merges or release 
 | ID | Status | Acceptance evidence | Next action |
 |---|---|---|---|
 | QA-01 | Open | Syntax, i18n, HTML, opponent regressions, season calendar, auth, RLS, smoke tests all green | Run all workflows on exact candidate SHA and capture links |
-| QA-02 | Open | Full app migration feature/branch inventory, open PR dependencies and version diff | Review PRs #36, #37, #38 and any other open branches; map merge order without merging |
+| QA-02 | In progress | Reviewed open PRs #2, #4, #36, #37, #38. PR #36 and #38 both change index.html; #36 adds home-ground coordinates in three season-creation paths, while #38 changes opponent catalogue and settings. Integration order: preserve #36 coordinates while incorporating #38 federation picker, then rerun tests. PR #37 is documentation-only and not a federation release blocker | Verify exact candidate SHA and review remaining older PR #2/#4 interactions before marking full inventory complete |
 | REL-01 | Not approved | Deployment checklist, rollback, backup, release notes and explicit owner approval | Produce approval-ready release bundle; no deployment without authorization |
 
 ## Decision and identity invariants
@@ -61,3 +61,11 @@ A read-only `information_schema.tables` comparison of production and isolated pr
 ## Completion policy
 
 A task is complete only after implementation, isolated tests, negative tests, evidence, dependency resolution and (where required) explicitly approved release. A commit or green unit test alone is not deployment or migration completion.
+
+## PR #36 dependency review (2026-11-06)
+
+- PR #36 changes only `index.html`, adding home-ground coordinates to season wizard, first-time wizard, and Settings season creation.
+- PR #38 also changes `index.html`, including opponent Settings, federation catalogue and picker. Both PRs therefore touch the same large HTML file and require integration/rebase before merge. Their shown diff hunks do not directly overlap, but mergeability has not been confirmed.
+- Preserve the `homeGroundLat` and `homeGroundLng` fields and invalid-coordinate validation from #36 in the eventual combined candidate.
+- PR #37 is recovery documentation and should not block federation deployment. PRs #2 and #4 are older, separate UI/timezone changes requiring disposition before full branch inventory is closed.
+- No merge or production deployment performed.
