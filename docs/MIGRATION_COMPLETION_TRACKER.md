@@ -85,3 +85,9 @@ Updated 2026-11-06 UTC. **Not a release approval.** This is the single prioritiz
 - Production `opponents` to `federation_clubs` read-only join shows `SL Olivais` (**1** row) and `SL Olivais 2014` (**1** row) both linked to the shared federation club `Olivais`. `Olivais "A"` and `Olivais "B"` each have **2** rows linked to `Olivais`, while `Olivais Sul` has **2** rows linked to its distinct `Olivais Sul` club. Cross-account repetition is not necessarily duplication.
 - Federation catalogue contains exactly `Olivais` and `Olivais Sul` for name pattern `%Olivais%`; no exact `SL Olivais` or `SL Olivais 2014` federation record. The two SL links are **suspected identity errors**, not yet authorized or independently verified corrections. Do not merge or remap these by name alone.
 - Committed `docs/audits/opponent_cross_club_link_review_readonly.sql` to reproduce candidate mapping evidence. Required remediation: confirm distinct official identities, create or match authoritative federation records as appropriate, repoint only affected account records with rollback, and verify all 101 game references still uniquely resolve.
+
+## User-confirmed Olivais identity rule (2026-11-06)
+- **Olivais Sul** is a distinct club and must NEVER be merged with or grouped under SL Olivais.
+- **SL Olivais** is the parent club/group for **Olivais A** and **Olivais B**; preserve A and B as separate squads within that group, rather than independent clubs or collapsed squads.
+- **SL Olivais 2014** identity relative to SL Olivais has not been explicitly confirmed; do not infer its mapping.
+- Current production links SL Olivais and SL Olivais 2014 to the generic federation record Olivais. Remediation must respect the above rule and verify club identity before writing data. No production mutation authorized by this note.
