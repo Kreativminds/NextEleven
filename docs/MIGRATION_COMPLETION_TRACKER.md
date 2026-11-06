@@ -133,3 +133,9 @@ Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authentica
 - Added `tests/sql/opponent_deletion_completion_notifications_isolated.sql`, commit `6a8ed8185c4704422384a9d8c29c603a16e79f15`.
 - Executed on isolated project `tqpykeuuzcqudqtfrqmc` with rollback-only authenticated user B and admin A: submission inbox, admin approval, rejected premature completion, completion RPC, requester decision and completion events, and admin-only notification visibility all passed (SQL returned no errors).
 - This is genuine isolated database role-matrix evidence, not app browser/API integration. Task #19 remains In progress pending application UI integration and end-to-end acceptance; task #17 remains In progress pending complete security regression. Original tally unchanged at 14/33 Passed (42%). Production untouched.
+
+## Overnight task #19: review inbox UI adapter (2026-11-06)
+
+- Added `js/opponent-review-inbox.js` commit `a5c793aa66494fcb2f5442ae0e6ac98497e8d2fc`, a framework-independent authenticated UI adapter for loading the user's review notifications, escaping notification HTML, marking own messages read, and administrator-gated completion of approved deletion through `rpc/complete_approved_opponent_deletion` (never direct opponent mutation).
+- Added `tests/regression_opponent_review_inbox.js` commit `cef4be28da6fe86a58aaabba1bc3cfaa3e546afd` covering owner-filtered inbox, HTML escaping, admin gate, cancelled confirmation, RPC call and no direct opponent mutation. Test file committed but its execution/CI success is **not yet verified**.
+- **Remaining:** integrate adapter into the real `index.html` Settings opponent panel, wire notification controls, run browser tests and authenticated Data API end-to-end. Do not mark #19 Passed. Fixed 33-task KPI unchanged: 14 Passed, 0 Failed, 8 In progress, 11 To do. Additional scope unchanged: 6 Passed, 0 Failed, 0 In progress, 1 To do. Production unchanged.
