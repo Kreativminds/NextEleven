@@ -22,7 +22,7 @@ CREATE POLICY game_federation_links_owner_read ON public.game_opponent_federatio
 -- Foreign keys alone do not guarantee that game, opponent and link belong to
 -- the same account, or that the club ID matches the opponent's verified ID.
 CREATE OR REPLACE FUNCTION public.validate_game_opponent_federation_link()
-RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public,pg_temp AS $
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public,pg_temp AS $linkcheck$
 BEGIN
  IF NOT EXISTS (
    SELECT 1 FROM public.games g
@@ -38,7 +38,7 @@ BEGIN
  END IF;
  RETURN NEW;
 END;
-$;
+$linkcheck$;
 DROP TRIGGER IF EXISTS validate_game_opponent_federation_link ON public.game_opponent_federation_links;
 CREATE TRIGGER validate_game_opponent_federation_link
  BEFORE INSERT OR UPDATE ON public.game_opponent_federation_links
