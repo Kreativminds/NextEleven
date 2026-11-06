@@ -5843,13 +5843,55 @@ async function getDrillHistoryForPlayer(drillKey, playerId, seasonId) {
 // Populates the <datalist> backing the Opponent field with every catalogue
 // name, so typing offers autocomplete suggestions while still allowing any
 // free-text name for a one-off opponent that isn't catalogued.
+// Federation catalogue release flag. Keep OFF until production match/parent tests pass.
+const FEDERATION_CATALOGUE_PICKER_ENABLED = false;
+
+async function federationOpponentSuggestions() {
+  if (!FEDERATION_CATALOGUE_PICKER_ENABLED || !Sync.isConfigured() || !Auth.isLoggedIn()) return [];
+  try {
+    const [clubs, registrations] = await Promise.all([
+      Sync.supabaseRequest('GET', 'federation_clubs', null, { select: 'id,official_name', limit: '1000' }),
+      Sync.supabaseRequest('GET', 'federation_club_competitions', null, {
+        select: 'club_id,squad_label', season: 'eq.2026/27', limit: '1000'
+      })
+    ]);
+    const labelsByClub = new Map();
+    for (const row of registrations || []) {
+      if (!row.squad_label) continue;
+      if (!labelsByClub.has(row.club_id)) labelsByClub.set(row.club_id, new Set());
+      labelsByClub.get(row.club_id).add(row.squad_label);
+    }
+    const suggestions = [];
+    for (const club of clubs || []) {
+      if (!club.official_name) continue;
+      const labels = labelsByClub.get(club.id);
+      if (labels && labels.size) {
+        for (const label of labels) suggestions.push(club.official_name + ' "' + label + '"');
+      } else {
+        suggestions.push(club.official_name);
+      }
+    }
+    return suggestions;
+  } catch (error) {
+    console.warn('[Federation picker] Catalogue unavailable; local opponents remain available.', error);
+    return [];
+  }
+}
+
 async function populateOpponentDatalist() {
   const list = document.getElementById('gf-opp-list');
   if (!list) return;
   const all = await DB.getAll('opponents');
-  all.sort((a,b) => (a.opponentName||'').localeCompare(b.opponentName||''));
-  list.innerHTML = all.map(o => `<option value="${esc(o.opponentName)}"></option>`).join('');
-  window._opponentCatalogueNames = all.map(o => o.opponentName);
+  const federation = await federationOpponentSuggestions();
+  const byName = new Map();
+  for (const name of [...all.map(o => o.opponentName), ...federation]) {
+    if (typeof name !== 'string' || !name.trim()) continue;
+    const key = name.trim().toLocaleLowerCase();
+    if (!byName.has(key)) byName.set(key, name.trim());
+  }
+  const names = [...byName.values()].sort((a,b) => a.localeCompare(b));
+  list.innerHTML = names.map(name => `<option value="${esc(name)}"></option>`).join('');
+  window._opponentCatalogueNames = names;
 }
 
 // As the user types, show a small inline hint + shortcut if what they've
