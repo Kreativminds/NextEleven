@@ -128,6 +128,18 @@ CREATE TRIGGER prevent_unreviewed_opponent_deletion BEFORE UPDATE ON public.oppo
  FOR EACH ROW EXECUTE FUNCTION public.prevent_unreviewed_opponent_deletion();
 
 
+-- Allow admin to see only opponents with an approved deletion request.
+DROP POLICY IF EXISTS opponent_admin_approved_deletion_read ON public.opponents;
+CREATE POLICY opponent_admin_approved_deletion_read ON public.opponents
+ FOR SELECT TO authenticated USING (
+  EXISTS (SELECT 1 FROM public.opponent_deletion_admins a WHERE a.user_id=(SELECT auth.uid()))
+  AND EXISTS (SELECT 1 FROM public.opponent_deletion_requests r
+    WHERE r.requester_id=opponents.user_id
+      AND r.opponent_local_id=opponents.payload->>'opponentId'
+      AND r.opponent_name=opponents.payload->>'opponentName'
+      AND r.status='approved' AND r.reviewed_by=(SELECT auth.uid()))
+);
+
 -- Permit the verified administrator to execute only a matching approved deletion.
 -- The trigger above enforces the same approval when deleted_at changes.
 DROP POLICY IF EXISTS opponent_admin_approved_deletion ON public.opponents;
