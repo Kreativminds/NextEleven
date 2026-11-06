@@ -4,6 +4,7 @@ on:
     paths:
       - 'index.html'
       - 'tests/regression_federation_picker_release.js'
+      - 'tests/regression_federation_match_save_contract.js'
       - '.github/workflows/federation-picker-regression.yml'
   workflow_dispatch:
 jobs:
@@ -16,3 +17,4 @@ jobs:
         with:
           node-version: '22'
       - run: node tests/regression_federation_picker_release.js
+      - run: node tests/regression_federation_match_save_contract.js
