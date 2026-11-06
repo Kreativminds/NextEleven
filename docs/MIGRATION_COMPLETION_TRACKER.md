@@ -34,7 +34,7 @@ Updated 2026-11-06. **No production deployment, data changes, merges or release 
 | ID | Status | Acceptance evidence | Next action |
 |---|---|---|---|
 | QA-01 | Open | Syntax, i18n, HTML, opponent regressions, season calendar, auth, RLS, smoke tests all green | Run all workflows on exact candidate SHA and capture links |
-| QA-02 | In progress | Reviewed open PRs #2, #4, #36, #37, #38. PR #36 and #38 both change index.html; #36 adds home-ground coordinates in three season-creation paths, while #38 changes opponent catalogue and settings. Integration order: preserve #36 coordinates while incorporating #38 federation picker, then rerun tests. PR #37 is documentation-only and not a federation release blocker | Verify exact candidate SHA and review remaining older PR #2/#4 interactions before marking full inventory complete |
+| QA-02 | In progress | Reviewed open PRs #2, #4, #36, #37, #38. PR #36 and #38 both change index.html; #36 adds home-ground coordinates in three season-creation paths, while #38 changes opponent catalogue and settings. Integration order: preserve #36 coordinates while incorporating #38 federation picker, then rerun tests. PR #37 is documentation-only and not a federation release blocker | All five open PRs inspected; integration review complete. Verify candidate SHA and test combined changes in QA-01 before merge |
 | REL-01 | Not approved | Deployment checklist, rollback, backup, release notes and explicit owner approval | Produce approval-ready release bundle; no deployment without authorization |
 
 ## Decision and identity invariants
@@ -69,3 +69,9 @@ A task is complete only after implementation, isolated tests, negative tests, ev
 - Preserve the `homeGroundLat` and `homeGroundLng` fields and invalid-coordinate validation from #36 in the eventual combined candidate.
 - PR #37 is recovery documentation and should not block federation deployment. PRs #2 and #4 are older, separate UI/timezone changes requiring disposition before full branch inventory is closed.
 - No merge or production deployment performed.
+
+## Older open PR dependency inspection (2026-11-06)
+
+- PR #2: `css/nexteleven.css` UI accent corrections; `index.html` only updates the CSS cache-busting query; `version.json` changes. No direct overlap with PR #38's shown `index.html` federation hunks, but CSS visuals require regression.
+- PR #4: `index.html` fixes kickoff-dialog timezone date conversion (`toISOString().slice(0,10)` replaced with local `dISO`), plus `version.json`. No direct overlap with PR #38's shown federation hunks; retain timezone behavior in eventual candidate.
+- All five currently open PRs (#2, #4, #36, #37, #38) now have file inventory and patch-level dependency inspection. No merges performed. Integration smoke testing and exact candidate SHA verification remain under QA-01.
