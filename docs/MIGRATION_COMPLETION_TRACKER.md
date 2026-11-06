@@ -57,3 +57,9 @@ Updated 2026-11-06 UTC. **Not a release approval.** This is the single prioritiz
 - The 35 `opponents_merge_plan_tmp` rows all report `group_size=1`, and their summed `game_count` is **103**. This temporary table therefore does **not** presently demonstrate duplicate groups suitable for merging. Treat any earlier claims of 35 confirmed duplicates as unverified.
 - All **92** federation clubs have blank `venue_lat`, `venue_lng`, and `map_url` (each present count zero). Venue rows need separate verification before any weather remediation.
 - Reproducible SELECT-only queries committed in `docs/audits/opponent_reconciliation_readonly.sql`. Next: inspect payload identities and game references with safe aggregate queries, then prepare account-scoped mapping candidates for human review, no automatic merges.
+
+## 2026-11-06 follow-up: identity and game payload audit
+- Read-only `opponents.payload` inspection: all 160 active records have `opponentName` and `opponentId`; 136 contain `ageGroup`, 10 contain `mapUrl`. These are per-opponent values; federation club catalogue has zero map URLs. Do not conflate the two sources.
+- Exact case/whitespace-normalized opponent-name duplicates **within the same user_id**: **0 groups** among active records. This does not rule out aliases, age/series suffixes, different punctuation, or duplicate real-world clubs. The 35-row merge-plan is not evidence of duplicate groups.
+- All **101 active games** contain an `opponent` payload key; only **2** contain `opponentMapUrl`. The game opponent field's value type and linkage semantics still require validation before any merge/repointing.
+- Reproducible SELECT-only diagnostics committed at `docs/audits/opponent_identity_and_game_references_readonly.sql`. Next: inspect opponent reference value types and scoped linkage with aggregate queries, then create a non-destructive candidate alias review; never remove squad/competition distinctions or historical references.
