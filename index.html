@@ -5429,7 +5429,14 @@ async function renderOpponentsTab() {
       });
       for (const row of cloud) {
         const id = row.payload?.opponentId ?? row.local_id;
-        if (id != null && row.federation_club_id) federationIdsByLocalId.set(String(id), row.federation_club_id);
+        if (id != null && row.federation_club_id) {
+          const key = String(id);
+          const previous = federationIdsByLocalId.get(key);
+          if (previous && previous !== row.federation_club_id) {
+            // Never choose a federation identity arbitrarily when cloud rows disagree.
+            federationIdsByLocalId.set(key, 'AMBIGUOUS');
+          } else if (!previous) federationIdsByLocalId.set(key, row.federation_club_id);
+        }
       }
     } catch(err) { console.warn('Federation identity lookup unavailable; using local catalogue:', err); }
   }
@@ -5437,7 +5444,7 @@ async function renderOpponentsTab() {
   const aliasFederationIds = new Map();
   for (const opponent of all) {
     const id = federationIdsByLocalId.get(String(opponent.opponentId));
-    if (id) {
+    if (id && id !== 'AMBIGUOUS') {
       const alias = opponentCatalogueDisplayKey(opponent.opponentName);
       if (alias) {
         if (!aliasFederationIds.has(alias)) aliasFederationIds.set(alias, new Set());
@@ -5451,7 +5458,8 @@ async function renderOpponentsTab() {
     const candidates = aliasFederationIds.get(alias);
     // A non-linked alias can inherit an identity only when exactly one
     // federation club matches. Ambiguous aliases remain independent.
-    const resolvedId = linkedId || (candidates?.size === 1 ? [...candidates][0] : null);
+    const resolvedId = linkedId === 'AMBIGUOUS' ? null :
+      (linkedId || (candidates?.size === 1 ? [...candidates][0] : null));
     // A verified club and a local-only club must never share an identity.
     // Preserve the original local record and fixture name for historical lookup.
     const key = resolvedId ? 'federation:' + resolvedId : 'local:' + (alias || String(opponent.opponentId));
