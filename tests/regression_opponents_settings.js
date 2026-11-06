@@ -42,6 +42,9 @@ assert(save.includes('const match = await findOpponentNameCollision(name);'),'Sa
 assert(!save.includes('if (!_opponentDupOverride)'),'Duplicate bypass cannot disable checks');
 assert(save.includes('existingOpponent?.ageGroup'),'Existing age-group metadata retained');
 assert(save.includes('existingOpponent?.level'),'Existing division metadata retained');
+assert(save.includes('existingOpponent.opponentName !== name'),'Rename detection is present');
+assert(save.includes('game.opponent === existingOpponent.opponentName'),'Rename guard checks historical fixtures');
+assert(save.indexOf('existingOpponent.opponentName !== name') < save.indexOf("DB.put('opponents', data)"),'Rename guard precedes database write');
 const deletion=html.slice(html.indexOf('async function deleteOpponent('),html.indexOf('// ── TRAINING SESSIONS',html.indexOf('async function deleteOpponent(')));
 assert(deletion.includes("DB.getAll('games')"),'Deletion checks existing games');
 assert(deletion.includes('game.opponent === opponent.opponentName'),'Deletion checks exact historical opponent references');
