@@ -8,6 +8,55 @@ Newest entry on top.
 
 ---
 
+## 2026-11-06 — Scheduled nightly run
+
+- lastInspectedCommit: 2c310be
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process — this is now
+  21+ consecutive nights (2026-10-15 through tonight) that stored prompt
+  has been wrong. That string was resolved back on 2026-10-12 (PR #1).
+  BUGS.md's real Open section tonight holds the same one entry as every
+  recent night: the away-match weather forecast RPC gap (flagged
+  2026-11-03, already fully root-caused, awaiting Victor's call) —
+  unchanged. Went with real repo state, per every prior run since 10-15.
+  Not retrying `update_trigger` tonight — blocked twice already (11-03,
+  11-04) by the same permission classifier, and 11-05 already deferred a
+  third attempt to Victor. Flagged to Victor directly via notification
+  tonight instead.
+- Also re-flagging: this schedule started 2026-10-12 as a stated 7-day
+  trial for Victor to review before deciding whether to keep it. It has
+  now run nightly for 25 days past that start date (18 days past the
+  intended 7-day review point) with no sign in this log that the trial
+  review happened. Surfaced to Victor via notification tonight.
+- Scope: diff since f4b79cd (last run's lastInspectedCommit) was 2
+  commits (b127b2f last night's own "nothing to do" report, 2c310be
+  tonight's lock-running commit) — bookkeeping only; none of index.html,
+  css/nexteleven.css, team.html, public-stats-core.js changed.
+- Checks run:
+  - `check-syntax.js` → OK (all 3 script blocks parse).
+  - `check-i18n-parity.js` → OK (2030/2030 keys, no gaps).
+  - `check-html-comments.js` → OK (both files balanced, no swallowed tags).
+  - `tests/regression_caio_and_cards.js` → 3/3 pass.
+  - `tests/regression_marcadores_guests.js` → 3/3 pass.
+  - `tests/regression_next_game_weather.js` → 3/3 pass.
+  - `tests/regression_season_calendar.js` → 52/52 pass.
+- Zero-AI early exit did not fire: app files unchanged and all checks
+  green, but BUGS.md still has one `Status: Open` entry (the away-weather
+  RPC gap, unchanged) — so triage ran per spec, cheapest path (diff
+  summary + check outputs + the one Open entry's text only).
+- Triage (haiku): none. No new, genuine, code-fixable candidates in the
+  diff — only QA bookkeeping changed, and the one Open BUGS.md item is
+  already root-caused and explicitly not a blind-fix candidate.
+- Fixed: none (nothing new to fix; 0/2 of cap used).
+- Needs your approval: unchanged — away-match weather forecast RPC gap
+  (see 2026-11-03 entry) still awaiting your call; no new information
+  tonight. Separately (not a code item): the stale scheduled-task prompt
+  and overdue trial review above, both flagged via notification.
+- Pending: none else.
+- Known Unresolved housekeeping: none — nothing in tonight's diff touches
+  any carried-forward item; list unchanged.
+
 ## 2026-11-05 — Scheduled nightly run
 
 - lastInspectedCommit: f4b79cd
