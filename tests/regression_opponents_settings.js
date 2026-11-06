@@ -18,6 +18,12 @@ assert.equal(key('3FFF'),key('3F'),'Verified federation alias collapses to one c
 assert.equal(key('Olivais "A"'),key('Olivais "B"'),'Verified A/B squads share one SL Olivais club identity');
 assert.notEqual(key('Olivais Sul'),key('SL Olivais'));
 assert.notEqual(key('Benfica'),key('Benfica "B"'),'Squad B must not collapse into parent club');
+for (const club of ['Belenenses','Cultural','Damaiense','Santa Maria','EF Belém','CF Estrela','Sacavenense']) {
+  assert.equal(key(club+' "A"'),key(club),'Verified federation squad A should resolve to club');
+  assert.equal(key(club+' "B"'),key(club),'Verified federation squad B should resolve to club');
+}
+assert.notEqual(key('Olivais Sul "A"'),key('SL Olivais'),'Olivais Sul squad must remain separate');
+assert.notEqual(key('Benfica "B"'),key('Benfica'),'Unverified squad identity must remain distinct');
 assert.equal(key('SL Olivais 2014'),key('SL Olivais'),'User-confirmed historical name belongs to SL Olivais');
 assert.equal(key('Olivais "A"'),key('SL Olivais'),'Squad A belongs to SL Olivais');
 assert.equal(key('Olivais "B"'),key('SL Olivais'),'Squad B belongs to SL Olivais');
