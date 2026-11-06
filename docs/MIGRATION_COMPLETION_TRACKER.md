@@ -94,3 +94,8 @@ Status: **In progress**, outside original 33 tasks. Supabase isolated-project se
 - Rollback-only tests as Postgres `anon`: invalid token returned SQL NULL for `get_public_team_data` and zero rows for `get_public_team_data_opponent_slice`.
 - **Do not revoke anon EXECUTE** without replacing the intentional public parent-page access contract. These linter warnings alone do not prove an exploit.
 - Remaining AS-06: assess token entropy/revocation, valid-token privacy and cross-owner isolation, function search-path findings, extension placement and password protection. Status stays In progress.
+
+## Additional scope audit disposition (2026-11-06)
+
+- **AS-06 Security advisor findings review: Passed (triage only).** Findings inventoried, public token RPC intent checked, invalid-token anon negative tests passed, functions use fixed `search_path=public`, private deletion helper anon EXECUTE denied, disabled-link slice returned no rows. No confirmed exploit from these checks. This does **not** mean the warnings are remediated or the full security regression passed.
+- **AS-07 Security advisor remediation and verification: To do.** Assess and, where appropriate, remediate mutable search paths, public extensions, no-policy staging tables, Auth leaked-password setting, and public-token threat model (including revocation, entropy and cross-account privacy). Do not disable public RPCs without preserving parent sharing. All production changes require explicit approval.
