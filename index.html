@@ -2557,7 +2557,7 @@ function renderFTWStepOpponents() {
         <div style="text-align:center;font-size:11px;color:var(--muted);margin:10px 0">${I18n.t('wiz_or')}</div>
         <div class="form-group">
           <label>${I18n.t('imp_lbl_paste_csv')}</label>
-          <textarea id="ftw-paste-opponents-csv" rows="4" placeholder="opponentName,ageGroup,level"></textarea>
+          <textarea id="ftw-paste-opponents-csv" rows="4" placeholder="opponentName"></textarea>
           <button type="button" class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="ftwHandlePasteImport('opponents')">${I18n.t('imp_btn_parse_paste')}</button>
         </div>
         <div id="ftw-import-opponents-preview" style="margin-top:12px"></div>
@@ -5441,8 +5441,6 @@ async function renderOpponentsTab() {
         <div id="oppAddSection" style="display:none;margin-top:12px">
           <div class="form-grid">
             <div class="form-group"><label>${I18n.t('opp_lbl_name')}</label><input id="opp-name" type="text" placeholder="e.g. Sporting CP" oninput="onOpponentNameInputChange(this.value)"><div id="opp-name-hint" style="display:none;font-size:11px;color:var(--muted);margin-top:4px"></div></div>
-            <div class="form-group"><label>${I18n.t('opp_lbl_agegroup')}</label><input id="opp-age" type="text" placeholder="e.g. Sub-14"></div>
-            <div class="form-group"><label>${I18n.t('opp_lbl_level')}</label><input id="opp-level" type="text" placeholder="e.g. AFL II Divisão"></div>
             <div class="form-group"><label>${I18n.t('opp_lbl_logo')}</label><input id="opp-logo" type="url" placeholder="https://..."></div>
             <div class="form-group full"><label>${I18n.t('opp_lbl_maplink')}</label><input id="opp-maplink" type="url" placeholder="https://maps.app.goo.gl/..."></div>
             <div class="form-group full"><label>${I18n.t('opp_lbl_venue_coords')}${infoTip('tip_venue_coords')}</label><input id="opp-coords" type="text" placeholder="e.g. 38.736946, -9.160745"></div>
@@ -5504,11 +5502,11 @@ function resetOpponentForm() {
 // record currently being edited (so re-saving a name unchanged never
 // warns against itself).
 async function findOpponentNameCollision(name) {
-  const normalized = normalizeOpponentName(name);
+  const normalized = opponentCatalogueDisplayKey(name);
   if (!normalized) return null;
   const selfId = parseInt(document.getElementById('opp-id')?.value || '') || null;
   const all = await DB.getAll('opponents');
-  return all.find(o => o.opponentId !== selfId && normalizeOpponentName(o.opponentName) === normalized) || null;
+  return all.find(o => o.opponentId !== selfId && opponentCatalogueDisplayKey(o.opponentName) === normalized) || null;
 }
 
 async function onOpponentNameInputChange(value) {
@@ -5528,8 +5526,6 @@ async function useExistingOpponentInForm(id) {
   const o = await DB.get('opponents', id);
   if (!o) return;
   document.getElementById('opp-name').value = o.opponentName || '';
-  document.getElementById('opp-age').value = o.ageGroup || '';
-  document.getElementById('opp-level').value = o.level || '';
   document.getElementById('opp-logo').value = o.logoUrl || '';
   document.getElementById('opp-notes').value = o.notes || '';
   document.getElementById('opp-id').value = id;
@@ -5554,8 +5550,6 @@ async function editOpponent(id) {
     if (chevron) chevron.innerHTML = '&#9650;';
   }
   document.getElementById('opp-name').value = o.opponentName||'';
-  document.getElementById('opp-age').value = o.ageGroup||'';
-  document.getElementById('opp-level').value = o.level||'';
   document.getElementById('opp-logo').value = o.logoUrl||'';
   document.getElementById('opp-maplink').value = o.mapUrl||'';
   document.getElementById('opp-coords').value = formatCoordsPair(o.venueLat, o.venueLng);
@@ -5584,15 +5578,19 @@ async function saveOpponentFromForm() {
   const existingId = document.getElementById('opp-id').value;
   const data = {
     opponentName: name,
-    ageGroup: document.getElementById('opp-age').value.trim()||null,
-    level: document.getElementById('opp-level').value.trim()||null,
     logoUrl: document.getElementById('opp-logo').value.trim()||null,
     mapUrl: document.getElementById('opp-maplink').value.trim()||null,
     venueLat: venueCoords.lat,
     venueLng: venueCoords.lng,
     notes: document.getElementById('opp-notes').value.trim()||null,
   };
-  if (existingId) data.opponentId = parseInt(existingId);
+  if (existingId) {
+    data.opponentId = parseInt(existingId);
+    const existingOpponent = await DB.get('opponents', data.opponentId);
+    // Keep legacy metadata intact even though age/division are no longer editable.
+    data.ageGroup = existingOpponent?.ageGroup || null;
+    data.level = existingOpponent?.level || null;
+  }
   try {
     await DB.put('opponents', data);
     _opponentDupOverride = false;
