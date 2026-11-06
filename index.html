@@ -5468,7 +5468,7 @@ async function renderOpponentsTab() {
               <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap">
                 <span style="margin-left:auto;display:flex;gap:6px">
                   <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();editOpponent(${o.opponentId})">${I18n.t('common_edit')}</button>
-                  <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteOpponent(${o.opponentId})">${I18n.t('common_delete')}</button>
+                  ${group.length === 1 ? `<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteOpponent(${o.opponentId})">${I18n.t('common_delete')}</button>` : ''}
                 </span>
               </div>
               ${group.length > 1 ? `<details style="margin-top:8px;font-size:12px;color:var(--muted)">
@@ -5518,8 +5518,7 @@ async function onOpponentNameInputChange(value) {
   hint.style.display = '';
   hint.innerHTML = `${I18n.t('opp_dup_possible')} <strong>${esc(match.opponentName)}</strong>
     &nbsp;<a href="#" onclick="event.preventDefault();useExistingOpponentInForm(${match.opponentId})" style="color:var(--black-accent);text-decoration:underline">${I18n.t('opp_dup_use_existing')}</a>
-    &nbsp;·&nbsp;
-    <a href="#" onclick="event.preventDefault();confirmCreateOpponentAnyway()" style="color:var(--muted);text-decoration:underline">${I18n.t('opp_dup_create_anyway')}</a>`;
+`;
 }
 
 async function useExistingOpponentInForm(id) {
@@ -5567,13 +5566,11 @@ async function saveOpponentFromForm() {
   // and re-shows the same hint the live check already displays — this
   // re-check exists so a stale page state (hint dismissed some other
   // way) can never let a silent duplicate through.
-  if (!_opponentDupOverride) {
-    const match = await findOpponentNameCollision(name);
-    if (match) {
-      await onOpponentNameInputChange(name);
-      Toast.error(I18n.t('opp_dup_blocked'));
-      return;
-    }
+  const match = await findOpponentNameCollision(name);
+  if (match) {
+    await onOpponentNameInputChange(name);
+    Toast.error(I18n.t('opp_dup_blocked'));
+    return;
   }
   const existingId = document.getElementById('opp-id').value;
   const data = {
