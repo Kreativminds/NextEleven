@@ -7,6 +7,8 @@ on:
       - 'tests/regression_federation_match_save_contract.js'
       - 'tests/regression_opponents_settings.js'
       - '.github/workflows/federation-picker-regression.yml'
+      - 'supabase/migrations/20261106*.sql'
+      - 'tests/sql/federation_*.sql'
   workflow_dispatch:
 jobs:
   picker:
@@ -20,3 +22,9 @@ jobs:
       - run: node tests/regression_federation_picker_release.js
       - run: node tests/regression_federation_match_save_contract.js
       - run: node tests/regression_opponents_settings.js
+      - name: Verify federation SQL test fixtures and migrations are tracked
+        run: |
+          test -s tests/sql/federation_link_negative_isolated.sql
+          test -s tests/sql/federation_link_rls_matrix_isolated.sql
+          test -s supabase/migrations/20261106200000_game_opponent_federation_links.sql
+          test -s supabase/migrations/20261106203000_backfill_verified_game_federation_links.sql
