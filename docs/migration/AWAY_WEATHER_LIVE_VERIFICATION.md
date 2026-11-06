@@ -1,0 +1,7 @@
+# Away-match weather: verified production status (2026-11-06)
+
+This supersedes the stale open bug diagnosis in `BUGS.md`. Read-only live Supabase inspection of `public.get_public_team_data` confirmed the function already contains both `opponentLat` and `opponentLng` keys, each sourced from the matching opponent's `payload.venueLat` and `payload.venueLng`. The public RPC code change proposed from the older migration 009 is therefore redundant. A candidate migration 010 was staged on an isolated GitHub branch and then removed after this verification. No PR, merge or production change occurred.
+
+A separate read-only inventory of active `public.opponents` found **160 active records, zero with `venueLat` or `venueLng` keys**, and 10 with `mapUrl`. Consequently the RPC can return null coordinates and the Parents Page correctly suppresses away-match weather when coordinates are absent. The immediate issue is **missing source data / coordinate-entry adoption**, not a missing RPC field.
+
+Next verification: check whether opponent edit forms actually persist venue coordinates to Supabase (including save/sync), and whether existing map URLs can be converted into coordinates without guessing. Do not fabricate coordinates or overwrite opponent records. Confirm that an away opponent with newly saved coordinates produces a weather forecast in a safe test environment, within the supported forecast horizon. No production changes without approval.
