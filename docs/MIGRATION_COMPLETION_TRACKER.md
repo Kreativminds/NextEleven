@@ -103,3 +103,7 @@ Status: **In progress**, outside original 33 tasks. Supabase isolated-project se
 ## Original task #27 automated regression suite (2026-11-06)
 
 **Status changed: To do -> In progress.** Verified PR #38 commit `814a9a6` has GitHub Actions federation picker regression run 42302971736 with conclusion **success**. Inspected workflow and found its PR path filter excluded federation SQL migrations and SQL test fixtures, so regression could be skipped on security/database-only changes. Fixed workflow filter to include `supabase/migrations/20261106*.sql` and `tests/sql/federation_*.sql`, plus explicit fixture-existence assertions, commit `36e17511`. The SQL fixtures are **not executed by this Node workflow**; they still require isolated PostgreSQL runs. Full automated regression remains open until database role-matrix and browser workflows are automated and CI verified on new commit. No production deployment.
+
+## Original task #17 complete security regression (2026-11-06)
+
+Status: **In progress**, not passed. Tested isolated non-admin B: no admin membership visibility, no cross-account deletion requests, no cross-account addition requests (all true). Added reproducible `tests/sql/opponent_review_nonadmin_rls_isolated.sql` in commit `beb519c0`. Still required: seeded positive/negative admin matrix, browser workflows, authenticated/anonymous RPC and approval state transitions. No production changes.
