@@ -18,7 +18,7 @@ assert(start >= 0 && end > start, 'Picker source must exist');
    window.Auth = {isLoggedIn:()=>true};
    window.Sync = {isConfigured:()=>true,supabaseRequest:async(_method,table)=>table==='federation_clubs' ? [{id:'ol',official_name:'Olivais'},{id:'ca',official_name:'Casa Pia'}] : [{club_id:'ol',squad_label:'B'},{club_id:'ca',squad_label:'A'}]};
   });
-  await page.evaluate(source => { const script=document.createElement('script'); script.textContent=source; document.body.appendChild(script); },html.slice(start,end));
+  await page.evaluate(source => { const script=document.createElement('script'); script.textContent=source; document.body.appendChild(script); },html.slice(start,end).replace('const FEDERATION_CATALOGUE_PICKER_ENABLED = false;', 'let FEDERATION_CATALOGUE_PICKER_ENABLED = false;'));
   await page.evaluate(async()=>{ await populateOpponentDatalist(); });
   let options=await page.locator('#gf-opp-list option').evaluateAll(nodes=>nodes.map(n=>n.value || n.textContent || ''));
   assert(options.some(x=>x.includes('SL Olivais')),'Local club present while flag off');
