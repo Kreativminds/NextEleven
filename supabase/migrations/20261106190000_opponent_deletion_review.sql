@@ -103,6 +103,9 @@ BEGIN
      RAISE EXCEPTION 'Administrator may change only deletion timestamp';
    END IF;
  END IF;
+ IF OLD.deleted_at IS NOT NULL AND NEW.deleted_at IS DISTINCT FROM OLD.deleted_at THEN
+   RAISE EXCEPTION 'Deleted opponent timestamp is immutable';
+ END IF;
  IF OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL THEN
    IF NOT EXISTS (SELECT 1 FROM public.opponent_deletion_admins a
      WHERE a.user_id=(SELECT auth.uid())) THEN
