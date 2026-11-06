@@ -32,3 +32,10 @@ Updated 2026-11-06 UTC. **Not a release approval.** This is the single prioritiz
 
 ## Run log
 - 2026-11-06: Confirmed branch inventory, identified PR #36 home-coordinate path, stale pending-migrations README, and corrected BUGS.md's away-weather root-cause narrative using the earlier read-only production audit. Created this consolidated tracker. No production changes.
+
+## 2026-11-06 follow-up: live catalogue and PR scope reconciliation
+- Read-only production information_schema inventory returned **42 public base tables**, including federation_clubs, federation_club_competitions, federation_club_venues, team_alias_mappings, opponents_merge_plan_tmp and _gate5_staging. These are present in production; presence alone does not establish row contents, RLS correctness, or feature deployment. The earlier Gate 13 inventory of 38 tables is a different baseline and must be reconciled explicitly before treating restore parity as complete.
+- PR #38 changed exactly six files: index.html, three federation regression JS tests, a read-only acceptance SQL script and a GitHub Actions workflow. This is picker/settings and test coverage, **not** proof of underlying data deduplication.
+- PR #36 changed index.html only, covering season creation UI; it does not remediate opponent venue coordinates.
+- Pending migrations README describes only 001/002 while BUGS.md references 003-009 and reports Caio already resolved. **Do not run 001 or 004 based on stale descriptions**; inventory each pending file and compare production behavior first. The README's historical claim of production transactional testing is not authorization to repeat writes.
+- Next safe execution: enumerate all 42 tables with RLS flags and compare the 38-table restore baseline; inspect federation catalogue and opponent foreign keys with SELECT-only SQL; run PR #38 regression scripts on isolated checkout; assess 003-009 one by one. Release gate remains OPEN.
