@@ -91,3 +91,8 @@ Updated 2026-11-06 UTC. **Not a release approval.** This is the single prioritiz
 - **SL Olivais** is the parent club/group for **Olivais A** and **Olivais B**; preserve A and B as separate squads within that group, rather than independent clubs or collapsed squads.
 - **SL Olivais 2014** identity relative to SL Olivais has not been explicitly confirmed; do not infer its mapping.
 - Current production links SL Olivais and SL Olivais 2014 to the generic federation record Olivais. Remediation must respect the above rule and verify club identity before writing data. No production mutation authorized by this note.
+
+## User-confirmed final SL Olivais identity mapping (2026-11-06)
+- **SL Olivais**, **SL Olivais 2014**, **Olivais "A"**, and **Olivais "B"** belong to ONE SL Olivais club identity. A and B remain separate squad labels within that club, not separate clubs. The '2014' alias must not create an extra club.
+- **Olivais Sul** is a completely separate club, never group or merge with SL Olivais.
+- Settings > Opponents Database desired presentation: two club groups, SL Olivais and Olivais Sul, with underlying opponent records and game history retained. Do not assume federation club ID 'Olivais' represents the correct SL Olivais identity without validating the catalogue source.
