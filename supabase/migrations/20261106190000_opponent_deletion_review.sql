@@ -66,7 +66,7 @@ CREATE POLICY opponent_deletion_admin_review ON public.opponent_deletion_request
 
 -- An administrator can only set review fields; original request identity is immutable.
 CREATE OR REPLACE FUNCTION public.lock_opponent_deletion_request_identity()
-RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public,pg_temp AS $
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public,pg_temp AS $$
 BEGIN
  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.requester_id IS DISTINCT FROM OLD.requester_id
  OR NEW.opponent_local_id IS DISTINCT FROM OLD.opponent_local_id
@@ -77,7 +77,7 @@ BEGIN
  END IF;
  RETURN NEW;
 END;
-$;
+$$;
 DROP TRIGGER IF EXISTS lock_opponent_deletion_request_identity ON public.opponent_deletion_requests;
 CREATE TRIGGER lock_opponent_deletion_request_identity BEFORE UPDATE ON public.opponent_deletion_requests
  FOR EACH ROW EXECUTE FUNCTION public.lock_opponent_deletion_request_identity();
