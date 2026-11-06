@@ -92,10 +92,22 @@ DROP POLICY IF EXISTS own_rows_delete ON public.opponents;
 CREATE OR REPLACE FUNCTION public.prevent_unreviewed_opponent_deletion()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public,pg_temp AS $$
 BEGIN
- IF OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL
-    AND NOT EXISTS (SELECT 1 FROM public.opponent_deletion_admins a
-      WHERE a.user_id=(SELECT auth.uid())) THEN
-   RAISE EXCEPTION 'Only the application administrator may delete teams after review';
+ IF OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL THEN
+   IF NOT EXISTS (SELECT 1 FROM public.opponent_deletion_admins a
+     WHERE a.user_id=(SELECT auth.uid())) THEN
+     RAISE EXCEPTION 'Only the application administrator may delete teams after review';
+   END IF;
+   IF NOT EXISTS (
+     SELECT 1 FROM public.opponent_deletion_requests r
+     WHERE r.requester_id=OLD.user_id
+       AND r.opponent_local_id=OLD.payload->>'opponentId'
+       AND r.opponent_name=OLD.payload->>'opponentName'
+       AND r.status='approved'
+       AND r.reviewed_by=(SELECT auth.uid())
+       AND r.reviewed_at IS NOT NULL
+   ) THEN
+     RAISE EXCEPTION 'Approved deletion request required';
+   END IF;
  END IF;
  RETURN NEW;
 END;
