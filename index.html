@@ -5388,7 +5388,12 @@ function opponentCatalogueDisplayKey(name) {
   const normalized = (name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   const knownAliases = {
     'alta lisboa': 'alta de lisboa',
-    'atletico cp': 'atletico'
+    'atletico cp': 'atletico',
+    // Verified club identity: squad A/B and 2014 are not independent clubs.
+    // Olivais Sul deliberately remains a different federation club.
+    'olivais a': 'sl olivais',
+    'olivais b': 'sl olivais',
+    'sl olivais 2014': 'sl olivais'
   };
   return knownAliases[normalized] || normalized;
 }
@@ -5405,6 +5410,12 @@ async function renderOpponentsTab() {
     const key = opponentCatalogueDisplayKey(opponent.opponentName) || String(opponent.opponentId);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(opponent);
+  }
+  // Prefer the canonical SL Olivais name over a squad/historical alias.
+  for (const group of groups.values()) {
+    if (opponentCatalogueDisplayKey(group[0]?.opponentName) === 'sl olivais') {
+      group.sort((a,b) => Number(a.opponentName !== 'SL Olivais') - Number(b.opponentName !== 'SL Olivais'));
+    }
   }
   const visible = [...groups.values()];
 
