@@ -40,8 +40,13 @@ vm.runInContext(source.replace('const FEDERATION_CATALOGUE_PICKER_ENABLED = fals
   for(const name of ['Olivais "A"','Olivais "B"','Casa Pia "C"','New Club','Existing Club']) assert(names.includes(name),name);
   assert.equal(names.filter(n=>n==='Olivais "A"').length,1,'No duplicate');
   assert(list.innerHTML.includes('&quot;C&quot;'),'HTML escaped');
+  // A federation record with the same display name as a local opponent must not duplicate it.
+  assert.equal(names.filter(n=>n==='New Club').length,1,'Federation-only club appears once');
+  // Failed remote catalogue lookup must never remove the user's existing opponents.
   fail=true;
   await vm.runInContext('populateOpponentDatalist()',context);
   assert.equal(context.window._opponentCatalogueNames.length,3,'API failure must retain local names');
+  for (const name of local.map(x=>x.opponentName)) assert(context.window._opponentCatalogueNames.includes(name),'Local opponent retained during outage: '+name);
+  assert.equal(context.window._opponentCatalogueNames.includes('New Club'),false,'Stale remote-only club must not survive outage');
   console.log('PASS: flag off, federation A/B/C, deduplication, escaping, API outage fallback');
 })().catch(e=>{console.error(e);process.exitCode=1});
