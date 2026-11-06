@@ -13,6 +13,8 @@ vm.runInContext(html.slice(start,end),context);
 const key=name=>vm.runInContext('opponentCatalogueDisplayKey('+JSON.stringify(name)+')',context);
 assert.equal(key('Alta Lisboa'),key('Alta de Lisboa'));
 assert.equal(key('Atlético'),key('Atlético CP'));
+assert.equal(key('Fut. Benfica'),key('Futebol Benfica'),'Verified federation alias collapses to one club');
+assert.equal(key('3FFF'),key('3F'),'Verified federation alias collapses to one club');
 assert.equal(key('Olivais "A"'),key('Olivais "B"'),'Verified A/B squads share one SL Olivais club identity');
 assert.notEqual(key('Olivais Sul'),key('SL Olivais'));
 assert.notEqual(key('Benfica'),key('Benfica "B"'),'Squad B must not collapse into parent club');
