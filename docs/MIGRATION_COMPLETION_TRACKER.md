@@ -87,3 +87,10 @@ A task is complete only after implementation, isolated tests, negative tests, ev
 ## Additional scope AS-06: isolated security advisor triage (2026-11-06)
 
 Status: **In progress**, outside original 33 tasks. Supabase isolated-project security advisors identified 9 RLS-without-policy informational findings (several test/restore tables), 10 mutable function search paths, 2 extensions in public, 2 token-based public-team SECURITY DEFINER RPCs executable by anon/authenticated, and disabled leaked-password protection. These are findings requiring intent/impact assessment, **not confirmed exploits**. In particular, public-team RPCs may intentionally support public token access: do not revoke them without checking the app contract. The private `app_private.can_admin_delete_opponent` helper is not executable by anon and is executable by authenticated, as designed for RLS evaluation. No production settings changed. Relevant references: https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable and https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection.
+
+## AS-06 follow-up: public token RPC audit (2026-11-06)
+
+- Reviewed both SECURITY DEFINER public RPC definitions. Both require an enabled matching `team_share_links.share_token` before reading data; the full-team RPC scopes records by the link owner and applies privacy options; the opponent-slice RPC resolves the owner from the link and delegates to `_opponent_lookup_for_user`.
+- Rollback-only tests as Postgres `anon`: invalid token returned SQL NULL for `get_public_team_data` and zero rows for `get_public_team_data_opponent_slice`.
+- **Do not revoke anon EXECUTE** without replacing the intentional public parent-page access contract. These linter warnings alone do not prove an exploit.
+- Remaining AS-06: assess token entropy/revocation, valid-token privacy and cross-owner isolation, function search-path findings, extension placement and password protection. Status stays In progress.
