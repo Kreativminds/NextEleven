@@ -54,6 +54,24 @@ CREATE POLICY opponent_deletion_admin_review ON public.opponent_deletion_request
  WITH CHECK (status IN ('approved','rejected') AND reviewed_by=(SELECT auth.uid())
  AND reviewed_at IS NOT NULL AND length(trim(decision_reason))>0);
 
+-- An administrator can only set review fields; original request identity is immutable.
+CREATE OR REPLACE FUNCTION public.lock_opponent_deletion_request_identity()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public,pg_temp AS $
+BEGIN
+ IF NEW.id IS DISTINCT FROM OLD.id OR NEW.requester_id IS DISTINCT FROM OLD.requester_id
+ OR NEW.opponent_local_id IS DISTINCT FROM OLD.opponent_local_id
+ OR NEW.opponent_name IS DISTINCT FROM OLD.opponent_name
+ OR NEW.request_reason IS DISTINCT FROM OLD.request_reason
+ OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+   RAISE EXCEPTION 'Deletion request identity is immutable';
+ END IF;
+ RETURN NEW;
+END;
+$;
+DROP TRIGGER IF EXISTS lock_opponent_deletion_request_identity ON public.opponent_deletion_requests;
+CREATE TRIGGER lock_opponent_deletion_request_identity BEFORE UPDATE ON public.opponent_deletion_requests
+ FOR EACH ROW EXECUTE FUNCTION public.lock_opponent_deletion_request_identity();
+
 -- Critical: stop direct soft-deletion by regular users even via REST/sync.
 -- Explicitly permit the authenticated owner to maintain other fields.
 CREATE OR REPLACE FUNCTION public.prevent_unreviewed_opponent_deletion()
