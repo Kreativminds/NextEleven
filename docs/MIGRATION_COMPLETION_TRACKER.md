@@ -75,3 +75,11 @@ A task is complete only after implementation, isolated tests, negative tests, ev
 - PR #2: `css/nexteleven.css` UI accent corrections; `index.html` only updates the CSS cache-busting query; `version.json` changes. No direct overlap with PR #38's shown `index.html` federation hunks, but CSS visuals require regression.
 - PR #4: `index.html` fixes kickoff-dialog timezone date conversion (`toISOString().slice(0,10)` replaced with local `dISO`), plus `version.json`. No direct overlap with PR #38's shown federation hunks; retain timezone behavior in eventual candidate.
 - All five currently open PRs (#2, #4, #36, #37, #38) now have file inventory and patch-level dependency inspection. No merges performed. Integration smoke testing and exact candidate SHA verification remain under QA-01.
+
+## Production read-only integrity gate rerun (2026-11-06)
+
+- 101 active games, 0 missing or ambiguous owner-scoped opponent references.
+- 56 federation-linked games, 45 pending federation links; no automatic guess for pending identities.
+- 160 active opponents: 123 linked, 37 unlinked.
+- Federation catalogue: one Olivais, one Olivais Sul, distinct club IDs.
+- Structural preflight gate passed (zero ambiguous game matches; separate Olivais identities). **Not** a production-data migration rehearsal, deployment or signoff. Full release remains blocked on 45 pending links, duplicate reconciliation and integrated regression.
