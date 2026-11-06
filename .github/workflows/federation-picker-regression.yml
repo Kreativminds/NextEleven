@@ -1,0 +1,18 @@
+name: Federation picker regression
+on:
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'tests/regression_federation_picker_release.js'
+      - '.github/workflows/federation-picker-regression.yml'
+  workflow_dispatch:
+jobs:
+  picker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tests/regression_federation_picker_release.js
