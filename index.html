@@ -5432,6 +5432,18 @@ async function renderOpponentsTab() {
     }
   }
   const visible = [...groups.values()];
+  let deletionRequests = [];
+  let isDeletionReviewer = false;
+  if (Sync.isConfigured() && Auth.isLoggedIn()) {
+    try {
+      [deletionRequests] = await Promise.all([
+        Sync.supabaseRequest('GET', 'opponent_deletion_requests', null, { select: 'id,opponent_local_id,status,decision_reason,opponent_name', order: 'created_at.desc', limit: '500' })
+      ]);
+      const adminRows = await Sync.supabaseRequest('GET', 'opponent_deletion_admins', null, { select: 'user_id', user_id: 'eq.' + Auth.getUserId(), limit: '1' });
+      isDeletionReviewer = adminRows.length > 0;
+    } catch(err) { console.warn('Opponent deletion workflow unavailable:', err); }
+  }
+  const requestsByOpponent = new Map(deletionRequests.filter(r => r.status === 'pending').map(r => [String(r.opponent_local_id), r]));
 
   el.innerHTML = `
     <div class="settings-section">
@@ -5478,6 +5490,9 @@ async function renderOpponentsTab() {
         </div>
       </div>
 
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Deletion requests are reviewed by the application administrator. Teams cannot be deleted by users.</div>
+      ${deletionRequests.filter(r => r.status !== 'pending' && r.status !== 'approved').slice(0,5).map(r => `<div class="card" style="margin-bottom:8px;font-size:12px">${esc(r.opponent_name)}: ${esc(r.status)}. ${esc(r.decision_reason || '')}</div>`).join('')}
+      ${isDeletionReviewer ? `<div class="card" style="margin-bottom:16px"><strong>Deletion requests for administrator review</strong>${deletionRequests.filter(r=>r.status==='pending').map(r=>`<div style="padding:8px 0">${esc(r.opponent_name)} <button class="btn btn-secondary btn-sm" onclick="reviewOpponentDeletionRequest('${r.id}',false)">Reject</button> <button class="btn btn-secondary btn-sm" onclick="reviewOpponentDeletionRequest('${r.id}',true)">Mark approved after checks</button></div>`).join('') || '<p>No pending requests.</p>'}</div>` : ''}
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('opp_count', {n: visible.length})}</div>
       ${!visible.length ? `<div class="empty"><strong>${I18n.t('opp_empty_title')}</strong><p>${I18n.t('opp_empty_desc')}</p></div>` : `
       <div class="who-played-list">
@@ -5493,7 +5508,7 @@ async function renderOpponentsTab() {
               <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap">
                 <span style="margin-left:auto;display:flex;gap:6px">
                   <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();editOpponent(${o.opponentId})">${I18n.t('common_edit')}</button>
-                  ${group.length === 1 ? `<button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteOpponent(${o.opponentId})">${I18n.t('common_delete')}</button>` : ''}
+                  ${group.length === 1 ? `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();requestOpponentDeletion(${o.opponentId})" ${requestsByOpponent.has(String(o.opponentId)) ? 'disabled' : ''}>${requestsByOpponent.has(String(o.opponentId)) ? 'Deletion requested' : 'Request deletion'}</button>` : ''}
                 </span>
               </div>
               ${group.length > 1 ? `<details style="margin-top:8px;font-size:12px;color:var(--muted)">
@@ -5633,29 +5648,40 @@ async function saveOpponentFromForm() {
   }
 }
 
-async function deleteOpponent(id) {
-  const opponent = await DB.get('opponents', id);
-  if (!opponent) return;
-  // Games retain their opponent as a historical name, not a foreign key.
-  // Never remove the only record resolving a played or scheduled fixture.
-  // This guard applies to ALL seasons, including the active 2026/27 season.
-  const games = await DB.getAll('games');
-  const referenced = games.some(game => game.opponent === opponent.opponentName);
-  if (referenced) {
-    Toast.error('This opponent is used by existing fixtures. Keep it to preserve match history.');
+async function requestOpponentDeletion(id) {
+  if (!Sync.isConfigured() || !Auth.isLoggedIn()) {
+    Toast.error('Sign in and enable cloud sync to request deletion.');
     return;
   }
-  Confirm.show(I18n.t('opp_confirm_delete_title'), I18n.t('opp_confirm_delete_body'), async () => {
-    // Recheck after confirmation: another fixture may have been saved meanwhile.
-    const latestGames = await DB.getAll('games');
-    if (latestGames.some(game => game.opponent === opponent.opponentName)) {
-      Toast.error('This opponent is now used by a fixture and cannot be deleted.');
-      return;
-    }
-    await DB.softDelete('opponents', id);
-    Toast.show(I18n.t('ch_deleted'));
+  const opponent = await DB.get('opponents', id);
+  if (!opponent) return;
+  const reason = window.prompt('Why should this team be deleted? The administrator will review the request.');
+  if (reason === null) return;
+  if (!reason.trim()) { Toast.error('Please provide a reason.'); return; }
+  try {
+    await Sync.supabaseRequest('POST', 'opponent_deletion_requests', {
+      requester_id: Auth.getUserId(), opponent_local_id: String(id),
+      opponent_name: opponent.opponentName, request_reason: reason.trim()
+    });
+    Toast.show('Deletion request sent to the administrator for review.');
     await renderOpponentsTab();
-  });
+  } catch(err) { Toast.error('Could not submit request: ' + err.message); }
+}
+
+async function reviewOpponentDeletionRequest(requestId, approve) {
+  if (!Sync.isConfigured() || !Auth.isLoggedIn()) return;
+  const reason = window.prompt(approve
+    ? 'Record the completed checks and outcome. Approval does not delete the team automatically.'
+    : 'Explain why the team cannot be deleted. This will be shown to the requester.');
+  if (!reason || !reason.trim()) { Toast.error('A decision explanation is required.'); return; }
+  try {
+    await Sync.supabaseRequest('PATCH', 'opponent_deletion_requests', {
+      status: approve ? 'approved' : 'rejected', decision_reason: reason.trim(),
+      reviewed_by: Auth.getUserId(), reviewed_at: new Date().toISOString()
+    }, { id: 'eq.' + requestId, status: 'eq.pending' });
+    Toast.show('Decision recorded. No opponent records were deleted.');
+    await renderOpponentsTab();
+  } catch(err) { Toast.error('Review failed: ' + err.message); }
 }
 
 // ── TRAINING SESSIONS — data layer ───────────────────────────────────────────
