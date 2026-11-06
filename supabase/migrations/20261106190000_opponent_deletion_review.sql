@@ -92,6 +92,14 @@ DROP POLICY IF EXISTS own_rows_delete ON public.opponents;
 CREATE OR REPLACE FUNCTION public.prevent_unreviewed_opponent_deletion()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public,pg_temp AS $$
 BEGIN
+ IF (SELECT auth.uid()) IS DISTINCT FROM OLD.user_id THEN
+   IF NEW.id IS DISTINCT FROM OLD.id OR NEW.user_id IS DISTINCT FROM OLD.user_id
+      OR NEW.payload IS DISTINCT FROM OLD.payload
+      OR NEW.created_at IS DISTINCT FROM OLD.created_at
+      OR NEW.updated_at IS DISTINCT FROM OLD.updated_at THEN
+     RAISE EXCEPTION 'Administrator may change only deletion timestamp';
+   END IF;
+ END IF;
  IF OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL THEN
    IF NOT EXISTS (SELECT 1 FROM public.opponent_deletion_admins a
      WHERE a.user_id=(SELECT auth.uid())) THEN
