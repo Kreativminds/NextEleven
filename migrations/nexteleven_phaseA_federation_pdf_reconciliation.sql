@@ -1,0 +1,133 @@
+-- ============================================================================
+-- NEXT ELEVEN | PHASE A — Federation source reconciliation against the two
+-- official AFL PDFs (CD Sub-14, 2026/27 season):
+--   - CD-SUB-14-II-DIV-1.pdf        (II Divisão, Séries 1-2,  32 clubs)
+--   - CD-SUB-14-III-DIV-1_1.pdf     (III Divisão, Séries 1-6, 77 clubs)
+-- Read-only verification gate. NO SCHEMA OR DATA CHANGES in this file --
+-- see "RESULT" below for why.
+-- ============================================================================
+
+-- METHOD:
+--   Both PDFs were extracted with pdftotext -layout (clean, fully-embedded
+--   fonts, no OCR needed) and parsed into structured records from each
+--   "CLUBES PARTICIPANTES" section: official club name, embedded squad
+--   label ("A"/"B"/"C"/"D"/"FF" in quotes, or baked into the name for the
+--   one "SAD FF" case), AFL club ID, and every listed home venue (AFL venue
+--   ID, venue name, pitch dimensions/surface, locality) -- per Victor's
+--   instruction, the participant list is the authoritative identity source;
+--   the "PROGRAMA DE JOGOS" fixture section was used only as a secondary
+--   cross-check, never as a primary source.
+--
+--   This gave 109 structured registrations (32 + 77), matching the known
+--   baseline exactly: II Divisão Séries 1/2 = 16/16; III Divisão Séries
+--   1-6 = 12/11/13/14/14/13.
+--
+--   Production's federation_club_competitions (109 rows), federation_clubs
+--   (92 rows), and federation_club_venues (100 rows) were then queried in
+--   full and compared programmatically against the PDF-derived structure,
+--   keyed on (division, series, afl_club_id) -- never on name alone, per
+--   Victor's explicit "do not infer club identity solely from similar
+--   names" instruction.
+
+-- RESULT -- ZERO CONFIRMED DISCREPANCIES:
+--   - All 109 PDF registrations have a matching production row on
+--     (division, series, afl_club_id): 0 missing, 0 extra, 0 count
+--     mismatches.
+--   - The only apparent mismatch found by the automated compare (AFL
+--     1023 / III Divisão / Série 4) was a parsing artifact, not a data
+--     error: the PDF writes this one registration's squad label
+--     unquoted and appended to the club name ("BENFICA, SAD FF"), unlike
+--     every other registration which quotes the label ("ALVERCA \"B\"").
+--     Production's existing row (official_name="Benfica, SAD",
+--     squad_label="FF") is correct as-is; no change made.
+--   - Club-identity integrity confirmed, not assumed: across all 109
+--     registrations, there is an exact 1:1 bijection between afl_club_id
+--     and federation_clubs.id (84 distinct AFL IDs <-> 84 distinct club
+--     rows; zero AFL IDs mapped to more than one club row; zero club rows
+--     mapped to more than one AFL ID). Squad labels (A/B/C/D/FF) live
+--     only on federation_club_competitions.squad_label, never as a
+--     separate canonical club -- the rule was already correctly applied
+--     in production before this gate, for every multi-squad club found
+--     (1º Dezembro, Alverca, Atlético, Belenenses, Benfica SAD, CF
+--     Estrela, CIF, Cultural, Damaiense, Desp. O. Moscavide, Despertar,
+--     Malveira, Olivais, Porto Salvo, Povoense, Real, Santa Maria,
+--     Sporting SAD, Vila Verde).
+--   - Olivais vs Olivais Sul (the specific pair Victor named) verified
+--     directly and independently, not inferred: AFL 1033 "Olivais"
+--     (club_id 2048d15c-...) and AFL 190 "Olivais Sul" (club_id
+--     461ac75e-...) are two distinct federation_clubs rows with zero
+--     overlap. Olivais's single venue is "Campo Branca Lucas" (AFL venue
+--     code 1511, 100.0x65.0, Relvado Sintético) -- confirmed byte-for-
+--     byte against the II Divisão PDF's Série 2 entry, same venue ID,
+--     same dimensions. Olivais Sul's venue is the separate "Campo do
+--     Olivais Sul" (AFL venue code 1853, 101.0x68.0). No merge risk
+--     exists in production today.
+--   - "Carregado A" / "Carregado B" (flagged by Victor as a special
+--     case): the official PDFs register only ONE Carregado entry
+--     (AFL 53, no squad label, II Divisão Série 1) across both
+--     divisions/all 8 series. Any opponent record named "Carregado A" or
+--     "Carregado B" is therefore NOT an official federation squad
+--     distinction and must be resolved in Phase B as either (a) this
+--     same single federation club mislabeled, or (b) a genuinely
+--     different, non-federation or different-age-group team -- never
+--     invented as a second canonical Carregado club.
+--   - "Casa Pia C" (flagged by Victor): the official PDFs register only
+--     ONE Casa Pia entry across both divisions ("Casa Pia B", AFL 180,
+--     II Divisão Série 2). There is no official "Casa Pia C" in this
+--     competition/age-group. Must be resolved in Phase B without
+--     assuming a federation match.
+--   - "CAC" (flagged by Victor): does not appear anywhere in either PDF
+--     as a club name or abbreviation. The only visually similar name is
+--     "Cacém" (AFL 131, III Divisão Série 6), a different, unrelated
+--     club. "CAC" remains unresolved/ambiguous pending Phase B -- must
+--     not be matched to Cacém on name similarity alone.
+--   - "Sporting SAD FF" (flagged by Victor): does not appear in either
+--     PDF. Sporting's registrations are "Sporting, SAD B" (II Divisão
+--     Série 2) and "Sporting, SAD C" (III Divisão Série 4) -- never
+--     "FF". The unquoted "SAD FF" label pattern belongs only to Benfica
+--     (AFL 1023) in this dataset. "Sporting SAD FF" remains unresolved
+--     pending Phase B.
+--   - "COL PEDRO ARRUPE" (AFL 5629) confirmed as the PDFs' own official,
+--     abbreviated spelling (not an OCR artifact or a separate
+--     "Colégio Pedro Arrupe" entity) -- it is the only entry at this
+--     AFL ID in either document, single venue "Campo Colegio Pedro
+--     Arrupe", Parque das Nações - Lisboa.
+--   - "Desp. O. Moscavide" (AFL 283) confirmed registered under squad
+--     labels A (II Divisão Série 1) and B (III Divisão Série 3), both
+--     at the same venue (Estádio Alfredo Marques Augusto, Olivais) --
+--     directly relevant to classifying the unlinked opponent candidate
+--     alias "Desp. O. Moscavide" in Phase B.
+--   - 8 federation_clubs rows (Águias Musgueira/908, Azambuja/590,
+--     Igreja Nova/2159, Lourinhanense/1081, Montelavarenses/353,
+--     Salesianos Lisboa/5560, Sanjoanense/1002, Zambujalense/1216) have
+--     NO competition registration in either of these two PDFs (Sub-14
+--     II/III Divisão, 2026/27) -- each still carries exactly one venue
+--     row from an earlier gate. This is NOT a discrepancy against the
+--     two PDFs reconciled this gate (they are simply absent from both,
+--     not misregistered), but it is flagged, unresolved, for Victor:
+--     these may be legitimate registrations for a different division,
+--     age group, or season not covered by these two documents, or they
+--     may be stale seed rows. No action taken -- would require a source
+--     document this gate was not given.
+--   - Venue coverage for all 84 competition-registered clubs is
+--     structurally complete (every registered club has >=1 venue row;
+--     multi-venue clubs -- CD Mafra x3, Sacavenense/Alta Lisboa/
+--     Alverca/Benfica SAD/Belenenses/EF Belém x2 -- all present).
+--     Venue-by-venue content accuracy (every ID/name/dimension pair)
+--     and GPS coordinate coverage are Phase E's scope, not re-verified
+--     line-by-line here beyond the Olivais pair above.
+
+-- WHY NO CORRECTIVE STATEMENTS ARE IN THIS FILE:
+--   Victor's instruction was to apply ONLY safe, confirmed corrections
+--   after reconciling against the PDFs -- not to re-state existing
+--   correct data as if it were a fix, and not to invent a change where
+--   none is needed. This gate found the 109/109 registration set,
+--   84-club canonical identity, and the Olivais/Olivais Sul separation
+--   already fully correct and already matching the authoritative source
+--   documents exactly. Writing DML/DDL here would be change for its own
+--   sake against data that is already right. The unresolved items above
+--   (Carregado A/B, Casa Pia C, CAC, Sporting SAD FF, the 8 unregistered
+--   clubs) are opponent-classification or source-availability questions
+--   for Phase B, not Phase A source-reconciliation defects.
+
+select 'NEXT ELEVEN Phase A complete. Both official AFL PDFs (II Divisão + III Divisão, Sub-14 2026/27) extracted and parsed into 109 structured registrations across 8 series, matching the known baseline exactly. Compared field-by-field against production (federation_clubs=92, federation_club_competitions=109, federation_club_venues=100): zero confirmed discrepancies -- all 109 registrations match on division+series+afl_club_id, canonical club identity is a clean 84-club 1:1 bijection with AFL IDs, and the Olivais(1033)/Olivais Sul(190) separation Victor named was independently verified down to matching venue IDs and dimensions. Five of Victor''s flagged special cases (Carregado A/B, Casa Pia C, CAC, Sporting SAD FF) do NOT appear as official entries in either PDF and remain unresolved pending Phase B opponent classification -- not auto-matched on name similarity. 8 federation_clubs rows have no registration in either PDF and are flagged for Victor (different competition/season, or stale seed data -- undetermined from these two documents alone). No corrective DML/DDL was needed or applied.' as status;
