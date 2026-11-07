@@ -8,7 +8,7 @@ VALUES (auth.uid(),'-910002','Olivais "A"','Historical duplicate safety regressi
 UPDATE public.opponent_deletion_requests
 SET status='approved',decision_reason='Reviewed duplicate safety negative test', reviewed_by=auth.uid(), reviewed_at=now()
 WHERE requester_id=auth.uid() AND opponent_local_id='-910002' AND status='pending';
-DO $
+DO $$
 DECLARE source_id uuid; before_games integer;
 BEGIN
  SELECT id INTO source_id FROM public.opponents WHERE local_id='-910002' AND deleted_at IS NULL;
