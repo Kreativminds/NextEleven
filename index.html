@@ -10046,7 +10046,7 @@ const Roadmap = (() => {
       method,
       headers: {
         'apikey':        keyM.value,
-        'Authorization': 'Bearer ' + keyM.value,
+        'Authorization': 'Bearer ' + Auth.getAccessToken(),
         'Content-Type':  'application/json',
         'Prefer':        method === 'GET' ? 'return=representation' : 'return=representation',
       },
@@ -10084,7 +10084,7 @@ const Roadmap = (() => {
     const base = urlM.value.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') + '/rest/v1/' + SUPABASE_TABLE;
     const res  = await fetch(base + '?id=eq.' + id, {
       method: 'DELETE',
-      headers: { 'apikey': keyM.value, 'Authorization': 'Bearer ' + keyM.value, 'Prefer': 'return=minimal' },
+      headers: { 'apikey': keyM.value, 'Authorization': 'Bearer ' + Auth.getAccessToken(), 'Prefer': 'return=minimal' },
     });
     if (!res.ok) { const err = await res.text(); throw new Error('Delete error: ' + err.slice(0,200)); }
   }
