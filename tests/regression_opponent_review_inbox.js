@@ -6,7 +6,7 @@ const create=require('../js/opponent-review-inbox.js');
  const api=create({
   userId:()=> '00000000-0000-0000-0000-00000000a002',
   isAdmin:()=>admin, confirm:async()=>approved,
-  request:async(...args)=>{calls.push(args);return args[0]==='GET'?[{id:'n1',message:'<script>alert(1)</script>',event_type:'decided',read_at:null}]:[]},
+  request:async(...args)=>{calls.push(args);return args[0]==='GET'?[{id:'n1',message:'<script>alert(1)</script>',event_type:'decided',read_at:null}]:args[1]==='rpc/complete_approved_opponent_deletion'?true:[]},
   notify:x=>messages.push(x),refresh:async()=>{refreshes++}
  });
  const rows=await api.load();
@@ -29,5 +29,7 @@ const create=require('../js/opponent-review-inbox.js');
  assert.equal(refreshes,2);
  assert.equal(messages.length,1);
  assert(!calls.some(x=>x[1]==='opponents'),'UI must not directly mutate opponents');
+ const failedApi=create({userId:()=> 'user-a',isAdmin:()=>true,confirm:async()=>true,request:async()=>false,notify:()=>{throw Error('must not notify')},refresh:async()=>{throw Error('must not refresh')}});
+ await assert.rejects(()=>failedApi.completeDeletion('req-false'),/not confirmed/);
  console.log('PASS: inbox RLS query, escaping, read state, admin gate, cancel, approved RPC, no direct opponent mutation');
 })().catch(e=>{console.error(e);process.exitCode=1});
