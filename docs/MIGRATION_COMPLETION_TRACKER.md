@@ -428,3 +428,11 @@ Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authentica
 - `025b824` adds negative tests in `tests/regression_opponent_review_inbox.js` for malformed API payloads and identity consistency.
 - **Tests not yet verified:** GitHub Actions / Node execution result pending. No claim of acceptance, no authenticated live API evidence. Next action: run `node tests/regression_opponent_review_inbox.js`, inspect CI and add authenticated isolated Data API test. Original #17/#19 remain In progress; KPI remains **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional **6 Passed, 0 Failed, 0 In progress, 1 To do**.
 - No production mutation, deployment or merge. Preserve 2026/27 fixture history, distinct Olivais Sul identity and administrator-only approval.
+
+## 2026-11-07: security #17 admin-confirmation identity continuity checkpoint
+
+- Handoff reviewed current feature branch, latest shared tracker, and prior manual/agent work. Current unfinished security #17 overlaps opponent approval #19. No changes to 2026/27 fixtures, historical names, federation aliases or Olivais Sul identity.
+- Commit `7d05731` updates `js/opponent-review-inbox.js`: after the asynchronous deletion confirmation dialog, re-check the same authenticated user and administrator role before calling `complete_approved_opponent_deletion`. Account switches, logout and revoked admin role fail closed.
+- Commit `abfe3bf` updates `tests/regression_opponent_review_inbox.js`: two negative cases simulate a user switch and admin revocation during confirmation and require zero completion RPC calls.
+- Verification status: code and regression committed; **Node/CI execution not yet confirmed**. No isolated Supabase SQL change needed for this client-side guard. Next agent/manual Go: execute `node tests/regression_opponent_review_inbox.js`, inspect CI, then verify authenticated isolated API workflow and server-side authorization independently. Do not mark #17 or #19 Passed on mock tests alone.
+- Original 33: **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional 7: **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes, merges or deployment.
