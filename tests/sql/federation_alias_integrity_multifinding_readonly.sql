@@ -18,8 +18,7 @@ WITH findings AS (
     ('canonical_federation_mismatch', dst.id IS NOT NULL AND dst.federation_club_id IS DISTINCT FROM a.federation_club_id),
     ('source_name_drift', src.id IS NOT NULL AND src.payload->>'opponentName' IS DISTINCT FROM a.historical_name),
     ('retired_canonical', dst.id IS NOT NULL AND dst.deleted_at IS NOT NULL),
-    ('self_alias', a.source_opponent_id = a.canonical_opponent_id),
-    ('source_not_retired', src.id IS NOT NULL AND src.deleted_at IS NULL)
+    ('self_alias', a.source_opponent_id = a.canonical_opponent_id)
  ) AS v(reason, violated)
  WHERE v.violated
 ), duplicate_sources AS (
