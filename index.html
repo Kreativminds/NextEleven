@@ -6082,8 +6082,10 @@ async function getDrillHistoryForPlayer(drillKey, playerId, seasonId) {
 // Populates the <datalist> backing the Opponent field with every catalogue
 // name, so typing offers autocomplete suggestions while still allowing any
 // free-text name for a one-off opponent that isn't catalogued.
-// Federation catalogue release flag. Keep OFF until production match/parent tests pass.
-const FEDERATION_CATALOGUE_PICKER_ENABLED = false;
+// Federation catalogue suggestions are read-only and fall back to locally saved
+// opponents if the API is unavailable. This flag affects suggestions only;
+// it does not change match save, federation identities or historical fixtures.
+const FEDERATION_CATALOGUE_PICKER_ENABLED = true;
 
 async function federationOpponentSuggestions() {
   if (!FEDERATION_CATALOGUE_PICKER_ENABLED || !Sync.isConfigured() || !Auth.isLoggedIn()) return [];
