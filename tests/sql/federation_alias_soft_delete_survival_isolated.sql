@@ -16,6 +16,7 @@ DO $$ BEGIN
 END $$;
 CREATE TEMP TABLE alias_game_snapshot ON COMMIT DROP AS
 SELECT id,payload FROM public.games WHERE payload->>'opponent'='Olivais "A"';
+GRANT SELECT ON alias_game_snapshot TO authenticated;
 -- Use the actual reviewed deletion state machine, not a privileged bypass.
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claim.sub='00000000-0000-0000-0000-00000000a001';
