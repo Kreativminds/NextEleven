@@ -40,5 +40,14 @@ const create=require('../js/opponent-review-inbox.js');
   request:async(...args)=>{assert.equal(args[3].recipient_id,'eq.user-a');return []}});
  await changing.markRead('n1');
  assert.equal(identityCalls,1,'Mark-read should resolve the authenticated identity once');
+ // A user switch or revoked admin role during the confirmation dialog must block the RPC.
+ for (const change of ['user','role']) {
+  let currentUser='user-a', currentAdmin=true, rpcCalls=0;
+  const guarded=create({userId:()=>currentUser,isAdmin:()=>currentAdmin,
+   confirm:async()=>{if(change==='user')currentUser='user-b';else currentAdmin=false;return true},
+   request:async()=>{rpcCalls++;return true}});
+  await assert.rejects(()=>guarded.completeDeletion('req-switch'),/authorization changed/);
+  assert.equal(rpcCalls,0,'No completion RPC after '+change+' changes');
+ }
  console.log('PASS: inbox RLS query, escaping, read state, admin gate, cancel, approved RPC, no direct opponent mutation');
 })().catch(e=>{console.error(e);process.exitCode=1});
