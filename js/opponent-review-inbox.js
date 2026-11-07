@@ -41,10 +41,15 @@
       if (typeof refresh==='function') await refresh();
     }
     async function completeDeletion(requestId) {
-      if (!userId() || !isAdmin()) throw new Error('Administrator authorization required');
+      const initiatingUser=userId();
+      if (!initiatingUser || !isAdmin()) throw new Error('Administrator authorization required');
       if (!requestId) throw new Error('Approved deletion request id required');
       if (typeof confirm==='function' && !await confirm('Complete approved opponent deletion? Historical fixtures will remain unchanged.'))
         return false;
+      // Confirmation may be asynchronous. Never dispatch an admin RPC after a
+      // logout, account switch, or admin-role change during that interval.
+      if (userId() !== initiatingUser || !isAdmin())
+        throw new Error('Administrator authorization changed during confirmation');
       const result=await request('POST','rpc/complete_approved_opponent_deletion',{p_request_id:requestId});
       if (result !== true) throw new Error('Deletion completion was not confirmed by the server');
       if (typeof notify==='function') notify('Approved deletion completed.');
