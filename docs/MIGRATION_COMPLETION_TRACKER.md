@@ -395,3 +395,9 @@ Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authentica
 - Added read-only reproducible `tests/sql/away_weather_rpc_contract_inventory_readonly.sql`, commit `5c698741da555cf83d2b72dcba5343c85aac2fb2`. Re-fetched and executed exact committed SQL on isolated project `tqpykeuuzcqudqtfrqmc`.
 - Result: only `public.gate11_normalize_venue_name(p text) returns text` matched weather/venue/ground function names. **No weather-named RPC exists in the isolated project root.** This is a verified contract gap in that environment, not evidence that production lacks the RPC, nor proof of the exact UI call signature. PR #36 application diff and branch-specific DB environment still need comparison before designing a fix.
 - INT-01 stays Open; original KPI unchanged: **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes.
+
+## Feature-first development: opponent review UI integration (2026-11-07)
+
+- Implemented Settings opponent review notifications inbox (recipient-scoped via RLS), read acknowledgement, and admin-only approved-removal completion button in `index.html`, commit `7e75b46501fe7f1492127a0e4fcb1cd8cb75f36d`.
+- The completion action requires an approved request with a recorded decision, checks admin membership, requires explicit interactive confirmation and invokes `rpc/complete_approved_opponent_deletion`. Server RPC performs exact identity check and soft-delete; existing fixture records are not modified.
+- **Not yet Passed:** CI/browser/API acceptance must confirm the new UI against isolated Supabase and notification delivery; no production deployment or merge. Keep original #19 In progress and fixed 14/33 KPI. Prioritize completion rather than repeated unrelated audits. Backup/restore drill deferred by user, but production release still requires a recovery plan.
