@@ -9,9 +9,20 @@ How this works:
 
 ## Open
 
-(none)
+### Away-match weather forecast never shows on the Parents Page (home-match forecast is fine)
+- Reported: 2026-11-03 (found by the nightly QA run, not by Victor)
+- Status: Open, flagged — needs your call before anything is fixed.
+- Root cause: `renderNextGameWeather` in team.html reads `next.opponentLat`/`next.opponentLng` for an away fixture, but the public RPC the page calls (`get_public_team_data`, currently defined in `supabase/migrations_pending/009_harden_public_rpc_against_stuck_soft_deletes.sql`) never includes those fields in the game JSON it returns — it denormalizes `opponentMapUrl` from the opponent's `mapUrl`, but has no equivalent line for the opponent's `venueLat`/`venueLng` (which the admin side does save correctly, via last night's PR #35). So for every away game, those two fields are simply absent from what the page receives — not a client bug, nothing to fix in team.html itself.
+- Proposed fix: a new migration (`supabase/migrations_pending/010...`) that adds `opponentLat`/`opponentLng` to the RPC's JSON builder, sourced from `o.payload->>'venueLat'`/`'venueLng'`, mirroring the existing `opponentMapUrl` line exactly.
+- Why not auto-fixed: this is the one public RPC the entire Parents Page depends on, and this agent has no live Supabase connection to verify a new version against the real schema before it would be handed to you as something to run. Safer for you (or an interactive session with DB access) to draft and check the SQL directly rather than have an unattended run write untested RPC SQL.
+- Not affected: home-match weather forecasts — `season.homeGroundLat`/`Lng` are already present on the `season` object the RPC returns, and that half of the feature works correctly today.
 
 ## Resolved
+
+### Home Ground coordinates could only be set via "Edit Season", not when creating one
+- Reported: 2026-11-03 (found by the nightly QA run, not by Victor)
+- Status: Fixed (commit 883b45f, PR https://github.com/Kreativminds/NextEleven/pull/36 — not yet merged)
+- Fix: last night's weather-forecast feature (PR #35) added a Home Ground coordinates field only to the Edit Season form. Added the matching field (same validation, same i18n strings — none new) to all three season-creation paths: the renewal wizard, the First-Time Wizard, and the manual "no seasons yet" create form.
 
 ### "Caio Andrade" appears twice in Marcadores/Assistências on the Parents Page — once as roster player, once as unconverted guest
 - Reported: 2026-11-01 (found by the nightly QA run, not by Victor)

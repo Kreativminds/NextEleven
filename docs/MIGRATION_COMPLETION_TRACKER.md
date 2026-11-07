@@ -1,0 +1,453 @@
+# Next Eleven: unified migration completion tracker
+
+Updated 2026-11-06. **No production deployment, data changes, merges or release approval authorized.** This tracker is the single cross-workstream queue; evidence must be attached before closing any gate.
+
+## Priority 0: production data integrity and federation identity
+
+| ID | Status | Acceptance evidence | Next action |
+|---|---|---|---|
+| FED-01 | In progress | 101 active games all matched to exactly one opponent; 56 federation-linked; 45 unlinked across 14 names | Verify each candidate against federation competition registration, not name similarity |
+| FED-02 | In progress | 16 duplicate federation identity groups, 22 redundant opponent rows, 30 game references | Link historical games to canonical federation IDs; verify 2026/27 fixtures and account isolation; no physical deletion before verified backup |
+| FED-03 | Isolated schema and backfill tested, not deployed | Link schema applied on isolated project, RLS and trigger active; SLO Benfica and Olivais A linked to the same Olivais federation ID; backfill rerun idempotent; wrong owner, club and historical name rejected | Validate positive backfill against faithful production fixture snapshot before release |
+| FED-04 | Partially deployed, isolated review tests passed | Production deletion review protection active, addition review absent; isolated addition schema applied; requester insert passed; forged requester rejected; non-admin review updated zero rows; admin review passed; deletion request, admin approval and approved soft-delete passed in rollback-only isolated test; recursive RLS policy corrected with private approval helper | Test browser workflow, notifications and local classification; approve addition deployment separately |
+
+## Priority 1: integration and release security
+
+| ID | Status | Acceptance evidence | Next action |
+|---|---|---|---|
+| SEC-01 | In progress | Federation link table denies authenticated INSERT/UPDATE/DELETE; negative cross-account, wrong club and wrong historical name mutations rejected in isolated tests | Run anonymous, user A, user B and admin matrix for addition/deletion review tables and RPCs |
+| SYNC-01 | Open | Offline and multi-device sync behavior, collision recovery, no data loss | Reproduce and regression-test multi-account cases; review existing SYNC-008 |
+| INT-01 | Open | PR #36 reports away-match weather RPC/field mismatch | Compare actual RPC signature with admin form, prepare isolated fix and tests |
+| UX-01 | Open | Federation picker, Settings catalogue, parent fixtures and admin workflows | Browser regression with duplicated aliases, Olivais Sul separation, season 2026/27 and missing clubs |
+
+## Deferred improvement, not a release prerequisite: Gate 13 disaster recovery
+
+| ID | Status | Acceptance evidence | Next action |
+|---|---|---|---|
+| DR-01 | Partial | 30/30 function source+metadata, 143 indexes, 88 constraints, 106 RLS policies, 30 triggers parity | Re-run parity on isolated restore with timestamped reproducible evidence |
+| DR-02 | Partial | 36/38 table counts, 28/38 content fingerprints match | Identify 2 count and 10 fingerprint mismatches; distinguish snapshot drift from missing rows |
+| DR-03 | Blocked on evidence | Auth users, identities, Storage objects/buckets, snapshot consistency | Establish export and restore procedure with isolated test, no production mutation |
+| DR-04 | Open | PR #37 docs/gate13-recovery-runbook | Validate full restore drill, recovery time and rollback criteria before signoff |
+
+## Priority 3: integrated QA and release readiness
+
+| ID | Status | Acceptance evidence | Next action |
+|---|---|---|---|
+| QA-01 | Open | Syntax, i18n, HTML, opponent regressions, season calendar, auth, RLS, smoke tests all green | Run all workflows on exact candidate SHA and capture links |
+| QA-02 | In progress | Reviewed open PRs #2, #4, #36, #37, #38. PR #36 and #38 both change index.html; #36 adds home-ground coordinates in three season-creation paths, while #38 changes opponent catalogue and settings. Integration order: preserve #36 coordinates while incorporating #38 federation picker, then rerun tests. PR #37 is documentation-only and not a federation release blocker | All five open PRs inspected; integration review complete. Verify candidate SHA and test combined changes in QA-01 before merge |
+| REL-01 | Not approved | Deployment checklist, rollback, backup, release notes and explicit owner approval | Produce approval-ready release bundle; no deployment without authorization |
+
+## Decision and identity invariants
+
+- Olivais A, Olivais B, Olivais 2014 and SL Olivais are one club identity when federation-confirmed; Olivais Sul is distinct. Squad labels belong to competition registrations, not club names.
+- Never equate CAC and Cacém merely because of a similar abbreviation.
+- Only the owner/admin can delete clubs after dependency checks. Users submit proposals; local teams must be visibly flagged, not falsely federation-verified.
+- No renaming or deleting historical fixture opponent names during migration; preserve 2026/27 season, scores, events and standings.
+- Gate 13 test project tqpykeuuzcqudqtfrqmc is isolated; production project wicydcvdakqopodbxtrl remains read-only for migration work.
+
+## Fresh isolated-environment discovery (2026-11-06)
+
+A read-only `information_schema.tables` comparison of production and isolated project revealed that the **project root** of tqpykeuuzcqudqtfrqmc contains only 26 public base tables, while production contains 44 public base tables (including operational staging tables). Production-only application tables include `roadmap_items`, `profiles`, `player_game_stats`, `training_sessions`, `training_packs`, `events`, `backups` and others. The isolated project also has test-only tables. This is **not evidence that the named `gate13_restore` branch is incomplete**: branch-level inspection is required. Do not run full DR parity against the project root and mislabel it a restore test. Verify the actual branch identifier and compare the same schema/snapshot before re-running DR gates.
+
+## Evidence register
+
+- PR #37: https://github.com/Kreativminds/NextEleven/pull/37
+- PR #38: https://github.com/Kreativminds/NextEleven/pull/38
+- PR #36: https://github.com/Kreativminds/NextEleven/pull/36
+- Federation name inventory: docs/audits/federation_unlinked_games_review_20261106.md
+- Candidate identity map: docs/audits/federation_candidate_identity_map_20261106.md
+- Existing regression workflow #27 passed for commit 02deb111d0a710e32b3ed797776133e17a76ab89.
+
+## Completion policy
+
+A task is complete only after implementation, isolated tests, negative tests, evidence, dependency resolution and (where required) explicitly approved release. A commit or green unit test alone is not deployment or migration completion.
+
+## PR #36 dependency review (2026-11-06)
+
+- PR #36 changes only `index.html`, adding home-ground coordinates to season wizard, first-time wizard, and Settings season creation.
+- PR #38 also changes `index.html`, including opponent Settings, federation catalogue and picker. Both PRs therefore touch the same large HTML file and require integration/rebase before merge. Their shown diff hunks do not directly overlap, but mergeability has not been confirmed.
+- Preserve the `homeGroundLat` and `homeGroundLng` fields and invalid-coordinate validation from #36 in the eventual combined candidate.
+- PR #37 is recovery documentation and should not block federation deployment. PRs #2 and #4 are older, separate UI/timezone changes requiring disposition before full branch inventory is closed.
+- No merge or production deployment performed.
+
+## Older open PR dependency inspection (2026-11-06)
+
+- PR #2: `css/nexteleven.css` UI accent corrections; `index.html` only updates the CSS cache-busting query; `version.json` changes. No direct overlap with PR #38's shown `index.html` federation hunks, but CSS visuals require regression.
+- PR #4: `index.html` fixes kickoff-dialog timezone date conversion (`toISOString().slice(0,10)` replaced with local `dISO`), plus `version.json`. No direct overlap with PR #38's shown federation hunks; retain timezone behavior in eventual candidate.
+- All five currently open PRs (#2, #4, #36, #37, #38) now have file inventory and patch-level dependency inspection. No merges performed. Integration smoke testing and exact candidate SHA verification remain under QA-01.
+
+## Production read-only integrity gate rerun (2026-11-06)
+
+- 101 active games, 0 missing or ambiguous owner-scoped opponent references.
+- 56 federation-linked games, 45 pending federation links; no automatic guess for pending identities.
+- 160 active opponents: 123 linked, 37 unlinked.
+- Federation catalogue: one Olivais, one Olivais Sul, distinct club IDs.
+- Structural preflight gate passed (zero ambiguous game matches; separate Olivais identities). **Not** a production-data migration rehearsal, deployment or signoff. Full release remains blocked on 45 pending links, duplicate reconciliation and integrated regression.
+
+## Additional scope AS-06: isolated security advisor triage (2026-11-06)
+
+Status: **In progress**, outside original 33 tasks. Supabase isolated-project security advisors identified 9 RLS-without-policy informational findings (several test/restore tables), 10 mutable function search paths, 2 extensions in public, 2 token-based public-team SECURITY DEFINER RPCs executable by anon/authenticated, and disabled leaked-password protection. These are findings requiring intent/impact assessment, **not confirmed exploits**. In particular, public-team RPCs may intentionally support public token access: do not revoke them without checking the app contract. The private `app_private.can_admin_delete_opponent` helper is not executable by anon and is executable by authenticated, as designed for RLS evaluation. No production settings changed. Relevant references: https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable and https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection.
+
+## AS-06 follow-up: public token RPC audit (2026-11-06)
+
+- Reviewed both SECURITY DEFINER public RPC definitions. Both require an enabled matching `team_share_links.share_token` before reading data; the full-team RPC scopes records by the link owner and applies privacy options; the opponent-slice RPC resolves the owner from the link and delegates to `_opponent_lookup_for_user`.
+- Rollback-only tests as Postgres `anon`: invalid token returned SQL NULL for `get_public_team_data` and zero rows for `get_public_team_data_opponent_slice`.
+- **Do not revoke anon EXECUTE** without replacing the intentional public parent-page access contract. These linter warnings alone do not prove an exploit.
+- Remaining AS-06: assess token entropy/revocation, valid-token privacy and cross-owner isolation, function search-path findings, extension placement and password protection. Status stays In progress.
+
+## Additional scope audit disposition (2026-11-06)
+
+- **AS-06 Security advisor findings review: Passed (triage only).** Findings inventoried, public token RPC intent checked, invalid-token anon negative tests passed, functions use fixed `search_path=public`, private deletion helper anon EXECUTE denied, disabled-link slice returned no rows. No confirmed exploit from these checks. This does **not** mean the warnings are remediated or the full security regression passed.
+- **AS-07 Security advisor remediation and verification: To do.** Assess and, where appropriate, remediate mutable search paths, public extensions, no-policy staging tables, Auth leaked-password setting, and public-token threat model (including revocation, entropy and cross-account privacy). Do not disable public RPCs without preserving parent sharing. All production changes require explicit approval.
+
+## Original task #27 automated regression suite (2026-11-06)
+
+**Status changed: To do -> In progress.** Verified PR #38 commit `814a9a6` has GitHub Actions federation picker regression run 42302971736 with conclusion **success**. Inspected workflow and found its PR path filter excluded federation SQL migrations and SQL test fixtures, so regression could be skipped on security/database-only changes. Fixed workflow filter to include `supabase/migrations/20261106*.sql` and `tests/sql/federation_*.sql`, plus explicit fixture-existence assertions, commit `36e17511`. The SQL fixtures are **not executed by this Node workflow**; they still require isolated PostgreSQL runs. Full automated regression remains open until database role-matrix and browser workflows are automated and CI verified on new commit. No production deployment.
+
+## Original task #17 complete security regression (2026-11-06)
+
+Status: **In progress**, not passed. Tested isolated non-admin B: no admin membership visibility, no cross-account deletion requests, no cross-account addition requests (all true). Added reproducible `tests/sql/opponent_review_nonadmin_rls_isolated.sql` in commit `beb519c0`. Still required: seeded positive/negative admin matrix, browser workflows, authenticated/anonymous RPC and approval state transitions. No production changes.
+
+## Original application regression verification (2026-11-06)
+
+PR #38 commit `0602d2d` GitHub Actions run **42303343163**, job **128186413995**, succeeded. All three Node checks and SQL fixture-presence assertion passed. This supports the implementation of original task #18 (federation picker) and #20 (match save/edit protection), but the picker remains feature-flagged off and no browser end-to-end test has been completed. Neither task can be marked Passed yet. No production change.
+
+## Original task #18 acceptance closure (2026-11-06)
+
+**Passed for pre-production implementation:** federation opponent picker. GitHub Actions run **42304525350** (run #85), commit `2b23bbc73731bb88de5d12f0d9f45c62ef77922c`, completed successfully. Chromium browser acceptance, picker Node regression, match-save source contract, opponents Settings regression, and SQL fixture presence all green. Browser test uses a synthetic page and mocked federation service, exercising flag-off behavior, federation suggestions, distinct Olivais Sul and outage fallback. This does **not** validate authenticated production Supabase browser flows, match create/edit E2E, parent share links, offline/multi-device, or deployment. Feature flag remains OFF. Task #18 is accepted as implemented and browser-smoke-tested in pre-production, with integration/release tests remaining under original tasks #27 and #29. Fixed original scope becomes **14 Passed, 0 Failed, 8 In progress, 11 To do (14/33, 42%)**. Application and integration becomes 1 Passed, 3 In progress, 4 To do. No production change.
+
+## Original task #19 browser verification (2026-11-06)
+
+GitHub Actions run **42304845242** (#88), commit `51c736cc817fbc8e0715b51527a9232793b118f9`, completed **success**. Both Chromium browser checks and three Node regression suites passed. The new `tests/browser_opponent_approval.js` exercises user federation/local proposals, deletion requests, administrator rejection reasons, and confirms no direct opponent mutation from the tested handlers. The browser test uses mocked transport and does not verify live database role policies, delivered administrator notifications, user notification delivery, or complete approved-deletion execution. **Task #19 remains In progress**, not Passed, until those acceptance gaps close. Original scope remains **14/33 (42%)**. No production changes.
+
+## Original task #20 match save/edit protection (2026-11-06)
+
+Production read-only integrity check: **101 active games, 101 unique owner-scoped opponent matches, 0 missing, 0 ambiguous**. Existing `tests/regression_federation_match_save_contract.js` checks preservation of game ID, UUID, creation/kickoff timestamps, opponent score, local backup and sync scheduling, and is green in GitHub Actions run #88. This is baseline evidence, not browser save/edit execution or a production migration rehearsal. **Task #20 remains In progress** until real create/edit browser flows and rollback/history protection are verified. No production changes.
+
+## Task #19 approved deletion and notification execution (2026-11-06)
+
+Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authenticated verified administrator only, approved request required, exact single opponent identity, transactional soft-delete and status completion, preserving historical fixtures. Isolated Supabase role A (admin)/B (requester) transaction passed and rolled back; non-admin RPC call rejected. Implemented `20261106213000_opponent_review_notifications.sql`: durable admin submission inbox events, requester decision events and distinct final completion events. Isolated approval -> completion produced both user events; rolled back. Notification identity trigger prevents recipient/message forgery. **Still pending for #19:** wire inbox and approved-deletion RPC into actual application interface, then verify end-to-end browser + authenticated Data API. Original tally stays 14/33, no production mutation.
+
+## Final manual Go: deletion completion notification role matrix (2026-11-06)
+
+- Added `tests/sql/opponent_deletion_completion_notifications_isolated.sql`, commit `6a8ed8185c4704422384a9d8c29c603a16e79f15`.
+- Executed on isolated project `tqpykeuuzcqudqtfrqmc` with rollback-only authenticated user B and admin A: submission inbox, admin approval, rejected premature completion, completion RPC, requester decision and completion events, and admin-only notification visibility all passed (SQL returned no errors).
+- This is genuine isolated database role-matrix evidence, not app browser/API integration. Task #19 remains In progress pending application UI integration and end-to-end acceptance; task #17 remains In progress pending complete security regression. Original tally unchanged at 14/33 Passed (42%). Production untouched.
+
+## Overnight task #19: review inbox UI adapter (2026-11-06)
+
+- Added `js/opponent-review-inbox.js` commit `a5c793aa66494fcb2f5442ae0e6ac98497e8d2fc`, a framework-independent authenticated UI adapter for loading the user's review notifications, escaping notification HTML, marking own messages read, and administrator-gated completion of approved deletion through `rpc/complete_approved_opponent_deletion` (never direct opponent mutation).
+- Added `tests/regression_opponent_review_inbox.js` commit `cef4be28da6fe86a58aaabba1bc3cfaa3e546afd` covering owner-filtered inbox, HTML escaping, admin gate, cancelled confirmation, RPC call and no direct opponent mutation. Test file committed but its execution/CI success is **not yet verified**.
+- **Remaining:** integrate adapter into the real `index.html` Settings opponent panel, wire notification controls, run browser tests and authenticated Data API end-to-end. Do not mark #19 Passed. Fixed 33-task KPI unchanged: 14 Passed, 0 Failed, 8 In progress, 11 To do. Additional scope unchanged: 6 Passed, 0 Failed, 0 In progress, 1 To do. Production unchanged.
+
+## Task #17: notification integrity and owner isolation (2026-11-06)
+
+- Added `tests/sql/opponent_notification_integrity_rls_isolated.sql`, commit `745b10244cd2e87c1bf5ff98b6ed8c52749dab23`.
+- Executed committed fixture successfully in isolated Supabase `tqpykeuuzcqudqtfrqmc` as authenticated requester B and reviewer A, with all writes rolled back. Verified: forged notification INSERT rejected; requester cannot read admin submission; admin receives submission; requester receives rejection; message and recipient immutability enforced; own read acknowledgement succeeds and cannot be reversed.
+- This advances original #17 security regression, which remains In progress pending complete role matrix and application/API tests. Task #19 UI integration is separately being developed by another agent. Fixed KPI remains 14 Passed, 0 Failed, 8 In progress, 11 To do; additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do. Production unchanged.
+
+## Original #20 historical match preservation after approved deletion (2026-11-07)
+
+- Committed `tests/sql/historical_game_survives_opponent_deletion_isolated.sql` in `78163e2a9cc9aaafbba8087a0cc8e1c0b36f0df7`.
+- Ran rollback-only authenticated requester B/admin A integration test on isolated Supabase `tqpykeuuzcqudqtfrqmc`. Seeded a 2026/27 fixture with final score 3-2, goal event and historical opponent name; approved and completed soft-deletion of the related opponent through the actual RPC; asserted the opponent was soft-deleted while the complete game JSON payload, scores, events, season and game row remained unchanged. RPC returned true; all assertions passed; transaction rolled back.
+- This establishes database-level history preservation for #20, but not the browser create/edit workflow or synchronization safety. #20 remains In progress, #19 remains In progress. Fixed KPI stays 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do. Production untouched.
+
+## Overnight task #27: review inbox regression coverage (2026-11-07)
+
+- Added `tests/browser_opponent_review_inbox.js` in commit `3bd3a6b234266f528cd64c546cb1c244587446ee`, covering actual Chromium DOM escaping of notification messages, unread button visibility, owner-scoped read acknowledgement, non-admin denial, cancelled completion and admin-only completion RPC with mocked transport.
+- Extended `.github/workflows/federation-picker-regression.yml` in commit `0c0c4e0c8bf99ad74aa1b9af6d2422d1eddcfd56` to run both `tests/regression_opponent_review_inbox.js` and the new Chromium browser test, and require new rollback-only SQL fixtures. This is substantive CI integration, but **the new workflow execution has not yet been verified**. The SQL fixtures are checked for presence, not executed by GitHub Actions.
+- Original #27 remains In progress until CI evidence and full integration regression; #19 remains In progress until the adapter is actually wired into the application and authenticated Data API verified. No production changes. Fixed original KPI unchanged 14 Passed, 0 Failed, 8 In progress, 11 To do (42%); additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do.
+
+## Overnight task #17: approved deletion negative authorization and identity drift (2026-11-07)
+
+- Added `tests/sql/opponent_deletion_authorization_identity_drift_isolated.sql` (final commit `af506a38c785cc9a2eb8f8d44ab1515f31dbb1a4`). Executed successfully on isolated Supabase `tqpykeuuzcqudqtfrqmc` with a full transaction rollback.
+- Authenticated requester B was denied completion RPC on an unapproved request, with opponent and request unchanged. Administrator A was also denied completion before approval. After legitimate admin approval, requester B renamed the opponent, simulating stale identity; administrator completion RPC failed closed, request remained approved, and owner B confirmed renamed opponent still active.
+- Important RLS finding during test development: administrator cannot read the renamed foreign opponent once the approved identity no longer matches, which is expected and is why the final survival assertion uses the owner role. No application changes or production mutation. Original #17 remains In progress; original #19 remains In progress pending real UI/Data API integration. KPI remains 14/33 passed (42%), additional scope 6/7 passed.
+
+## Overnight #27 CI confirmation and #17 anonymous role gate (2026-11-07)
+
+- Verified GitHub Actions run [42316950882](https://github.com/Kreativminds/NextEleven/actions/runs/42316950882), job `128231792949`, for workflow commit `0c0c4e0c8bf99ad74aa1b9af6d2422d1eddcfd56`: **success**. Node federation/match/settings/inbox tests, Chromium federation picker/approval/inbox adapter tests and SQL fixture presence checks all succeeded. SQL fixtures were **not** executed in GitHub Actions. Original #27 remains In progress because full candidate integration and database tests in CI remain outstanding.
+- Executed an isolated `anon` privilege matrix successfully. Anonymous role lacks SELECT/INSERT/UPDATE/DELETE on opponent review notifications, deletion requests, addition requests and administrator membership; it also lacks EXECUTE on approved-deletion completion RPC. The initial attempt to query notification rows as anon produced expected permission-denied; the final regression uses `has_table_privilege` to assert denied grants without relying on RLS row visibility. Committed reusable fixture `tests/sql/opponent_review_anon_privilege_isolated.sql` in `045df092f496a70f0909da4c5cd697ff24f3f772`.
+- This is verified security evidence for original #17, which remains In progress pending full role and browser/API regression. Original KPI unchanged: 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope: 6 Passed, 0 Failed, 0 In progress, 1 To do. No production changes.
+
+## Overnight #17/#20 duplicate-name and historical fixture protection (2026-11-07)
+
+- Isolated Supabase revealed `opponents_name_uniq` rejects a same-owner duplicate name with SQLSTATE 23505, so an attempted two-row ambiguous-name fixture could not be constructed. This is a database uniqueness protection, not proof all federation identity duplicates are eliminated.
+- Added `tests/sql/opponent_duplicate_name_history_isolated.sql` in commit `a9fa35cbc21680090ae0a0b3bcd9256feb99ae8f`; rollback-only authenticated role B execution passed. It asserts a second same-owner opponent with the same name is rejected, the original active opponent remains, and its 2026/27 historical fixture JSON (1-1 result) remains intact.
+- Original #17 and #20 remain In progress; no UI/API end-to-end completion or production migration. Fixed original KPI 14 Passed, 0 Failed, 8 In progress, 11 To do (42%); additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do. Production untouched.
+
+## Overnight original #10 duplicate federation identity impact preflight (2026-11-07)
+
+- Added reusable, strictly read-only `tests/sql/federation_duplicate_identity_readonly_preflight.sql`, commit `02e0bc3564c9ec1ab65ddfedd1990c3e0de32b02`.
+- Executed against production with SELECT-only SQL (no DDL/DML). Confirmed 16 same-owner/same-federation duplicate identity groups, 38 active opponent members, 22 redundant rows, 30 name-matched historical fixtures and zero unnamed members. This independently reconciles the prior inventory, but name matches are **not** deletion authorization and do not prove safe canonical selection. Distinct Olivais Sul remains a separate federation identity.
+- Original #10 remains In progress pending verified owner-scoped canonical mapping, historical link preservation and isolated migration rehearsal. Original 33-task KPI unchanged at 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope unchanged 6 Passed, 0 Failed, 0 In progress, 1 To do. Production unchanged.
+
+## Overnight original #10: canonical selection safety blocker audit (2026-11-07)
+
+- Committed read-only `tests/sql/federation_duplicate_canonical_safety_readonly.sql` (`eae893d771c6010512a567f7420e3b5ca7ebd31c`). This reports duplicate-group fixture-reference risk, ambiguous names, missing IDs and multiple historically used names without selecting or modifying a canonical row.
+- Executed against isolated Supabase `tqpykeuuzcqudqtfrqmc` with SELECT-only access. Result: 1 duplicate federation identity group, 2 member rows, 1 redundant row, 2 historical fixture name matches, **1 group with multiple distinct historical opponent names referenced by fixtures**, no unnamed members, no ambiguous fixture-name rows and no missing local IDs. This is a real blocker to naive duplicate deletion even when the federation identity is shared.
+- Isolated counts do not represent the production inventory of 16 duplicate groups. No production query or mutation in this run. Original #10 remains In progress until a safe canonical mapping and migration rehearsal preserve both historical names and game references. Original 33 KPI remains 14 Passed, 0 Failed, 8 In progress, 11 To do (42%); additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do.
+
+## Overnight original #10: historical-name risk classification (2026-11-07)
+
+- Added reusable read-only `tests/sql/federation_duplicate_review_classification_readonly.sql`, commit `4fd46cc59157cf3c428c1d01c327513eb30f41a2`. It groups duplicates by owner and verified federation identity, classifies identity-integrity blockers and one/multiple historical opponent-name preservation requirements, and deliberately does not choose a canonical row or modify data.
+- Executed successfully against isolated Supabase `tqpykeuuzcqudqtfrqmc`: 1 duplicate group, 2 member rows, 1 redundant row and 2 matched historical fixture names. Classified as `requires_historical_alias_preservation`; naive consolidation is unsafe. These are isolated fixture counts, not production counts.
+- Original #10 remains In progress pending reviewed canonical mapping, explicit alias retention and rollback-only consolidation rehearsal. Original KPI 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do. Production unchanged.
+
+## Overnight original #10: historical fixture reference strength audit (2026-11-07)
+
+- Added reusable, read-only `tests/sql/federation_duplicate_game_reference_strength_readonly.sql`, commit `35c4f701b60e4b2902487391d691476f6ddddc00`. The audit distinguishes name-only historical game matches from explicit local opponent ID matches and flags ambiguous or conflicting evidence, scoped by owner and verified federation identity.
+- Executed on isolated Supabase `tqpykeuuzcqudqtfrqmc`: 2 affected games, **0 explicit opponent IDs**, **2 name-only references**, 0 ambiguous matches and 0 conflicting name/ID evidence. This means the test fixture's historical games cannot be safely remapped by an assumed opponent foreign key. Preserve both original fixture names and require reviewed canonical/alias mapping.
+- Original #10 remains In progress; no duplicate consolidation or production data modification was performed. Fixed original KPI remains 14 Passed, 0 Failed, 8 In progress, 11 To do (42%); additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do.
+
+## Overnight original #10: isolated historical alias mapping rehearsal (2026-11-07)
+
+- Added `tests/sql/federation_duplicate_alias_coverage_rehearsal_isolated.sql`, commit `3e1ff0ed3b669f3eb6042848ba15fdebb4f61b7b`.
+- Executed the equivalent rollback-only SQL on isolated Supabase `tqpykeuuzcqudqtfrqmc`, **passed** after correcting the fixture `local_id` type to text. A temporary owner/federation-scoped mapping preserves both historical opponent names, resolves them to one simulated canonical ID, checks that the canonical is an active opponent of the same owner/federation, covers both historical fixture references, and confirms fixture JSON payloads unchanged. Transaction rolled back; no opponent deleted.
+- The canonical ID is an isolated test choice, not production authorization. This proves an alias-preserving rehearsal pattern but does not implement persistent aliases, resolve production's 16 duplicate groups, or approve any consolidation. Original #10 remains In progress; KPI 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do. Production unchanged.
+
+## Overnight original #17: inbox acknowledgement and cross-owner isolation (2026-11-07)
+
+- Added `tests/sql/opponent_review_inbox_acknowledgement_isolated.sql`, commit `c348e25c5dff87e0a2dd7937b9b26e91f854df6a`.
+- Executed the rollback-only test in isolated Supabase `tqpykeuuzcqudqtfrqmc` as authenticated requester B and administrator A. PASS: admin received a submission event, could mark their own event read, could not revert read acknowledgement to unread, and requester B could neither see nor update the administrator's event. All fixture writes rolled back.
+- Original #17 security regression remains In progress pending full authenticated API/browser matrix; original #19 inbox UI integration remains In progress. No task promoted to Passed. Original KPI 14 Passed, 0 Failed, 8 In progress, 11 To do (42%); additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do. Production unchanged.
+
+## Overnight original #10: persistent guarded historical alias schema (2026-11-07)
+
+- Implemented additive migration `supabase/migrations/20261107021000_opponent_historical_aliases.sql`, commit `c2f7d91c40632691cf18e1465dd67fc1ec63aa4e`. Creates owner-scoped historical name to canonical opponent mapping, verified same-owner/same-federation identity trigger, reviewed-by admin requirement, restrictive RLS and no authenticated write privileges. Historical game payloads and opponent records are untouched.
+- Applied migration successfully **only** to isolated Supabase `tqpykeuuzcqudqtfrqmc`. Rollback-only positive alias insertion for SLO Benfica / Olivais A, wrong-name rejection, owner read, cross-owner read denial, and authenticated write grant denial passed. Fixture alias insertion rolled back. Migration schema itself persists in isolated project only.
+- Original #10 remains In progress: no production canonical selection, bulk mapping, consolidation, historical migration or app integration yet. Fixed original KPI remains 14 Passed, 0 Failed, 8 In progress, 11 To do (42%); additional scope remains 6 Passed, 0 Failed, 0 In progress, 1 To do. Production unchanged.
+
+## Overnight original #10: owner-scoped historical alias resolver (2026-11-07)
+
+- Added `supabase/migrations/20261107023000_resolve_historical_opponent_alias.sql`, commit `b8fc27bfc638cf26f7f70065d18a37dc60895efe`. SECURITY INVOKER, authenticated-only, read-only resolver returns a canonical UUID only for a reviewed owner/federation-scoped historical alias whose source and canonical opponents remain active and identity-consistent. No fuzzy fallback, no fixture rewriting, no deletion.
+- Applied only to isolated Supabase `tqpykeuuzcqudqtfrqmc`. Executed rollback-only authenticated role test PASS: valid Olivais A alias resolves to isolated SLO Benfica canonical; distinct Olivais Sul federation ID returns NULL; another user cannot read the mapping. Test fixture was rolled back. Reproducible `tests/sql/federation_historical_alias_resolution_isolated.sql`, commit `6c4e203085b5c7b042440cf9b3d60d65c42f6183`.
+- Original #10 remains In progress until reviewed canonical decisions, persistent approved mappings, complete migration rehearsal and application integration. Fixed original 33-task KPI unchanged: 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do. Production unchanged.
+
+## Overnight original #10: reviewed alias survives approved source soft-delete (2026-11-07)
+
+- Found and fixed a concrete consolidation blocker: the original historical alias resolver required `src.deleted_at IS NULL`, making reviewed aliases stop resolving as soon as an approved redundant source opponent was soft-deleted. The canonical target must remain active, but the historical source may be soft-deleted while its owner, name and federation identity remain immutable.
+- Committed additive resolver migration `supabase/migrations/20261107024500_preserve_soft_deleted_historical_alias.sql` (`ec71a68af1092b20dc7d037ce3cbbd14e24ba516`) and applied it only to isolated Supabase `tqpykeuuzcqudqtfrqmc`.
+- Added rollback-only `tests/sql/federation_alias_soft_delete_survival_isolated.sql` (final corrected commit `5f47260a52455c6120866836372554443bebefc9`). **PASS** on isolated Supabase: reviewed deletion request, admin approval, source soft-delete under existing guard, alias resolution to active canonical, unchanged historical game payloads, distinct Olivais Sul and cross-owner denial. Test transaction rolled back, no lasting opponent deletion. Earlier test attempts identified and corrected admin approval and temporary table permission prerequisites.
+- Original #10 remains **In progress** pending production-reviewed canonical mapping, all duplicate groups, app integration and full migration rehearsal. Fixed original 33-task KPI unchanged: 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do. Production unchanged.
+
+## Overnight original #10: protect reviewed alias identity from drift (2026-11-07)
+
+- Found an alias-integrity gap: after a reviewed alias was created, the canonical opponent could be soft-deleted or its federation identity changed, and the historical source name could be renamed, invalidating the reviewed resolution.
+- Added additive `supabase/migrations/20261107030000_guard_reviewed_alias_identity.sql` (commit `3b2535cb17ee61d0b649deb9fe0d0cf9dd4051e3`). BEFORE UPDATE guard prevents soft-deletion of a canonical referenced by reviewed aliases and prevents source name/owner/federation drift and canonical owner/federation drift. It does not block an approved historical source soft-delete.
+- Applied **only** to isolated Supabase `tqpykeuuzcqudqtfrqmc`, migration succeeded. Added `tests/sql/federation_reviewed_alias_identity_guard_isolated.sql` (commit `1741d96bd8f7f3df66f939af283b5819c28c485f`), executed rollback-only, **PASS**: canonical soft-delete, source rename and canonical federation drift rejected, both fixture opponents remained active after failed changes. No production mutation.
+- Original #10 remains In progress pending reviewed canonical decisions, all 16 duplicate groups, app integration and full rehearsal. Original fixed 33-task KPI remains 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do.
+
+## Overnight original #27: CI path coverage for alias migration work (2026-11-07)
+
+- Fixed a concrete release-regression gap in `.github/workflows/federation-picker-regression.yml`, commit `a592366dee5de75fc44f2cf2e2b641cc7769b55f`: the workflow previously triggered on `20261106*.sql` migrations but **not** on the new `20261107*.sql` historical alias and identity-guard migrations, so database-only overnight changes could bypass the PR regression workflow.
+- Added PR triggers for 20261107 migrations, deletion and notification SQL test fixtures; expanded tracked-fixture assertions to include the alias schema, resolver, soft-delete survival and identity-guard migrations and their isolated SQL tests. Independently fetched and verified all seven newly asserted files exist on the feature branch.
+- **Important limit:** this workflow checks fixture presence and runs Node/Chromium checks, **not** the PostgreSQL SQL fixtures. A successful workflow cannot be represented as an executed database role matrix. Await a workflow run on this new SHA; no CI success claimed yet. Original task #27 remains In progress. Fixed original KPI 14 Passed, 0 Failed, 8 In progress, 11 To do (42%); additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do. Production unchanged.
+
+## Overnight original #17: anonymous review and alias security boundary (2026-11-07)
+
+- Added `tests/sql/opponent_anonymous_security_boundary_isolated.sql`, commit `7bdf968bb05645789ebb36f7a8748f11c5fee149`. Executed rollback-only as PostgreSQL `anon` on isolated Supabase `tqpykeuuzcqudqtfrqmc`, **PASS**: no anonymous review/admin/notification/historical alias rows visible, no anonymous mutation grants on those five tables, private deletion/alias/lookup RPCs not executable by anon, while intentionally public token-based opponent-slice RPC remains executable. No schema or persistent data changed.
+- This is database-role boundary verification, not HTTP/Data API/browser testing or a full security signoff. Original #17 remains In progress. Fixed original KPI 14 Passed, 0 Failed, 8 In progress, 11 To do (42%); additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do. Production unchanged.
+
+## Overnight original #10: block historical opponent retirement without alias (2026-11-07)
+
+- Identified a concrete safety gap: the administrator-approved soft-delete path could retire an opponent still named in historical fixtures without first creating a reviewed canonical alias, leaving historical name resolution stranded.
+- Added `supabase/migrations/20261107033000_require_alias_before_historical_opponent_retirement.sql` (commit `002717f2f7fe2a087ddba7cd956816c759248c7e`), a fail-closed BEFORE UPDATE guard. Historical games referencing the source name require a same-owner, same-federation reviewed alias to an active canonical opponent before retirement. No fixture text or game payload is rewritten. Applied migration **only** to isolated Supabase.
+- Added rollback-only negative regression `tests/sql/federation_retirement_requires_reviewed_alias_isolated.sql` (corrected commit `0047ce8d1191c247ea17d8ce23ab43b2c0b9aa36`). **PASS**: after admin approval, retiring a historical source without a reviewed alias is rejected and source remains active. Re-ran existing positive `tests/sql/federation_alias_soft_delete_survival_isolated.sql`: **PASS**, reviewed alias allows source retirement and preserves historical game payloads. Both tests rolled back.
+- Original #10 remains In progress pending reviewed mappings for all production duplicate groups, application integration and full rehearsal. Original KPI 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do. Production unchanged.
+
+## Overnight original #27: future-proof CI migration triggers (2026-11-07)
+
+- The federation regression workflow previously watched only `20261106*.sql` and `20261107*.sql`, so later dated migration SQL could bypass the PR check. Updated `.github/workflows/federation-picker-regression.yml` to watch **all** `supabase/migrations/*.sql`, and include anonymous security SQL fixtures.
+- Added explicit non-empty assertions for the newly introduced historical retirement guard migration and its negative SQL regression, plus anonymous review boundary SQL regression. Independently verified all three files exist on this branch.
+- Commit `9faad0e4118b4b8031e9b690177ee05a3a7a5552`. This is static workflow/path and fixture verification, **not** a confirmed green GitHub Actions run and **not** execution of SQL tests in CI. Original #27 remains In progress until exact SHA CI and integrated browser/database tests pass. Original 33-task KPI remains **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. Production untouched.
+
+## Overnight original #17: authenticated historical alias write-denial regression (2026-11-07)
+
+- Added `tests/sql/federation_alias_authenticated_write_denial_isolated.sql` (final corrected commit `74db8d04c4ab3262625179e55baca83dbe27abbc`). Executed rollback-only against isolated Supabase `tqpykeuuzcqudqtfrqmc`, **PASS**: authenticated role has SELECT but no INSERT/UPDATE/DELETE grants on reviewed alias table, cannot read other owners' aliases or resolve another owner's historical Olivais alias, and cannot forge an administrator-reviewed alias insertion. No games changed; transaction rolled back.
+- Two initial test attempts exposed assumptions about the isolated root fixture's game ownership and opponent rows. The final regression deliberately tests authorization before referential integrity and does not claim positive canonical resolution or full migration rehearsal. Original #17 remains **In progress** pending HTTP/Data API, browser and full role-matrix checks. Fixed 33-task KPI unchanged: **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. Production unchanged.
+
+## Overnight original #10: reviewed historical alias integrity audit (2026-11-07)
+
+- Added read-only `tests/sql/federation_alias_integrity_audit_readonly.sql` (commit `3ba0a515c6e04511967be5d2421e6a18a3b84a06`). It flags missing source/canonical, owner or federation mismatch, historical source-name drift, retired canonical and self-alias without modifying any records.
+- Executed the audit against isolated Supabase `tqpykeuuzcqudqtfrqmc`: returned **zero exception rows** at execution time. This is a baseline check, not proof of correctness for all 16 production duplicate groups or a positive/negative seeded test. No production access or mutations in this run.
+- Original #10 remains **In progress** pending production-reviewed canonical mappings, faithful fixture rehearsal and app integration. Original fixed KPI unchanged: 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do.
+
+## Overnight original #10: independent multi-finding alias audit (2026-11-07)
+
+- Added `tests/sql/federation_alias_integrity_multifinding_readonly.sql`, corrected commit `160db15be6cd462eb7d0f5b22202c0391e199cc0`. Unlike the previous first-match CASE audit, this reports every concurrent violation per alias (missing identities, owner/federation mismatches, source name drift, retired canonical, self-alias and conflicting canonical destinations). Reviewed aliases are valid before source retirement, so active sources are not flagged.
+- Executed read-only against isolated Supabase `tqpykeuuzcqudqtfrqmc`: **zero findings** in the inspected snapshot. No schema/data mutations. This does not verify production duplicate groups or prove negative seeded violations are detected.
+- Original #10 remains In progress; original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. Production untouched.
+
+## Overnight original #10: archived historical fixtures also protected (2026-11-07)
+
+- Discovered a concrete gap in the historical opponent retirement guard: it checked only active games (`g.deleted_at IS NULL`), so an archived fixture could lose its reviewed canonical alias requirement and later be restored with unresolved historical identity.
+- Added additive function migration `supabase/migrations/20261107042600_protect_archived_historical_fixtures_on_retirement.sql` (commit `bc140452ec5e043bb55806caa0a28b5819f67f0d`) removing the active-only restriction. Applied function update **only to isolated project** `tqpykeuuzcqudqtfrqmc`.
+- Added `tests/sql/federation_archived_fixture_retirement_guard_isolated.sql` (final commit `84adddf2520d4b6307f1e59afff02146e7dc9852`). Verified rollback-only under authenticated admin with an approved deletion request: all Olivais A fixture references archived, no reviewed alias, attempted source retirement rejected specifically by historical-alias guard, source remains active. **PASS**. Early test iterations exposed existing admin/approval guards and were corrected, not counted as passes.
+- No production mutation, merge or deployment. Original #10 remains In progress pending reviewed canonical decisions for production groups, full fixture rehearsal and application integration. Original KPI 14 Passed, 0 Failed, 8 In progress, 11 To do (42%); additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do.
+
+## Overnight original #10: negative-fixture verification for multi-finding audit (2026-11-07)
+
+- Added synthetic, read-only SQL regression `tests/sql/federation_alias_multifinding_negative_fixture.sql` (final commit `3e93e458ed5f944ea459ef3871ef049025eb89d5`). Exercises simultaneous canonical owner/federation mismatch, historical name drift, retired canonical, self-alias, missing source and conflicting destinations, while a valid Olivais A alias remains free of direct integrity findings. Distinct Olivais Sul fixture is not merged.
+- Executed against isolated Supabase `tqpykeuuzcqudqtfrqmc`: result **PASS**, exact expected finding multiset matched. First version used a constant divide-by-zero for assertion, which PostgreSQL evaluated prematurely; corrected to an explicit PASS/FAIL result before counting the test as passed.
+- This verifies audit detection logic with synthetic rows, not seeded production duplicate groups or browser flows. Original #10 remains In progress. Fixed KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes.
+
+## Overnight original #20: retired-source fixture integrity audit (2026-11-07)
+
+- Added read-only `tests/sql/federation_retired_source_fixture_integrity_readonly.sql` (commit `129b219a432bd2650e908e8986f087bb1c0d01f3`). It checks **both active and archived games**, owner-scoped by historical opponent name, for soft-deleted source opponents lacking a matching reviewed alias and live same-owner/same-federation canonical opponent.
+- Executed against isolated Supabase root `tqpykeuuzcqudqtfrqmc`: **zero findings** in inspected snapshot. No writes. This does not establish completeness of production mappings or verify detection using a seeded negative fixture; similarly named opponent rows can create multiple candidate source matches and need manual reconciliation.
+- Original #20 remains **In progress** pending real browser save/edit and historical sync/rollback tests. Fixed original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. Production untouched.
+
+## Overnight original #20: negative-fixture detection regression (2026-11-07)
+
+- Added read-only synthetic regression `tests/sql/federation_retired_source_fixture_negative_fixture.sql`, commit `d7662fe2ec18298706d4ae289600d08f2e68d105`. Tests six active/archived historical fixture references, valid reviewed aliases for Olivais A and distinct Olivais Sul, retired canonical opponent, and wrong-owner alias. Exact expected orphaned retired-source findings are the archived CAC fixture and active Another club fixture.
+- Executed on isolated Supabase `tqpykeuuzcqudqtfrqmc`: **PASS**, 2 expected findings across 6 references; zero discrepancies. This is a synthetic read-only negative test, not a production fixture migration rehearsal or browser create/edit acceptance. Original #20 remains **In progress**. Original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. Production untouched.
+
+## Overnight original #20: ambiguous historical name safety gate (2026-11-07)
+
+- Added read-only `tests/sql/federation_historical_name_ambiguity_readonly.sql` (commit `ae4b28b0dcdfd9c0250156e6e3bc656e480b93c5`) to identify owner-scoped opponent names with multiple source rows referenced by active OR archived fixtures. Such names require manual review before retirement or canonical remapping, even when one candidate has a reviewed alias. Separate Olivais Sul identity is preserved.
+- Executed on isolated Supabase root `tqpykeuuzcqudqtfrqmc`: **zero ambiguous fixture findings** in that snapshot. This does not prove the 16 production duplicate groups are clean.
+- Added synthetic read-only negative regression `tests/sql/federation_historical_name_ambiguity_negative_fixture.sql` (commit `90ead9786c1dc2484b7fdc9bdac4e2251bc19544`). Executed on isolated project: **PASS**, exactly 3 ambiguous fixture references out of 5, including one archived fixture; cross-owner and Olivais Sul cases excluded.
+- No data or schema writes. Original #20 remains In progress pending real browser create/edit, offline sync and historical rollback. Fixed original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. Production unchanged.
+
+## Overnight original #20: fixture opponent reference completeness gate (2026-11-07)
+
+- Added read-only `tests/sql/federation_fixture_reference_completeness_readonly.sql` (commit `4ce3d1b5f61aa38c03d2036c07f633f9533c9e80`). Detects missing/blank historical fixture opponent names and fixtures with no exact owner-scoped opponent row, for active and archived games. No automatic name normalization or identity guessing; Olivais Sul remains distinct.
+- Executed against isolated Supabase root `tqpykeuuzcqudqtfrqmc`: **zero findings** across its three fixtures. This is a small isolated-root baseline, not production parity or proof all production fixtures resolve.
+- Added read-only synthetic regression `tests/sql/federation_fixture_reference_completeness_negative_fixture.sql` (commit `13bf170b6d01ed7bd68ebcff6001f2fbf72b0576`). Executed on isolated Supabase: **PASS**, exact four expected findings out of eight fixtures (missing/blank names, cross-owner lookalikes, active and archived); valid Olivais A, distinct Olivais Sul, CAC and Cacém retained.
+- Original #20 remains **In progress** pending actual browser create/edit, sync and rollback/history tests. Original 33-task KPI unchanged: **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional scope: **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production mutation, deployment or merge.
+
+## Overnight original #27: historical-fixture CI coverage (2026-11-07)
+
+- Reviewed latest shared tracker and current regression workflow after other agents' #10/#20 historical-fixture tests. Ten new files were confirmed present on the shared branch, including archived-fixture retirement migration, integrity audits and negative fixtures.
+- Updated `.github/workflows/federation-picker-regression.yml` to assert these ten files are non-empty, commit `952f8bb1ec811f0b8b6ead1683c6d7ed7528105d`. Existing pull-request migration path coverage remains broad (`supabase/migrations/*.sql`). This prevents accidental omission of the newly added historical-identity fixtures from CI checkout, but does **not** execute SQL or prove regression behavior.
+- Original #27 remains **In progress** pending a successful CI run on the new commit, automated SQL role-matrix execution and integrated browser/database regression. Fixed original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production mutation, merge or deployment.
+
+## Overnight original #10: reviewed alias graph integrity (2026-11-07)
+
+- Added read-only audit `tests/sql/federation_alias_graph_integrity_readonly.sql` (commit `9176715e1a6c441e30f141d7a4c6a0e38a6c3b90`). It detects reviewed alias cycles, chains, missing/cross-owner endpoints, retired canonical opponents and source/canonical federation identity mismatches. No historical fixture name rewriting or automatic federation guesses.
+- Executed on isolated Supabase root `tqpykeuuzcqudqtfrqmc`: **zero findings** in the current isolated snapshot. This is not evidence that the production duplicate groups have been reconciled.
+- Added synthetic read-only negative regression `tests/sql/federation_alias_graph_negative_fixture.sql` (commit `f90627a1457c184260f9dd5b167e6e62b7f95cf6`). Isolated execution: **5 tested source nodes, 0 expected-vs-actual mismatches**. Three-node cycle detected; Olivais Sul and unrelated direct mapping remained independent. The synthetic test is a graph algorithm check, not an integration test against persisted RLS records.
+- Original #10 remains **In progress**, pending reviewed production mappings and application integration. Fixed original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production mutation, merge or deployment.
+
+## Overnight original #17: addition request local classification role matrix (2026-11-07)
+
+- Added `tests/sql/opponent_addition_local_role_matrix_isolated.sql`, commit `8eb8141257ca0224f89359e29e1b6b303bc0a34a`.
+- Executed the exact committed rollback-only fixture against isolated project `tqpykeuuzcqudqtfrqmc`: PASS, no SQL errors. Authenticated requester B cannot forge requester A; B cannot approve own request; administrator A can classify the request as `local` with an explicit decision reason; requester B sees the decision; `federation_club_id` remains null. Transaction rolled back all changes.
+- This closes one database role-matrix gap under original #17 and supports #19 addition review, but does not establish browser/API end-to-end, notification delivery or complete security acceptance. Original #17 remains In progress. Fixed KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes.
+
+## Overnight original #10: alias owner and federation negative regression (2026-11-07)
+
+- Added read-only synthetic fixture `tests/sql/federation_alias_identity_negative_fixture.sql`, commit `5711be38b3401f31f20bebf3a457687aac1a5f81`.
+- Executed on isolated Supabase `tqpykeuuzcqudqtfrqmc`: **PASS**, 6 alias scenarios, 5 independently detected findings, 0 expected/actual mismatches. Scenarios include valid Olivais A mapping, cross-owner canonical, Olivais Sul federation mismatch, retired canonical, missing source, and CAC/Cacém distinct identity.
+- Synthetic SQL does not prove production duplicates are reconciled or that the application consumes canonical aliases. Original #10 stays In progress. Fixed original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production mutation, deployment or merge.
+
+## Overnight original #17: historical alias access role matrix (2026-11-07)
+
+- Added `tests/sql/federation_historical_alias_access_role_matrix_isolated.sql`, commit `bd688ca25f12afe1783ea4411835f79cbb47e5dc`.
+- Executed exact committed SQL on isolated Supabase `tqpykeuuzcqudqtfrqmc`: **PASS**, both transaction-local role blocks returned without SQL errors. `anon` has no alias table privileges or direct retirement-trigger execution; `authenticated` has owner-scoped read but no alias mutations or direct retirement-trigger execution. Authenticated user B observed no other-owner alias rows. All transaction-local changes rolled back.
+- These are privilege and current-row RLS checks, not a seeded cross-owner negative fixture or a complete browser/Data API security test. Task #17 remains **In progress**; task #10's production mapping and task #20's save/edit acceptance are unaffected. Original fixed KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. Production untouched.
+
+## Overnight original #17: notification recipient isolation and audit immutability (2026-11-07)
+
+- Added rollback-only `tests/sql/opponent_notification_recipient_isolation_isolated.sql`; final fixture commit `76dcd6c048d906c445183780660bb1cf3d10e620` (preceded by fixture corrections `46354654`, `b515b976`).
+- Executed the exact committed SQL successfully in isolated Supabase `tqpykeuuzcqudqtfrqmc`: authenticated requester B cannot read admin A's submission notification, admin A cannot read requester B's decision notification, B cannot delete the decision audit (DELETE privilege denied), and B can mark their own notification read. The seeded opponent identity is checked exactly against the deletion request RLS policy. All inserted/updated data rolled back.
+- This is a database role-matrix check, not delivered browser/Data API end-to-end notification testing. Original #17 remains In progress; original #19 remains In progress. Verified fixed KPI unchanged **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production mutation or release.
+
+## Overnight original #17: opponent RPC grant and search-path inventory (2026-11-07)
+
+- Added reproducible read-only `tests/sql/opponent_review_rpc_security_inventory_readonly.sql`, commit `0a2d9b821829321ada89162a21f8f222fa5ee16b`.
+- Executed exact committed SQL against isolated project `tqpykeuuzcqudqtfrqmc`: 17 review/opponent-related routines inspected; 16 returned `OK`; one `get_public_team_data_opponent_slice(text,text)` was flagged `REVIEW_ANON_EXECUTE_CONTRACT` because it intentionally accepts public share-token requests. This is an **intentional contract to review**, not a confirmed vulnerability. All SECURITY DEFINER routines in this scoped inventory have fixed search paths; private admin deletion helper has no anon EXECUTE. Trigger functions with anon EXECUTE were not flagged as directly callable RPC vulnerabilities and need separate privilege-context analysis.
+- Original #17 remains **In progress** pending browser/Data API and complete role matrix. Fixed original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes, merges or deployment.
+
+## Overnight original #17: public opponent share RPC boundary (2026-11-07)
+
+- Added read-only `tests/sql/opponent_public_share_rpc_boundary_readonly.sql`, commit `711b996235fce390f90abb32d0912a937e264b93`.
+- Re-fetched and executed the exact committed fixture on isolated Supabase `tqpykeuuzcqudqtfrqmc`: **PASS**, no SQL errors. Verifies intentional anonymous EXECUTE access for token-based `get_public_team_data_opponent_slice(text,text)`, prevents direct anonymous access to the internal owner-scoped lookup helper if its inspected signature exists, and requires SECURITY DEFINER plus pinned `search_path` on the public RPC.
+- Limitation: private helper signature is checked conditionally; this test is a grant/configuration boundary, not valid-token privacy, entropy, revocation, or browser/Data API acceptance. Original #17 stays **In progress**. Fixed KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes.
+
+## Overnight original #17: anonymous invalid share-token opponent boundary (2026-11-07)
+
+- Added `tests/sql/opponent_public_share_invalid_token_isolated.sql`, commit `aa2230d97a7a2b5735b29e071d3ccf402678a3ed`.
+- Re-fetched exact committed fixture and executed on isolated Supabase `tqpykeuuzcqudqtfrqmc`: **PASS**, no SQL errors. Anonymous role received zero opponent metadata rows for NULL, blank, synthetic invalid token, zero-UUID token, and a synthetic invalid token with the distinct Olivais Sul name. Rollback-only transaction, no valid token accessed or logged.
+- Scope limitation: invalid-token denial does not establish valid-token cross-owner privacy, revocation, token entropy, browser/Data API delivery or full security signoff. Original task #17 remains **In progress**. Fixed original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes.
+
+## Overnight original #17: isolated share-token revocation regression (2026-11-07)
+
+- Added `tests/sql/opponent_public_share_revocation_isolated.sql`, commit `17ec063b0a2a8f7c479f8780870b07fe51548267`. It locks an existing enabled isolated link, measures the same opponent lookup, disables the link, asserts zero rows, restores its enabled state and compares the baseline, then rolls back all writes. The token is never emitted.
+- Re-fetched exact committed fixture and executed successfully on isolated project `tqpykeuuzcqudqtfrqmc` (no SQL error). Independent read-only count confirms **1 enabled link and 2 total links**, so the fixture did not take its no-enabled-link skip path. This verifies the transactional revocation boundary, **not** valid-token cross-owner privacy, nonempty positive result, token entropy or browser/Data API behavior.
+- Original #17 remains **In progress**; no acceptance status changes. Fixed KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes, merges or deployment.
+
+## Overnight original #17: valid share-token cross-owner isolation (2026-11-07)
+
+- Added rollback-only `tests/sql/opponent_public_share_valid_token_cross_owner_isolated.sql`, corrected to use two existing isolated owners (final commit `6eb1224484365bf166511e276e6afc0eb5402177`; initial fixture `04371a904516c22c1a100c103ecfb28bf8c9e8ef`). The initial attempt correctly failed an opponent owner foreign key, then the fixture was fixed.
+- Re-fetched and executed the exact committed SQL on isolated Supabase `tqpykeuuzcqudqtfrqmc`: **PASS**, zero SQL errors. An enabled parent share token resolved the owner's synthetic opponent metadata, not another owner's identically named opponent. Test ran as `anon` for RPC lookup and rolled back all inserted fixtures. No token or owner identity printed.
+- This is a valid-token cross-owner database regression, not comprehensive real browser/Data API, privacy settings, token entropy or full security signoff. Original #17 remains In progress. Original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes, merges or deployment.
+
+## Overnight original #17: public share-token structural hygiene (2026-11-07)
+
+- Added read-only `tests/sql/opponent_share_token_hygiene_readonly.sql`, commit `ec61ac3fe95dd73720e85737edb9e16b51b44153`.
+- Re-fetched and executed exact committed SQL in isolated Supabase `tqpykeuuzcqudqtfrqmc`: PASS. Two links, one enabled, two distinct non-null tokens, minimum length 24 and maximum 29 characters. No bearer token values were returned or logged.
+- This verifies current isolated snapshot token uniqueness and minimum length only; **does not prove cryptographic randomness, token-generation strength, production configuration, rate limiting or HTTP security**. Original #17 remains In progress, fixed original KPI 14 Passed, 0 Failed, 8 In progress, 11 To do (42%); additional 6 Passed, 0 Failed, 0 In progress, 1 To do. No production mutation, merge or deployment.
+
+## Overnight INT-01 isolated RPC contract inventory (2026-11-07)
+
+- Added read-only reproducible `tests/sql/away_weather_rpc_contract_inventory_readonly.sql`, commit `5c698741da555cf83d2b72dcba5343c85aac2fb2`. Re-fetched and executed exact committed SQL on isolated project `tqpykeuuzcqudqtfrqmc`.
+- Result: only `public.gate11_normalize_venue_name(p text) returns text` matched weather/venue/ground function names. **No weather-named RPC exists in the isolated project root.** This is a verified contract gap in that environment, not evidence that production lacks the RPC, nor proof of the exact UI call signature. PR #36 application diff and branch-specific DB environment still need comparison before designing a fix.
+- INT-01 stays Open; original KPI unchanged: **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes.
+
+## Feature-first development: opponent review UI integration (2026-11-07)
+
+- Implemented Settings opponent review notifications inbox (recipient-scoped via RLS), read acknowledgement, and admin-only approved-removal completion button in `index.html`, commit `7e75b46501fe7f1492127a0e4fcb1cd8cb75f36d`.
+- The completion action requires an approved request with a recorded decision, checks admin membership, requires explicit interactive confirmation and invokes `rpc/complete_approved_opponent_deletion`. Server RPC performs exact identity check and soft-delete; existing fixture records are not modified.
+- **Not yet Passed:** CI/browser/API acceptance must confirm the new UI against isolated Supabase and notification delivery; no production deployment or merge. Keep original #19 In progress and fixed 14/33 KPI. Prioritize completion rather than repeated unrelated audits. Backup/restore drill deferred by user, but production release still requires a recovery plan.
+
+## 2026-11-07: Task #19 feature-first acceptance checkpoint
+
+- `7e75b465`: Settings notification inbox and admin completion RPC UI connected. CI workflow `42354069293` passed, including opponent Settings, review inbox adapter, browser opponent approval and inbox adapter tests (mocked transport).
+- `7f8425f`: Settings notification GET/PATCH explicitly scoped to authenticated recipient.
+- `b9f8c839`: Pending **and approved** requests suppress duplicate user requests; completion UI requires RPC result `true`. CI workflow `42354846036` completed successfully.
+- **Original task #19 remains In progress:** authenticated live Data API and full application workflow with real session/notifications not yet evidenced. No production mutation or merge. Preserve original 33 tasks and the agreed KPI dashboard: 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional tasks: 6 Passed, 0 Failed, 0 In progress, 1 To do.
+
+## 2026-11-07: Task #19 review inbox false-success guard
+
+- Commit `d7395c90` changes `js/opponent-review-inbox.js` to require an affirmative `true` response from `rpc/complete_approved_opponent_deletion` before showing a success notification or refreshing. A false/null/empty server result now raises an error instead of falsely claiming deletion completed.
+- Commit `dccb78a6` updates `tests/regression_opponent_review_inbox.js` with an affirmative RPC mock and a negative false-response case asserting no success notification or refresh.
+- **Verification pending:** these commits are present on the feature branch, but this run did not execute the Node regression or confirm a GitHub Actions result. Do not mark #19 Passed or count a successful test. The browser/Data API integration remains outstanding. Original KPI stays 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope stays 6 Passed, 0 Failed, 0 In progress, 1 To do. No production changes, merge or deployment.
+
+## 2026-11-07: Browser negative-completion acceptance checkpoint
+
+- Current unfinished original #17 security acceptance, overlapping #19 approval UI: added Chromium regression for RPC completion responses `false`, `null`, `[]` and `{}` in `tests/browser_opponent_review_inbox.js` (commit `79bd0828717dfcc18d8be9deccf0d9cc7a31e390`). Assertions require an error, no success message, and no refresh. Existing positive case remains.
+- Test execution/CI **pending**; code committed, not yet a verified pass. No live authenticated Data API coverage. Next: inspect GitHub Actions on this commit, correct any failure, then exercise real isolated authenticated review workflow without production writes.
+- Original #17 and #19 remain In progress. Fixed original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes, merge or deployment.
+
+## 2026-11-07: Security #17 / approval #19 notification failure handling checkpoint
+
+- Latest shared tracker and branch reviewed before work; earlier agent browser-negative-completion regression `79bd082` was already present, so this checkpoint avoids editing that test.
+- `79d0fa0` modifies `js/opponent-review-inbox.js`: a malformed/non-array notification API response now raises an error instead of silently presenting an empty inbox. Mark-read captures the authenticated user ID once, preventing a changing identity callback from altering the recipient filter within one operation.
+- `025b824` adds negative tests in `tests/regression_opponent_review_inbox.js` for malformed API payloads and identity consistency.
+- **Tests not yet verified:** GitHub Actions / Node execution result pending. No claim of acceptance, no authenticated live API evidence. Next action: run `node tests/regression_opponent_review_inbox.js`, inspect CI and add authenticated isolated Data API test. Original #17/#19 remain In progress; KPI remains **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional **6 Passed, 0 Failed, 0 In progress, 1 To do**.
+- No production mutation, deployment or merge. Preserve 2026/27 fixture history, distinct Olivais Sul identity and administrator-only approval.
+
+## 2026-11-07: security #17 admin-confirmation identity continuity checkpoint
+
+- Handoff reviewed current feature branch, latest shared tracker, and prior manual/agent work. Current unfinished security #17 overlaps opponent approval #19. No changes to 2026/27 fixtures, historical names, federation aliases or Olivais Sul identity.
+- Commit `7d05731` updates `js/opponent-review-inbox.js`: after the asynchronous deletion confirmation dialog, re-check the same authenticated user and administrator role before calling `complete_approved_opponent_deletion`. Account switches, logout and revoked admin role fail closed.
+- Commit `abfe3bf` updates `tests/regression_opponent_review_inbox.js`: two negative cases simulate a user switch and admin revocation during confirmation and require zero completion RPC calls.
+- Verification status: code and regression committed; **Node/CI execution not yet confirmed**. No isolated Supabase SQL change needed for this client-side guard. Next agent/manual Go: execute `node tests/regression_opponent_review_inbox.js`, inspect CI, then verify authenticated isolated API workflow and server-side authorization independently. Do not mark #17 or #19 Passed on mock tests alone.
+- Original 33: **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional 7: **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes, merges or deployment.
+
+## 2026-11-07: original #27 CI SQL fixture coverage handoff
+
+- Reviewed latest shared tracker and recent branch commits before choosing independent unfinished #27; prior #17/#19 inbox work was already underway. Manual-session visibility beyond durable GitHub/tracker is limited.
+- Commit `427f04e877922f2bf638a4d72f10c3689239d9f3` updates `.github/workflows/federation-picker-regression.yml`: all `tests/sql/*.sql` changes now trigger PR regression, and four public-share security SQL fixtures are explicitly required to exist and be nonempty. This closes a CI trigger/fixture-inventory gap; it does **not** execute SQL fixtures or validate the authenticated Data API.
+- Test evidence: workflow YAML and tracked fixture names reviewed; GitHub Actions execution on this commit **not yet verified**. Next: inspect PR workflow run and run isolated PostgreSQL role-matrix fixtures; then add authenticated API/browser coverage. No production changes, merge, deployment or fixture writes.
+- Original fixed KPI remains **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional **6 Passed, 0 Failed, 0 In progress, 1 To do**. #27 remains In progress; no evidence-based task completion percentage.
+
+## 2026-11-07: Flag regression found and fixed; full local test suite executed directly (not CI-inferred)
+
+- Reviewing this PR for the "Complete Federation Catalogue, Opponent Cleanup and Picker Migration" assignment, found that the then-HEAD commit `bfba36a` ("enable read-only federation catalogue suggestions on development branch with local fallback") had flipped `FEDERATION_CATALOGUE_PICKER_ENABLED` from `false` to `true`, with no corresponding test update. This directly contradicted this PR's own description ("Feature flag remains OFF").
+- Ran every file in `tests/` directly in this session (`node tests/regression_*.js`, and the three `tests/browser_*.js` via the pre-installed Playwright/Chromium): with the flag at `true`, `regression_federation_match_save_contract.js` and `regression_federation_picker_release.js` failed with `AssertionError`s asserting the picker "must remain disabled." `browser_federation_picker.js` also locates its source by matching the literal string `const FEDERATION_CATALOGUE_PICKER_ENABLED = false;`, so it would have failed its first assertion too against `bfba36a`.
+- Fixed in commit `3ead77f` (pushed to this branch): flag reverted to `false`, improved comment kept, pointer added to this tracker's UX-01/QA-01 entries. **Re-ran all 11 files in `tests/` directly after the fix: all 11 pass** (8 `regression_*.js` + 3 `browser_*.js`, including `regression_opponent_review_inbox.js` and `browser_opponent_review_inbox.js` referenced as "not yet confirmed" in the 2026-11-07 checkpoints above — they pass now, under direct execution, in this session). PR #38 `mergeable_state` changed from `unstable` to `clean` after the push. Evidence comment posted on PR #38.
+- This does not change the open items above it: original #19 (live authenticated Data API / real session, not mocked transport), #17 (same), #10 (production canonical mapping for the 16 duplicate groups — still zero production mutation), #20 (real browser create/edit flow), and #27 (CI actually executing the `tests/sql/*.sql` PostgreSQL fixtures, not just asserting their presence) all remain open exactly as described in the entries above. Original 33-task KPI, additional-scope KPI and production state are otherwise unchanged by this entry: **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes, merge or deployment.
+- Note for whoever reads this next: a separate, independent Gate 13 production backup-and-restore engagement (different scope — full production logical backup + restore drill, not the federation catalogue) completed its own restore verification with a 38/38 exact-match, zero-mismatch result. If an earlier DR-01..DR-04 entry elsewhere in this tracker reads as a partial/blocked restore-test result, that is a stale snapshot relative to that later, more thorough restore test — flagging here so the two don't get out of sync in a future summary.
