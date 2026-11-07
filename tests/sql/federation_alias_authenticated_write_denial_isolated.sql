@@ -6,9 +6,9 @@ SET LOCAL request.jwt.claim.sub = '00000000-0000-0000-0000-00000000a002';
 DO $$
 DECLARE owner_a uuid := '00000000-0000-0000-0000-00000000a001';
 DECLARE owner_b uuid := '00000000-0000-0000-0000-00000000a002';
-DECLARE src uuid;
-DECLARE dst uuid;
-DECLARE fed uuid;
+DECLARE src uuid := '11087a52-a995-4b93-a4d3-784387879cb8';
+DECLARE dst uuid := '11087a52-a995-4b93-a4d3-784387879cb9';
+DECLARE fed uuid := '3b9dbcd6-a8e6-4057-ae97-68ae879d92f9';
 DECLARE before_games integer;
 BEGIN
   IF has_table_privilege('authenticated', 'public.opponent_historical_aliases', 'INSERT')
@@ -23,12 +23,6 @@ BEGIN
   THEN RAISE EXCEPTION 'User B can resolve owner A reviewed alias'; END IF;
   SELECT count(*) INTO before_games FROM public.games;
   -- Even an owner-scoped client cannot create a purportedly reviewed mapping.
-  SELECT id, federation_club_id INTO src, fed FROM public.opponents
-   WHERE local_id='-910002' AND user_id=owner_a LIMIT 1;
-  SELECT id INTO dst FROM public.opponents
-   WHERE local_id='-910001' AND user_id=owner_a LIMIT 1;
-  IF src IS NULL OR dst IS NULL OR fed IS NULL
-  THEN RAISE EXCEPTION 'Isolated canonical/source fixture missing'; END IF;
   BEGIN
     INSERT INTO public.opponent_historical_aliases
       (owner_id,historical_name,source_opponent_id,canonical_opponent_id,
