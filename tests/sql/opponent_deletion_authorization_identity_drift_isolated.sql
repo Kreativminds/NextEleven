@@ -42,19 +42,19 @@ BEGIN
  SET status='approved',decision_reason='Verified duplicate',reviewed_by=auth.uid(),reviewed_at=now()
  WHERE id=rid AND status='pending';
  IF NOT FOUND THEN RAISE EXCEPTION 'Admin approval failed'; END IF;
-END $;
+END $$;
 -- Only the actual owner may rename the opponent, not the administrator.
 SET LOCAL request.jwt.claim.sub='00000000-0000-0000-0000-00000000a002';
-DO $
+DO $$
 BEGIN
  UPDATE public.opponents SET payload=jsonb_set(payload,'{opponentName}',
  to_jsonb('Renamed After Approval'::text))
  WHERE user_id=auth.uid() AND payload->>'opponentId'='9002'
  AND payload->>'opponentName'='User B Private Opponent';
  IF NOT FOUND THEN RAISE EXCEPTION 'Identity-drift fixture could not be seeded'; END IF;
-END $;
+END $$;
 SET LOCAL request.jwt.claim.sub='00000000-0000-0000-0000-00000000a001';
-DO $
+DO $$
 DECLARE rid uuid:=current_setting('next11.auth_matrix_request')::uuid;
  denied boolean:=false;
 BEGIN
