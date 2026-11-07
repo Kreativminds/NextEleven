@@ -272,3 +272,9 @@ Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authentica
 - Added read-only `tests/sql/federation_alias_integrity_audit_readonly.sql` (commit `3ba0a515c6e04511967be5d2421e6a18a3b84a06`). It flags missing source/canonical, owner or federation mismatch, historical source-name drift, retired canonical and self-alias without modifying any records.
 - Executed the audit against isolated Supabase `tqpykeuuzcqudqtfrqmc`: returned **zero exception rows** at execution time. This is a baseline check, not proof of correctness for all 16 production duplicate groups or a positive/negative seeded test. No production access or mutations in this run.
 - Original #10 remains **In progress** pending production-reviewed canonical mappings, faithful fixture rehearsal and app integration. Original fixed KPI unchanged: 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope 6 Passed, 0 Failed, 0 In progress, 1 To do.
+
+## Overnight original #10: independent multi-finding alias audit (2026-11-07)
+
+- Added `tests/sql/federation_alias_integrity_multifinding_readonly.sql`, corrected commit `160db15be6cd462eb7d0f5b22202c0391e199cc0`. Unlike the previous first-match CASE audit, this reports every concurrent violation per alias (missing identities, owner/federation mismatches, source name drift, retired canonical, self-alias and conflicting canonical destinations). Reviewed aliases are valid before source retirement, so active sources are not flagged.
+- Executed read-only against isolated Supabase `tqpykeuuzcqudqtfrqmc`: **zero findings** in the inspected snapshot. No schema/data mutations. This does not verify production duplicate groups or prove negative seeded violations are detected.
+- Original #10 remains In progress; original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. Production untouched.
