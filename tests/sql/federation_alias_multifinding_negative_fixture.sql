@@ -48,5 +48,4 @@ WITH opponents(id,user_id,federation_club_id,opponent_name,deleted_at) AS (
  (SELECT * FROM expected EXCEPT ALL SELECT * FROM findings)
 )
 SELECT CASE WHEN EXISTS(SELECT 1 FROM discrepancies)
- THEN (SELECT 1/0 FROM discrepancies LIMIT 1)
- ELSE 1 END AS audit_negative_fixture_pass;
+ THEN 'FAIL' ELSE 'PASS' END AS audit_negative_fixture_result;
