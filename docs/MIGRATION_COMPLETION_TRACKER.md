@@ -401,3 +401,10 @@ Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authentica
 - Implemented Settings opponent review notifications inbox (recipient-scoped via RLS), read acknowledgement, and admin-only approved-removal completion button in `index.html`, commit `7e75b46501fe7f1492127a0e4fcb1cd8cb75f36d`.
 - The completion action requires an approved request with a recorded decision, checks admin membership, requires explicit interactive confirmation and invokes `rpc/complete_approved_opponent_deletion`. Server RPC performs exact identity check and soft-delete; existing fixture records are not modified.
 - **Not yet Passed:** CI/browser/API acceptance must confirm the new UI against isolated Supabase and notification delivery; no production deployment or merge. Keep original #19 In progress and fixed 14/33 KPI. Prioritize completion rather than repeated unrelated audits. Backup/restore drill deferred by user, but production release still requires a recovery plan.
+
+## 2026-11-07: Task #19 feature-first acceptance checkpoint
+
+- `7e75b465`: Settings notification inbox and admin completion RPC UI connected. CI workflow `42354069293` passed, including opponent Settings, review inbox adapter, browser opponent approval and inbox adapter tests (mocked transport).
+- `7f8425f`: Settings notification GET/PATCH explicitly scoped to authenticated recipient.
+- `b9f8c839`: Pending **and approved** requests suppress duplicate user requests; completion UI requires RPC result `true`. CI workflow `42354846036` completed successfully.
+- **Original task #19 remains In progress:** authenticated live Data API and full application workflow with real session/notifications not yet evidenced. No production mutation or merge. Preserve original 33 tasks and the agreed KPI dashboard: 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional tasks: 6 Passed, 0 Failed, 0 In progress, 1 To do.
