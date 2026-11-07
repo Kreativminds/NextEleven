@@ -10,9 +10,9 @@ BEGIN
  WHERE enabled IS TRUE AND share_token IS NOT NULL AND length(share_token)>0
  ORDER BY created_at LIMIT 1;
  IF v_token IS NULL THEN RAISE EXCEPTION 'No enabled isolated share link'; END IF;
- v_other := CASE WHEN v_owner <> '00000000-0000-4000-8000-000000000099'::uuid
- THEN '00000000-0000-4000-8000-000000000099'::uuid
- ELSE '00000000-0000-4000-8000-000000000098'::uuid END;
+ SELECT user_id INTO v_other FROM public.opponents
+ WHERE user_id <> v_owner ORDER BY user_id LIMIT 1;
+ IF v_other IS NULL THEN RAISE EXCEPTION 'No second existing isolated owner'; END IF;
  IF EXISTS(SELECT 1 FROM public.federation_clubs
  WHERE lower(official_name)=lower(v_name))
  THEN RAISE EXCEPTION 'Synthetic name collision'; END IF;
