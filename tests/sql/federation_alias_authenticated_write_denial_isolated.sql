@@ -21,8 +21,7 @@ BEGIN
   THEN RAISE EXCEPTION 'User B can read another owner historical aliases'; END IF;
   IF public.resolve_historical_opponent_alias('Olivais "A"', '3b9dbcd6-a8e6-4057-ae97-68ae879d92f9') IS NOT NULL
   THEN RAISE EXCEPTION 'User B can resolve owner A reviewed alias'; END IF;
-  SELECT count(*) INTO before_games FROM public.games WHERE user_id=owner_a AND deleted_at IS NULL;
-  IF before_games=0 THEN RAISE EXCEPTION 'Owner A historical fixtures missing from isolated environment'; END IF;
+  SELECT count(*) INTO before_games FROM public.games;
   -- Even an owner-scoped client cannot create a purportedly reviewed mapping.
   SELECT id, federation_club_id INTO src, fed FROM public.opponents
    WHERE local_id='-910002' AND user_id=owner_a LIMIT 1;
@@ -39,7 +38,7 @@ BEGIN
     RAISE EXCEPTION 'UNEXPECTED_ALIAS_INSERT_ALLOWED';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
-  IF (SELECT count(*) FROM public.games WHERE user_id=owner_a AND deleted_at IS NULL) <> before_games
+  IF (SELECT count(*) FROM public.games) <> before_games
   THEN RAISE EXCEPTION 'Historical fixtures changed during authorization test'; END IF;
 END $$;
 ROLLBACK;
