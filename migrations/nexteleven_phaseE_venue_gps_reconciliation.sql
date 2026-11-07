@@ -1,0 +1,82 @@
+-- ============================================================================
+-- NEXT ELEVEN | PHASE E — Venue and GPS reconciliation against the two
+-- official AFL PDFs (CD Sub-14, 2026/27 season). Applied live to production
+-- via apply_migration under the name
+-- "nexteleven_phaseE_venue_dimension_correction" (see Supabase migration
+-- history for the executed statement). This file is the git-tracked
+-- narrative record of what was found and why each decision was made.
+-- ============================================================================
+
+-- METHOD -- venue content, not just structural coverage:
+--   Phase A (see nexteleven_phaseA_federation_pdf_reconciliation.sql)
+--   confirmed every registered club has >=1 venue row and that all
+--   multi-venue clubs are structurally present, but explicitly deferred
+--   venue-by-venue field content (name/AFL venue code/dimensions/surface)
+--   and GPS coverage to this gate.
+--
+--   All 100 production federation_club_venues rows were compared
+--   field-by-field against the PDF-parsed venue structure (venue_id,
+--   venue_name, pitch length/width, surface), keyed on afl_venue_code --
+--   never on venue name alone, consistent with the rest of this
+--   assignment's identity-matching discipline.
+
+-- RESULT -- 1 confirmed, independently-verified discrepancy:
+--   - AD Pastéis (afl_club_id 5919), venue 1945 "Campo Ferroviário-
+--     Marvila": production had pitch_length_m=102.0; the official
+--     document shows 100.0. Confirmed in TWO independent places in the
+--     raw PDF text, not just the parser's structured output: the
+--     participant-section venue line itself ("1945 - CAMPO FERROVIARIO-
+--     MARVILA (Relvado Sintético 100.0x64.0)"), and separately in two
+--     unrelated PROGRAMA DE JOGOS fixture cross-reference lines showing
+--     the same venue as "(1945) CAMPO FERROVIARIO-MARVILA(100.0x64.0)".
+--     pitch_width_m (64.0) and surface were already correct -- only the
+--     length digit was wrong. Corrected 102.0 -> 100.0. No foreign key
+--     anywhere in the schema targets federation_club_venues, so this
+--     correction is structurally incapable of touching any game, season,
+--     or user data.
+
+-- FLAGGED, NOT CHANGED -- Sacavenense (afl_club_id 1017), venue 1518
+-- "Complexo Desportivo Elias Pereira - Campo Nº 1":
+--   The existing row's own note claims this venue is "CONFIRMED... shared
+--   between this club's own 'B' and 'C' squads" in the 2026/27 document.
+--   Independent re-verification this gate does not support that claim:
+--   a direct text search of both official PDFs (participant section AND
+--   every fixture line) finds exactly ONE Sacavenense registration for
+--   this season -- squad "B" only, III Divisão Série 3, at venue 2061
+--   ("Campo Nº 3") -- with no "C" squad anywhere and no fixture ever
+--   naming venue 1518. Per the same caution applied throughout this
+--   assignment (e.g. AD Pastéis' own row already flags that an earlier
+--   "shared with Oriental" venue claim "does NOT hold for the current
+--   season"), this row was left exactly as it is rather than deleted or
+--   silently altered: the venue may be correct for a different season,
+--   a different division, or a source this gate was not given --
+--   deleting it on this gate's evidence alone would risk destroying a
+--   legitimate record. Flagged here for Victor's awareness and decision.
+
+-- GPS COVERAGE -- reported separately from picker completion, per the
+-- assignment's explicit instruction:
+--   federation_clubs.venue_lat / venue_lng / map_url: 0 of 92 rows
+--   populated (confirmed by direct count, not sampling). The two official
+--   AFL PDFs used across Phases A/B/E contain club names, AFL IDs, venue
+--   names/codes, pitch dimensions, surface and locality text -- NOT GPS
+--   coordinates -- so they cannot be used to backfill this field.
+--   The only other coordinate-bearing data anywhere in the app
+--   (index.html's "Home Ground" homeGroundLat/homeGroundLng fields on a
+--   user's own season/club record) is a different, per-user, manually
+--   typed field for a different purpose (powering that user's own
+--   weather-forecast widget) -- not a verified, authoritative source for
+--   the shared, user-independent federation_clubs catalogue, and reusing
+--   it here would mean inferring one user's typed pin as an official
+--   club's location, which the assignment's "never invent lat/long"
+--   instruction forbids. No GPS backfill was therefore performed. GPS
+--   coverage for the federation catalogue remains at 0% pending an
+--   authoritative source document (e.g. an official AFL venue-coordinate
+--   export) that this gate was not given.
+
+-- PRODUCTION INTEGRITY -- confirmed after applying the migration, not
+-- assumed:
+--   federation_club_venues total rows = 100 (unchanged). Exactly 1 row's
+--   pitch_length_m changed (102.0 -> 100.0, afl_venue_code 1945). No other
+--   table touched.
+
+select 'NEXT ELEVEN Phase E complete. All 100 production federation_club_venues rows compared field-by-field (venue name, AFL venue code, pitch dimensions, surface) against the two official AFL PDFs, keyed on afl_venue_code. Result: 1 confirmed discrepancy corrected (AD Pastéis venue 1945, pitch_length_m 102.0 -> 100.0, independently verified in two separate places in the PDF text) and 1 pre-existing "confirmed" claim (Sacavenense venue 1518) found unsubstantiated by independent re-verification and flagged for Victor rather than altered without a clearer source. GPS coverage (federation_clubs.venue_lat/venue_lng/map_url) confirmed at 0 of 92 rows; no trustworthy existing source exists anywhere in the app to backfill from (the official PDFs carry no coordinates, and the only other coordinate data in the app is a different, per-user, manually-entered field for an unrelated purpose) -- reported here separately from picker completion, with no GPS values invented.' as status;

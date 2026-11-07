@@ -1,0 +1,76 @@
+-- ============================================================================
+-- GATE 12.2 — Priority B, items 1-3: exact Phase A migration manifest,
+-- production schema assumption verification, migration dependency
+-- confirmation. READ-ONLY against production (wicydcvdakqopodbxtrl). Nothing
+-- applied. Builds on, does not repeat, gate10_7_final_release_package.sql.
+-- ============================================================================
+
+-- 1. EXACT PHASE A MIGRATION FILES AND EXECUTION ORDER (unchanged from
+--    gate10_7_final_release_package.sql, reconfirmed current this gate):
+--      [1] migrations/gate3_federation_catalogue.sql
+--      [3] migrations/gate4_federation_clubs_seed.sql
+--      [4] migrations/gate4_remediation_federation_clubs_full_roster.sql
+--      [7] migrations/gate5_federation_venue_validation.sql        (GATE 11 FIXED)
+--      [8] migrations/gate5_resolution_afl_official_2026_27.sql     (GATE 11 FIXED)
+--      [9-part1] migrations/gate8_security_hardening_and_public_page_fix.sql, REVOKE
+--                block only (part 2's resolver CREATE OR REPLACE is Phase B)
+--    File [1] in full was re-read this gate (not just its venue-related
+--    tail that Gate 11's rehearsal exercised). It contains 5 sections:
+--    federation_clubs DDL+RLS, federation_club_competitions DDL+RLS, the
+--    additive opponents.federation_club_id column, the alias-row
+--    convention (no DDL), and the resolve_opponent_lookup() function.
+--    CONFIRMED NEITHER federation_club_id NOR resolve_opponent_lookup
+--    exist in production today (queried directly, this gate) -- so file
+--    [1] in its ENTIRETY is still pending, exactly as Phase A's manifest
+--    already assumed; nothing has been partially applied out of band.
+
+-- 2. PRODUCTION SCHEMA VS GATE 11's TESTED ASSUMPTIONS -- all CONFIRMED MATCH:
+--    - public.opponents: id/family_id/device_id/local_id/payload(jsonb)/
+--      created_at/updated_at/deleted_at/sync_status/user_id -- the exact
+--      payload-jsonb shape resolve_opponent_lookup() and every prior gate
+--      assumed. Matches Gate 11's rehearsal assumption exactly.
+--    - public.team_alias_mappings: same payload-jsonb shape, with user_id
+--      and deleted_at present -- matches resolve_opponent_lookup() step2's
+--      join conditions exactly.
+--    - gen_random_uuid(): resolves correctly bare (no extensions. prefix
+--      needed) -- confirmed two ways: (a) search_path is
+--      '"$user", public, extensions', so the pgcrypto-provided function in
+--      the extensions schema is reachable unqualified; (b)
+--      public.club_teams.id already defaults to bare gen_random_uuid() in
+--      this exact production database today, proving it already resolves
+--      correctly for this role. File [1]'s federation_clubs /
+--      federation_club_competitions DDL (which both default id to
+--      gen_random_uuid()) will work unmodified.
+--    - Extensions installed: btree_gist, pg_stat_statements, pgcrypto,
+--      uuid-ossp, plpgsql, supabase_vault -- all required extensions
+--      already present; nothing needs enabling.
+--    - federation_clubs / federation_club_competitions / federation_club_venues:
+--      confirmed ABSENT from production (0 rows returned querying
+--      information_schema.tables for 'federation_%') -- clean slate,
+--      matching every prior gate's "production is at zero" assumption.
+--    - Postgres engine: 17.6.1.127 (Postgres 17) -- same major version
+--      class the isolated test project and the gate11_clean rehearsal
+--      schema ran on; no version-specific syntax risk identified.
+
+-- 3. MIGRATION DEPENDENCIES -- all CONFIRMED SATISFIED, no missing piece:
+--    [1] depends only on public.opponents (exists, correct shape) and
+--        public.team_alias_mappings (exists, correct shape, no DDL needed
+--        for the alias convention it documents).
+--    [3]/[4] depend on [1]'s federation_clubs table existing first (listed
+--        after it in the manifest -- order already correct).
+--    [7]/[8] depend on [3]/[4]'s seeded clubs existing first (order already
+--        correct) and on the Gate 11 fix already committed to both files
+--        (confirmed present by reading both files' current content this
+--        gate -- gate11_normalize_venue_name() function, the populated
+--        afl_venue_code column, the "4b" supersede step, the three-way-OR
+--        dedup guard are all in place).
+--    [9-part1] (REVOKE block) depends only on federation_clubs/_competitions/
+--        _venues and team_alias_mappings existing (both already true by
+--        this point in the sequence) -- confirmed its REVOKE statements
+--        touch ONLY those 4 tables' grants, nothing else (re-read in full
+--        this gate); no reference to games/players/card_events/goal_events/
+--        opponents' data rows anywhere in the REVOKE block.
+--    No circular dependency, no file in the manifest depends on anything
+--    NOT already in the manifest or already live in production.
+
+select 'Gate 12.2 complete. Phase A manifest reconfirmed (6 files, exact order, unchanged from Gate 10.7/11.8). Production schema matches every assumption Gate 11''s rehearsal relied on: opponents and team_alias_mappings payload-jsonb shape confirmed, gen_random_uuid() confirmed resolvable (proven live via club_teams.id default), all required extensions present, federation_% tables confirmed still absent (clean slate), Postgres 17.6 engine. All migration dependencies confirmed satisfied in the stated order. No production change made.' as status;

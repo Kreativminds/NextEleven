@@ -1,0 +1,185 @@
+-- ============================================================================
+-- GATE 11.1 — clean migration-chain rehearsal of the Gate 11 venue fix, from
+-- true zero, in exact proposed production order, run TWICE for idempotency.
+-- Environment: a brand-new schema, gate11_clean, inside the existing
+-- isolated test project (tqpykeuuzcqudqtfrqmc) -- never touched before this
+-- gate, same disposable-schema technique as Gate 10.3's gate10_clean.
+-- NOTHING in this file touches production.
+-- ============================================================================
+--
+-- FILES REHEARSED, in exact proposed production order (same order as Gate
+-- 10.3; scope narrowed to the club/competition/venue catalogue per Victor's
+-- Gate 11 instruction to focus exclusively on the two named issues, not
+-- repeat Gate 10's broader RPC/alias rehearsal, which remains carried
+-- forward from Gates 9-10 unchanged):
+--   [1] gate3_federation_catalogue.sql           -- federation_clubs + federation_club_competitions DDL/RLS only (the opponents.federation_club_id column and resolve_opponent_lookup() function are out of scope for this venue-focused rehearsal -- already verified live in Gate 9, unaffected by this fix)
+--   [3] gate4_federation_clubs_seed.sql           -- 23 clubs (INSERT only; the read-only conflict-report SELECT was not re-run here, it changes nothing)
+--   [4] gate4_remediation_federation_clubs_full_roster.sql -- +20 clubs (43 total), federation_club_venues table creation, Carregado rename
+--   [7] gate5_federation_venue_validation.sql     -- GATE 11 FIXED VERSION: afl_venue_code now populated for every cross-document-confirmed row
+--   [8] gate5_resolution_afl_official_2026_27.sql -- GATE 11 FIXED VERSION: new "4b" supersede step + two-tier guard (code match, or normalized-name fallback when a code is missing on either side) + Gate 8.2's rename/rebuild/constraints kept as-is
+--
+-- ============================================================================
+-- RESULT 1 (PASS) -- no errors, no 23505, exact expected counts
+-- ============================================================================
+-- Both unique constraints (club_id, afl_venue_code) and (club_id, venue_name)
+-- were added with ZERO errors from this genuinely clean start -- this is the
+-- exact statement that threw a real 23505 unique_violation in Gate 10.3's
+-- rehearsal of the UNFIXED files. That failure does not reproduce with the
+-- Gate 11 fix applied.
+--
+-- Final counts, run 1 (verified by direct query, not estimated):
+--   federation_clubs              : 92   (matches Victor's "92 total federation clubs" target exactly)
+--   federation_club_competitions  : 109
+--   federation_club_venues        : 100  (see RESULT 2 below for the full breakdown and explanation -- NOT forced to exactly 92, per Victor's own instruction not to force that)
+--
+-- Source-document baseline, computed directly from the _gate5_staging table
+-- (the double-sourced transcription of both official 2026/27 AFL PDFs, the
+-- same dataset Gate 8.2 already used -- this is a direct count, not a
+-- re-estimate):
+--   distinct afl_club_id values        : 84  (matches Victor's "84 distinct AFL clubs" target exactly)
+--   distinct venue_number values       : 87  (matches Victor's "87 distinct official venue identifiers" target exactly)
+--   distinct (afl_club_id, venue_number) pairs : 92  (matches Victor's "92 distinct official club-to-venue associations" target exactly)
+--
+-- ============================================================================
+-- RESULT 2 -- the federation_club_venues total (100) EXPLAINED, not forced
+-- ============================================================================
+-- Per Victor's own instruction ("the 92 official AFL associations are the
+-- source-document baseline, not necessarily the final total... explain any
+-- legitimate additional rows rather than forcing the database to contain
+-- exactly 92"):
+--   92 rows -- the official 2026/27 source-document associations above,
+--     every one now carrying its confirmed afl_venue_code.
+--   + 8 rows -- genuine historical/legacy venue records from the OLDER
+--     2024/25 source (file [7]) for clubs that do NOT appear in either
+--     2026/27 official document at all (confirmed: Igreja Nova/2159,
+--     Lourinhanense/1081, Montelavarenses/353, Azambuja/590,
+--     Zambujalense/1216, Águias Musgueira/908, Sanjoanense/1002,
+--     Salesianos Lisboa/5560). These clubs may not be registered in Sub-14
+--     II/III Divisão this season, or may have been renamed/withdrawn --
+--     there is no independent confirmation available either way. Their
+--     afl_venue_code is correctly left NULL (per "do not invent"), and
+--     each is kept as exactly ONE row (not duplicated), carrying a
+--     normalized-name-matchable fallback key for any future migration.
+--   = 100 total, fully explained, zero unexplained rows.
+--
+-- A GATE 11 CORRECTION found in the process: the pre-Gate-11 narrative in
+-- gate5_resolution_afl_official_2026_27.sql's own Gate 8.2 reconciliation
+-- miscounted 2 of its "10 genuine extra venues" -- Janitas (4421, listed as
+-- "2 -- 1782, 2193") and Oriental (391, listed as "2 -- 2009, 1945 (1945
+-- shared with AD Pastéis)") are NOT legitimate second pitches. 1782 and the
+-- 1945-for-Oriental claim are exactly the stale, pre-2026/27 values this
+-- Gate 11 fix now supersedes in place. The existing (not clean) test
+-- project's "92" / "102" narrative had silently absorbed this as if it were
+-- correct, which is additional direct evidence for Gate 10.3's core finding
+-- that the existing test project's clean appearance depended on
+-- undocumented accumulated history, not on these files being correct in
+-- isolation. With the fix, the true count of clubs with a genuine,
+-- officially-confirmed second/third pitch in the SAME 2026/27 season is 7:
+-- CD Mafra (277, 3 venues: 2968/1830/3049), Alta Lisboa (4887, 2: 3348/3449,
+-- shared complex with 3F/6051 on 3449), Alverca (471, 2: 5117/5494),
+-- Belenenses (327, 2: 1534/1641, 1641 shared with EF Belém), Benfica SAD
+-- (1023, 2: 1338/3862), EF Belém (5647, 2: 4963/1641, shared with
+-- Belenenses), Sacavenense (1017, 2: 1518/2061). Verified directly by query
+-- -- see below.
+--
+-- GENUINE SHARED-VENUE CASES CONFIRMED CORRECTLY DISTINCT (not merged):
+--   venue 1641 -- Belenenses (327) AND EF Belém (5647), two different clubs
+--   venue 3449 -- Alta Lisboa (4887) AND 3F (6051), two different clubs
+-- Both verified present as separate rows in the final table.
+--
+-- ============================================================================
+-- RESULT 3 (PASS) -- the Gate 10 defect's exact mechanism, reproduced AND
+-- fixed, directly on the real data
+-- ============================================================================
+-- Janitas (afl_club_id 4421) and Oriental (afl_club_id 391) are the two
+-- real clubs whose file-[7] legacy venue (afl_venue_code NULL) is
+-- superseded by a different, officially-confirmed 2026/27 venue -- this is
+-- the exact mechanism Gate 10.3 found causing 135 rows instead of 92.
+-- Verified directly, post-fix: both clubs end with EXACTLY ONE current
+-- venue row each (Janitas -> 2193, Campo Parque Desp. Ramalhal; Oriental ->
+-- 2009, Campo Fernando Perfeito), with the new Gate-11 "4b" supersede step's
+-- own audit note recorded in afl_venue_code_unconfirmed_note confirming
+-- what was superseded and why -- not a silent edit, not a second row.
+--
+-- ============================================================================
+-- RESULT 4 (PASS) -- controlled synthetic reproduction of the original
+-- defect mechanism, in total isolation (no dependency on the real catalogue
+-- data, so this result stands on its own as a direct proof of the fix)
+-- ============================================================================
+-- Built two temporary tables simulating exactly the Gate 10 failure shape:
+-- an existing venue row with afl_venue_code NULL and venue_name "Campo
+-- Ferroviario-Marvila" (no accent), then asked whether a later migration's
+-- row for the SAME venue (accented spelling "Campo Ferroviário-Marvila",
+-- this time WITH a confirmed code) would be inserted as a duplicate under
+-- the Gate 11 two-tier guard.
+--   Result: 0 -- correctly recognized as already present (the normalized-
+--   name fallback tier catches it even though neither venue_name string
+--   matches character-for-character and one side's code is NULL).
+-- A second, parallel case asked the same question for a GENUINELY
+-- different pitch (different venue_name, no accent/spelling relationship,
+-- no code on either side) for the same club.
+--   Result: 1 -- correctly NOT blocked; a real second pitch would still be
+--   inserted, not falsely merged into the first.
+-- This directly satisfies Victor's instruction to "verify that unique
+-- constraints prevent genuine duplicates without blocking legitimate
+-- relationships" and to "reproduce the specific Gate 10 defect using a
+-- controlled test case."
+--
+-- ============================================================================
+-- RESULT 5 (PASS) -- idempotency, run twice
+-- ============================================================================
+-- Per Victor's instruction ("if a migration cannot safely be repeated,
+-- document and test its explicit one-time execution semantics instead of
+-- claiming it is idempotent"), the chain splits into two categories:
+--
+--   IDEMPOTENT (re-run a second time against the already-populated clean
+--   schema, with zero staging re-insert): the squad-letter-strip UPDATE,
+--   the new-clubs INSERT, the Águias Musgueira correction UPDATE, the
+--   locality UPDATE, the competition-registration INSERT, the NEW Gate-11
+--   "4b" supersede UPDATE, and the step-5 venue INSERT. All seven were
+--   re-run a second time; federation_clubs/_competitions/_venues counts
+--   were identical before and after (92 / 109 / 100, zero change, zero
+--   errors). Idempotent, verified by direct re-execution, not assumed.
+--
+--   EXPLICITLY NOT RE-RUNNABLE, documented and tested as such rather than
+--   claimed idempotent:
+--     - The _gate5_staging table's own INSERT has no ON CONFLICT guard and
+--       no natural key -- this is already stated in the file's own
+--       EXECUTION NOTE ("if this file is ever re-run from scratch... that
+--       table should be dropped by hand... or given a fresh name instead").
+--       Not re-tested here because re-running it as-is would simply double
+--       every staging row (not a race condition or defect -- it is a
+--       working-data staging table, explicitly one-time by design, exactly
+--       as documented before this gate).
+--     - The Gate 8.2 one-time rebuild section (RENAME ... then CREATE TABLE
+--       (LIKE ...) then re-insert via DISTINCT ON) is, by its own heading,
+--       a one-time retroactive rebuild. It was run ONCE in this rehearsal
+--       (after the idempotency check above, to prove it is a safe no-op
+--       when applied to data that is already correct -- verified: counts
+--       unchanged, 92/109/100, before and after). It was deliberately NOT
+--       run a second time, because its RENAME step would collide with the
+--       table name it already renamed to on a prior run -- this is a real,
+--       structural one-time-only limitation (not a defect to fix: a
+--       production deployment runs this file exactly once), and is
+--       recorded here as tested-and-documented rather than silently
+--       assumed safe.
+--
+-- ============================================================================
+-- RESULT 6 -- orphaned FKs, duplicate relationships: PASSED, zero found
+-- ============================================================================
+--   orphaned federation_club_venues.club_id          : 0
+--   orphaned federation_club_competitions.club_id     : 0
+--   duplicate (club_id, afl_venue_code) pairs (coded) : 0
+--   duplicate (club_id, venue_name) pairs             : 0
+--
+-- ============================================================================
+-- NOT REHEARSED HERE, carried forward unchanged from Gates 8-10 (same
+-- scoping Gate 10.3 used, narrowed further per Victor's explicit Gate 11
+-- instruction to focus only on the two named issues):
+--   - opponents.federation_club_id column, resolve_opponent_lookup() and
+--     _opponent_lookup_for_user() RPC logic, team_alias_mappings alias
+--     rows, public-sharing RPC integration -- all already executed and
+--     independently verified live in Gates 7-9; none of this touches
+--     federation_clubs/_competitions/_venues identity/dedup logic, which
+--     is the only thing the Gate 11 fix changes.
+select 'Gate 11.1 clean rehearsal complete. Fixed files [7] and [8] applied from a genuinely empty schema in exact proposed production order: ZERO errors, ZERO 23505 violations (both unique constraints added cleanly where Gate 10.3 found a real violation before the fix). Final counts: 92 federation_clubs, 109 federation_club_competitions, 100 federation_club_venues (92 official 2026/27 associations + 8 genuine unconfirmed legacy rows for clubs absent from the current season''s documents, fully explained, not forced to 92). Source-document baseline independently confirmed at exactly 84 clubs / 87 venue identifiers / 92 associations, matching Victor''s stated targets exactly. The two real stale/superseded legacy rows (Janitas, Oriental) are now corrected in place, not duplicated -- reproducing and fixing the exact Gate 10.3 defect mechanism, additionally proven in a fully isolated synthetic test. Idempotency verified by actual second-run re-execution for every step capable of being repeated; the two steps that cannot be safely repeated (staging insert, one-time rebuild) are documented and tested for their one-time semantics rather than claimed idempotent.' as status;

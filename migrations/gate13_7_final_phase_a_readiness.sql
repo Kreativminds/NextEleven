@@ -1,0 +1,84 @@
+-- ============================================================================
+-- GATE 13.7 — Final Phase A migration readiness: duplicate checks, A/B/C
+-- squad distinctions, RLS/function security, stop conditions. Verified
+-- against the Gate 11-fixed clean rehearsal (gate11_clean schema, test
+-- project tqpykeuuzcqudqtfrqmc). PREPARATION ONLY -- not applied to
+-- production.
+-- ============================================================================
+
+-- NO DUPLICATE AFL CLUB IDS -- CONFIRMED (direct count, this gate):
+--   total federation_clubs rows            : 92
+--   distinct non-null afl_club_id values    : 92
+--   (equal -- zero duplicates, confirmed project-wide, not sampled)
+
+-- NO DUPLICATE CLUB-TO-VENUE ASSOCIATIONS -- CONFIRMED (direct count):
+--   duplicate (club_id, afl_venue_code) pairs where afl_venue_code is
+--     not null                              : 0
+--   duplicate (club_id, lower(venue_name)) pairs, ALL rows (both coded
+--     and uncoded)                           : 0
+--   total federation_club_venues rows        : 100 (92 coded + 8 explained
+--     unconfirmed legacy, unchanged since Gate 11)
+--   total federation_club_competitions rows  : 109
+
+-- CORRECT A/B/C SQUAD DISTINCTIONS -- CONFIRMED (re-verified this gate,
+-- same method as Gate 13.3): 3 real clubs (EF Belém/5647, Santa Maria/1151,
+-- Vila Verde/1114) each have exactly 1 federation_clubs row and 3 distinct
+-- federation_club_competitions rows (squad_label A/B/C), all correctly
+-- referencing their single shared club. See gate13_3 for the full
+-- breakdown and the matching frontend-level proof.
+
+-- SECURE RLS AND FUNCTION PERMISSIONS -- CONFIRMED (direct query, this
+-- gate): all 3 federation catalogue tables (federation_clubs, federation_
+-- club_competitions, federation_club_venues) have RLS ENABLED with exactly
+-- 1 policy each (the public-read SELECT-only policy from file [1] --
+-- gate3_federation_catalogue.sql) -- matches the files' own committed
+-- design, no drift. resolve_opponent_lookup() is defined with an explicit
+-- `set search_path to 'public'` (not mutable -- avoids the search-path-
+-- hijack class of issue the project's OTHER, unrelated functions are
+-- flagged for by Supabase's advisor). Phase A's own REVOKE block (file
+-- [9-part1]) narrows anon/authenticated to SELECT-only on the 3 catalogue
+-- tables before any of this reaches production -- already verified in
+-- Gate 12.2/13.5.
+
+-- NO HIDDEN DEPENDENCY ON MANUAL CORRECTIONS FROM EARLIER GATES --
+-- CONFIRMED: this is precisely what the Gate 11.1 clean-schema rehearsal
+-- (gate11_clean, a schema that had NEVER been touched before that gate)
+-- was built to prove, and every figure in this file was re-queried against
+-- that same clean schema, not the original (non-clean) test project's
+-- `public` schema, which carries years of ad-hoc manual-correction history
+-- (Gate 10.3's central finding). Nothing in today's re-verification touched
+-- or depended on that older schema.
+
+-- STOP CONDITIONS, BY FAILURE MODE (prepared, not triggered):
+--   Migration stops midway          : preserve state, do not auto-rollback;
+--     re-run the same file from the start once root-caused (every file is
+--     proven idempotent, Gate 11.1) -- see gate13_5 for the full procedure.
+--   A constraint fails               : this is the Gate 10.3 failure mode,
+--     now fixed and twice-proven clean (Gate 11.1) -- if it recurs in
+--     production despite that, it means production's data differs from
+--     every rehearsal's assumption in a way Gate 12.2's schema check did
+--     not anticipate; stop and investigate the specific violating row
+--     before any retry.
+--   Federation RPC functions fail    : resolve_opponent_lookup/
+--     _opponent_lookup_for_user are both SELECT-only, read-only functions
+--     (confirmed by reading their bodies, Gate 12.4) -- a failure here
+--     cannot corrupt data; stop, the existing get_public_team_data path
+--     Phase B patches has a documented rollback (CREATE OR REPLACE back to
+--     its pre-patch body, proven live in Gate 9.6).
+--   Application cannot access the catalogue : this is the EXACT scenario
+--     regression_gate8_rollback_safety.js tests (5/5 passed, re-confirmed
+--     this gate's 107/8/0 run) -- the app is proven to degrade gracefully
+--     (local opponents only, no error) -- not a stop condition for Phase A
+--     itself, since Phase A ships with the picker flag OFF.
+--   Existing opponent lookup misbehaves : Phase A does not modify
+--     `opponents` or any existing lookup path -- `resolve_opponent_lookup`
+--     is new, additive, and not wired into the live app until Phase B;
+--     if observed, stop and treat it as evidence of an UNRELATED change,
+--     not this migration -- re-run Gate 13.4's unchanged-tables baseline
+--     immediately to confirm/rule out.
+--   Public sharing is affected        : same logic -- Phase A makes no
+--     change to get_public_team_data or team_share_links; if public
+--     sharing breaks, it did not come from this migration -- re-run the
+--     baseline check immediately rather than assuming causation.
+
+select 'Gate 13.7 complete. Final Phase A readiness confirmed: no duplicate AFL club IDs (92=92), no duplicate club-to-venue associations (0 both by code and by name), A/B/C squad distinctions correct (3 real clubs, 9 registrations, re-verified), RLS enabled with exactly 1 read-only policy per catalogue table, no hidden dependency on earlier manual corrections (verified against the genuinely clean schema). Stop conditions documented per failure mode, all non-destructive. Not applied to production.' as status;

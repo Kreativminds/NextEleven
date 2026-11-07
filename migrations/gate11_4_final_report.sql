@@ -1,0 +1,191 @@
+-- ============================================================================
+-- GATE 11.9 — FINAL GATE 11 REPORT
+-- Production security remediation + venue migration fix + release validation
+-- Passed / Failed / Blocked / Not Tested used consistently throughout.
+-- NOTHING in this file is executed against production.
+-- ============================================================================
+
+-- 1. SECURITY REMEDIATION READINESS AND APPROVAL STATUS -- READY, PASSED
+--    all 5 pre-checks, STILL AWAITING APPROVAL (not executed)
+--    Reconfirmed fresh, read-only, this gate: opponents_merge_plan_tmp --
+--    RLS disabled, 0 policies, 35 rows unchanged. Supabase's own advisor
+--    still flags this as the ONLY "RLS Disabled in Public" finding
+--    project-wide. No change since Gate 10.1. This prompt does not
+--    authorize execution; awaiting Victor's separate approval of exactly:
+--      ALTER TABLE public.opponents_merge_plan_tmp ENABLE ROW LEVEL SECURITY;
+
+-- 2. VENUE MIGRATION ROOT-CAUSE FIX -- PASSED
+--    Root cause: gate5_federation_venue_validation.sql left afl_venue_code
+--    NULL on every row; gate5_resolution_afl_official_2026_27.sql's own
+--    dedup guard keyed on afl_venue_code, and NULL never equals anything
+--    in SQL -- every club covered by both sources got a duplicate row.
+--    Fix: cross-checked all 43 of file [7]'s venue_number values against
+--    the independent, later, official 2026/27 staging data.
+--      33 rows -- confirmed by both sources, afl_venue_code populated
+--      8 rows  -- no second source exists (club not in either 2026/27
+--                 document) -- correctly left unconfirmed (NULL), per
+--                 "do not invent"
+--      2 rows  -- known stale/superseded (Janitas, Oriental) -- NOT
+--                 populated with the old number; a new "4b" step in the
+--                 resolution migration updates these in place with the
+--                 current, confirmed venue instead of duplicating them
+--    A normalized-name fallback-matching function
+--    (gate11_normalize_venue_name) was added as defense in depth for any
+--    future row still missing a confirmed code on either side -- matches
+--    within the same club_id only, so it can never merge two different
+--    clubs or collapse a club's genuinely distinct second pitch.
+--    Neither identifiers were invented nor derived from venue names alone
+--    at any point -- every populated code is a number already present in
+--    this codebase's own prior extraction, independently cross-confirmed
+--    by a second, later, official document.
+
+-- 3. CLEAN MIGRATION-CHAIN RESULTS -- PASSED
+--    Rehearsed in a genuinely fresh schema (gate11_clean, never touched
+--    before this gate), in exact proposed production order, run TWICE.
+--      Run 1: 0 errors. Both unique constraints -- (club_id,
+--        afl_venue_code) and (club_id, venue_name) -- added with ZERO
+--        violations. This is the exact statement that threw a real 23505
+--        in Gate 10.3's rehearsal of the unfixed files; it does not
+--        reproduce with the fix applied.
+--      Run 2 (idempotency): every step capable of being safely repeated
+--        (squad-letter strip, new-clubs insert, Águias Musgueira
+--        correction, locality update, competition registrations, the new
+--        "4b" supersede step, the main venue insert) was re-executed a
+--        second time -- counts identical before and after (92/109/100),
+--        zero new rows, zero errors.
+--      NOT claimed idempotent, documented and tested as explicitly
+--        one-time instead: the _gate5_staging table's own INSERT (no
+--        natural key, already stated as one-time in the file's own
+--        EXECUTION NOTE before this gate) and the Gate 8.2 one-time
+--        rename/rebuild step (its RENAME would collide with itself on a
+--        second run -- tested that it is a safe no-op when first applied
+--        to already-correct data, then correctly NOT repeated a second
+--        time).
+--    RPC functions and the opponents FK bridge were intentionally NOT
+--    re-rehearsed here (already executed and verified live in Gates 7-9,
+--    unaffected by this fix, and out of scope per Victor's instruction to
+--    focus exclusively on the two named issues).
+
+-- 4. FINAL CATALOGUE COUNTS -- PASSED, matching Victor's targets exactly
+--    Source-document baseline (computed directly from the official
+--    2026/27 PDF transcription, the _gate5_staging table):
+--      distinct AFL clubs                         : 84  (target: 84)
+--      distinct official venue identifiers         : 87  (target: 87)
+--      distinct official club-to-venue associations: 92  (target: 92)
+--    Combined catalogue, after the full corrected chain:
+--      federation_clubs             : 92  (target: 92)
+--      federation_club_competitions : 109
+--      federation_club_venues       : 100 -- EXPLAINED, not forced to 92:
+--        92 confirmed 2026/27 associations + 8 genuine historical rows for
+--        clubs the current 2026/27 documents do not cover at all (kept
+--        unconfirmed, not invented, not discarded). Full per-club list in
+--        gate11_1_clean_chain_rehearsal.sql.
+--      GATE 11 CORRECTION found in the process: the pre-Gate-11 narrative
+--        had miscounted Janitas and Oriental as 2 of its "10 genuine extra
+--        venues" -- they are not; they are exactly the stale-row defect,
+--        now corrected. True genuine-second-pitch club count is 7 (CD
+--        Mafra, Alta Lisboa, Alverca, Belenenses, Benfica SAD, EF Belém,
+--        Sacavenense), not 9.
+--    No duplicate club-to-venue relationships, no incorrectly merged
+--    pitches, no orphaned FKs -- all verified 0 by direct query.
+--    Both genuinely shared venues (1641: Belenenses/EF Belém; 3449: Alta
+--    Lisboa/3F) confirmed correctly preserved as distinct rows, not merged.
+
+-- 5. IDEMPOTENCY EVIDENCE -- PASSED (see item 3 for the full breakdown)
+
+-- 6. REGRESSION RESULTS -- PASSED, baseline unchanged
+--    Re-ran all 7 regression files directly against the current repo
+--    state (node tests/regression_*.js, real Playwright execution, not
+--    estimated): 99 checks, 7 files, 0 failures -- byte-identical to the
+--    Gate 10.4 authoritative baseline (6/9/8/5/8/11/52 per file).
+--    Expected, not coincidental: the venue fix touches only pre-deployment
+--    migration SQL in a test project -- nothing in the live application
+--    (index.html / team.html / public-stats-core.js) changed this gate,
+--    and FEDERATION_CATALOGUE_PICKER_ENABLED still ships false by default,
+--    so there is currently nothing in the live app path the venue data
+--    could affect yet. Opponent selection and squad distinctions are
+--    directly covered and passing (regression_gate7_opponent_alias.js,
+--    regression_gate8_opponent_picker.js); alias mappings directly covered
+--    and passing (same files); offline fallback directly covered and
+--    passing (regression_gate8_rollback_safety.js). Match creation/editing
+--    and "existing venue references" have no dedicated test in this suite
+--    and no live code path yet to test -- NOT TESTED, not silently assumed
+--    passing.
+
+-- 7. PRODUCTION BASELINE VERIFICATION -- PASSED, zero drift, 4th capture
+--    games=27, game_players=143, goal_events=10, card_events=4, players=20,
+--    team_share_links=3 (1 enabled), opponents=160. Federation tables
+--    confirmed still absent from production. opponents_merge_plan_tmp
+--    confirmed unchanged. No production modification made.
+
+-- 8. UPDATED DEPLOYMENT PACKAGE -- COMPLETE
+--    migrations/gate10_7_final_release_package.sql updated in place:
+--    Workstream 2 status changed from NOT READY to READY; expected
+--    federation_club_venues count corrected to 100 with full explanation;
+--    pre/post-deployment verification queries added; feature-flag
+--    activation conditions and the 5 outstanding manual tests now listed
+--    explicitly in the package itself. Non-destructive rollback procedures
+--    for every phase unchanged from Gate 10.7 (already proven where
+--    applicable -- Phase B rollback live-tested in Gate 9.6).
+
+-- 9. REMAINING BLOCKERS -- none new this gate
+--    - The 5 outstanding integration tests (2 BLOCKED by structural
+--      sandbox network policy, 3 NOT TESTED, all with reproducible manual
+--      procedures) remain exactly as Gate 10.5 left them -- unaffected by
+--      this gate's fix.
+--    - "Match creation/editing" and "existing venue references" have no
+--      dedicated regression coverage and no live code path yet -- flagged
+--      as NOT TESTED rather than assumed fine; relevant once Phase D
+--      actually wires the federation catalogue's venue data into a user-
+--      visible feature.
+--    - federation_clubs.map_url/venue_lat/venue_lng/logo_url remain
+--      0-for-92 populated (known, disclosed since Gate 8.3, unaffected by
+--      this gate).
+--    - Historical opponent cleanup and the 21 unmatched 2024/25-roster
+--      clubs remain explicitly out of scope, unchanged.
+
+-- 10. GITHUB COMMITS AND BRANCH STATUS
+--     Branch: feature/opponent-federation-catalogue (nothing merged to
+--     main, nothing deployed, nothing applied to production)
+--       20d3b4e  Gate 11.1-11.2 -- root-cause venue fix + clean-rehearsal proof
+--                (edits gate5_federation_venue_validation.sql,
+--                 gate5_resolution_afl_official_2026_27.sql; adds
+--                 gate11_1_clean_chain_rehearsal.sql)
+--       32f18fb  Gate 11.7-11.8 -- baseline reconfirmation + release package update
+--                (edits gate10_7_final_release_package.sql; adds
+--                 gate11_2_production_baseline_reconfirmation.sql)
+--       (this file) Gate 11.9 -- this report (gate11_4_final_report.sql)
+
+-- 11. EXACT APPROVAL DECISIONS REQUIRED
+--     APPROVAL A -- Production RLS remediation for opponents_merge_plan_tmp:
+--       requested, not yet granted. Execute exactly:
+--         ALTER TABLE public.opponents_merge_plan_tmp ENABLE ROW LEVEL SECURITY;
+--     APPROVAL B -- Federation database deployment (Phase A):
+--       ready for approval. Execute files [1],[3],[4],[7],[8],[9-part1] in
+--       that exact order; expect federation_clubs=92,
+--       federation_club_competitions=109, federation_club_venues=100.
+--     APPROVAL C -- Frontend deployment and public-sharing integration
+--       (Phase B): ready for approval, sequenced after B above.
+--     APPROVAL D -- Verified opponent alias inserts and federation-picker
+--       activation (Phases C and D): Phase C still requires its OWN
+--       separate approval per Victor's standing instruction (production
+--       alias inserts); Phase D (the picker flag flip) is the only
+--       user-visible change and should follow only once A/B/C are live
+--       and verified.
+--     Historical duplicate cleanup remains out of scope for all of the above.
+
+-- ============================================================================
+-- DECISION 1 — SECURITY REMEDIATION: READY, AWAITING APPROVAL A
+-- ============================================================================
+
+-- ============================================================================
+-- DECISION 2 — FEDERATION RELEASE: READY FOR APPROVAL B/C/D
+-- ============================================================================
+-- The release-blocking defect Gate 10 found is fixed and re-verified by a
+-- genuinely clean, twice-run rehearsal with zero errors. Catalogue counts
+-- match Victor's stated targets exactly (84/87/92 from the source
+-- documents; 92/109/100 in the combined catalogue, fully explained).
+-- Regression baseline unchanged (99/7/0). Production baseline unchanged.
+-- No production change has been made.
+
+select 'Gate 11 complete. Decision 1: security remediation ready, awaiting Approval A. Decision 2: federation release ready for Approval B/C/D -- the venue-dedup defect is fixed and re-verified by a second clean rehearsal with zero errors; catalogue counts (84/87/92 source-document baseline, 92/109/100 combined) match Victor''s targets exactly. No production change has been made.' as status;

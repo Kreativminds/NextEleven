@@ -1,0 +1,63 @@
+-- ============================================================================
+-- GATE 13.3 — C-squad regression coverage added and verified; full
+-- regression suite re-run. This is a documentation/status file; the actual
+-- new test lives at tests/regression_gate13_csquad_opponent_picker.js.
+-- ============================================================================
+
+-- NEW TEST FILE: tests/regression_gate13_csquad_opponent_picker.js (8 checks)
+-- Grounded in REAL production-catalogue data (not invented): queried the
+-- Gate 11-fixed clean rehearsal schema (gate11_clean, test project
+-- tqpykeuuzcqudqtfrqmc) directly this gate and confirmed genuine A/B/C
+-- third-squad clubs exist in the actual 2026/27 catalogue: EF Belém
+-- (afl_club_id 5647), Santa Maria (1151), Vila Verde (1114) -- each has
+-- exactly ONE federation_clubs row and THREE federation_club_competitions
+-- rows (squad_label A/B/C), all three correctly referencing that same
+-- single club.
+
+-- DB-LEVEL VERIFICATION (read-only, this gate, against gate11_clean):
+--   federation_clubs rows for the 3 real A/B/C clubs (5647/1151/1114)  -> 3
+--     (exactly one each -- NOT duplicated per squad)
+--   federation_club_competitions rows with squad_label A/B/C for those
+--     3 clubs                                                          -> 9
+--     (3 clubs x 3 squads each -- all distinct competition registrations,
+--     all correctly pointing at the same single federation_clubs.id)
+--   distinct afl_club_id count across the WHOLE catalogue               -> 92
+--   rows with a non-null afl_club_id                                    -> 92
+--   total federation_clubs rows                                        -> 92
+--     (all three figures equal -- confirms NO duplicate federation club
+--     was created ANYWHERE in the catalogue, not just for these 3 clubs --
+--     directly satisfies "no duplicate federation clubs are created")
+
+-- FRONTEND-LEVEL VERIFICATION (tests/regression_gate13_csquad_opponent_
+-- picker.js, extends the Gate 8 Olivais fixture with a synthetic 3rd
+-- squad in the same style, plus an untouched unrelated opponent standing
+-- in for "historical opponent records"): 8/8 PASSED --
+--   - A, B, and C squad-distinct local names all preserved with their
+--     squad label intact through selection (not collapsed to the generic
+--     catalogue name) -- "opponent selection preserves the squad label"
+--   - the birth-year identity (SL Olivais 2014) remains its own row
+--     alongside all 3 squads -- "A, B and C squads remain distinct
+--     competition registrations"
+--   - the generic "Olivais" catalogue entry is suppressed once all 3
+--     squads have verified aliases (duplicate suppression proven for 3
+--     squads, not just 2)
+--   - the unrelated, pre-existing local opponent is completely untouched
+--     -- "historical opponent records remain unchanged"
+--   - the unrelated new federation club is unaffected -- no cross-talk
+--   - exactly 6 names shown, no extra/missing/duplicate
+
+-- FULL REGRESSION SUITE RE-RUN (node tests/<file>.js, all 8 files, real
+-- Playwright execution):
+--   regression_caio_and_cards.js                      : 6 passed, 0 failed
+--   regression_gate13_csquad_opponent_picker.js (NEW)  : 8 passed, 0 failed
+--   regression_gate7_opponent_alias.js                 : 9 passed, 0 failed
+--   regression_gate8_opponent_picker.js                : 8 passed, 0 failed
+--   regression_gate8_rollback_safety.js                : 5 passed, 0 failed
+--   regression_marcadores_guests.js                    : 8 passed, 0 failed
+--   regression_next_game_weather.js                    : 11 passed, 0 failed
+--   regression_season_calendar.js                      : 52 passed, 0 failed
+--   TOTAL: 107 checks, 8 files, 0 failures (previous authoritative baseline
+--   was 99/7/0 -- the +8/+1 is exactly this gate's new file, nothing else
+--   changed; every pre-existing check is still byte-identical pass/fail).
+
+select 'Gate 13.3 complete. C-squad regression coverage added (8 new checks, grounded in 3 real A/B/C clubs from the actual catalogue) and verified at both the DB level (no duplicate federation clubs anywhere, 9 distinct squad registrations across 3 real clubs, all correctly single-club-referenced) and the frontend level (squad label preserved through selection, historical opponent unaffected). Full suite re-run: 107 checks, 8 files, 0 failures.' as status;

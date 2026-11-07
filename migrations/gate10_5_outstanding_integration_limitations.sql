@@ -1,0 +1,143 @@
+-- ============================================================================
+-- GATE 10.5 — outstanding integration limitations: status + manual test
+-- procedures for anything this sandbox cannot execute directly.
+-- Nothing in this file is executed against production.
+-- ============================================================================
+
+-- 1. LIVE SUPABASE HTTP/RLS ENFORCEMENT — BLOCKED (structural, not transient)
+--
+-- Re-confirmed this gate (not re-derived from scratch -- Gate 9.3 already
+-- established this; re-checked the mechanism still holds): *.supabase.co
+-- is not on this sandbox's outbound proxy allowlist. A direct curl to the
+-- project's REST endpoint fails with "CONNECT tunnel failed, response 403",
+-- and the proxy's own status endpoint ($HTTPS_PROXY/__agentproxy/status)
+-- labels the failure a connect_rejected / policy denial -- i.e. this
+-- environment will never be able to make a real PostgREST call, not just
+-- "right now." The best available substitute, used throughout Gates 9-10,
+-- is SET ROLE anon|authenticated + SET request.jwt.claims directly in SQL,
+-- which exercises the real grants/RLS policies as those roles would see
+-- them -- always labelled "role-simulated," never "HTTP-executed."
+--
+-- MANUAL TEST PROCEDURE (for Victor or anyone with real network access to
+-- the project):
+--   1. Get the project's anon public key (Supabase dashboard -> Settings ->
+--      API, or mcp__Supabase__get_publishable_keys).
+--   2. curl -s "https://wicydcvdakqopodbxtrl.supabase.co/rest/v1/opponents_merge_plan_tmp?select=*" \
+--        -H "apikey: <anon key>" -H "Authorization: Bearer <anon key>"
+--      EXPECTED (before the Gate 10.1 fix is applied): returns all 35 rows
+--      (confirms the live exposure). EXPECTED (after the fix is applied):
+--      empty result / 401, since RLS now default-denies anon with no
+--      policy.
+--   3. curl -s "https://wicydcvdakqopodbxtrl.supabase.co/rest/v1/rpc/get_public_team_data" \
+--        -H "apikey: <anon key>" -H "Content-Type: application/json" \
+--        -d '{"p_token":"<a real, enabled team_share_links.share_token>"}'
+--      EXPECTED: the public team-page JSON payload, with no auth header
+--      beyond the anon key -- confirms the token-gated public RPC path
+--      actually works end-to-end over real HTTP, not just in SQL.
+
+-- 2. MULTI-DEVICE SYNCHRONIZATION — NOT TESTED
+--
+-- Requires two real client instances (e.g. two browser profiles, or a
+-- phone + a laptop) both signed in as the same user, writing while
+-- offline/online, to observe the app's own device_id/local_id/sync_status
+-- conflict resolution in practice. Nothing in this engagement's sandbox
+-- can drive two independent real clients against the live app.
+--
+-- MANUAL TEST PROCEDURE:
+--   1. Sign in to the app as the same account on two separate devices (or
+--      two browser profiles with separate localStorage/IndexedDB).
+--   2. On device A, create a new game while online; confirm it appears on
+--      device B after a normal sync interval.
+--   3. On device A, go offline (airplane mode / devtools offline), edit an
+--      existing game's score; on device B (online), edit the SAME game's
+--      score to a different value.
+--   4. Bring device A back online. EXPECTED: no silent data loss -- one of
+--      the app's documented conflict rules applies (last-write-wins by
+--      updated_at, or a merge), and neither device shows a duplicated row
+--      for the same game.
+--   5. Repeat with a genuinely new row created offline on device A (not
+--      just an edit) to confirm the offline-created row syncs up with a
+--      stable id once online, with no duplicate created on device B.
+
+-- 3. PARENT AND COACH INTERFACES — NOT TESTED
+--
+-- team.html (the parent/public page) WAS exercised live this engagement,
+-- but only via the token-gated get_public_team_data path, with Playwright
+-- driving the rendered page against mocked/staging RPC responses -- not
+-- via a real parent clicking a real shared link in a real browser, and
+-- not via any coach-specific interface distinct from the main admin app
+-- (this repo has no separate coach login path identified).
+--
+-- MANUAL TEST PROCEDURE:
+--   1. From the admin app, generate a real team-share link for the active
+--      season (Settings -> Public Sharing, or equivalent).
+--   2. Open that exact URL in a private/incognito browser window (no admin
+--      session). EXPECTED: the public team page renders with the privacy
+--      settings configured (name mode, player stats visibility, etc.)
+--      exactly as set, no admin-only data leaks (no edit controls, no
+--      other seasons' data).
+--   3. Disable the share link from the admin app; reload the same URL.
+--      EXPECTED: the page shows a disabled/not-found state, not stale
+--      cached data.
+--   4. If a separate coach-facing view/login exists in production that is
+--      not present in this repo's committed files, Victor should identify
+--      it so it can be added to this inventory -- not assumed covered.
+
+-- 4. PUBLIC-SHARING BEHAVIOUR UNDER REAL AUTHENTICATED SESSIONS — BLOCKED
+--
+-- Same root cause as item 1 -- a real authenticated session requires a
+-- real Supabase Auth sign-in over real HTTPS, which this sandbox cannot
+-- reach. What WAS tested (Gate 9.2/9.3): the real get_public_team_data RPC
+-- executed live against staging data (valid token / invalid token /
+-- disabled link / 3 opponent-resolution outcomes), and SQL-role-simulated
+-- anon/authenticated access-control tests (5/5 passed, including a blocked
+-- cross-user write attempt) -- both real signal, neither a substitute for
+-- a real signed-in browser session.
+--
+-- MANUAL TEST PROCEDURE:
+--   1. Sign in to the admin app as a real user. Confirm you can see and
+--      edit only your own season/games/players (not another account's).
+--   2. In a second, unauthenticated browser, open that same user's public
+--      share link (from item 3's procedure). Confirm the public page shows
+--      read-only data with no ability to reach any authenticated-only
+--      route (editing, other seasons, admin settings) by guessing a URL.
+--   3. With the admin user signed in, attempt to query another user's
+--      opponents/games directly via the browser devtools console
+--      (supabase.from('games').select('*').eq('user_id','<other uuid>'))
+--      -- EXPECTED: empty result, enforced by RLS, not just app-level
+--      filtering.
+
+-- 5. OFFLINE-TO-ONLINE SYNCHRONIZATION — NOT TESTED
+--
+-- Same category as item 2 (requires a real client with real local storage
+-- transitioning real network state) -- this sandbox has no real browser
+-- session against the live app with persistent local storage across a
+-- simulated offline/online transition.
+--
+-- MANUAL TEST PROCEDURE:
+--   1. Open the app, sign in, let it fully sync once (sync_status=synced
+--      on all rows).
+--   2. Go offline (devtools Network -> Offline, or disconnect the device).
+--   3. Create a new game, add 2 goal events, edit an existing player's
+--      shirt number -- all while offline. Confirm the UI shows these
+--      changes immediately (optimistic local write) and marks them
+--      pending/unsynced if the app surfaces that state visually.
+--   4. Go back online. EXPECTED: all 3 changes sync up within the app's
+--      normal sync interval, each row ends up sync_status=synced, no
+--      duplicate rows, no data loss, and (if two tabs are open) the
+--      second tab reflects the same final state after its own sync.
+--   5. Repeat step 3 but force the sync to fail once (briefly simulate
+--      flaky connectivity) before succeeding -- confirms the retry path
+--      doesn't double-apply the same write.
+
+-- SUMMARY TABLE
+--   1. Live Supabase HTTP/RLS enforcement               : BLOCKED (structural, sandbox proxy policy; manual procedure above)
+--   2. Multi-device synchronization                     : NOT TESTED (manual procedure above)
+--   3. Parent and coach interfaces                       : NOT TESTED (manual procedure above; coach-specific view not identified in this repo)
+--   4. Public-sharing under real authenticated sessions   : BLOCKED (same root cause as #1; manual procedure above)
+--   5. Offline-to-online synchronization                 : NOT TESTED (manual procedure above)
+-- None of these are bypassed or worked around with a weakened security
+-- control -- each manual procedure tests the real thing, for whoever has
+-- real network/device access to run it.
+
+select 'Gate 10.5 complete. 5 outstanding items confirmed: 2 BLOCKED (structural sandbox network policy, not transient), 3 NOT TESTED (require a real multi-device/offline client this sandbox cannot drive). A reproducible manual test procedure with expected results is given for all 5. No network restriction was bypassed and no security control was weakened to produce this status.' as status;

@@ -1,0 +1,169 @@
+-- ============================================================================
+-- NEXT ELEVEN | PHASE B — classification and safe reconciliation of the 37
+-- active, unlinked opponent records (25 distinct names) flagged in the
+-- assignment. Applied live to production via apply_migration under the name
+-- "nexteleven_phaseB_opponent_reconciliation" (see Supabase migration
+-- history for the executed statement set). This file is the git-tracked
+-- narrative record of what was found and why each decision was made.
+-- ============================================================================
+
+-- PRE-CHANGE BASELINE (confirmed fresh, read-only, before this gate):
+--   opponents total=249, active=160, linked_active=123, unlinked_active=37
+--   games=182 (101 active) -- unchanged by anything below.
+--   Re-confirmed, independently, before touching anything: all 37
+--   (user_id, name) pairs are distinct -- ZERO confirmed duplicates
+--   within the same ownership scope among these 37 records (consistent
+--   with PR #40's own finding of zero exact-name duplicates anywhere in
+--   production). No consolidation step was needed.
+--   Also observed, not acted on (out of this phase's scope): several of
+--   these opponent rows carry a legacy payload.userId field that differs
+--   from the row's own top-level user_id column (e.g. opponentId 12
+--   "Sporting": row user_id 563dea01-..., payload.userId
+--   7f4a91b0-...). RLS and ownership are governed by the real user_id
+--   column, which was never touched; the stale payload.userId values
+--   were left exactly as they were -- flagged here for Victor, not
+--   fixed, since resolving it is unrelated to Federation/Opponents
+--   reconciliation.
+
+-- METHOD -- never name similarity alone:
+--   Each of the 25 distinct names was checked against the 109 official
+--   PDF registrations reconciled in Phase A, using AFL club ID plus one
+--   of: (a) a standard Portuguese legal-entity abbreviation/expansion
+--   that is the SAME name, not a different one ("FC" = Futebol Clube,
+--   "AC" = Atlético Clube, "Col" <-> "Colégio", "Desp." <->
+--   "Desportivo"), (b) independent corroborating evidence beyond the
+--   name itself (e.g. a venue or locality match), or (c) an existing,
+--   previously-seeded federation_clubs row whose absence from this
+--   season's two PDFs was already independently documented (Gate 5).
+--   Where only bare name resemblance existed, or Victor's assignment
+--   named the case explicitly as a trap, the record was left unlinked.
+
+-- RESULT -- all 37 records classified, 0 left unclassified:
+
+-- (1) VERIFIED MATCH -- 8 records, 8 distinct names -- federation_club_id
+--     SET on these rows only (payload also tagged
+--     federationReconciliation.status = 'verified_match'):
+--   - Atlético CP            -> Atlético (AFL 145). Not inferred from
+--     the name alone: this club's confirmed Phase-A venue is "CP Manuel
+--     Candeias Nº 2 | Estádio Tapadinha" -- Estádio da Tapadinha is the
+--     well-known home ground of Atlético Clube de Portugal, i.e. the
+--     "CP" in the opponent's own name. Independent corroboration, not
+--     name similarity.
+--   - EF Belém Estádio Restelo -> EF Belém (AFL 5647). The user's own
+--     name embeds the venue ("Estádio Restelo"), which is exactly this
+--     club's confirmed Phase-A venue ("Campo Nº 3 Restelo"/"Restelo").
+--   - Casa Pia AC            -> Casa Pia (AFL 180). "AC" = Atlético
+--     Clube, the club's own standard suffix -- same entity, not a
+--     different one.
+--   - Águias da Musgueira    -> Águias Musgueira (AFL 908). This
+--     federation_clubs row already existed before this gate (seeded in
+--     an earlier gate, corrected to its base name in Gate 5, which also
+--     independently confirmed by text search that it does not appear in
+--     either 2026/27 PDF). Linked at the canonical-identity level only;
+--     no federation_club_competitions row was created or implied, since
+--     no official source for this club's season/division/série exists
+--     in the two documents available this gate -- consistent with
+--     "different competition or age group" at the registration level
+--     even though the club identity itself is confirmed.
+--   - FC Alverca             -> Alverca (AFL 471). "FC" = Futebol
+--     Clube, same standard-suffix pattern as Casa Pia AC.
+--   - Desportivo O. Moscavide -> Desp. O. Moscavide (AFL 283).
+--     "Desportivo" is simply the un-abbreviated form of "Desp." -- the
+--     exact case Victor asked to be investigated.
+--   - Colégio Pedro Arrupe   -> Col Pedro Arrupe (AFL 5629). "Colégio"
+--     is simply the un-abbreviated form of "Col" -- the exact case
+--     Victor asked to be investigated; confirmed, not assumed.
+--   - Alta de Lisboa         -> Alta Lisboa (AFL 4887), the exact
+--     candidate Victor listed, confirmed registered (squads A and B)
+--     in Phase A.
+
+-- (2) AMBIGUOUS / ADMIN REVIEW -- 17 records, 10 distinct names -- left
+--     unlinked (payload tagged federationReconciliation.status =
+--     'ambiguous_admin_review'), pending Phase D's admin workflow:
+--   - Sporting (1): "Sporting" alone is one of the most common club-
+--     name components in Portugal; nothing in this record corroborates
+--     which "Sporting" entity it is, so it was NOT auto-linked to
+--     Sporting, SAD (1095) despite Victor listing it as a candidate --
+--     candidates are explicitly "not confirmed matches."
+--   - Águias de Camarate (1): candidate was Camarate (AFL 577), but
+--     this dataset itself shows an "Águias [place]" prefix can name a
+--     genuinely SEPARATE club from the bare place name (see Águias
+--     Musgueira vs. plain "Musgueira" below) -- so the same prefix
+--     pattern argues AGAINST assuming "Águias de Camarate" is simply
+--     "Camarate," not for it. Left unlinked.
+--   - CAC (1): confirmed absent from both PDFs by direct text search.
+--     Per Victor's explicit warning, NOT mapped to the one visually
+--     similar name, "Cacém" (AFL 131, III Divisão Série 6) -- a
+--     different, unrelated club.
+--   - Sporting SAD FF (2 records, 2 users): confirmed absent from both
+--     PDFs. Sporting's only two registrations are squads "B" and "C" --
+--     never "FF". The unquoted "SAD FF" label pattern belongs only to
+--     Benfica (AFL 1023) in this dataset. Per Victor's explicit
+--     warning, NOT linked to Sporting, SAD.
+--   - Carregado "A" / Carregado "B" (2 + 2 = 4 records): Phase A
+--     confirmed only ONE official Carregado registration exists (AFL
+--     53, no squad label, II Divisão Série 1) across both divisions.
+--     Per Victor's explicit warning, neither opponent record was linked
+--     to AFL 53, since doing so would silently assert a two-squad split
+--     the official source does not support.
+--   - Casa Pia "C" (2 records): Phase A confirmed only "Casa Pia B" (AFL
+--     180) is officially registered. Per Victor's explicit warning, NOT
+--     linked to Casa Pia B.
+--   - Caneças "A" (2 records), Mafra "A" (2 records), Tenente Valdez "A"
+--     (2 records): the identical evidentiary pattern as Carregado/Casa
+--     Pia above -- Phase A confirmed each club's one official
+--     registration carries a DIFFERENT squad label than the user's
+--     record (Caneças B/AFL 948, CD Mafra unlabeled/AFL 277, Tenente
+--     Valdez unlabeled/AFL 1669). Applied the same caution Victor
+--     specified for the explicitly-named cases, consistently, rather
+--     than treating these as safe just because they weren't individually
+--     named.
+
+-- (3) DIFFERENT COMPETITION/AGE GROUP OR LOCAL TEAM -- 12 records, 7
+--     distinct names -- left unlinked (payload tagged
+--     federationReconciliation.status = 'other_competition_or_local_team'),
+--     confirmed absent from both PDFs' full extracted text (participant
+--     lists AND fixtures, not just the participant section):
+--   - Algés, Cadaval (2), Coutada (2), Operário Lisboa, Vilafranquense
+--     1957 (2): no trace in either document. Plausibly real clubs
+--     playing a different division/age group, or genuine local teams;
+--     insufficient evidence from the two documents available this gate
+--     to tell which -- retained as-is pending Phase D admin input.
+--   - Falcons (2): an English recreational-style name, not a Portuguese
+--     federation naming pattern; very likely a non-federation local/
+--     recreational team, but this is an inference from naming
+--     convention, not a documentary confirmation -- retained, flagged,
+--     not asserted as fully verified.
+--   - Musgueira (2, both plain -- distinct from "Águias da Musgueira"
+--     above): deliberately NOT linked to Águias Musgueira (AFL 908).
+--     "Musgueira" is also the name of the Lisbon neighbourhood itself;
+--     whether this is a shorthand for the same club or a genuinely
+--     different, unrelated local team could not be determined from the
+--     two documents available -- left unlinked rather than assumed.
+
+-- (4) CONFIRMED DUPLICATE WITHIN SAME OWNERSHIP SCOPE -- 0 records.
+--     Independently re-verified this phase (see METHOD above).
+
+-- WHY NO USER-RECORD MERGES OR DELETIONS OCCURRED:
+--   Victor's instruction was explicit: names repeated across different
+--   user accounts are not necessarily duplicates and must not be
+--   merged. Of the 37 records, every single one belongs to a distinct
+--   (user_id, name) pair -- there was never a same-user duplicate to
+--   consolidate, so no DELETE or merge was performed or needed.
+--   federation_club_id was the only column changed, and only on the 8
+--   verified rows; it points exclusively at shared, read-only reference
+--   data (federation_clubs), never at another user's private row, so no
+--   cross-user data was combined or exposed by this change.
+
+-- PRODUCTION INTEGRITY -- confirmed after applying the migration, not
+-- assumed:
+--   opponents total=249 (unchanged), active=160 (unchanged),
+--   linked_active 123 -> 131 (+8, matching the 8 verified matches),
+--   unlinked_active 37 -> 29 (-8). games=182/101 active (unchanged).
+--   No foreign key in the schema targets public.opponents -- confirmed
+--   via information_schema before writing a single UPDATE -- so this
+--   change is structurally incapable of disturbing any game, result,
+--   player or statistic row; those tables resolve opponents by their
+--   own payload business key, not a database-level relationship.
+
+select 'NEXT ELEVEN Phase B complete. All 37 active unlinked opponent records (25 distinct names) individually reviewed against the 109 PDF-verified Federation registrations from Phase A, using AFL club ID plus independent corroborating evidence -- never name similarity alone. Result: 8 verified matches safely linked (federation_club_id set), 17 records across 10 names left unlinked and flagged ambiguous for Phase D admin review (including every special case Victor named by name: CAC, Sporting SAD FF, Carregado A/B, Casa Pia C -- plus Caneças A/Mafra A/Tenente Valdez A, found to carry the identical squad-label-mismatch risk pattern), 12 records across 7 names confirmed absent from both official documents entirely and flagged as local-team-or-different-competition for Phase D, 0 confirmed duplicates (independently re-verified: zero same-user-scope name collisions exist among these 37). linked_active rose from 123 to 131 and unlinked_active fell from 37 to 29, with opponents total/active and games total/active unchanged -- confirmed post-change, not assumed.' as status;
