@@ -5510,7 +5510,7 @@ async function renderOpponentsTab() {
   const displayedGroups = visible.map(group =>
     group.filter(record => !completedOpponentIds.has(String(record.opponentId)))
   ).filter(group => group.length > 0);
-  const requestsByOpponent = new Map(deletionRequests.filter(r => r.status === 'pending' || r.status === 'approved').map(r => [String(r.opponent_local_id), r]));
+  const requestsByOpponent = new Map(deletionRequests.filter(r => (r.status === 'pending' || r.status === 'approved') && r.requester_id === Auth.getUserId()).map(r => [String(r.opponent_local_id), r]));
 
   el.innerHTML = `
     <div class="settings-section">
