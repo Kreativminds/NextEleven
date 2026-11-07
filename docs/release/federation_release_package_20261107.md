@@ -144,13 +144,28 @@ Notes:
 - Linked-count figures: 131 is current. The earlier 123 is superseded (see review queue, section I).
 - Victor's approval applies to package inclusion of migration 20261107050000, not to deployment.
 
-## 9. Blockers
+## 9. Status update (second pass, 2026-11-07 13:30 Lisbon)
 
-1. **Authenticated real-session tests not run.** Sandbox cannot reach `*.supabase.co`. Blocks the flag, not the migrations.
-2. **Backup not verified in this pass.** Required before step 2.
-3. **CI on PR #42 not confirmed.**
-4. **Rollback for 20261107050000 not tested.** The isolated test call timed out with no answer from the Supabase server, and the tool was not called again in this turn. Must be re-run before production.
-5. **Owner approval** for each production step.
+Verified in this pass:
+- **CI on PR #42 HEAD `1fe3e7f`:** workflow "Federation picker regression", run `42368287691`, **success**. It runs the four node regression scripts and three browser suites in Chromium, and checks that the SQL fixtures and migrations exist (`test -s`). It does **not** execute the SQL fixtures against a database.
+- **PR containment:** PR #38 head `6a09c6b` and PR #41 head `8383cc7` are both ancestors of `1fe3e7f`. Remote heads confirmed with `git ls-remote`.
+- **Flag:** `FEDERATION_CATALOGUE_PICKER_ENABLED = false` on the head. With the flag off, the picker returns no catalogue suggestions (`federationOpponentSuggestions`).
+- **Local suites on the head:** 16 regression and browser files, 0 failures.
+- **Authenticated API check:** exits 2 (skipped). Missing `TEST_USER_JWT` only. `SUPABASE_URL` and the anon key are public client config in `index.html` (`https://wicydcvdakqopodbxtrl.supabase.co`), so they can be used as-is.
+
+Not verified in this pass:
+- **Rollback for 20261107050000:** test call timed out. The server reported a pending question and got no answer. The likely reason is confirmation for `DROP` statements. The isolated state after the timeout is unknown until checked.
+- **Rollback for 012:** not run. It uses only `UPDATE` and `DELETE`, so it is not expected to need confirmation.
+- **Backup:** not verifiable from this environment. See section 10.
+- **Authenticated tests:** no test credentials available.
+
+## 10. Blockers
+
+1. **Recoverable production backup not verified.** No backup artifact, timestamp or restore instructions are identified in the repo. `docs/MIGRATION_COMPLETION_TRACKER.md` refers to a Gate 13 restore test with a 38/38 match, but names no artifact or timestamp. DR-02 records earlier count and fingerprint mismatches, and DR-03 and DR-04 are open. Owner must confirm a point-in-time backup of `wicydcvdakqopodbxtrl` and provide the restore procedure. A targeted logical export of the affected tables is also prepared as a fallback (section 11).
+2. **Authenticated picker tests not run.** Need a `TEST_USER_JWT` for a test account on a non-production project, or owner-approved read-only use of a production account.
+3. **Rollback for 20261107050000 not tested.** Requires answering the Supabase server's pending confirmation (isolated project only).
+4. **Rollback for 012 not tested.**
+5. **Owner approval** for each production step in section 5.
 
 ## 10. Approvals requested
 
@@ -159,3 +174,31 @@ Notes:
 - [ ] Approve steps 2 to 5, individually or as one window.
 - [ ] Approve the rollback test for 20261107050000 in isolation.
 - [ ] Decide whether PR #41 and PR #38 close once PR #42 is approved (both remain open now).
+
+## 11. Targeted recovery export (read-only, fallback until a full backup is confirmed)
+
+This does not replace a full point-in-time backup. It captures the rows the release can change, so a
+release can be checked and reversed against known values. Run it read-only before step 2. Store the output
+outside the repo, with a checksum.
+
+```sql
+-- Read-only. Writes nothing. Copy the result to a dated file and record its sha256.
+select jsonb_build_object(
+  'captured_at', now(),
+  'games', (select jsonb_agg(to_jsonb(g) order by g.id) from public.games g),
+  'game_players', (select jsonb_agg(to_jsonb(p) order by p.id) from public.game_players p),
+  'opponents', (select jsonb_agg(to_jsonb(o) order by o.id) from public.opponents o),
+  'game_opponent_federation_links', (select jsonb_agg(to_jsonb(l)) from public.game_opponent_federation_links l),
+  'team_alias_mappings', (select jsonb_agg(to_jsonb(t) order by t.id) from public.team_alias_mappings t),
+  'federation_clubs', (select jsonb_agg(to_jsonb(c) order by c.id) from public.federation_clubs c),
+  'federation_club_competitions', (select jsonb_agg(to_jsonb(x) order by x.id) from public.federation_club_competitions x),
+  'federation_club_venues', (select jsonb_agg(to_jsonb(v) order by v.id) from public.federation_club_venues v),
+  'roadmap_items', (select jsonb_agg(to_jsonb(r) order by r.id) from public.roadmap_items r),
+  'opponent_addition_requests', (select jsonb_agg(to_jsonb(a)) from public.opponent_addition_requests a),
+  'opponent_deletion_requests', (select jsonb_agg(to_jsonb(d)) from public.opponent_deletion_requests d)
+);
+```
+
+Restore check after any rollback: re-run the section 4 preflight and compare each row count and the
+sha256 of each table's JSON, ordered by id, against this export. Rows changed by a migration are expected
+only in the columns listed in its rollback file.
