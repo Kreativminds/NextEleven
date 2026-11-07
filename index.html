@@ -6085,7 +6085,10 @@ async function getDrillHistoryForPlayer(drillKey, playerId, seasonId) {
 // Federation catalogue suggestions are read-only and fall back to locally saved
 // opponents if the API is unavailable. This flag affects suggestions only;
 // it does not change match save, federation identities or historical fixtures.
-const FEDERATION_CATALOGUE_PICKER_ENABLED = true;
+// Keep OFF until the full release checklist (regression + browser suites,
+// match-save contract, parent-facing views) passes end-to-end. See
+// docs/MIGRATION_COMPLETION_TRACKER.md (UX-01 / QA-01) for current status.
+const FEDERATION_CATALOGUE_PICKER_ENABLED = false;
 
 async function federationOpponentSuggestions() {
   if (!FEDERATION_CATALOGUE_PICKER_ENABLED || !Sync.isConfigured() || !Auth.isLoggedIn()) return [];
