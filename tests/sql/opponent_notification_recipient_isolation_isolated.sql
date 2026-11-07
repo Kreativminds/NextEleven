@@ -7,7 +7,7 @@ DO $$
 DECLARE rid uuid;
 BEGIN
  INSERT INTO public.opponent_deletion_requests(requester_id,opponent_local_id,opponent_name,request_reason)
- VALUES(auth.uid(),9002,'Requester B private opponent','Cross-recipient notification test') RETURNING id INTO rid;
+ VALUES(auth.uid(),9002,'User B Private Opponent','Cross-recipient notification test') RETURNING id INTO rid;
  PERFORM set_config('next11.recipient_matrix',rid::text,true);
  IF EXISTS (SELECT 1 FROM public.opponent_review_notifications WHERE request_id=rid)
  THEN RAISE EXCEPTION 'Requester B read administrator A submission event'; END IF;
