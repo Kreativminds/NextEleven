@@ -61,3 +61,14 @@ jobs:
           test -s supabase/migrations/20261107024500_preserve_soft_deleted_historical_alias.sql
           test -s supabase/migrations/20261107030000_guard_reviewed_alias_identity.sql
           test -s supabase/migrations/20261107033000_require_alias_before_historical_opponent_retirement.sql
+          # Later historical-identity guards and their negative fixtures.
+          test -s tests/sql/federation_alias_integrity_multifinding_readonly.sql
+          test -s tests/sql/federation_alias_multifinding_negative_fixture.sql
+          test -s tests/sql/federation_archived_fixture_retirement_guard_isolated.sql
+          test -s tests/sql/federation_retired_source_fixture_integrity_readonly.sql
+          test -s tests/sql/federation_retired_source_fixture_negative_fixture.sql
+          test -s tests/sql/federation_historical_name_ambiguity_readonly.sql
+          test -s tests/sql/federation_historical_name_ambiguity_negative_fixture.sql
+          test -s tests/sql/federation_fixture_reference_completeness_readonly.sql
+          test -s tests/sql/federation_fixture_reference_completeness_negative_fixture.sql
+          test -s supabase/migrations/20261107042600_protect_archived_historical_fixtures_on_retirement.sql
