@@ -18,7 +18,8 @@
         select:'id,request_id,request_kind,event_type,message,created_at,read_at',
         recipient_id:'eq.'+uid,order:'created_at.desc',limit:'100'
       });
-      return Array.isArray(notifications) ? notifications : [];
+      if (!Array.isArray(notifications)) throw new Error('Notification response must be an array');
+      return notifications;
     }
     function render(rows) {
       if (!Array.isArray(rows)) throw new TypeError('Notifications must be an array');
@@ -32,10 +33,11 @@
       ).join('')+'</ul>';
     }
     async function markRead(notificationId) {
-      if (!userId()) throw new Error('Authentication required');
+      const uid=userId();
+      if (!uid) throw new Error('Authentication required');
       if (!notificationId) throw new Error('Notification id required');
       await request('PATCH','opponent_review_notifications',{read_at:new Date().toISOString()},
-        {id:'eq.'+notificationId,recipient_id:'eq.'+userId(),read_at:'is.null'});
+        {id:'eq.'+notificationId,recipient_id:'eq.'+uid,read_at:'is.null'});
       if (typeof refresh==='function') await refresh();
     }
     async function completeDeletion(requestId) {
