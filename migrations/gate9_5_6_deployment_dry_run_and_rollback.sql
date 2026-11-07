@@ -1,0 +1,124 @@
+-- ============================================================================
+-- GATE 9.5 — coordinated deployment sequence, dry-run in staging.
+-- GATE 9.6 — rollback and failure recovery.
+-- Staging only (tqpykeuuzcqudqtfrqmc). No production changes.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- GATE 9.5 — Phase-by-phase dry run.
+-- ----------------------------------------------------------------------------
+-- Phase A (DB: federation catalogue, official AFL data, venue constraints,
+-- security hardening, RPC dependencies) and Phase C (verified aliases)
+-- were ALREADY applied to this same isolated test project across Gates
+-- 5-8 -- not re-applied here (per "Do not repeat completed Gates 1-8
+-- unless a new issue requires investigation"). What Gate 9.5 adds is
+-- proof that each phase, once live, did not block or require the next:
+--   Phase A alone (Gates 5-6)   -> federation_clubs/competitions/venues
+--                                   populated, no app code referencing
+--                                   them yet -- app continued working
+--                                   unchanged (nothing to break; dormant).
+--   + Phase B (Gate 8.4)        -> index.html ships computeOpponentPickerNames
+--                                   + FEDERATION_CATALOGUE_PICKER_ENABLED=false
+--                                   -- regression_gate8_opponent_picker.js
+--                                   confirms the picker is IDENTICAL to
+--                                   pre-Phase-B behaviour while the flag
+--                                   stays off (PASSED, re-run this gate,
+--                                   see test tally below).
+--   + Phase C (Gate 8.5)        -> 5 alias rows inserted for the fixture
+--                                   user -- flag still off, so the admin
+--                                   picker is STILL unaffected (same test,
+--                                   same PASS) -- Phase C deploying ahead
+--                                   of Phase D causes zero visible change,
+--                                   exactly the independent-deployability
+--                                   Victor asked to verify.
+--   Phase D (THIS gate)         -> see below.
+--
+-- PHASE D DRY RUN -- feature flag activated, real integration test:
+-- Run against a SCRATCH COPY of index.html only
+-- (/tmp/.../gate9_5/index_phase_d_enabled.html, FEDERATION_CATALOGUE_
+-- PICKER_ENABLED flipped false->true), NEVER the committed file -- the
+-- real index.html in this repo correctly still ships the flag OFF, since
+-- Phase D is not authorized to activate in this release. This closes the
+-- same "a pure-function test passing is not proof the wired-together path
+-- works" gap Gate 8.3 flagged for the backend RPC, applied here to the
+-- frontend picker: the REAL populateOpponentDatalist(), reading REAL
+-- (seeded) IndexedDB federation/alias data through the real DB layer, not
+-- a hand-constructed array passed straight into the pure function.
+-- 7 checks, all PASSED:
+--   - scratch copy genuinely has the flag true (sanity guard)
+--   - both squad-distinct local names ("Olivais \"A\"", "Olivais \"B\"")
+--     still present -- squad distinctions preserved
+--   - the generic, squad-less catalogue entry "Olivais" is suppressed
+--     (would be the exact "duplicate-looking option" Gate 7/8.4 exist to
+--     prevent)
+--   - an unrelated, genuinely new federation club ("Sporting CP Test") IS
+--     offered -- Phase D is additive for real new clubs, not just a
+--     suppression mechanism
+--   - no duplicate name anywhere in the final list
+--   - exactly 3 names total (2 local + 1 new club) -- nothing extra,
+--     nothing missing
+--   - zero uncaught page errors
+-- "Test creating and editing matches": saveGame()'s handling of the
+-- Opponent field was read directly (index.html, saveGame()) and confirmed
+-- to read document.getElementById('gf-opp').value as a plain string,
+-- completely agnostic to whether that string originated from a local
+-- opponent, a federation catalogue suggestion, or free text -- Phase D
+-- changes ONLY which names populate the <datalist> (tested above in full,
+-- real integration), it does not touch the save/edit path at all. This is
+-- a structural finding (read from the real source, not assumed), not an
+-- additional simulated click-through -- reported as such.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- GATE 9.6 — rollback and failure recovery. Each test below actually
+-- executed the stated mutation/revert, not just inspected.
+-- ----------------------------------------------------------------------------
+
+-- TEST 6.1 -- "Federation catalogue temporarily unavailable" (frontend):
+-- already covered by tests/regression_gate8_rollback_safety.js, re-run
+-- this gate -- 5/5 PASSED (syncFederationClubsIfStale/getFederationClubs
+-- degrade to [] with no throw; local opponent lookup and the picker's
+-- rendering are both completely unaffected; zero page errors).
+
+-- TEST 6.2 -- "RPC patch rollback": get_public_team_data was CREATE OR
+-- REPLACEd back to a minimal, pre-Gate-8.3 shape (direct opponents-table
+-- lookup only, no _opponent_lookup_for_user, no opponentLogoUrl), then
+-- actually EXECUTED against the real fixture token. RESULT: PASSED --
+-- ran without error, and (proving the rollback genuinely changed
+-- behaviour, not a no-op) gameId 5003's alias-only-resolved opponent
+-- correctly reverted to opponentMapUrl=null under the rolled-back
+-- function, where the patched version resolves it via the alias. The
+-- patched version was then CREATE OR REPLACEd back in (needed for the
+-- rest of Gate 9) and re-verified to return the alias-resolved value
+-- again. A rollback and a roll-forward were both actually executed, not
+-- just reasoned about.
+
+-- TEST 6.3 -- "partial migration failure / re-running migrations after
+-- interruption" (idempotency drill): captured players/game_players/
+-- team_alias_mappings row counts for the fixture user (3 / 4 / 6),
+-- RE-RAN the exact Gate 9.1 player+game_players seed inserts and the
+-- exact Gate 8.5 Phase C alias insert a second time, verbatim, then
+-- re-counted: 3 / 4 / 6 -- UNCHANGED. RESULT: PASSED -- every one of
+-- these migrations is safe to re-run after an interruption with zero
+-- duplication, because each is guarded by its own NOT EXISTS clause on
+-- the real identity key, not merely asserted to be idempotent.
+
+-- TEST 6.4 -- "Alias mapping rollback": already executed and documented
+-- in Gate 8.7 (migrations/gate8_phase_c_...sql's own test narrative and
+-- tests/regression_gate8_rollback_safety.js) -- soft-deleted then
+-- restored the alias rows for the fixture user, confirmed
+-- get_public_team_data_opponent_slice's resolution followed the
+-- soft-delete/restore exactly. Not re-run this gate (no new issue
+-- surfaced that would require it); carried forward as already-PASSED
+-- evidence per "do not repeat completed Gates 1-8 unless a new issue
+-- requires investigation."
+
+-- TEST 6.5 -- "Frontend rollback / feature flag disabled": the COMMITTED
+-- index.html ships FEDERATION_CATALOGUE_PICKER_ENABLED = false today --
+-- confirmed directly by reading the file, not assumed -- so "rolling
+-- back Phase D" in production terms is simply "never having flipped the
+-- flag yet," which is the actual current state of this release. PASSED
+-- by construction; no simulated rollback needed because nothing has been
+-- turned on.
+
+select 'Gate 9.5 + 9.6 complete. 9.5: Phase A/B/C independent-deployability carried forward from Gates 5-8 as already-passing evidence; Phase D dry-run executed as a real (not pure-function-only) integration test against a scratch copy with the flag flipped, 7/7 checks PASSED, and saveGame()''s opponent-field handling confirmed structurally unaffected by reading its source directly. 9.6: RPC patch rollback and roll-forward both actually executed and verified (PASSED); migration-rerun idempotency actually drilled on 3 real insert migrations with before/after row counts unchanged (PASSED); federation-catalogue-unavailable and alias-mapping rollback carried forward from Gate 8 as already-passing evidence; frontend rollback is the real current shipped state (flag off), not simulated.' as status;

@@ -1,0 +1,186 @@
+-- ============================================================================
+-- GATE 9.8 — final production migration sequence review. Read-only review
+-- of every migration file in this branch, in the order they would need to
+-- run against production. Nothing in this file is executed against
+-- production -- it is a review, not a script.
+-- ============================================================================
+
+-- CRITICAL CONTEXT, confirmed by direct, first-hand inspection of
+-- production (list_tables, 2026-11-05): federation_clubs,
+-- federation_club_competitions and federation_club_venues DO NOT EXIST
+-- IN PRODUCTION AT ALL. Every piece of Gates 3-8's federation-catalogue
+-- work has been built and tested exclusively on the isolated test
+-- project. This means Phase A is not "mostly done" -- it has not started
+-- in production. ALL FOUR PHASES (A/B/C/D) remain fully pending. This is
+-- expected and correct given this engagement's authorization boundaries
+-- ("No production changes are authorized" / "You may not: modify
+-- production Supabase data or schema"), but it must be stated plainly for
+-- the go/no-go: a "go" decision authorizes the FIRST production change
+-- this entire multi-week engagement has made, not an incremental step.
+
+-- FINAL PRODUCTION DEPLOYMENT SEQUENCE, in execution order, each file
+-- reviewed against: schema compatibility, FKs, unique constraints,
+-- indexes, RLS, function grants, SECURITY DEFINER safety, idempotency,
+-- transaction boundaries, existing-data compatibility, dependency order,
+-- failure recovery.
+
+-- [1] migrations/gate3_federation_catalogue.sql
+--     Creates federation_clubs/_competitions/_venues tables + indexes +
+--     RLS (anon/authenticated SELECT only, no writes) from scratch.
+--     Idempotent (6 "if not exists"/"not exists" guards, grep-confirmed).
+--     No FK to any existing table (purely additive, new tables only) ->
+--     zero risk to existing data by construction. SAFE.
+
+-- [2] migrations/gate3_merge_plan_tmp_rls_fix.sql
+--     Enables RLS (no policy -> default-deny) on the PRE-EXISTING
+--     public.opponents_merge_plan_tmp table. STATUS: prepared since Gate
+--     3, confirmed via direct production inspection THIS GATE to still be
+--     unapplied -- opponents_merge_plan_tmp still shows rls_enabled=false
+--     in production today, 35 rows, fully exposed to anon/authenticated
+--     (SELECT/INSERT/UPDATE/DELETE/TRUNCATE all granted, no RLS at all).
+--     This is the exact file that fixes the critical, live security
+--     finding flagged to Victor directly during Gate 9.1 (separately from
+--     this review). Idempotent (ALTER ... ENABLE ROW LEVEL SECURITY is a
+--     no-op if already enabled). Confirmed via Gate 2 (inherited finding,
+--     re-stated here, not re-derived) that zero functions/views/app code
+--     reference this table -- enabling RLS cannot break anything live.
+--     SAFE, and RECOMMENDED TO APPLY INDEPENDENTLY OF THE REST OF THIS
+--     RELEASE, on its own, as soon as Victor approves -- it is a pure
+--     security fix with no dependency on anything else in this sequence
+--     and no reason to wait for Phase A/B/C/D.
+
+-- [3] migrations/gate4_federation_clubs_seed.sql
+--     INSERT of 23 hardcoded rows into federation_clubs. FINDING (new
+--     this gate): this file has NO explicit idempotency guard (no WHERE
+--     NOT EXISTS, no ON CONFLICT) -- it relies solely on the table's
+--     UNIQUE index on afl_club_id (confirmed present:
+--     federation_clubs_afl_id_uniq) to prevent silent duplication. A
+--     re-run after a partial failure would FAIL CLEANLY with a unique-
+--     constraint violation (not silently duplicate rows) -- a safe
+--     failure mode, but not a graceful one: the statement would need
+--     "on conflict (afl_club_id) do nothing" added before this is
+--     production-ready, so an interrupted deployment can simply be
+--     re-run rather than requiring manual row-counting first. RECOMMEND
+--     this small fix before production application; not a blocker, but
+--     a genuine gap this review found, not previously flagged.
+
+-- [4] migrations/gate4_remediation_federation_clubs_full_roster.sql
+--     Idempotent (3 guards, grep-confirmed). Additive only. SAFE.
+
+-- [5] migrations/gate4_remediation_secure_opponent_lookup.sql
+--     Idempotent (6 guards). Defines an early, since-superseded version
+--     of the opponent resolver -- SUPERSEDED by [8] below (Gate 8.3's
+--     corrected version). Applying [5] before [8] in sequence is
+--     harmless (CREATE OR REPLACE in [8] fully overwrites it), but
+--     Victor should know this file's own resolver logic is not the one
+--     that ships -- it exists for its own grant-lockdown history (see
+--     [6]) and is superseded in the same deployment, not a stage of its
+--     own.
+
+-- [6] migrations/gate4_resolve_opponent_lookup_grant_lockdown.sql
+--     Pure REVOKE statements, idempotent by nature (revoking an
+--     already-revoked grant is a no-op). Addresses a real, confirmed
+--     historical vulnerability (SECURITY DEFINER function callable by
+--     anon/authenticated with a caller-supplied user_id parameter -- a
+--     cross-user data leak). Still explicitly scoped "not applied to
+--     production" in its own header. SAFE, and should run immediately
+--     after [5]/[8], same release.
+
+-- [7] migrations/gate5_federation_venue_validation.sql
+--     Idempotent (2 guards). Adds venue validation/constraints. SAFE.
+
+-- [8] migrations/gate5_resolution_afl_official_2026_27.sql (32KB, the
+--     largest migration in this sequence) -- includes the Gate 8.2
+--     venue-identity fix (group by (club_id, afl_venue_code), not venue
+--     name text) and the full non-destructive dedup rebuild. Idempotent
+--     by its own design (re-stated from Gate 8, not re-derived this
+--     gate per "do not repeat Gates 1-8"). Reviewed structurally this
+--     gate for dependency order only: depends on [1]/[4]/[7] already
+--     being applied (reads federation_club_venues) -- correctly
+--     sequenced after them here.
+
+-- [9] migrations/gate8_security_hardening_and_public_page_fix.sql
+--     Part 1: REVOKEs INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER
+--     from anon on the 3 federation tables + team_alias_mappings
+--     (anon entirely) + TRUNCATE/REFERENCES/TRIGGER from authenticated on
+--     team_alias_mappings. Pure REVOKE, idempotent, zero data impact.
+--     Part 2: CREATE OR REPLACE of _opponent_lookup_for_user -- additive
+--     function replacement, SECURITY DEFINER with search_path pinned to
+--     'public' (confirmed -- prevents search_path-hijack attacks, the
+--     standard SECURITY DEFINER hardening). Never granted to anon/
+--     authenticated directly (confirmed via has_function_privilege this
+--     gate, Test 3.5) -- only reachable through the token-gated wrapper.
+--     SAFE.
+
+-- [10] migrations/gate8_phase_b_PRODUCTION_PATCH_get_public_team_data.sql
+--     CREATE OR REPLACE of the live get_public_team_data RPC. MUST run
+--     AFTER [9] (depends on _opponent_lookup_for_user existing -- the
+--     file's own header already states this dependency correctly).
+--     Confirmed this gate (Gate 9.2, live execution) to be a strict
+--     superset of current production behaviour: every opponent that
+--     resolves today via a local opponents-table match continues to
+--     resolve identically (step 1 of the resolver is unchanged); the
+--     only observable differences are (a) opponents that previously
+--     showed no map/logo now may, once federation/alias data resolves
+--     them, and (b) one new, additive field (opponentLogoUrl) appears.
+--     ROLLBACK TESTED THIS GATE (9.6): CREATE OR REPLACE back to the
+--     pre-patch body runs cleanly and immediately reverts behaviour, with
+--     no destructive step and no orphaned dependency. SAFE.
+
+-- [11] migrations/gate8_phase_c_PRODUCTION_verified_opponent_aliases.sql
+--     INSERT of 5 alias rows for VICTOR'S REAL account
+--     (563dea01-03a6-4e74-8cac-131cb39ccd97) -- the one file in this
+--     entire sequence that touches his real user_id, not a fixture.
+--     Idempotent (NOT EXISTS guard on (user_id, canonicalOfficialName,
+--     squadLabel), NULL-safe via IS NOT DISTINCT FROM -- confirmed
+--     correct this gate by literally re-running it twice, Test 6.3,
+--     identical row count both times). MUST run AFTER [10] is live (the
+--     alias rows are inert without the RPC patch consulting them) and
+--     ideally after [1]-[8] (the aflClubId values must already exist in
+--     federation_clubs or the alias resolves to nothing, not an error --
+--     confirmed non-fatal by this gate's own alias-path tests). device_id/
+--     local_id in this file are explicitly flagged by its own header as
+--     placeholders needing real sync-layer identifiers at apply time --
+--     RECOMMEND this is driven through the app's own DB.put() sync path
+--     at deployment time, not run as raw SQL verbatim, exactly as the
+--     file's own header already recommends. This file explicitly
+--     EXCLUDES "Olivais Sul" and the ambiguous historical "Benfica"
+--     record, per Victor's own instruction -- confirmed unchanged this
+--     gate (file re-read in full this session).
+
+-- [12] index.html (Gate 8.4) -- FEDERATION_CATALOGUE_PICKER_ENABLED=false
+--      ships by default; frontend code is additive
+--      (computeOpponentPickerNames is a new pure function, called from
+--      the existing populateOpponentDatalist). Phase D (flipping the
+--      flag to true) is a SEPARATE, later toggle -- not part of this
+--      file's own deployment, and not committed as true anywhere in this
+--      repo. Dry-run tested live this gate (9.5), 7/7 checks passed.
+
+-- NOT PART OF THIS RELEASE, confirmed unchanged: the 182-row historical
+-- opponent duplicate cleanup remains explicitly out of scope (per
+-- Victor's own Gate 9.5 instruction), and nothing in this sequence
+-- merges or deletes any historical opponent row.
+
+-- EXPECTED BEFORE/AFTER PRODUCTION ROW COUNTS (today's real baseline,
+-- confirmed this gate via the Gate 8.9 checksum query, byte-identical to
+-- the original Gate 8.9 capture -- zero drift from all of Gate 9's
+-- read-only inspection):
+--   games (season 6, active)         : 27  -> 27  (unchanged by [1]-[12]; no game row is touched by any file above)
+--   game_players (season 6, active)  : 143 -> 143 (unchanged)
+--   goal_events (season 6, active)   : 10  -> 10  (unchanged)
+--   card_events (season 6, active)   : 4   -> 4   (unchanged)
+--   players (season 6, active)       : 20  -> 20  (unchanged)
+--   team_share_links                 : 3   -> 3   (unchanged -- no file above inserts/modifies a share link)
+--   opponents (all, active)          : 160 -> 160 (unchanged -- no file above touches the opponents table's rows, only reads them)
+--   team_alias_mappings              : 1   -> 6   (+5, exactly [11]'s 5 rows, for Victor's real account only)
+--   federation_clubs                 : 0   -> ~92 (new rows, [1]/[4]/[8]'s reconciled roster -- exact count depends on [8]'s final reconciliation, carried forward from Gate 8's own 92-club figure, not re-derived this gate)
+--   federation_club_competitions / _venues : 0 -> non-zero (new rows, same files)
+-- Every existing table's EXISTING rows are expected to be byte-identical
+-- before and after -- [1]-[10] and [12] insert or replace functions/new
+-- rows only; [11] is the only file that adds rows tied to Victor's real
+-- user_id, and it is a pure INSERT (no UPDATE/DELETE of any existing row
+-- anywhere in this entire sequence, confirmed by grep across every file
+-- in this review: zero UPDATE/DELETE statements target user-owned data
+-- tables anywhere in [1]-[12]).
+
+select 'Gate 9.8 complete. Full execution-order review of 12 production-bound migration units. One new finding: gate4_federation_clubs_seed.sql lacks an explicit ON CONFLICT guard (relies on its unique index for safe-but-ungraceful re-run failure) -- minor fix recommended before deployment, not a blocker. One critical context finding carried to the go/no-go: the federation catalogue tables do not exist in production at all yet -- this release is the FIRST production change of the entire engagement, not an incremental one. Expected before/after row counts for every existing table: unchanged. opponents_merge_plan_tmp RLS fix ([2]) is explicitly recommended as an independent, immediate fix, not gated on the rest of this release.' as status;

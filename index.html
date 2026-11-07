@@ -1743,6 +1743,11 @@ function renderWizardStepGroundDuration() {
         </div>
 
         <div class="form-group">
+          <label>${I18n.t('set_lbl_homeground_coords')}${infoTip('tip_homeground_coords')}</label>
+          <input id="wiz-homeground-coords" type="text" placeholder="e.g. 38.736946, -9.160745" value="${esc(formatCoordsPair(prev.homeGroundLat, prev.homeGroundLng))}">
+        </div>
+
+        <div class="form-group">
           <label>${I18n.t('set_lbl_match_duration')}</label>
           <select id="wiz-duration-select" onchange="document.getElementById('wiz-duration-custom').style.display=this.value==='custom'?'block':'none'">
             <option value="" ${!prev.defaultMatchDurationMins?'selected':''}>${I18n.t('duration_default_90')}</option>
@@ -1764,7 +1769,11 @@ function renderWizardStepGroundDuration() {
 function wizardConfirmGroundDuration() {
   const durationSel = document.getElementById('wiz-duration-select')?.value;
   const durationCustom = document.getElementById('wiz-duration-custom')?.value;
+  const homeGroundCoords = parseCoordsInput(document.getElementById('wiz-homeground-coords')?.value);
+  if (homeGroundCoords === null) { Toast.error(I18n.t('set_err_invalid_coords')); return; }
   _seasonWizardState.draftSeason.homeGround = document.getElementById('wiz-homeground')?.value.trim() || null;
+  _seasonWizardState.draftSeason.homeGroundLat = homeGroundCoords.lat;
+  _seasonWizardState.draftSeason.homeGroundLng = homeGroundCoords.lng;
   _seasonWizardState.draftSeason.defaultMatchDurationMins = durationSel === 'custom' ? (parseInt(durationCustom) || null) : (parseInt(durationSel) || null);
   renderWizardStepShirtColor();
 }
@@ -2259,6 +2268,10 @@ function renderFTWStepClub() {
           <input id="ftw-club-ground" type="text" placeholder="e.g. Campo SL Olivais" value="${esc(c.homeGround||'')}">
         </div>
         <div class="form-group">
+          <label>${I18n.t('set_lbl_homeground_coords')}${infoTip('tip_homeground_coords')}</label>
+          <input id="ftw-club-ground-coords" type="text" placeholder="e.g. 38.736946, -9.160745" value="${esc(formatCoordsPair(c.homeGroundLat, c.homeGroundLng))}">
+        </div>
+        <div class="form-group">
           <label>${I18n.t('set_lbl_shirt_color')}</label>
           <input id="ftw-club-shirt" type="color" value="${esc(c.shirtColor||'#B23333')}" style="width:44px;height:36px;padding:2px;border:1px solid var(--border);border-radius:4px">
         </div>
@@ -2277,12 +2290,16 @@ async function ftwConfirmClub() {
   if (!category) { Toast.error(I18n.t('ftw_err_age_group_required')); return; }
   const country = readCountryField('ftw-club-country', 'ftw-club-country-other');
   if (!country) { Toast.error(I18n.t('ftw_err_country_required')); return; }
+  const homeGroundCoords = parseCoordsInput(document.getElementById('ftw-club-ground-coords')?.value);
+  if (homeGroundCoords === null) { Toast.error(I18n.t('set_err_invalid_coords')); return; }
   _firstTimeWizardState.club = {
     name,
     category,
     country,
     logoUrl: document.getElementById('ftw-club-logo')?.value.trim() || null,
     homeGround: document.getElementById('ftw-club-ground')?.value.trim() || null,
+    homeGroundLat: homeGroundCoords.lat,
+    homeGroundLng: homeGroundCoords.lng,
     shirtColor: document.getElementById('ftw-club-shirt')?.value || '#B23333',
   };
   await ftwGoToStep(2);
@@ -2557,7 +2574,7 @@ function renderFTWStepOpponents() {
         <div style="text-align:center;font-size:11px;color:var(--muted);margin:10px 0">${I18n.t('wiz_or')}</div>
         <div class="form-group">
           <label>${I18n.t('imp_lbl_paste_csv')}</label>
-          <textarea id="ftw-paste-opponents-csv" rows="4" placeholder="opponentName,ageGroup,level"></textarea>
+          <textarea id="ftw-paste-opponents-csv" rows="4" placeholder="opponentName"></textarea>
           <button type="button" class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="ftwHandlePasteImport('opponents')">${I18n.t('imp_btn_parse_paste')}</button>
         </div>
         <div id="ftw-import-opponents-preview" style="margin-top:12px"></div>
@@ -2700,6 +2717,8 @@ async function ftwFinalizeSetup() {
       clubTeamId,
       clubName: s.club.name,
       homeGround: s.club.homeGround || null,
+      homeGroundLat: s.club.homeGroundLat ?? null,
+      homeGroundLng: s.club.homeGroundLng ?? null,
       ageGroup: s.season.ageGroup || null,
       defaultMatchDurationMins: s.season.defaultMatchDurationMins || null,
       shirtColor: (s.club.shirtColor && s.club.shirtColor.toUpperCase() !== '#B23333') ? s.club.shirtColor : null,
@@ -3917,18 +3936,56 @@ async function migrateClubTeams() {
   return { created, linked, errors };
 }
 
+// GATE 3 (dev branch only, not yet deployed): seedOpponentsIfEmpty() used to
+// write AFL_SUB14_II_DIVISAO_SEED straight into this user's own `opponents`
+// table on every empty-local-store event (new device, cache clear, PWA
+// reinstall). That write is what created the recurring duplicate-opponent
+// problem — the per-user name-uniqueness index only blocks a second ACTIVE
+// copy, so once an earlier copy of a name was soft-deleted by the app's own
+// integrity-repair pass, the next empty-local-store event could reseed it as
+// a brand-new active row with no error. Retired, not patched: it no longer
+// writes anything to `opponents` at all. Federation clubs now live in the
+// shared, read-only `federation_clubs` table (synced for display only, see
+// syncFederationClubsIfStale / getFederationClubs below) and are never
+// copied into any individual user's own catalogue.
 async function seedOpponentsIfEmpty() {
-  const existing = await DB.getAll('opponents');
-  if (existing.length > 0) return; // never overwrite — this only runs once on a truly empty catalogue
-  for (const name of AFL_SUB14_II_DIVISAO_SEED) {
-    await DB.put('opponents', {
-      opponentName: name,
-      ageGroup: 'Sub-14',
-      level: 'AFL II Divisão',
-      logoUrl: null,
-      notes: null,
-    });
+  console.warn('[seedOpponentsIfEmpty] retired — federation clubs now come from the shared catalogue, see syncFederationClubsIfStale()');
+}
+
+// Refreshes the small, read-only, shared federation-club catalogue cache.
+// Unlike every other table, federation_clubs has no user_id — it is the
+// same for everyone — so it deliberately does NOT go through the per-user
+// SYNC_STORES delta-sync loop. It is fetched at most once per 24h (or when
+// the cache is empty) and stored under a single appMeta key, never written
+// into the user's own `opponents` table.
+const FEDERATION_CLUBS_CACHE_KEY = 'federationClubsCache';
+const FEDERATION_CLUBS_REFRESH_MS = 24 * 60 * 60 * 1000;
+
+async function syncFederationClubsIfStale() {
+  try {
+    const cached = await DB.get('appMeta', FEDERATION_CLUBS_CACHE_KEY);
+    const fresh = cached?.value?.fetchedAt && (Date.now() - cached.value.fetchedAt) < FEDERATION_CLUBS_REFRESH_MS;
+    if (fresh) return cached.value.clubs;
+    if (!Sync.isConfigured() || !navigator.onLine || !Auth.isLoggedIn()) {
+      // Offline / logged out / not configured: keep using whatever is
+      // already cached (possibly nothing, on a genuinely first-ever,
+      // offline launch — the picker then just shows this user's own
+      // opponents, same as the app behaves for any other table offline).
+      return cached?.value?.clubs || [];
+    }
+    const clubs = await Sync.fetchFederationClubs();
+    await DB.put('appMeta', { metaKey: FEDERATION_CLUBS_CACHE_KEY, value: { clubs, fetchedAt: Date.now() } });
+    return clubs;
+  } catch (err) {
+    console.error('[syncFederationClubsIfStale] failed, falling back to cache:', err);
+    const cached = await DB.get('appMeta', FEDERATION_CLUBS_CACHE_KEY);
+    return cached?.value?.clubs || [];
   }
+}
+
+async function getFederationClubs() {
+  const cached = await DB.get('appMeta', FEDERATION_CLUBS_CACHE_KEY);
+  return cached?.value?.clubs || [];
 }
 
 // ── OPPONENTS CATALOGUE — SETTINGS TAB ───────────────────────────────────────
@@ -5383,11 +5440,134 @@ async function confirmImportFromOppPage() {
   await renderOpponentsTab();
 }
 
+// Presentation-only aliases. Keep underlying opponent records and match history untouched.
+function opponentCatalogueDisplayKey(name) {
+  const normalized = (name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const knownAliases = {
+    'alta lisboa': 'alta de lisboa',
+    'atletico cp': 'atletico',
+    // Verified club identity: squad A/B and 2014 are not independent clubs.
+    // Olivais Sul deliberately remains a different federation club.
+    'olivais a': 'sl olivais',
+    'olivais b': 'sl olivais',
+    'sl olivais 2014': 'sl olivais',
+    // Federation-linked aliases verified in the production catalogue.
+    'fut benfica': 'futebol benfica',
+    '3fff': '3f'
+  };
+  // Only strip squad letters for clubs confirmed in the federation catalogue.
+  // Never apply this to arbitrary names: e.g. Olivais Sul and Benfica B
+  // could refer to distinct registered clubs.
+  const federationVerifiedSquadClubs = new Set([
+    'belenenses', 'cultural', 'damaiense', 'santa maria',
+    'ef belem', 'cf estrela', 'sacavenense'
+  ]);
+  const squadMatch = normalized.match(/^(.*?) ([abc])$/);
+  if (squadMatch && federationVerifiedSquadClubs.has(squadMatch[1])) {
+    return squadMatch[1];
+  }
+  return knownAliases[normalized] || normalized;
+}
+
 async function renderOpponentsTab() {
   const el = document.getElementById('stab-panel-opponents');
   if (!el) return;
   const all = await DB.getAll('opponents');
   all.sort((a,b) => (a.opponentName||'').localeCompare(b.opponentName||''));
+  // Federation IDs are the authoritative club identity. Name aliases are a
+  // fallback for offline/unlinked records, never a replacement for club IDs.
+  // Keep every historical opponent record intact to preserve fixture names.
+  const federationIdsByLocalId = new Map();
+  if (Sync.isConfigured() && Auth.isLoggedIn()) {
+    try {
+      const cloud = await Sync.supabaseRequest('GET', 'opponents', null, {
+        select: 'local_id,payload,federation_club_id', user_id: 'eq.' + Auth.getUserId(),
+        deleted_at: 'is.null', limit: '1000'
+      });
+      for (const row of cloud) {
+        const id = row.payload?.opponentId ?? row.local_id;
+        if (id != null && row.federation_club_id) {
+          const key = String(id);
+          const previous = federationIdsByLocalId.get(key);
+          if (previous && previous !== row.federation_club_id) {
+            // Never choose a federation identity arbitrarily when cloud rows disagree.
+            federationIdsByLocalId.set(key, 'AMBIGUOUS');
+          } else if (!previous) federationIdsByLocalId.set(key, row.federation_club_id);
+        }
+      }
+    } catch(err) { console.warn('Federation identity lookup unavailable; using local catalogue:', err); }
+  }
+  const groups = new Map();
+  const aliasFederationIds = new Map();
+  for (const opponent of all) {
+    const id = federationIdsByLocalId.get(String(opponent.opponentId));
+    if (id && id !== 'AMBIGUOUS') {
+      const alias = opponentCatalogueDisplayKey(opponent.opponentName);
+      if (alias) {
+        if (!aliasFederationIds.has(alias)) aliasFederationIds.set(alias, new Set());
+        aliasFederationIds.get(alias).add(id);
+      }
+    }
+  }
+  for (const opponent of all) {
+    const alias = opponentCatalogueDisplayKey(opponent.opponentName);
+    const linkedId = federationIdsByLocalId.get(String(opponent.opponentId));
+    const candidates = aliasFederationIds.get(alias);
+    // A non-linked alias can inherit an identity only when exactly one
+    // federation club matches. Ambiguous aliases remain independent.
+    const resolvedId = linkedId === 'AMBIGUOUS' ? null :
+      (linkedId || (candidates?.size === 1 ? [...candidates][0] : null));
+    // A verified club and a local-only club must never share an identity.
+    // Preserve the original local record and fixture name for historical lookup.
+    const key = resolvedId ? 'federation:' + resolvedId : 'local:' + (alias || String(opponent.opponentId));
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(opponent);
+  }
+  // Prefer the canonical SL Olivais name over a squad/historical alias.
+  for (const group of groups.values()) {
+    if (opponentCatalogueDisplayKey(group[0]?.opponentName) === 'sl olivais') {
+      group.sort((a,b) => Number(a.opponentName !== 'SL Olivais') - Number(b.opponentName !== 'SL Olivais'));
+    }
+  }
+  const visible = [...groups.values()];
+  let deletionRequests = [];
+  let isDeletionReviewer = false;
+  if (Sync.isConfigured() && Auth.isLoggedIn()) {
+    try {
+      [deletionRequests] = await Promise.all([
+        Sync.supabaseRequest('GET', 'opponent_deletion_requests', null, { select: 'id,requester_id,opponent_local_id,status,decision_reason,opponent_name', order: 'created_at.desc', limit: '500' })
+      ]);
+      const adminRows = await Sync.supabaseRequest('GET', 'opponent_deletion_admins', null, { select: 'user_id', user_id: 'eq.' + Auth.getUserId(), limit: '1' });
+      isDeletionReviewer = adminRows.length > 0;
+    } catch(err) { console.warn('Opponent deletion workflow unavailable:', err); }
+  }
+  let additionRequests = [];
+  if (Sync.isConfigured() && Auth.isLoggedIn()) {
+    try { additionRequests = await Sync.supabaseRequest('GET', 'opponent_addition_requests', null, { select: 'id,requester_id,proposed_name,proposed_type,status,decision_reason', order: 'created_at.desc', limit: '500' }); }
+    catch(err) { console.warn('Club proposal workflow unavailable:', err); }
+  }
+  let reviewNotifications = [];
+  if (Sync.isConfigured() && Auth.isLoggedIn()) {
+    try {
+      reviewNotifications = await Sync.supabaseRequest('GET', 'opponent_review_notifications', null, {
+        select: 'id,event_type,message,created_at,read_at',
+        recipient_id: 'eq.' + Auth.getUserId(), order: 'created_at.desc', limit: '20'
+      });
+    } catch (err) { console.warn('Opponent review inbox unavailable:', err); }
+  }
+  // A completed cloud soft-delete must also disappear from the Settings
+  // catalogue even when its historical IndexedDB record remains available
+  // for existing fixtures. Never physically delete the local record here.
+  // Only the owner should hide a locally cached opponent after a completed
+  // removal. An administrator can review another user's request, but that
+  // request must never hide an unrelated opponent with the same local ID.
+  const completedOpponentIds = new Set(deletionRequests
+    .filter(r => r.status === 'completed' && r.requester_id === Auth.getUserId())
+    .map(r => String(r.opponent_local_id)));
+  const displayedGroups = visible.map(group =>
+    group.filter(record => !completedOpponentIds.has(String(record.opponentId)))
+  ).filter(group => group.length > 0);
+  const requestsByOpponent = new Map(deletionRequests.filter(r => (r.status === 'pending' || r.status === 'approved') && r.requester_id === Auth.getUserId()).map(r => [String(r.opponent_local_id), r]));
 
   el.innerHTML = `
     <div class="settings-section">
@@ -5422,8 +5602,6 @@ async function renderOpponentsTab() {
         <div id="oppAddSection" style="display:none;margin-top:12px">
           <div class="form-grid">
             <div class="form-group"><label>${I18n.t('opp_lbl_name')}</label><input id="opp-name" type="text" placeholder="e.g. Sporting CP" oninput="onOpponentNameInputChange(this.value)"><div id="opp-name-hint" style="display:none;font-size:11px;color:var(--muted);margin-top:4px"></div></div>
-            <div class="form-group"><label>${I18n.t('opp_lbl_agegroup')}</label><input id="opp-age" type="text" placeholder="e.g. Sub-14"></div>
-            <div class="form-group"><label>${I18n.t('opp_lbl_level')}</label><input id="opp-level" type="text" placeholder="e.g. AFL II Divisão"></div>
             <div class="form-group"><label>${I18n.t('opp_lbl_logo')}</label><input id="opp-logo" type="url" placeholder="https://..."></div>
             <div class="form-group full"><label>${I18n.t('opp_lbl_maplink')}</label><input id="opp-maplink" type="url" placeholder="https://maps.app.goo.gl/..."></div>
             <div class="form-group full"><label>${I18n.t('opp_lbl_venue_coords')}${infoTip('tip_venue_coords')}</label><input id="opp-coords" type="text" placeholder="e.g. 38.736946, -9.160745"></div>
@@ -5436,10 +5614,17 @@ async function renderOpponentsTab() {
         </div>
       </div>
 
-      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('opp_count', {n: all.length})}</div>
-      ${!all.length ? `<div class="empty"><strong>${I18n.t('opp_empty_title')}</strong><p>${I18n.t('opp_empty_desc')}</p></div>` : `
+      <div class="card" style="margin-bottom:14px"><strong>Missing club?</strong><p style="font-size:12px">Suggest a club for federation verification, or identify it as a small local team.</p><button class="btn btn-secondary btn-sm" onclick="requestOpponentAddition()">Suggest a club</button></div>
+      ${additionRequests.filter(r=>r.requester_id===Auth.getUserId()).slice(0,5).map(r=>`<div style="font-size:12px;padding:5px 0">${esc(r.proposed_name)}: ${esc(r.status)} ${r.decision_reason ? ' ('+esc(r.decision_reason)+')' : ''}</div>`).join('')}
+      ${isDeletionReviewer ? `<div class="card" style="margin-bottom:14px"><strong>Club proposals for review</strong>${additionRequests.filter(r=>r.status==='pending').map(r=>`<div style="padding:8px 0">${esc(r.proposed_name)} (${esc(r.proposed_type)}) <button class="btn btn-secondary btn-sm" onclick="reviewOpponentAdditionRequest('${r.id}','verified')">Federation verified</button> <button class="btn btn-secondary btn-sm" onclick="reviewOpponentAdditionRequest('${r.id}','local')">Local team</button> <button class="btn btn-secondary btn-sm" onclick="reviewOpponentAdditionRequest('${r.id}','rejected')">Reject</button></div>`).join('') || '<p>No pending club proposals.</p>'}</div>` : ''}
+      ${reviewNotifications.length ? `<div class="card" style="margin-bottom:14px"><strong>Opponent review notifications</strong>${reviewNotifications.map(n=>`<div style="padding:7px 0;font-size:12px"><span>${esc(n.message || n.event_type)}</span> ${n.read_at ? '' : `<button class="btn btn-secondary btn-sm" onclick="markOpponentReviewNotificationRead('${n.id}')">Mark read</button>`}</div>`).join('')}</div>` : ''}
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Deletion requests are reviewed by the application administrator. Teams cannot be deleted by users.</div>
+      ${deletionRequests.filter(r => r.requester_id === Auth.getUserId() && r.status !== 'pending' && r.status !== 'approved').slice(0,5).map(r => `<div class="card" style="margin-bottom:8px;font-size:12px">${esc(r.opponent_name)}: ${esc(r.status)}. ${esc(r.decision_reason || '')}</div>`).join('')}
+      ${isDeletionReviewer ? `<div class="card" style="margin-bottom:16px"><strong>Deletion requests for administrator review</strong>${deletionRequests.filter(r=>r.status==='pending' || r.status==='approved').map(r=>`<div style="padding:8px 0">${esc(r.opponent_name)} (${esc(r.status)}) ${r.status==='pending' ? `<button class="btn btn-secondary btn-sm" onclick="reviewOpponentDeletionRequest('${r.id}',false)">Reject</button> <button class="btn btn-secondary btn-sm" onclick="reviewOpponentDeletionRequest('${r.id}',true)">Mark approved after checks</button>` : `<button class="btn btn-secondary btn-sm" onclick="completeApprovedOpponentDeletion('${r.id}')">Complete approved removal</button>`}</div>`).join('') || '<p>No pending or approved requests.</p>'}</div>` : ''}
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('opp_count', {n: displayedGroups.length})}</div>
+      ${!displayedGroups.length ? `<div class="empty"><strong>${I18n.t('opp_empty_title')}</strong><p>${I18n.t('opp_empty_desc')}</p></div>` : `
       <div class="who-played-list">
-        ${all.map(o => `
+        ${displayedGroups.map(group => { const o = group[0]; return `
           <div class="wp-row">
             <div style="padding:12px 14px">
               <div style="display:flex;align-items:center;gap:10px">
@@ -5449,15 +5634,20 @@ async function renderOpponentsTab() {
                 <span style="flex:1;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(o.opponentName)}</span>
               </div>
               <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap">
-                ${o.ageGroup?`<span class="pos-pill">${esc(o.ageGroup)}</span>`:''}
-                ${o.level?`<span class="pos-pill">${esc(o.level)}</span>`:''}
                 <span style="margin-left:auto;display:flex;gap:6px">
                   <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();editOpponent(${o.opponentId})">${I18n.t('common_edit')}</button>
-                  <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteOpponent(${o.opponentId})">${I18n.t('common_delete')}</button>
+                  ${group.length === 1 ? `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();requestOpponentDeletion(${o.opponentId})" ${requestsByOpponent.has(String(o.opponentId)) ? 'disabled' : ''}>${requestsByOpponent.has(String(o.opponentId)) ? 'Deletion requested' : 'Request deletion'}</button>` : ''}
                 </span>
               </div>
+              ${group.length > 1 ? `<details style="margin-top:8px;font-size:12px;color:var(--muted)">
+                <summary style="cursor:pointer">${group.length} existing records, manage individually</summary>
+                ${group.map(record => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0">
+                  <span>${esc(record.opponentName)}</span>
+                  <span style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="editOpponent(${record.opponentId})">${I18n.t('common_edit')}</button><button class="btn btn-secondary btn-sm" onclick="requestOpponentDeletion(${record.opponentId})" ${requestsByOpponent.has(String(record.opponentId)) ? 'disabled' : ''}>${requestsByOpponent.has(String(record.opponentId)) ? 'Requested' : 'Request deletion'}</button></span>
+                </div>`).join('')}
+              </details>` : ''}
             </div>
-          </div>`).join('')}
+          </div>`; }).join('')}
       </div>`}
     </div>`;
 }
@@ -5480,11 +5670,23 @@ function resetOpponentForm() {
 // record currently being edited (so re-saving a name unchanged never
 // warns against itself).
 async function findOpponentNameCollision(name) {
-  const normalized = normalizeOpponentName(name);
+  const normalized = opponentCatalogueDisplayKey(name);
   if (!normalized) return null;
   const selfId = parseInt(document.getElementById('opp-id')?.value || '') || null;
   const all = await DB.getAll('opponents');
-  return all.find(o => o.opponentId !== selfId && normalizeOpponentName(o.opponentName) === normalized) || null;
+  return all.find(o => o.opponentId !== selfId && opponentCatalogueDisplayKey(o.opponentName) === normalized) || null;
+}
+
+// GATE 3 (dev branch only): same collision check as findOpponentNameCollision,
+// but against the shared federation catalogue instead of this user's own
+// opponents table — used so the manual "Add Opponent" form (a second entry
+// point, independent of quickAddOpponentFromGameForm) can't recreate the
+// same kind of shadow duplicate either.
+async function findFederationClubNameCollision(name) {
+  const normalized = normalizeOpponentName(name);
+  if (!normalized) return null;
+  const clubs = await getFederationClubs();
+  return clubs.find(fc => normalizeOpponentName(fc.official_name) === normalized) || null;
 }
 
 async function onOpponentNameInputChange(value) {
@@ -5492,20 +5694,29 @@ async function onOpponentNameInputChange(value) {
   const hint = document.getElementById('opp-name-hint');
   if (!hint) return;
   const match = await findOpponentNameCollision(value);
-  if (!match) { hint.style.display = 'none'; return; }
-  hint.style.display = '';
-  hint.innerHTML = `${I18n.t('opp_dup_possible')} <strong>${esc(match.opponentName)}</strong>
-    &nbsp;<a href="#" onclick="event.preventDefault();useExistingOpponentInForm(${match.opponentId})" style="color:var(--black-accent);text-decoration:underline">${I18n.t('opp_dup_use_existing')}</a>
-    &nbsp;·&nbsp;
-    <a href="#" onclick="event.preventDefault();confirmCreateOpponentAnyway()" style="color:var(--muted);text-decoration:underline">${I18n.t('opp_dup_create_anyway')}</a>`;
+  if (match) {
+    hint.style.display = '';
+    hint.innerHTML = `${I18n.t('opp_dup_possible')} <strong>${esc(match.opponentName)}</strong>
+      &nbsp;<a href="#" onclick="event.preventDefault();useExistingOpponentInForm(${match.opponentId})" style="color:var(--black-accent);text-decoration:underline">${I18n.t('opp_dup_use_existing')}</a>
+      &nbsp;·&nbsp;
+      <a href="#" onclick="event.preventDefault();confirmCreateOpponentAnyway()" style="color:var(--muted);text-decoration:underline">${I18n.t('opp_dup_create_anyway')}</a>`;
+    return;
+  }
+  const fcMatch = await findFederationClubNameCollision(value);
+  if (fcMatch) {
+    hint.style.display = '';
+    hint.innerHTML = `${I18n.t('opp_dup_possible')} <strong>${esc(fcMatch.official_name)}</strong> (shared federation catalogue)
+      &nbsp;·&nbsp;
+      <a href="#" onclick="event.preventDefault();confirmCreateOpponentAnyway()" style="color:var(--muted);text-decoration:underline">${I18n.t('opp_dup_create_anyway')}</a>`;
+    return;
+  }
+  hint.style.display = 'none';
 }
 
 async function useExistingOpponentInForm(id) {
   const o = await DB.get('opponents', id);
   if (!o) return;
   document.getElementById('opp-name').value = o.opponentName || '';
-  document.getElementById('opp-age').value = o.ageGroup || '';
-  document.getElementById('opp-level').value = o.level || '';
   document.getElementById('opp-logo').value = o.logoUrl || '';
   document.getElementById('opp-notes').value = o.notes || '';
   document.getElementById('opp-id').value = id;
@@ -5530,8 +5741,6 @@ async function editOpponent(id) {
     if (chevron) chevron.innerHTML = '&#9650;';
   }
   document.getElementById('opp-name').value = o.opponentName||'';
-  document.getElementById('opp-age').value = o.ageGroup||'';
-  document.getElementById('opp-level').value = o.level||'';
   document.getElementById('opp-logo').value = o.logoUrl||'';
   document.getElementById('opp-maplink').value = o.mapUrl||'';
   document.getElementById('opp-coords').value = formatCoordsPair(o.venueLat, o.venueLng);
@@ -5549,26 +5758,37 @@ async function saveOpponentFromForm() {
   // and re-shows the same hint the live check already displays — this
   // re-check exists so a stale page state (hint dismissed some other
   // way) can never let a silent duplicate through.
-  if (!_opponentDupOverride) {
-    const match = await findOpponentNameCollision(name);
-    if (match) {
-      await onOpponentNameInputChange(name);
-      Toast.error(I18n.t('opp_dup_blocked'));
-      return;
-    }
+  const match = await findOpponentNameCollision(name);
+  if (match) {
+    await onOpponentNameInputChange(name);
+    Toast.error(I18n.t('opp_dup_blocked'));
+    return;
   }
   const existingId = document.getElementById('opp-id').value;
   const data = {
     opponentName: name,
-    ageGroup: document.getElementById('opp-age').value.trim()||null,
-    level: document.getElementById('opp-level').value.trim()||null,
     logoUrl: document.getElementById('opp-logo').value.trim()||null,
     mapUrl: document.getElementById('opp-maplink').value.trim()||null,
     venueLat: venueCoords.lat,
     venueLng: venueCoords.lng,
     notes: document.getElementById('opp-notes').value.trim()||null,
   };
-  if (existingId) data.opponentId = parseInt(existingId);
+  if (existingId) {
+    data.opponentId = parseInt(existingId);
+    const existingOpponent = await DB.get('opponents', data.opponentId);
+    // Historical fixtures reference the literal opponent name. A rename without
+    // migrating every fixture would silently break their opponent lookup.
+    if (existingOpponent && existingOpponent.opponentName !== name) {
+      const games = await DB.getAll('games');
+      if (games.some(game => game.opponent === existingOpponent.opponentName)) {
+        Toast.error('This opponent is used by existing fixtures. Its name cannot be changed without migrating match references.');
+        return;
+      }
+    }
+    // Keep legacy metadata intact even though age/division are no longer editable.
+    data.ageGroup = existingOpponent?.ageGroup || null;
+    data.level = existingOpponent?.level || null;
+  }
   try {
     await DB.put('opponents', data);
     _opponentDupOverride = false;
@@ -5580,12 +5800,112 @@ async function saveOpponentFromForm() {
   }
 }
 
-async function deleteOpponent(id) {
-  Confirm.show(I18n.t('opp_confirm_delete_title'), I18n.t('opp_confirm_delete_body'), async () => {
-    await DB.softDelete('opponents', id);
-    Toast.show(I18n.t('ch_deleted'));
+async function requestOpponentAddition() {
+  if (!Sync.isConfigured() || !Auth.isLoggedIn()) { Toast.error('Sign in and enable cloud sync to suggest a club.'); return; }
+  const name = window.prompt('Name of the missing club or local team:');
+  if (!name || !name.trim()) return;
+  const local = window.confirm('Is this a small local team not registered with the federation? Select OK for local, Cancel for federation verification.');
+  const notes = window.prompt('Additional details, location or federation reference (optional):') || '';
+  try {
+    await Sync.supabaseRequest('POST', 'opponent_addition_requests', {
+      requester_id: Auth.getUserId(), proposed_name: name.trim(),
+      proposed_type: local ? 'local' : 'federation', notes: notes.trim()
+    });
+    Toast.show('Club proposal submitted for administrator review.');
     await renderOpponentsTab();
-  });
+  } catch(err) { Toast.error('Could not submit club proposal: ' + err.message); }
+}
+
+async function reviewOpponentAdditionRequest(requestId, outcome) {
+  if (!Sync.isConfigured() || !Auth.isLoggedIn()) return;
+  const reference = outcome === 'verified' ? window.prompt('Federation club UUID after verifying the official catalogue:') : null;
+  if (outcome === 'verified' && (!reference || !/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(reference))) {
+    Toast.error('A verified federation club ID is required.'); return;
+  }
+  const reason = window.prompt('Explain your decision to the requester:');
+  if (!reason || !reason.trim()) { Toast.error('An explanation is required.'); return; }
+  try {
+    await Sync.supabaseRequest('PATCH', 'opponent_addition_requests', {
+      status: outcome, federation_club_id: outcome === 'verified' ? reference : null,
+      decision_reason: reason.trim(), reviewed_by: Auth.getUserId(), reviewed_at: new Date().toISOString()
+    }, { id: 'eq.' + requestId, status: 'eq.pending' });
+    Toast.show('Club proposal reviewed. No existing fixtures or clubs were changed.');
+    await renderOpponentsTab();
+  } catch(err) { Toast.error('Could not review club proposal: ' + err.message); }
+}
+
+async function requestOpponentDeletion(id) {
+  if (!Sync.isConfigured() || !Auth.isLoggedIn()) {
+    Toast.error('Sign in and enable cloud sync to request deletion.');
+    return;
+  }
+  const opponent = await DB.get('opponents', id);
+  if (!opponent) return;
+  const reason = window.prompt('Why should this team be deleted? The administrator will review the request.');
+  if (reason === null) return;
+  if (!reason.trim()) { Toast.error('Please provide a reason.'); return; }
+  try {
+    await Sync.supabaseRequest('POST', 'opponent_deletion_requests', {
+      requester_id: Auth.getUserId(), opponent_local_id: String(id),
+      opponent_name: opponent.opponentName, request_reason: reason.trim()
+    });
+    Toast.show('Deletion request sent to the administrator for review.');
+    await renderOpponentsTab();
+  } catch(err) { Toast.error('Could not submit request: ' + err.message); }
+}
+
+async function reviewOpponentDeletionRequest(requestId, approve) {
+  if (!Sync.isConfigured() || !Auth.isLoggedIn()) return;
+  const reason = window.prompt(approve
+    ? 'Record the completed checks and outcome. Approval does not delete the team automatically.'
+    : 'Explain why the team cannot be deleted. This will be shown to the requester.');
+  if (!reason || !reason.trim()) { Toast.error('A decision explanation is required.'); return; }
+  try {
+    await Sync.supabaseRequest('PATCH', 'opponent_deletion_requests', {
+      status: approve ? 'approved' : 'rejected', decision_reason: reason.trim(),
+      reviewed_by: Auth.getUserId(), reviewed_at: new Date().toISOString()
+    }, { id: 'eq.' + requestId, status: 'eq.pending' });
+    Toast.show('Decision recorded. No opponent records were deleted.');
+    await renderOpponentsTab();
+  } catch(err) { Toast.error('Review failed: ' + err.message); }
+}
+
+async function markOpponentReviewNotificationRead(notificationId) {
+  if (!Sync.isConfigured() || !Auth.isLoggedIn()) return;
+  try {
+    await Sync.supabaseRequest('PATCH', 'opponent_review_notifications', {
+      read_at: new Date().toISOString()
+    }, { id: 'eq.' + notificationId, recipient_id: 'eq.' + Auth.getUserId(), read_at: 'is.null' });
+    await renderOpponentsTab();
+  } catch (err) { Toast.error('Could not mark notification as read: ' + err.message); }
+}
+
+// Only the server-side administrator RPC can complete an approved deletion.
+// This UI never deletes local opponents or modifies fixtures directly.
+async function completeApprovedOpponentDeletion(requestId) {
+  if (!Sync.isConfigured() || !Auth.isLoggedIn()) return;
+  try {
+    const admins = await Sync.supabaseRequest('GET', 'opponent_deletion_admins', null, {
+      select: 'user_id', user_id: 'eq.' + Auth.getUserId(), limit: '1'
+    });
+    if (!admins.length) { Toast.error('Administrator authorization required.'); return; }
+    const requests = await Sync.supabaseRequest('GET', 'opponent_deletion_requests', null, {
+      select: 'id,opponent_name,status,decision_reason',
+      id: 'eq.' + requestId, status: 'eq.approved', limit: '1'
+    });
+    const request = requests[0];
+    if (!request || !request.decision_reason) {
+      Toast.error('Only reviewed, approved requests can be completed.'); return;
+    }
+    if (!window.confirm('Complete the approved removal of "' + request.opponent_name +
+      '"? This soft-deletes the exact opponent in the cloud. Historical matches remain unchanged.')) return;
+    const completion = await Sync.supabaseRequest('POST', 'rpc/complete_approved_opponent_deletion', {
+      p_request_id: requestId
+    });
+    if (completion !== true) throw new Error('Server did not confirm completion.');
+    Toast.show('Approved opponent removal completed. Historical matches were preserved.');
+    await renderOpponentsTab();
+  } catch (err) { Toast.error('Removal was not completed: ' + err.message); }
 }
 
 // ── TRAINING SESSIONS — data layer ───────────────────────────────────────────
@@ -5840,16 +6160,123 @@ async function getDrillHistoryForPlayer(drillKey, playerId, seasonId) {
 }
 
 // ── OPPONENT DROPDOWN — ADD/EDIT GAME FORM ───────────────────────────────────
+// GATE 8.4 — feature flag: keeps the federation catalogue out of this
+// picker until a release has verified alias mappings in place. Without
+// this, Phase B (frontend federation-club integration) deploying ahead
+// of Phase C (verified aliases) would surface a generic catalogue entry
+// ("Olivais") alongside a user's own, differently-spelled historical
+// opponents ("Olivais 'A'", "SL Olivais") with no way yet to recognise
+// them as the same club — exactly the "duplicate-looking option" Gate 7
+// flagged. Flip to true only once Phase C's alias rows are live; until
+// then Phase A (DB) and Phase B (this code) can both ship safely with
+// the merge logic present but dormant, matching every user's existing
+// picker exactly as it is today.
+// Keep OFF until the full release checklist (regression + browser suites,
+// match-save contract, parent-facing views) passes end-to-end. See
+// docs/MIGRATION_COMPLETION_TRACKER.md (UX-01 / QA-01) for current status.
+const FEDERATION_CATALOGUE_PICKER_ENABLED = false;
+
+// GATE 8.4 — pure function (no DOM, no DB) so it can be unit-tested with
+// both enabled=true and enabled=false without needing to mutate the
+// FEDERATION_CATALOGUE_PICKER_ENABLED constant from outside.
+//   localOpponents   — this user's own `opponents` rows (array of {opponentName,...})
+//   federationClubs  — the shared catalogue (array of {official_name,...})
+//   aliasRows        — this user's `teamAliasMappings` rows (mixed kinds)
+//   enabled          — the feature-flag value to apply
+// Returns the de-duplicated, sorted list of names for the datalist.
+function computeOpponentPickerNames(localOpponents, federationClubs, aliasRows, enabled) {
+  const names = localOpponents.map(o => o.opponentName).filter(Boolean);
+  if (enabled) {
+    const localNamesLower = new Set(localOpponents.map(o => (o.opponentName || '').toLowerCase()));
+    // A federation club is suppressed from the "catalogue-only" additions
+    // whenever either:
+    //   (a) its official_name exact-matches a local opponent name (the
+    //       original rule — a local row always wins display, since it may
+    //       carry this user's own notes/edits), or
+    //   (b) this user has a verified opponent_federation_alias row whose
+    //       canonicalOfficialName is this club — meaning the user already
+    //       has one or more disambiguated local names (e.g. "Olivais 'A'",
+    //       "SL Olivais") standing in for it, so the bare catalogue name
+    //       would be a second, ambiguous way to pick the same club and
+    //       must not appear as a separate option. Squad distinctions are
+    //       preserved automatically by this rule: each squad's own local
+    //       name keeps appearing, only the generic, squad-less catalogue
+    //       entry is hidden once that club has been aliased.
+    const aliasedFederationNamesLower = new Set(
+      (aliasRows || [])
+        .filter(a => a.kind === 'opponent_federation_alias')
+        .map(a => (a.canonicalOfficialName || '').toLowerCase())
+        .filter(Boolean)
+    );
+    const federationOnly = federationClubs.filter(fc => {
+      const lower = (fc.official_name || '').toLowerCase();
+      return !localNamesLower.has(lower) && !aliasedFederationNamesLower.has(lower);
+    });
+    names.push(...federationOnly.map(fc => fc.official_name).filter(Boolean));
+  }
+  names.sort((a, b) => a.localeCompare(b));
+  return names;
+}
+
 // Populates the <datalist> backing the Opponent field with every catalogue
 // name, so typing offers autocomplete suggestions while still allowing any
 // free-text name for a one-off opponent that isn't catalogued.
+// Federation catalogue suggestions are read-only and fall back to locally saved
+// opponents if the API is unavailable. This flag affects suggestions only;
+// it does not change match save, federation identities or historical fixtures.
+
+async function federationOpponentSuggestions() {
+  if (!FEDERATION_CATALOGUE_PICKER_ENABLED || !Sync.isConfigured() || !Auth.isLoggedIn()) return [];
+  try {
+    const [clubs, registrations] = await Promise.all([
+      Sync.supabaseRequest('GET', 'federation_clubs', null, { select: 'id,official_name', limit: '1000' }),
+      Sync.supabaseRequest('GET', 'federation_club_competitions', null, {
+        select: 'club_id,squad_label', season: 'eq.2026/27', limit: '1000'
+      })
+    ]);
+    const labelsByClub = new Map();
+    for (const row of registrations || []) {
+      if (!row.squad_label) continue;
+      if (!labelsByClub.has(row.club_id)) labelsByClub.set(row.club_id, new Set());
+      labelsByClub.get(row.club_id).add(row.squad_label);
+    }
+    const suggestions = [];
+    for (const club of clubs || []) {
+      if (!club.official_name) continue;
+      const labels = labelsByClub.get(club.id);
+      if (labels && labels.size) {
+        for (const label of labels) suggestions.push(club.official_name + ' "' + label + '"');
+      } else {
+        suggestions.push(club.official_name);
+      }
+    }
+    return suggestions;
+  } catch (error) {
+    console.warn('[Federation picker] Catalogue unavailable; local opponents remain available.', error);
+    return [];
+  }
+}
+
 async function populateOpponentDatalist() {
   const list = document.getElementById('gf-opp-list');
   if (!list) return;
   const all = await DB.getAll('opponents');
-  all.sort((a,b) => (a.opponentName||'').localeCompare(b.opponentName||''));
-  list.innerHTML = all.map(o => `<option value="${esc(o.opponentName)}"></option>`).join('');
-  window._opponentCatalogueNames = all.map(o => o.opponentName);
+  // Federation suggestions come from federationOpponentSuggestions() (tested
+  // in tests/regression_federation_picker_release.js and
+  // tests/browser_federation_picker.js — kept as the single implementation
+  // so those passing tests keep covering the real code path). The earlier
+  // Gate 3/7/8.1 computeOpponentPickerNames() experiment (alias-row-aware)
+  // was dropped here in favor of this tested path; see MIGRATION_COMPLETION_TRACKER.md.
+  const federation = await federationOpponentSuggestions();
+  const byName = new Map();
+  for (const name of [...all.map(o => o.opponentName), ...federation]) {
+    if (typeof name !== 'string' || !name.trim()) continue;
+    const key = name.trim().toLocaleLowerCase();
+    if (!byName.has(key)) byName.set(key, name.trim());
+  }
+  const names = [...byName.values()].sort((a,b) => a.localeCompare(b));
+  list.innerHTML = names.map(name => `<option value="${esc(name)}"></option>`).join('');
+  window._opponentCatalogueNames = names;
 }
 
 // As the user types, show a small inline hint + shortcut if what they've
@@ -5872,7 +6299,17 @@ function onOpponentInputChange(value) {
 
 async function quickAddOpponentFromGameForm(name) {
   try {
-    await DB.put('opponents', { opponentName: name, ageGroup: null, level: null, logoUrl: null, notes: null });
+    // GATE 3 (dev branch only): if this exact name is already a real
+    // federation club in the shared catalogue, do NOT create a local
+    // shadow copy — this is the exact UI-level step that used to let a
+    // typed name re-create a federation-import duplicate. The club is
+    // already offered via the datalist (populateOpponentDatalist), so
+    // there is nothing to add.
+    const federationClubs = await getFederationClubs();
+    const isFederationClub = federationClubs.some(fc => (fc.official_name || '').toLowerCase() === name.trim().toLowerCase());
+    if (!isFederationClub) {
+      await DB.put('opponents', { opponentName: name, ageGroup: null, level: null, logoUrl: null, notes: null });
+    }
     Toast.show(I18n.t('opp_added'));
     await populateOpponentDatalist();
     document.getElementById('gf-opp-newhint').style.display = 'none';
@@ -5888,7 +6325,48 @@ async function quickAddOpponentFromGameForm(name) {
 async function findOpponentByName(name) {
   if (!name) return null;
   const all = await DB.getAll('opponents');
-  return all.find(o => (o.opponentName||'').toLowerCase() === name.trim().toLowerCase()) || null;
+  const local = all.find(o => (o.opponentName||'').toLowerCase() === name.trim().toLowerCase());
+  if (local) return local;
+  // GATE 3 (dev branch only): step 2 of the same two-step resolution used
+  // server-side in resolve_opponent_lookup() — fall back to the shared
+  // federation catalogue before giving up, so a club that was never
+  // copied into this user's own table (because quickAddOpponentFromGameForm
+  // now skips that copy) still resolves a logo/map here. Shaped to match
+  // the fields callers of this function already expect from a local row.
+  const federationClubs = await getFederationClubs();
+  const needle = name.trim().toLowerCase();
+  let fc = federationClubs.find(c => (c.official_name||'').toLowerCase() === needle);
+  // GATE 7: step 3 — opponent/federation-club alias resolution. Covers a
+  // name this user's own opponent list and the federation catalogue both
+  // fail to match directly (e.g. "Olivais 'A'" or "SL Olivais" vs the
+  // catalogue's unqualified "Olivais") via a verified alias row.
+  //
+  // Reuses the existing team_alias_mappings table/teamAliasMappings store —
+  // additive, not a schema change — but with its own row shape, kept
+  // deliberately separate from the League Classification feature that
+  // already owns this store (Classification.matchAlias / scopeKey /
+  // clsAliasRecordsForScope). These rows are tagged kind:'opponent_
+  // federation_alias' (classification rows never set `kind`, so they're
+  // invisible to this lookup) and carry competitionType:
+  // '__opponent_federation_alias__' (never 'League', so
+  // Classification.scopeKey(a) can never equal a real classification
+  // scope's key — clsAliasRecordsForScope never returns them either).
+  // Each side only ever sees its own rows.
+  if (!fc) {
+    const aliasRows = await DB.getAll('teamAliasMappings');
+    const hit = aliasRows.find(a => a.kind === 'opponent_federation_alias' && (a.aliases||[]).includes(needle));
+    if (hit) fc = federationClubs.find(c => (c.official_name||'').toLowerCase() === (hit.canonicalOfficialName||'').toLowerCase());
+  }
+  if (!fc) return null;
+  return {
+    opponentName: fc.official_name,
+    mapUrl: fc.map_url,
+    venueLat: fc.venue_lat,
+    venueLng: fc.venue_lng,
+    logoUrl: fc.logo_url,
+    ageGroup: null, level: null, notes: null,
+    _fromFederationCatalogue: true,
+  };
 }
 
 // ── MOST USED LINEUP ─────────────────────────────────────────────────────────
@@ -21449,6 +21927,7 @@ const Render = (() => {
             </div>
             <div class="form-group"><label>${I18n.t('set_lbl_club_name')} *</label><input id="sf-club" type="text" placeholder="e.g. SL Olivais"></div>
             <div class="form-group"><label>${I18n.t('set_lbl_home_ground')}</label><input id="sf-homeground" type="text" placeholder="e.g. Campo SL Olivais"></div>
+            <div class="form-group"><label>${I18n.t('set_lbl_homeground_coords')}${infoTip('tip_homeground_coords')}</label><input id="sf-homeground-coords" type="text" placeholder="e.g. 38.736946, -9.160745"></div>
             <div class="form-group"><label>${I18n.t('set_lbl_age_group')}</label>${renderAgeGroupField('sf-age', 'sf-age-other', '')}</div>
             <div class="form-group"><label>${I18n.t('ftw_lbl_country')} *</label>${renderCountryField('sf-country', 'sf-country-other', '')}</div>
             <div class="form-group"><label>${I18n.t('set_lbl_match_duration')}</label>
@@ -24193,6 +24672,14 @@ const Sync = (() => {
   function getStatus() { return { status:_status, lastSync:_lastSync, pendingCount:_pendingCount, configured:isConfigured(), online:isOnline() }; }
   function fmtDateTime(d) { if(!d)return'—'; return new Date(d).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
 
+  // GATE 3 (dev branch only, not yet deployed): federation_clubs has no
+  // user_id — it is the same shared, read-only list for every account — so
+  // this is a plain GET with no user_id filter, unlike every other table's
+  // pull(). Called from syncFederationClubsIfStale(), at most once per 24h.
+  async function fetchFederationClubs() {
+    return await supabaseRequest('GET', 'federation_clubs', null, {}) || [];
+  }
+
   // ── DELETE ALL CLOUD ROWS FOR THE LOGGED-IN USER ─────────────────────────
   async function supabaseDelete(table) {
     if (!Auth.isLoggedIn()) throw new Error('Not logged in.');
@@ -24212,7 +24699,7 @@ const Sync = (() => {
     }
   }
 
-  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, fetchAdminUserOverview, fetchAdminOverviewStats, fetchAdminDemoStats, touchLastActive, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, stopTimers, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping };
+  return { loadConfig, saveConfig, testConnection, run, uploadAll, downloadAll, resetLocalCloudIds, supabaseDelete, getPendingCount, getStatus, fetchAdminUserOverview, fetchAdminOverviewStats, fetchAdminDemoStats, touchLastActive, updateSyncUI, log, isConfigured, getRawConfig, storeToTable, stopTimers, validatePlayerPinRemote, bootstrapPlayerFromRemote, portalBootstrapRemote, portalPull, portalPullRemote, applyPortalBootstrap, validatePortalBootstrap, clearPortalCachedData, portalTrainingSaveRemote, portalTrainingDeleteRemote, fetchOwnProfile, claimAccountCode, generateTeamShareLink, setTeamShareEnabled, updateTeamSharePrivacy, getTeamShareLink, getRestoredLogHtml, scheduleAutoSync, startPeriodicSync, supabaseRequest, resetBookkeeping, fetchFederationClubs };
 })();
 
 function attachEvents() {
@@ -28378,6 +28865,8 @@ document.addEventListener('click', async e => {
     if (!clubNameInput) { Toast.error(I18n.t('set_err_club_required')); return; }
     const countryInput = readCountryField('sf-country', 'sf-country-other');
     if (!countryInput) { Toast.error(I18n.t('ftw_err_country_required')); return; }
+    const homeGroundCoordsInput = parseCoordsInput(document.getElementById('sf-homeground-coords')?.value);
+    if (homeGroundCoordsInput === null) { Toast.error(I18n.t('set_err_invalid_coords')); return; }
     // Block creating a second season for a year that already has one —
     // this was previously silently allowed, and created exactly the
     // "two seasons both called 2026/27" problem that's confusing to
@@ -28415,6 +28904,8 @@ document.addEventListener('click', async e => {
       clubTeamId,
       clubName: clubNameInput,
       homeGround: document.getElementById('sf-homeground')?.value.trim()||null,
+      homeGroundLat: homeGroundCoordsInput.lat,
+      homeGroundLng: homeGroundCoordsInput.lng,
       ageGroup: readAgeGroupField('sf-age', 'sf-age-other'),
       defaultMatchDurationMins: readDurationFromForm('sf-duration-select', 'sf-duration-custom'),
       shirtColor: (shirtColorInput && shirtColorInput.value !== '#b23333' && shirtColorInput.value !== '#B23333') ? shirtColorInput.value : null,
@@ -28782,6 +29273,11 @@ async function continueAppLoadAfterLogin() {
     // Seed the opponents catalogue once, only if it's genuinely empty —
     // never overwrites or duplicates anything the user has already added.
     try { await seedOpponentsIfEmpty(); } catch(e) { console.error('[init] opponent seed failed:', e); }
+    // GATE 3 (dev branch only): replaces the old local reseed with a read
+    // of the shared, read-only federation catalogue — never written into
+    // this user's own `opponents` table. Safe to call on every load; it
+    // no-ops unless the 24h cache is stale.
+    try { await syncFederationClubsIfStale(); } catch(e) { console.error('[init] federation catalogue sync failed:', e); }
     try { await migrateClubTeams(); } catch(e) { console.error('[init] club/team migration failed:', e); }
     try { await migrateCareerPlayerIds(); } catch(e) { console.error('[init] careerPlayerId migration failed:', e); }
 

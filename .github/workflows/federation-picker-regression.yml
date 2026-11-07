@@ -1,0 +1,79 @@
+name: Federation picker regression
+on:
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'tests/regression_federation_picker_release.js'
+      - 'tests/browser_federation_picker.js'
+      - 'tests/browser_opponent_approval.js'
+      - 'tests/browser_opponent_review_inbox.js'
+      - 'tests/regression_opponent_review_inbox.js'
+      - 'js/opponent-review-inbox.js'
+      - 'tests/regression_federation_match_save_contract.js'
+      - 'tests/regression_opponents_settings.js'
+      - '.github/workflows/federation-picker-regression.yml'
+      - 'supabase/migrations/*.sql'
+      - 'tests/sql/federation_*.sql'
+      - 'tests/sql/opponent_review_*.sql'
+      - 'tests/sql/opponent_deletion_*.sql'
+      - 'tests/sql/opponent_notification_*.sql'
+      - 'tests/sql/opponent_anonymous_*.sql'
+      - 'tests/sql/*.sql'
+  workflow_dispatch:
+jobs:
+  picker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tests/regression_federation_picker_release.js
+      - run: node tests/regression_federation_match_save_contract.js
+      - run: node tests/regression_opponents_settings.js
+      - run: node tests/regression_opponent_review_inbox.js
+      - name: Install Chromium test runner
+        run: |
+          npm install --no-save --no-package-lock playwright@1.58.2
+          npx playwright install --with-deps chromium
+      - name: Browser federation picker acceptance
+        run: node tests/browser_federation_picker.js
+      - name: Browser opponent approval acceptance
+        run: node tests/browser_opponent_approval.js
+      - name: Browser review inbox adapter acceptance
+        run: node tests/browser_opponent_review_inbox.js
+      - name: Verify federation SQL test fixtures and migrations are tracked
+        run: |
+          test -s tests/sql/federation_link_negative_isolated.sql
+          test -s tests/sql/federation_link_rls_matrix_isolated.sql
+          test -s tests/sql/opponent_review_nonadmin_rls_isolated.sql
+          test -s tests/sql/opponent_deletion_completion_notifications_isolated.sql
+          test -s tests/sql/opponent_notification_integrity_rls_isolated.sql
+          test -s tests/sql/federation_alias_soft_delete_survival_isolated.sql
+          test -s tests/sql/federation_reviewed_alias_identity_guard_isolated.sql
+          test -s tests/sql/federation_historical_alias_resolution_isolated.sql
+          test -s tests/sql/federation_retirement_requires_reviewed_alias_isolated.sql
+          test -s tests/sql/opponent_anonymous_security_boundary_isolated.sql
+          test -s tests/sql/opponent_public_share_invalid_token_isolated.sql
+          test -s tests/sql/opponent_public_share_revocation_isolated.sql
+          test -s tests/sql/opponent_public_share_valid_token_cross_owner_isolated.sql
+          test -s tests/sql/opponent_share_token_hygiene_readonly.sql
+          test -s supabase/migrations/20261106200000_game_opponent_federation_links.sql
+          test -s supabase/migrations/20261106203000_backfill_verified_game_federation_links.sql
+          test -s supabase/migrations/20261107021000_opponent_historical_aliases.sql
+          test -s supabase/migrations/20261107023000_resolve_historical_opponent_alias.sql
+          test -s supabase/migrations/20261107024500_preserve_soft_deleted_historical_alias.sql
+          test -s supabase/migrations/20261107030000_guard_reviewed_alias_identity.sql
+          test -s supabase/migrations/20261107033000_require_alias_before_historical_opponent_retirement.sql
+          # Later historical-identity guards and their negative fixtures.
+          test -s tests/sql/federation_alias_integrity_multifinding_readonly.sql
+          test -s tests/sql/federation_alias_multifinding_negative_fixture.sql
+          test -s tests/sql/federation_archived_fixture_retirement_guard_isolated.sql
+          test -s tests/sql/federation_retired_source_fixture_integrity_readonly.sql
+          test -s tests/sql/federation_retired_source_fixture_negative_fixture.sql
+          test -s tests/sql/federation_historical_name_ambiguity_readonly.sql
+          test -s tests/sql/federation_historical_name_ambiguity_negative_fixture.sql
+          test -s tests/sql/federation_fixture_reference_completeness_readonly.sql
+          test -s tests/sql/federation_fixture_reference_completeness_negative_fixture.sql
+          test -s supabase/migrations/20261107042600_protect_archived_historical_fixtures_on_retirement.sql

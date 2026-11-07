@@ -1,0 +1,95 @@
+-- ============================================================================
+-- GATE 10.4 — authoritative regression-test inventory, and reconciliation of
+-- the "99 checks (Gate 8) vs 60 checks (Gate 9)" discrepancy Victor flagged.
+-- Nothing in this file touches Supabase; it documents a Node/Playwright test
+-- investigation performed against the git history and the live repo files.
+-- ============================================================================
+
+-- METHOD
+-- 1. Confirmed, via `git log --all --oneline --grep="99 checks"`, that
+--    commit 428f69d is the exact (and only) commit where "99 checks across
+--    7 files, 0 failures" was claimed -- in my OWN Gate 8 commit message and
+--    Gate 8's own final chat report. This number was never computed by a
+--    tool separate from me; it was my own prior claim.
+-- 2. Confirmed, via `git log --diff-filter=D --summary --all -- tests/`,
+--    that no test file has EVER been deleted from this repository's history.
+-- 3. Confirmed, via `git ls-tree -r 428f69d --name-only -- tests/`, that the
+--    exact same 7 filenames existed at 428f69d as exist today -- ruling out
+--    "a file was swapped for a smaller one" before any run was attempted.
+-- 4. Extracted the real content of all 7 test files AND their dependencies
+--    (team.html, public-stats-core.js) EXACTLY as they existed at 428f69d,
+--    via `git show 428f69d:<path>`, into an isolated scratch directory.
+-- 5. Ran each of the 7 extracted historical test files for real
+--    (`node tests/<file>.js`), against the historical team.html/index.html,
+--    and recorded the actual PASS/FAIL count each one printed.
+-- 6. Ran each of the 7 CURRENT test files for real, against the CURRENT
+--    team.html/index.html, the same way.
+-- 7. Diffed the historical and current versions of every one of the 7 test
+--    files byte-for-byte (`diff -u`).
+
+-- FINDING 1 — the two suites are IDENTICAL. Per-file count, historical
+-- (428f69d) vs current (this gate), both actually executed just now:
+--
+--   File                                   | 428f69d | current | diff
+--   ---------------------------------------+---------+---------+------
+--   regression_caio_and_cards.js           |    6    |    6    |  0
+--   regression_gate7_opponent_alias.js     |    9    |    9    |  0
+--   regression_gate8_opponent_picker.js    |    8    |    8    |  0
+--   regression_gate8_rollback_safety.js    |    5    |    5    |  0
+--   regression_marcadores_guests.js        |    8    |    8    |  0
+--   regression_next_game_weather.js        |   11    |   11    |  0
+--   regression_season_calendar.js          |   52    |   52    |  0
+--   ---------------------------------------+---------+---------+------
+--   TOTAL                                  |   99    |   99    |  0
+--
+-- All 7 test files are BYTE-IDENTICAL between 428f69d and today
+-- (`diff -u` produced zero output for every file, including
+-- regression_season_calendar.js, the largest). Zero assertions were added,
+-- removed, or consolidated. Zero test files were skipped. Zero failures in
+-- either run.
+
+-- FINDING 2 — the "60 checks" figure cannot be reproduced and its origin
+-- cannot be located. I searched every available record of this engagement's
+-- own history (git log, git diff history, and this session's own stored
+-- transcript) for the actual computation behind "60 checks across 7 files" --
+-- a real `node tests/...` invocation whose output totalled 60. None exists.
+-- The number appears ONLY as a stated conclusion, never as a traceable
+-- result of a specific run. Given Finding 1 (the suite is unchanged and
+-- currently totals 99 with 0 failures, matching Gate 8's original figure
+-- exactly, file-for-file), the most likely explanation is a REPORTING ERROR
+-- made during Gate 9 -- not a real reduction in test coverage. One concrete
+-- mechanism that would produce an undercount like this, confirmed possible
+-- this gate: re-running the historical test files initially failed with a
+-- page crash (`ERR_FILE_NOT_FOUND` / `Cannot read properties of null`)
+-- because a dependency file (team.html's own public-stats-core.js) was
+-- missing from the directory the tests were run from. A run against an
+-- incomplete/stale working copy, or one interrupted partway through a
+-- Playwright session, can silently truncate the printed PASS count well
+-- before "0 failed" would ever be reached -- which is consistent with a
+-- smaller, still-all-passing number being reported without any test having
+-- actually been removed. This is offered as the most plausible mechanism,
+-- not a confirmed root cause: the specific Gate 9 run that produced "60" is
+-- not recoverable for direct inspection.
+
+-- FINDING 3 — no coverage needs to be restored. Every one of the 99 checks
+-- that existed at Gate 8 still exists in the current test files, runs
+-- successfully against the current index.html/team.html, and passes. There
+-- is no gap to fill.
+
+-- AUTHORITATIVE REGRESSION INVENTORY (this gate, executed just now, current
+-- working tree, 0 failures across the board):
+--
+--   regression_caio_and_cards.js            : 6 executed, 0 skipped, 6 passed, 0 failed
+--   regression_gate7_opponent_alias.js       : 9 executed, 0 skipped, 9 passed, 0 failed
+--   regression_gate8_opponent_picker.js      : 8 executed, 0 skipped, 8 passed, 0 failed
+--   regression_gate8_rollback_safety.js      : 5 executed, 0 skipped, 5 passed, 0 failed
+--   regression_marcadores_guests.js          : 8 executed, 0 skipped, 8 passed, 0 failed
+--   regression_next_game_weather.js          : 11 executed, 0 skipped, 11 passed, 0 failed
+--   regression_season_calendar.js            : 52 executed, 0 skipped, 52 passed, 0 failed
+--   TOTAL                                     : 99 executed, 0 skipped, 99 passed, 0 failed
+--
+-- This is the single authoritative figure going forward: 99 checks, 7
+-- files, 0 failures -- not 60. The earlier "60" figure in the Gate 9 report
+-- should be treated as superseded and incorrect.
+
+select 'Gate 10.4 complete. The 99-vs-60 discrepancy is NOT a real coverage loss: all 7 test files are byte-identical to Gate 8''s 428f69d commit, and re-executing them today reproduces exactly 99 passing checks across 7 files, 0 failures -- identical, file-for-file, to the original Gate 8 figure. The "60" figure reported at Gate 9 could not be traced to any real run in this engagement''s history and is assessed as a Gate 9 reporting error, most plausibly caused by an incomplete test-environment run (a missing sibling file truncating output before completion), not a reduction in test coverage. No coverage is missing; none needs to be restored. Authoritative count going forward: 99 checks / 7 files / 0 failures.' as status;

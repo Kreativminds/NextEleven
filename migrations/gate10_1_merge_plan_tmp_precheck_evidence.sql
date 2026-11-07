@@ -1,0 +1,83 @@
+-- ============================================================================
+-- GATE 10.1 — read-only pre-check evidence for the approved
+-- opponents_merge_plan_tmp RLS remediation. NOTHING in this file is
+-- executed against production. The one statement this clears
+-- (ALTER TABLE public.opponents_merge_plan_tmp ENABLE ROW LEVEL SECURITY;)
+-- remains in migrations/gate3_merge_plan_tmp_rls_fix.sql, prepared since
+-- Gate 3, STILL NOT APPLIED. This file only records the direct,
+-- read-only production evidence gathered THIS GATE, fresh, per Victor's
+-- 5-point checklist.
+-- ============================================================================
+
+-- CHECK 1 — not required by an active application workflow.
+-- grep across index.html, team.html, public-stats-core.js, and every file
+-- under supabase/ for the literal string "opponents_merge_plan_tmp":
+-- ZERO matches anywhere in the application codebase.
+
+-- CHECK 2 — no RPC/trigger/scheduled process depends on public access.
+--   select n.nspname, p.proname from pg_proc p join pg_namespace n
+--     on n.oid = p.pronamespace
+--     where p.prosrc ilike '%opponents_merge_plan_tmp%';
+--   -> 0 rows. No function anywhere in the database references this table.
+--   select tgname, tgrelid::regclass, tgenabled from pg_trigger
+--     where tgrelid = 'public.opponents_merge_plan_tmp'::regclass;
+--   -> 0 rows. The table has no triggers of its own.
+--   select viewname from pg_views where schemaname='public'
+--     and definition ilike '%opponents_merge_plan_tmp%';
+--   -> 0 rows. No view references it.
+--   select exists(select 1 from pg_extension where extname='pg_cron');
+--   -> false. pg_cron is not even installed on this project, so no
+--   scheduled job of any kind can reference this table.
+
+-- CHECK 3 — no existing RLS policy would unintentionally expose its
+-- contents.
+--   select relrowsecurity, relforcerowsecurity from pg_class
+--     where oid = 'public.opponents_merge_plan_tmp'::regclass;
+--   -> rls_enabled=false, rls_forced=false (confirms the exposure as
+--   reported).
+--   select polname from pg_policy
+--     where polrelid = 'public.opponents_merge_plan_tmp'::regclass;
+--   -> 0 rows. ZERO existing policies on this table. This is the clean
+--   case: enabling RLS with no policy at all (exactly what
+--   gate3_merge_plan_tmp_rls_fix.sql does) produces default-deny for
+--   every client-facing role (anon/authenticated via PostgREST), with no
+--   pre-existing permissive policy that could leak through. The
+--   service_role (used by migrations/SQL editor) bypasses RLS by design
+--   and is unaffected.
+-- Current grants (re-confirmed this gate, unchanged from Gate 3's
+-- finding): anon and authenticated both hold full
+-- SELECT/INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER on this table
+-- today -- this is the live exposure the fix closes.
+
+-- CHECK 4 — the 35 rows are preserved.
+--   select count(*) from public.opponents_merge_plan_tmp;  -> 35.
+-- Matches Victor's own reported count exactly. ENABLE ROW LEVEL SECURITY
+-- is a pure access-control statement -- it does not touch, lock, rewrite,
+-- or risk any row. Row count is unaffected by this operation by
+-- construction.
+-- Columns (re-confirmed this gate): id (uuid), name, base_name,
+-- game_count, rn, group_size -- a one-off duplicate-analysis scratch
+-- table, no ownership/user column, no personal data of any kind (club
+-- name strings and integer counts only). Consistent with Victor's own
+-- description ("associated with earlier duplicate-cleanup planning",
+-- "no sensitive personal information identified").
+
+-- CHECK 5 — no other production object requires modification.
+--   select conname, conrelid::regclass, confrelid::regclass
+--     from pg_constraint
+--     where confrelid = 'public.opponents_merge_plan_tmp'::regclass;
+--   -> 0 rows. No foreign key anywhere in the database points at this
+--   table, so nothing else can be affected by changing its access
+--   control.
+-- Supabase's own security advisor (get_advisors, security, run live this
+-- gate) flags "RLS Disabled in Public" for EXACTLY ONE table in the
+-- entire project: public.opponents_merge_plan_tmp (count: 1, this exact
+-- table, no others sharing this finding). The advisor's other current
+-- findings (security-definer views unrelated to this table, a handful of
+-- functions with a mutable search_path, the already-documented
+-- token-gated public RPCs, leaked-password protection) are pre-existing,
+-- unrelated to opponents_merge_plan_tmp, and explicitly OUT OF SCOPE for
+-- this single approved statement -- applying it requires no companion
+-- change to any other object.
+
+select 'Gate 10.1 pre-check complete, read-only, nothing applied to production. All 5 of Victor''s conditions are satisfied by direct evidence gathered this gate: (1) zero application-code references; (2) zero dependent functions/triggers/views, and pg_cron is not even installed; (3) zero pre-existing RLS policies, so enabling RLS produces clean default-deny with no leak path; (4) 35 rows confirmed present and unaffected by an access-control-only statement; (5) zero foreign keys reference this table, and Supabase''s own advisor flags this exact table as the ONLY "RLS Disabled in Public" finding in the project. REQUESTING VICTOR''S EXPLICIT, SEPARATE APPROVAL to execute, against production, exactly and only: ALTER TABLE public.opponents_merge_plan_tmp ENABLE ROW LEVEL SECURITY; -- no policy, no other statement, not combined with any federation-deployment step.' as status;

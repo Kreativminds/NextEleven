@@ -1,0 +1,206 @@
+-- ============================================================================
+-- GATE 9.2 — validate the complete public-sharing RPC, for real, in staging.
+-- GATE 9.3 — real security/RLS enforcement tests.
+-- Both run ONLY against the extended isolated test project
+-- (tqpykeuuzcqudqtfrqmc), after Gate 9.1's schema extension. Nothing here
+-- touched production (wicydcvdakqopodbxtrl). This file is a record of
+-- what was actually run and what it actually returned -- not a script
+-- meant to be re-applied (several statements below are one-shot temporary
+-- probes, explicitly reverted at the time, as noted).
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- GATE 9.2 — get_public_team_data, the REAL RPC (not the isolated slice
+-- helper), deployed to staging with the exact Gate 8 Phase B patch
+-- (migrations/gate8_phase_b_PRODUCTION_PATCH_get_public_team_data.sql,
+-- byte-identical body, applied here verbatim). Executed live.
+-- ----------------------------------------------------------------------------
+
+-- PRE-REQUISITE GAP FOUND AND FIXED (staging-only, not production): the
+-- test project's team_share_links table (built in an earlier gate) carried
+-- only 4 of production's 11 columns (user_id, season_id, share_token,
+-- enabled) -- missing created_at/updated_at/show_name_mode/
+-- show_player_stats/show_lineup/show_availability/show_live_player_details.
+-- The first live call to the real get_public_team_data failed immediately
+-- with "record v_link has no field show_name_mode" -- a genuine,
+-- reproducible finding, not a hypothetical: the real RPC body references
+-- fields the test project's existing fixture table didn't have. Fixed by
+-- ALTER TABLE ADD COLUMN (full production parity, same defaults), then
+-- enabling show_player_stats/show_lineup/show_live_player_details=true on
+-- the real fixture link so those code paths render, not just default to
+-- empty. This gap would have blocked Gate 9.2 entirely if not caught.
+
+-- TEST 2.1 -- VALID TOKEN, full real RPC execution (not SQL-only):
+--   select public.get_public_team_data('gate4-real-share-token-abc123');
+-- RESULT: PASSED. Returned a complete, well-formed JSON payload covering
+-- every section Victor asked to verify in one real call:
+--   - season / privacy / appBranding / clubLogoUrl: all populated from
+--     the synthetic seasons/club_teams/app_branding rows seeded in Gate 9.1.
+--   - games[]: 3 games, deliberately covering all three opponent-
+--     resolution outcomes in one real RPC call:
+--       gameId 5001 "SLO Benfica"     -> no match anywhere (local/federation/
+--                                        alias) -> opponentMapUrl/Lat/Lng/
+--                                        LogoUrl all null, no error, no
+--                                        fabricated result. Historical-name
+--                                        case, exactly as asked.
+--       gameId 5002 "Direct Match FC" -> resolves via the user's own LOCAL
+--                                        opponents row (step 1) ->
+--                                        opponentMapUrl/Lat/Lng/LogoUrl all
+--                                        populated with that row's real
+--                                        values. Also exercises the
+--                                        3-day-recency gate (dated today):
+--                                        goalEvents/goalScorers/cardEvents
+--                                        for this game are non-empty.
+--       gameId 5003 'Olivais "A"'     -> resolves via federation ALIAS
+--                                        (step 3) -- squad-specific
+--                                        identity preserved (aflClubId
+--                                        1033, squadLabel 'A'). Proven NOT
+--                                        coincidental: see the marker test
+--                                        below.
+--     gameId 5001 is dated 2025-03-10 (>3 days old) so its goalEvents/
+--     cardEvents correctly return [] per the RPC's own existing recency
+--     gate -- confirmed as the RPC's documented behaviour, not a Gate 9
+--     regression.
+--   - gamePlayers[]: all 4 rows present, with real cardYellowCount/
+--     cardRedCount aggregates computed (player 2 shows cardYellowCount=1,
+--     matching the seeded card_events row) -- this field is NOT recency-
+--     gated, so goal/card STATISTICS are visible even for the old game,
+--     only the raw per-event arrays are gated. Confirms "player
+--     statistics, goals, cards" are genuinely served end-to-end.
+--   - players[]: 3 players, fullName run through fmt_public_name with
+--     show_name_mode='first_last' -> full names shown unredacted, as
+--     configured.
+--   - birthdays[], availability{} (1 unavailable player correctly flagged
+--     via the injuries table's "latest injuryId row wins" logic),
+--     tournaments[], seasonHighlights[]/previousAchievements[] (via
+--     achievements), classification{} (via classification_snapshots,
+--     publicationStatus='published' filter honoured), calendarEvents[]
+--     (via season_calendar_events, status='confirmed' filter honoured):
+--     every one of the 11 newly-added tables is exercised by this single
+--     real call and returns real, correctly-filtered data.
+--   - opponentLogoUrl: confirmed present as a new, additive key on every
+--     game entry (null where unresolved, populated where resolved) --
+--     does not replace or rename any existing key, so no existing
+--     consumer can break. Structural backward compatibility CONFIRMED by
+--     direct comparison against the production function body read
+--     earlier (byte-identical except the 2 documented diff points).
+
+-- TEST 2.2 -- FEDERATION ALIAS RESOLUTION, proven non-coincidental:
+--   update federation_clubs set map_url='GATE9-ALIAS-PATH-MARKER' where afl_club_id='1033';
+--   select * from _opponent_lookup_for_user(<user a001>, 'Olivais "A"');
+--   -> returned map_url='GATE9-ALIAS-PATH-MARKER' -- PROOF the alias path
+--      (team_alias_mappings -> federation_clubs by aflClubId) is what
+--      actually resolved this opponent, not a local or direct-name
+--      coincidence. Marker reverted immediately after
+--      (update ... set map_url=null ...), confirmed reverted by re-select.
+-- RESULT: PASSED.
+
+-- TEST 2.3 -- INVALID TOKEN:
+--   select public.get_public_team_data('this-token-does-not-exist');
+-- RESULT: PASSED -- returned null, no error, no partial data leak.
+
+-- TEST 2.4 -- DISABLED SHARING LINK:
+--   insert into team_share_links (..., share_token='gate9-disabled-link-test', enabled=false);
+--   select public.get_public_team_data('gate9-disabled-link-test');
+-- RESULT: PASSED -- returned null. The token exists and belongs to a real
+-- user with real season-5 data, yet the disabled flag alone correctly
+-- blocks all access -- proves `enabled = true` is actually enforced in
+-- the WHERE clause, not just present in the schema.
+
+-- TEST 2.5 -- "EXPIRED" TOKEN: NOT APPLICABLE, not NOT TESTED. team_share_links
+-- has no expiry/expires_at column in production (confirmed: production's
+-- real column list, read directly, is share_token/user_id/season_id/
+-- enabled/created_at/updated_at/show_name_mode/show_player_stats/
+-- show_lineup/show_availability/show_live_player_details -- no TTL field
+-- exists anywhere in this schema). There is no expiry mechanism to test.
+-- Flagged for Victor: if "expired" sharing links are an intended product
+-- feature, it does not exist in the current schema today -- this is a
+-- genuine gap to confirm is intentional, not an untested RPC behaviour.
+
+-- TEST 2.6 -- ANONYMOUS / AUTHENTICATED ACCESS to the RPC itself: covered
+-- under Gate 9.3 below (grant-level + role-simulated), since this is a
+-- permissions question, not a data-shape one.
+
+-- ============================================================================
+-- GATE 9.3 — real security/RLS enforcement. HTTP-level testing is BLOCKED
+-- (see finding below); the SQL-role-simulated tests below are the
+-- strongest legitimate substitute actually executed, and are reported as
+-- such -- NOT as HTTP tests.
+-- ============================================================================
+
+-- BLOCKER, confirmed first-hand (not re-assumed from Gate 8): a direct curl
+-- to https://tqpykeuuzcqudqtfrqmc.supabase.co/rest/v1/ from this sandbox
+-- fails with "CONNECT tunnel failed, response 403". The sandbox's own
+-- proxy status endpoint (curl $HTTPS_PROXY/__agentproxy/status) confirms
+-- this is a POLICY DENIAL, not a transient network fault --
+-- recentRelayFailures shows {"kind":"connect_rejected","detail":"gateway
+-- answered 403 to CONNECT (policy denial or upstream failure)","host":
+-- "tqpykeuuzcqudqtfrqmc.supabase.co:443"}, and the proxy's allowlist
+-- (noProxy) is a short fixed list of Anthropic/package-registry hosts
+-- that does not include *.supabase.co and cannot be extended from here.
+-- LEGITIMATE ALTERNATIVE investigated, per Victor's explicit instruction
+-- not to bypass this: the Supabase MCP tools available in this session
+-- (execute_sql etc.) were checked and are NOT a substitute -- they reach
+-- the project through Supabase's authenticated Management API as a
+-- privileged role, never through PostgREST, so they never pass through
+-- the anon/authenticated JWT-to-role mapping or RLS the way a real HTTP
+-- client would. No other network path or tool in this session reaches
+-- PostgREST. CONCLUSION: genuine, structural, non-bypassable blocker --
+-- not re-confirmed by repeating the same test, but by checking for (and
+-- ruling out) an alternative and inspecting the proxy's own policy
+-- evidence. Real HTTP/REST integration testing of RLS remains BLOCKED
+-- and is reported as such, not as Passed.
+
+-- SUBSTITUTE ACTUALLY RUN: SET ROLE to the real `anon`/`authenticated`
+-- Postgres roles (the same roles PostgREST maps anon/JWT requests to),
+-- with request.jwt.claims set to simulate a real JWT's sub claim for the
+-- authenticated case. This exercises the REAL grants and REAL RLS
+-- policies as those roles experience them -- a genuine step beyond Gate
+-- 8's static policy-definition inspection -- but it is still SQL-level,
+-- not a network-layer test (no JWT signature verification, no CORS, no
+-- PostgREST routing is exercised). Labelled accordingly below.
+
+-- TEST 3.1 -- true anonymous (no claims at all) reading a private table:
+--   set role anon; select count(*) from public.players;
+-- RESULT: PASSED (role-simulated). Returned 0, despite anon holding a
+-- SELECT grant on the table -- RLS (auth.uid() = user_id, and auth.uid()
+-- is null for anon) correctly blocks every row.
+
+-- TEST 3.2 -- anon's grants on the shared federation catalogue vs the
+-- user-scoped alias table (has_table_privilege, role-simulated):
+--   anon INSERT on federation_clubs      : false  (correctly revoked, Gate 8.1)
+--   anon SELECT on federation_clubs      : true   (correct -- shared, public, read-only catalogue)
+--   anon SELECT on team_alias_mappings   : false  (correctly revoked, Gate 8.1 -- anon has no legitimate reason to touch this table at all)
+-- RESULT: PASSED (role-simulated).
+
+-- TEST 3.3 -- authenticated user A (sub=a001) reading players, by RLS not
+-- by query filter (role-simulated, request.jwt.claims sub=a001):
+--   a_sees_own_players=3, a_sees_b_players=0, a_sees_total_players=3
+-- RESULT: PASSED (role-simulated). A plain `select count(*) from players`
+-- with NO user_id filter in the query still returns only user A's 3 rows
+-- -- RLS, not application-level filtering, is what is actually doing the
+-- isolating.
+
+-- TEST 3.4 -- authenticated user A attempting a CROSS-USER WRITE (insert a
+-- row claiming user_id = user B's id, role-simulated, sub=a001):
+--   insert into players (user_id, ...) values ('...a002', ...);
+-- RESULT: PASSED (role-simulated) -- the attack was BLOCKED: Postgres
+-- raised 42501 "new row violates row-level security policy for table
+-- players". No row was inserted (confirmed by the error itself aborting
+-- the statement). This is the one test in this gate that is a genuine
+-- attack attempt, not just a read-isolation check, and it failed exactly
+-- as it should.
+
+-- TEST 3.5 -- direct calls to the internal SECURITY DEFINER resolver, and
+-- confirming the public RPC's own grant (role-simulated,
+-- has_function_privilege):
+--   anon EXECUTE on _opponent_lookup_for_user(uuid,text)          : false
+--   authenticated EXECUTE on _opponent_lookup_for_user(uuid,text) : false
+--   anon EXECUTE on get_public_team_data(text)                    : true
+-- RESULT: PASSED (role-simulated). The internal resolver is unreachable by
+-- either client role directly -- it is only reachable through the
+-- token-gated get_public_team_data wrapper, which anon CAN call (by
+-- design -- that is the public entry point, and the token check inside it
+-- is what actually gates access, as proven by Tests 2.3/2.4 above).
+
+select 'Gate 9.2 + 9.3 complete. 9.2: real get_public_team_data RPC executed live against staging, all tested paths (no-match / local-match / alias-match opponent resolution, player stats, goals, cards, birthdays, availability, tournaments, classification, calendar events, invalid token, disabled link) PASSED with real evidence; one pre-existing staging schema gap (team_share_links missing 7 production columns) found and fixed. "Expired token" is Not Applicable -- no such column exists in production. 9.3: real HTTP/REST testing is BLOCKED by a confirmed, non-bypassable sandbox proxy policy (not a transient fault, and no legitimate alternative route exists in this session); 5 SQL-role-simulated enforcement tests were run instead as the strongest available substitute and all 5 PASSED, including one genuine blocked cross-user write attack attempt.' as status;

@@ -1,0 +1,33 @@
+-- Gate 3 — security fix for public.opponents_merge_plan_tmp
+-- Status: PREPARED ONLY. Not applied to production. Per Victor's explicit
+-- instruction, this table is NOT dropped here — only its RLS exposure is
+-- closed. Confirmed (Gate 2, Section 7) that the table is referenced by
+-- zero functions, views, or application code — this is a pure security
+-- fix with no functional impact on anything live.
+--
+-- Current state (confirmed via Supabase security advisor): RLS is
+-- disabled entirely on this table, meaning it is readable and writable by
+-- anyone holding the project's anon key, not just the table's own data.
+--
+-- This migration only enables RLS and adds an authenticated-owner-only
+-- policy, matching the pattern already used by every other table in this
+-- schema (auth.uid() = user_id). It does not touch any row, does not
+-- drop the table, and does not change any other table's policies.
+
+-- Corrected after checking the table's real columns: it has NO user_id
+-- (or any ownership column at all) — id, name, base_name, game_count, rn,
+-- group_size. It was a one-off analysis scratch table, not per-user data,
+-- so the per-user auth.uid() pattern used elsewhere in this schema does
+-- not apply here. The correct fix is RLS enabled with NO permissive
+-- policy at all: this blocks every anon/authenticated client request
+-- (the exposure this fix closes) while leaving the table fully usable
+-- from the Supabase SQL editor / migrations (the service role bypasses
+-- RLS by default), which is the only way this table is ever touched.
+alter table public.opponents_merge_plan_tmp enable row level security;
+-- Deliberately no CREATE POLICY statement — default-deny for every
+-- client-facing role, by design.
+
+-- Explicitly NOT included, per instruction: DROP TABLE public.opponents_merge_plan_tmp;
+-- That remains a separate, later, explicitly-approved step (Gate 3
+-- approval matrix, decision category 2 / historical cleanup family) —
+-- this migration only removes the public-read/write exposure.

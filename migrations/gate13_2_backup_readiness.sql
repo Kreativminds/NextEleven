@@ -1,0 +1,107 @@
+-- ============================================================================
+-- GATE 13.2 — Production backup readiness. A full logical backup of the
+-- NextEleven production project (wicydcvdakqopodbxtrl, "Football-tracker")
+-- was built and verified this gate. NO REAL DATA AND NO CREDENTIALS ARE IN
+-- THIS FILE -- it is a narrative record only. The backup itself contains
+-- real children's names and family data and is deliberately kept OUT of
+-- this repository -- see "WHERE THE BACKUP LIVES" below.
+-- ============================================================================
+
+-- WHY A LOGICAL BACKUP, NOT A PHYSICAL ONE:
+--   Supabase's Free tier has no automated backups and no point-in-time
+--   recovery (PITR) -- both are Pro-tier-and-above features. Separately, a
+--   direct `pg_dump` / physical backup was not possible from this
+--   environment: DNS resolution to the project's direct Postgres host
+--   (db.wicydcvdakqopodbxtrl.supabase.co) is blocked by this sandbox's
+--   HTTPS-only network egress allowlist, and no database connection string
+--   or credentials are exposed to this session -- only the Supabase
+--   management-API SQL execution path is available. So the backup built
+--   this gate is a LOGICAL one: the full schema and all data were
+--   reconstructed as SQL/JSON by querying Postgres's own system catalogs
+--   (pg_constraint, pg_indexes, pg_policies, pg_trigger, pg_proc, etc.) and
+--   every application table's rows (via jsonb_agg), rather than by a
+--   wire-protocol dump.
+
+-- WHAT THE BACKUP COVERS -- CONFIRMED COMPLETE, THIS GATE:
+--   - schema.sql: full reconstructed DDL in dependency order -- extensions,
+--     all 38 public tables (columns/types/defaults/nullability), all
+--     constraints (PK/UNIQUE/CHECK/FK) and indexes, all 30 application
+--     functions, all 30 triggers, RLS enabled + all 106 RLS policies on
+--     every table, table grants, and the 5 public views. Verified
+--     structurally sound (3,134 lines, parentheses balanced, every expected
+--     statement type counted and matched: 38 tables / 30 functions / 30
+--     triggers / 106 policies / 5 views / 38 RLS-enable statements).
+--   - data/<table>.json: one JSON file per non-empty table. A fresh,
+--     authoritative row-count pass this gate found 32 non-empty tables
+--     (correcting a stale earlier estimate of 18) and 6 confirmed-empty
+--     tables (backups, events, external_resources, global_players,
+--     training_series_exceptions, training_series_pauses). All 32 data
+--     files were exported and independently re-verified: every file parses
+--     as valid JSON, and every array's length exactly matches its
+--     corresponding fresh row count -- zero mismatches, zero parse
+--     failures, zero missing or unexpected files.
+--   - MANIFEST.json: table name, row count, file size, and SHA-256
+--     checksum for schema.sql and every one of the 32 data files.
+--   - RECOVERY_PROCEDURE.md: numbered, exact restore steps for rebuilding
+--     onto a brand-new Supabase project from these files.
+--   - Confirmed, this gate, as part of building the backup: all 27 foreign
+--     keys in the public schema reference auth.users(id) directly (plus
+--     one self-reference, roadmap_items.superseded_by -> roadmap_items.id)
+--     -- there are NO enforced foreign keys between the application tables
+--     themselves, so the 32 data tables can be restored in any order
+--     relative to each other once the auth.users prerequisite below is
+--     met. Also confirmed: opponents_merge_plan_tmp's current state (RLS
+--     enabled, zero policies -- the Gate 13.1 Approval A outcome) is
+--     captured correctly in the backup as-is, not as a defect.
+
+-- THE ONE REAL GAP -- auth.users:
+--   Supabase Auth's internal schema is not reachable through the SQL-
+--   introspection path this backup was built from, so it could not be
+--   captured. Every application table's rows depend on a user_id that
+--   must already exist in auth.users. Restoring this backup onto a new
+--   project therefore REQUIRES recreating the same Auth user UUID(s)
+--   first (structural UUIDs only, safe to state here: there are 3 distinct
+--   user_id values across all production data). RECOVERY_PROCEDURE.md
+--   documents the exact steps and the two supported ways to force a
+--   specific UUID when creating an Auth user. This is the single
+--   unavoidable manual step in any restore from this backup -- there is no
+--   way to close it from inside this sandbox, because auth.users is not
+--   exposed here even for READING, let alone exporting.
+
+-- WHERE THE BACKUP LIVES -- EPHEMERAL, NOT IN THIS REPOSITORY:
+--   The entire backup (schema.sql, data/*.json, MANIFEST.json,
+--   RECOVERY_PROCEDURE.md) was written to this session's container
+--   scratchpad, NOT to this git repository, and was never staged or
+--   committed. It physically exists only for the lifetime of this
+--   sandbox session and is GONE once the session ends -- there is no
+--   copy anywhere else. This was deliberate: the data includes real
+--   children's names and a real family's records, and must not enter
+--   version control. Practically, this means the backup just built is a
+--   point-in-time verification exercise and a rehearsed recovery
+--   procedure -- it is NOT a standing, durable backup Victor can come back
+--   to next week. For that, the manual steps below are required.
+
+-- MANUAL STEPS VICTOR MUST PERFORM HIMSELF FOR A TRUE, DURABLE,
+-- PLATFORM-GRADE BACKUP (none of these are possible from this sandbox):
+--   1. CLI dump (recommended, free, repeatable):
+--        From your own machine, with the Supabase CLI installed:
+--          supabase db dump --db-url "<connection string from
+--            Project Settings -> Database -> Connection string>"
+--        This produces a real pg_dump-based physical/logical dump,
+--        including auth.users, which this sandbox's backup cannot touch.
+--        Store the output file somewhere safe OUTSIDE this repository
+--        (it will contain real personal data).
+--   2. Dashboard SQL editor export:
+--        Supabase Studio -> SQL Editor -> export query results, or use
+--        the dashboard's built-in database export feature, as a manual
+--        fallback if the CLI is not available.
+--   3. Upgrade to Supabase Pro:
+--        Enables automated daily backups and point-in-time recovery
+--        (PITR) out of the box -- the durable, ongoing solution; (1) and
+--        (2) above are one-off manual snapshots, not a substitute for an
+--        ongoing backup policy.
+--   Recommendation: run (1) now as an immediate durable snapshot, and
+--   treat (3) as the real fix if NextEleven is to stay in production
+--   with real user data without an automated, ongoing backup in place.
+
+select 'Gate 13.2 complete. Logical backup of production project wicydcvdakqopodbxtrl built and verified this gate: schema.sql (38 tables/30 functions/30 triggers/106 policies/5 views, structurally verified), 32/32 non-empty-table data files exported and row-count-verified against fresh authoritative counts (correcting a stale 18-table estimate to the real 32), MANIFEST.json with SHA-256 checksums, and RECOVERY_PROCEDURE.md written. One real gap: auth.users cannot be captured from this sandbox and must be recreated manually on restore (3 structural UUIDs, procedure documented). The backup lives only in this ephemeral session''s scratchpad -- it is NOT in this repository and will not survive session end. For a durable, ongoing backup, Victor must run `supabase db dump` from his own machine, use the dashboard SQL export, or upgrade to Supabase Pro for automated backups/PITR -- none of which this sandbox can do on his behalf.' as status;

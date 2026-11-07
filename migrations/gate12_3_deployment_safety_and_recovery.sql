@@ -1,0 +1,180 @@
+-- ============================================================================
+-- GATE 12.3 — Priority B item 5 (pre-deployment snapshot) + Deployment
+-- safety/recovery (Gate 12 section 3). PREPARATION ONLY. Nothing in this
+-- file is executed as a deployment; the one query block under "PRE-
+-- DEPLOYMENT SNAPSHOT" is read-only and safe to run against production
+-- as-is, today, with zero effect.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- BACKUP / RECOVERY READINESS (Priority B item 4) -- MATERIAL FINDING
+-- ----------------------------------------------------------------------------
+-- Confirmed this gate: organization "vmabere" (xfyrmvfdphumqmxnjbhh) is on
+-- Supabase's FREE plan (get_organization: plan="free", tier="tier_free").
+-- Per Supabase's own current documentation (supabase.com/docs/guides/
+-- platform/backups, fetched this gate): the Free plan has NO automated
+-- daily backups and NO Point-in-Time-Recovery (PITR) at all -- both are
+-- Pro-plan-and-above features (Pro: 7 days of daily backups; Team: 14 days;
+-- PITR is a paid add-on on Pro/Team only). Supabase's own guidance for Free
+-- projects is to self-manage exports via the CLI's `db dump`.
+--
+-- CONSEQUENCE: there is no platform-level safety net to fall back on if a
+-- deployment step goes wrong in an unanticipated way. This is a REAL,
+-- MATERIAL RISK for Victor to weigh before approving Priority B deployment
+-- -- not a formality to note and move past.
+--
+-- MITIGATING FACTORS (why this is a lower-severity risk than it would be
+-- for a destructive migration):
+--   1. Phase A is PURELY ADDITIVE: 3 new tables, 1 new nullable column, and
+--      REVOKE statements that touch only the new tables' grants. No
+--      existing row in any existing table is read-modified, written, or
+--      deleted by any Phase A statement (confirmed by reading every file
+--      in the manifest this gate and in Gate 11/12.2 -- see
+--      gate12_2_phase_a_manifest_and_schema_check.sql item 3).
+--   2. Every Postgres statement is atomic -- it either fully commits or
+--      fully rolls back; there is no possibility of a half-written single
+--      INSERT/ALTER TABLE/CREATE TABLE. "Partial failure" can only mean
+--      "some of the 6 files' statements committed, then one statement
+--      errored and did not commit, and the rest were never run" -- never a
+--      half-applied individual statement.
+--   3. Files [1]/[3]/[4]/[7]/[8] are each independently proven idempotent
+--      (Gate 11.1, run twice from a clean schema, identical zero-error
+--      results both times). A partial-file failure can therefore always be
+--      recovered by simply re-running the SAME exact file again in full
+--      once the root cause is fixed -- already-applied steps inside it are
+--      safe to repeat, not just the ones that hadn't run yet.
+--   4. The worst-case blast radius of a failed or abandoned Phase A is:
+--      some empty/partially-seeded new tables exist, and/or the new
+--      opponents.federation_club_id column exists with all-NULL values.
+--      Nothing about this breaks or changes existing app behaviour (the
+--      column is additive-nullable; the new tables are not yet read by any
+--      live code path until Phase B ships).
+--
+-- RECOMMENDATION (not performed here -- requires Victor's own action, since
+-- this session has no shell/CLI access to production and no backup tool is
+-- exposed via the available Supabase MCP tools): before approving Priority
+-- B, Victor can optionally run `supabase db dump --db-url <production URL>`
+-- himself (or via the Supabase dashboard's SQL editor export) to take a
+-- genuine off-platform snapshot. This is OPTIONAL given the mitigating
+-- factors above, not a hard blocker -- but it is the one gap this report
+-- cannot close on its own, so it is surfaced here rather than assumed away.
+
+-- ----------------------------------------------------------------------------
+-- PRE-DEPLOYMENT SNAPSHOT (Priority B item 5) -- the documented, read-only
+-- substitute for a platform backup, given the Free-tier gap above. Run
+-- immediately before Phase A executes; every figure below is the
+-- authoritative "before" state to diff against after.
+-- ----------------------------------------------------------------------------
+--   select count(*) from information_schema.tables
+--     where table_schema='public' and table_name like 'federation_%';        -- expect 0
+--   select count(*) from public.opponents;                                   -- expect 160 (active); capture exact figure fresh at deployment time
+--   select count(*) from information_schema.columns
+--     where table_schema='public' and table_name='opponents'
+--       and column_name='federation_club_id';                                -- expect 0 rows (column does not exist yet)
+--   select count(*) from public.games, public.game_players, public.goal_events,
+--     public.card_events, public.players, public.team_share_links;           -- see gate12_7 for the full fresh 7-figure baseline, re-run immediately before deployment
+--   select table_name, grantee, string_agg(privilege_type, ', ' order by privilege_type)
+--     from information_schema.table_privileges
+--     where table_schema='public' and table_name in ('team_alias_mappings')
+--       and grantee in ('anon','authenticated')
+--     group by table_name, grantee;                                          -- capture today's grant baseline on team_alias_mappings before Phase A's REVOKE narrows it
+
+-- ----------------------------------------------------------------------------
+-- EXECUTION SEQUENCE (consolidated; full detail in gate12_2)
+-- ----------------------------------------------------------------------------
+--   Step 0: run the PRE-DEPLOYMENT SNAPSHOT block above; confirm all
+--           figures match this report's stated expectations exactly. If
+--           ANY figure differs unexpectedly, STOP -- do not proceed (same
+--           stop condition as Gate 12 section 7's production-baseline rule).
+--   Step 1: apply file [1] (gate3_federation_catalogue.sql) in full.
+--   Step 2: apply file [3] (gate4_federation_clubs_seed.sql) -- run its own
+--           conflict-report SELECT first, review any output, THEN its INSERT.
+--   Step 3: apply file [4] (gate4_remediation_federation_clubs_full_roster.sql).
+--   Step 4: apply file [7] (gate5_federation_venue_validation.sql, GATE 11 FIXED).
+--   Step 5: apply file [8] (gate5_resolution_afl_official_2026_27.sql, GATE 11 FIXED).
+--   Step 6: apply file [9-part1] (gate8 REVOKE block only -- not part 2, which is Phase B).
+--   Step 7: run the full POST-DEPLOYMENT INTEGRITY CHECKLIST below.
+
+-- ----------------------------------------------------------------------------
+-- STOP CONDITIONS (any ONE of these halts the deployment immediately;
+-- state is preserved for investigation, nothing is rolled back
+-- automatically, per Gate 12's explicit instruction)
+-- ----------------------------------------------------------------------------
+--   - Any pre-deployment snapshot figure differs from its stated expectation.
+--   - Any statement returns an error (constraint violation, type mismatch,
+--     missing dependency) -- this includes the two unique constraints in
+--     file [8], which are the exact statements that threw in Gate 10.3's
+--     unfixed rehearsal.
+--   - federation_clubs row count after step 1-3 is anything other than 92.
+--   - federation_club_venues row count after step 4-5 is anything other
+--     than 100, OR the null-code-count check returns anything other than 8.
+--   - Any row count in games/game_players/goal_events/card_events/players/
+--     team_share_links/opponents changes from its pre-deployment snapshot
+--     value (these tables must be byte-identical before and after all of
+--     Phase A).
+
+-- ----------------------------------------------------------------------------
+-- RECOVERY PROCEDURE FOR A PARTIAL FAILURE
+-- ----------------------------------------------------------------------------
+--   1. STOP. Do not attempt to continue past the failing statement and do
+--      not attempt any automatic cleanup.
+--   2. Record the exact error and which step (1-6 above) it occurred in.
+--   3. Query the current state of whichever new objects exist so far
+--      (information_schema.tables for federation_%, row counts on any that
+--      exist, information_schema.columns for federation_club_id) to
+--      establish exactly how far the sequence actually got -- never assume
+--      from the step number alone, since a file can contain more than one
+--      statement.
+--   4. Fix the root cause (this is expected to be rare, given every file
+--      has already been rehearsed twice from a clean schema with zero
+--      errors -- a production-only failure would imply a production-schema
+--      difference this report's Gate 12.2 check did not anticipate).
+--   5. Re-run the SAME file from the start (not a hand-patched partial
+--      version) -- every file 1/3/4/7/8 is independently proven idempotent,
+--      so re-running already-applied statements inside it is safe and
+--      produces zero additional rows/changes.
+--   6. Re-run the full PRE-DEPLOYMENT SNAPSHOT'S unchanged-tables checks
+--      again to reconfirm no existing data was affected by the failure or
+--      the recovery itself.
+
+-- ----------------------------------------------------------------------------
+-- NON-DESTRUCTIVE ROLLBACK STRATEGY (if Victor wants to fully back out
+-- Phase A after a successful deployment, not just recover from a failure)
+-- ----------------------------------------------------------------------------
+--   Per this engagement's standing rule, NO DROP TABLE is used, even though
+--   these particular tables would contain only newly-inserted catalogue
+--   data, not pre-existing user data -- consistent with Gate 12's explicit
+--   instruction not to assume dropping a populated table is acceptable:
+--     revoke select on public.federation_clubs, public.federation_club_competitions,
+--       public.federation_club_venues from anon, authenticated;
+--   This makes the entire catalogue invisible to every client again,
+--   instantly, with zero data loss -- reversible again in the other
+--   direction by re-granting SELECT. opponents.federation_club_id is left
+--   in place (every value is NULL until an explicit future backfill, so
+--   its mere existence has no behavioural effect on anything reading
+--   `opponents` today). The REVOKE changes from step 6 are reversible by
+--   re-granting the exact same privilege set documented in the PRE-
+--   DEPLOYMENT SNAPSHOT'S grant-baseline query above.
+
+-- ----------------------------------------------------------------------------
+-- POST-DEPLOYMENT INTEGRITY CHECKLIST
+-- ----------------------------------------------------------------------------
+--   [ ] federation_clubs = 92
+--   [ ] federation_club_competitions = 109
+--   [ ] federation_club_venues = 100 (92 coded + 8 null-coded, explained)
+--   [ ] no duplicate (club_id, afl_venue_code) pairs where afl_venue_code is not null
+--   [ ] opponents.federation_club_id column exists, 100% NULL (no backfill run)
+--   [ ] games/game_players/goal_events/card_events/players/team_share_links/
+--       opponents all byte-identical to the pre-deployment snapshot
+--   [ ] team_alias_mappings anon grant fully revoked; authenticated grant
+--       narrowed to SELECT/INSERT/UPDATE/DELETE only
+--   [ ] federation_% tables' anon/authenticated grants are SELECT-only
+--   [ ] get_advisors (security) shows no NEW finding beyond the pre-existing
+--       baseline (opponents_merge_plan_tmp remains the only RLS-disabled
+--       finding, assuming Approval A has not yet separately executed)
+--   [ ] FEDERATION_CATALOGUE_PICKER_ENABLED remains false in the deployed
+--       frontend (Phase A has no frontend component, so this should be
+--       trivially true, but confirmed explicitly since it is the one flag
+--       everything else in this release is gated behind)
+
+select 'Gate 12.3 complete. Backup/PITR gap on the Free-tier org is confirmed and disclosed as a material risk, with mitigating factors (purely-additive Phase A, atomic statements, proven idempotency) explained. Pre-deployment snapshot queries, execution sequence, stop conditions, partial-failure recovery procedure, non-destructive rollback, and post-deployment integrity checklist are all prepared. Nothing applied to production.' as status;

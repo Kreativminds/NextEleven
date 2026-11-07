@@ -1,0 +1,156 @@
+-- ============================================================================
+-- GATE 12.9 — PRODUCTION-READINESS REPORT
+-- Preparation and final verification only. NOTHING in this file, or in any
+-- file this gate produced, is executed against production. Not repeating
+-- Gates 1-11's history -- see gate11_4_final_report.sql for that.
+-- ============================================================================
+
+-- 1. SECURITY REMEDIATION PRE-CHECK STATUS -- READY, PASSED, AWAITING APPROVAL A
+--    Reconfirmed fresh this gate (gate12_1): opponents_merge_plan_tmp has
+--    35 rows, RLS disabled, 0 policies. Supabase's own security advisor
+--    (re-run this gate) still flags this as the ONLY "RLS Disabled in
+--    Public" finding project-wide. Repo-wide grep confirms zero
+--    application/RPC/trigger/scheduled-job dependencies on this table.
+--    Unrelated pre-existing advisories (security_definer views, mutable
+--    search_path on 7 functions, anon/authenticated-executable SECURITY
+--    DEFINER RPCs, leaked-password-protection disabled, extension_in_public,
+--    rls_enabled_no_policy on 5 other tables) are out of scope, untouched.
+
+-- 2. EXACT SQL REQUIRING APPROVAL A
+--      ALTER TABLE public.opponents_merge_plan_tmp ENABLE ROW LEVEL SECURITY;
+--    NOT executed by this prompt. Stopping here, per Gate 12's own
+--    instruction, to request Victor's explicit separate approval. Once
+--    approved: execute this single statement alone (never combined with
+--    the federation deployment), then verify RLS enabled, all 35 rows
+--    preserved, anonymous/unauthorized-authenticated access denied, no
+--    unexpected errors.
+
+-- 3. PHASE A MIGRATION MANIFEST
+--    6 files, exact order (gate12_2): [1] gate3_federation_catalogue.sql,
+--    [3] gate4_federation_clubs_seed.sql, [4] gate4_remediation_federation_
+--    clubs_full_roster.sql, [7] gate5_federation_venue_validation.sql
+--    (Gate 11 fixed), [8] gate5_resolution_afl_official_2026_27.sql (Gate
+--    11 fixed), [9-part1] gate8_security_hardening_and_public_page_fix.sql
+--    REVOKE block only. Production schema confirmed to match every
+--    assumption Gate 11's rehearsal relied on: opponents/team_alias_
+--    mappings payload-jsonb shape, gen_random_uuid() resolvable (proven
+--    live via club_teams.id's own default), all required extensions
+--    present (pgcrypto, uuid-ossp, btree_gist), federation_% tables
+--    confirmed still absent (clean slate), Postgres 17.6. Expected result:
+--    federation_clubs=92, federation_club_competitions=109, federation_
+--    club_venues=100 (92 coded + 8 explained null-coded legacy rows), 0
+--    change to any existing table. All dependencies confirmed satisfied.
+
+-- 4. BACKUP AND RECOVERY READINESS -- MATERIAL FINDING, DISCLOSED
+--    Organization "vmabere" is on Supabase's FREE plan. Confirmed via
+--    Supabase's current documentation: the Free plan has NO automated
+--    daily backups and NO PITR -- both are Pro-plan-and-above features.
+--    No platform-level safety net exists for this deployment. Mitigating
+--    factors (gate12_3): Phase A is purely additive, every Postgres
+--    statement is atomic (no half-written statement possible), every file
+--    in the manifest is independently proven idempotent (safe to re-run
+--    after a partial failure), and worst-case blast radius is empty/
+--    partially-seeded new tables with zero effect on existing data or
+--    behaviour. Recommendation (optional, not performed here -- outside
+--    this session's access): Victor can run `supabase db dump` himself
+--    before approving Priority B, for a genuine off-platform snapshot.
+--    A documented read-only pre-deployment snapshot query set (the
+--    substitute for a platform backup) is prepared in gate12_3.
+
+-- 5. PRODUCTION BASELINE VERIFICATION -- PASSED, ZERO DRIFT, 5TH CAPTURE
+--    games=27, game_players=143, goal_events=10, card_events=4, players=20,
+--    team_share_links=3 (1 enabled), opponents=160 (gate12_7). No
+--    unexplained difference (one query-methodology artifact was hit and
+--    resolved within this gate -- documented in gate12_7, not a real
+--    discrepancy). Federation tables confirmed absent; opponents_merge_
+--    plan_tmp confirmed unchanged.
+
+-- 6. PHASE B FRONTEND READINESS
+--    All 7 of Gate 12's listed claims checked (gate12_4), 22/22 fresh
+--    regression checks passed. 5 of 7 fully PASSED with direct evidence.
+--    Parent/coach views: PASSED for the Parents Page specifically; no
+--    dedicated coach-view test exists -- flagged NOT TESTED for that
+--    narrower case. Public-sharing tokens: PASSED at the code/mocked-RPC
+--    level; the live production HTTP/RLS path remains BLOCKED by this
+--    sandbox's network policy (same structural blocker since Gate 10.5,
+--    not new). Picker flag confirmed still OFF.
+
+-- 7. PHASE C ALIAS PREPARATION
+--    Re-verified (gate12_5) against all 6 of Gate 12's specific
+--    requirements: Olivais A/B squad distinctions preserved, SL Olivais
+--    2014 birth-year identity preserved, Benfica SAD/Futebol Benfica
+--    remain distinct (verified live via marker-club test, clubs 1023 vs
+--    328), Olivais Sul remains separate (its own club, 190), the ambiguous
+--    historical Benfica record remains excluded (resolves to zero rows),
+--    League Classification aliases unaffected (regression-confirmed, no
+--    cross-contamination). No existing opponents row is renamed, merged,
+--    or deleted by this file -- it only inserts into team_alias_mappings.
+--    One open deployment-mechanics item: device_id/local_id placeholders
+--    should be replaced with real sync identifiers, or the insert driven
+--    through the app's own DB.put() path, at apply time.
+
+-- 8. PHASE D ACTIVATION PREREQUISITES
+--    8-item checklist prepared (gate12_6): opponent selection and the
+--    code-level paths for parent sharing / offline degradation have real
+--    regression coverage, re-confirmed this gate. 5 of 8 items need a
+--    human with real device/network access; 4 of those 5 are the SAME
+--    pre-existing sandbox network-policy blocker already disclosed since
+--    Gate 10.5. ONE NEW GAP surfaced this gate: squad selection has
+--    regression coverage for A and B only -- no C-squad case exists in the
+--    current test fixtures; a real C-squad club should be checked by hand
+--    before Phase D activates. Picker flag confirmed still OFF.
+
+-- 9. REMAINING RISKS AND MANUAL TESTS
+--    - Free-tier backup/PITR gap (item 4) -- disclosed, mitigated, not
+--      resolved; Victor's own optional action recommended.
+--    - 4 of the 5 outstanding manual/integration tests from Gate 10.5 are
+--      unchanged and still require real device/network access (live
+--      Supabase HTTP/RLS enforcement, public-sharing under real sessions,
+--      multi-device sync, offline-to-online sync).
+--    - NEW this gate: C-squad selection has no regression coverage --
+--      needs a manual check against a real club with a C-squad
+--      registration before Phase D.
+--    - Match creation/editing against a federation-only opponent and
+--      venue-selection UI both remain NOT TESTED (no dedicated regression,
+--      no live UI path yet respectively) -- unchanged since Gate 10/11.
+--    - federation_clubs.map_url/venue_lat/venue_lng/logo_url remain
+--      0-for-92 populated (known since Gate 8.3, unaffected by this gate).
+--    - Phase C's device_id/local_id placeholders need real values at
+--      apply time (item 7 above).
+--    - Historical opponent cleanup remains explicitly out of scope.
+
+-- 10. EXACT APPROVAL DECISIONS REQUIRED
+--     APPROVAL A -- execute exactly, alone, not combined with anything else:
+--       ALTER TABLE public.opponents_merge_plan_tmp ENABLE ROW LEVEL SECURITY;
+--     APPROVAL B -- Phase A federation database deployment: execute the 6
+--       manifest files in gate12_2's exact order; run gate12_3's pre-
+--       deployment snapshot first, stop on any of its listed stop
+--       conditions, run its post-deployment integrity checklist after.
+--       Independent of Approval A -- may be granted separately, in either
+--       order.
+--     APPROVAL C -- Phase B frontend/public-sharing deployment: sequenced
+--       strictly after Approval B is live and verified.
+--     APPROVAL D -- Phase C alias inserts: its own separate approval
+--       (production alias inserts, per standing authorization boundary),
+--       sequenced after Approval C; requires the device_id placeholder
+--       decision (item 7) resolved first.
+--     Phase D (picker flag flip): the only user-visible change; requires
+--       A/B/C all live and verified, plus the 8-item checklist (gate12_6)
+--       complete, including the newly-identified C-squad manual check.
+--     Historical duplicate cleanup remains out of scope for all of the above.
+
+-- ============================================================================
+-- DECISION 1 — SECURITY REMEDIATION: READY, AWAITING APPROVAL A
+-- ============================================================================
+
+-- ============================================================================
+-- DECISION 2 — FEDERATION DEPLOYMENT: PREPARED AND VERIFIED, AWAITING
+-- APPROVAL B (then C, then D in sequence)
+-- ============================================================================
+-- Every preparation and verification step Gate 12 required is complete.
+-- One material, disclosed risk (Free-tier backup/PITR gap) and one newly-
+-- surfaced gap (C-squad manual test) are the only items between this report
+-- and a go decision -- neither blocks preparation, both are Victor's calls
+-- to make before approving deployment. No production change has been made.
+
+select 'Gate 12 complete. Decision 1: security remediation ready, awaiting Approval A (exact statement restated, not executed). Decision 2: federation deployment fully prepared and verified -- manifest confirmed, schema assumptions confirmed, backup/PITR gap on the Free-tier org disclosed with mitigations, fresh baseline zero drift (5th capture), Phase B/C/D readiness confirmed against every one of Gate 12''s specific requirements, with one new gap surfaced (C-squad manual test) and the pre-existing sandbox-network-policy blockers carried forward unchanged. Awaiting Approval B, then C, then D in sequence. No production change has been made.' as status;
