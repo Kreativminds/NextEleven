@@ -167,7 +167,7 @@ Not verified in this pass:
 4. **Rollback for 012 not tested.**
 5. **Owner approval** for each production step in section 5.
 
-## 10. Approvals requested
+## 12. Approvals requested
 
 - [ ] Accept this package for review (section 1).
 - [ ] Approve step 0 (backup confirmation) and step 1 (preflight).
