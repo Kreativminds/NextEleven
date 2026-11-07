@@ -5498,7 +5498,7 @@ async function renderOpponentsTab() {
       });
     } catch (err) { console.warn('Opponent review inbox unavailable:', err); }
   }
-  const requestsByOpponent = new Map(deletionRequests.filter(r => r.status === 'pending').map(r => [String(r.opponent_local_id), r]));
+  const requestsByOpponent = new Map(deletionRequests.filter(r => r.status === 'pending' || r.status === 'approved').map(r => [String(r.opponent_local_id), r]));
 
   el.innerHTML = `
     <div class="settings-section">
@@ -5806,9 +5806,10 @@ async function completeApprovedOpponentDeletion(requestId) {
     }
     if (!window.confirm('Complete the approved removal of "' + request.opponent_name +
       '"? This soft-deletes the exact opponent in the cloud. Historical matches remain unchanged.')) return;
-    await Sync.supabaseRequest('POST', 'rpc/complete_approved_opponent_deletion', {
+    const completion = await Sync.supabaseRequest('POST', 'rpc/complete_approved_opponent_deletion', {
       p_request_id: requestId
     });
+    if (completion !== true) throw new Error('Server did not confirm completion.');
     Toast.show('Approved opponent removal completed. Historical matches were preserved.');
     await renderOpponentsTab();
   } catch (err) { Toast.error('Removal was not completed: ' + err.message); }
