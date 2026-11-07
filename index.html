@@ -5478,7 +5478,7 @@ async function renderOpponentsTab() {
   if (Sync.isConfigured() && Auth.isLoggedIn()) {
     try {
       [deletionRequests] = await Promise.all([
-        Sync.supabaseRequest('GET', 'opponent_deletion_requests', null, { select: 'id,opponent_local_id,status,decision_reason,opponent_name', order: 'created_at.desc', limit: '500' })
+        Sync.supabaseRequest('GET', 'opponent_deletion_requests', null, { select: 'id,requester_id,opponent_local_id,status,decision_reason,opponent_name', order: 'created_at.desc', limit: '500' })
       ]);
       const adminRows = await Sync.supabaseRequest('GET', 'opponent_deletion_admins', null, { select: 'user_id', user_id: 'eq.' + Auth.getUserId(), limit: '1' });
       isDeletionReviewer = adminRows.length > 0;
@@ -5501,8 +5501,11 @@ async function renderOpponentsTab() {
   // A completed cloud soft-delete must also disappear from the Settings
   // catalogue even when its historical IndexedDB record remains available
   // for existing fixtures. Never physically delete the local record here.
+  // Only the owner should hide a locally cached opponent after a completed
+  // removal. An administrator can review another user's request, but that
+  // request must never hide an unrelated opponent with the same local ID.
   const completedOpponentIds = new Set(deletionRequests
-    .filter(r => r.status === 'completed')
+    .filter(r => r.status === 'completed' && r.requester_id === Auth.getUserId())
     .map(r => String(r.opponent_local_id)));
   const displayedGroups = visible.map(group =>
     group.filter(record => !completedOpponentIds.has(String(record.opponentId)))
