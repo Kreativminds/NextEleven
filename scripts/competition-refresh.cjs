@@ -9,10 +9,11 @@ async function planCompetitionRefresh({source,round,fetchPage,parsePage,existing
   const acquired=await acquireRound({source,round,fetchPage,parsePage,now});
   const unresolved=acquired.fixtures.filter(f=>!approvedTeamIds.has(f.homeTeamId)||!approvedTeamIds.has(f.awayTeamId));
   const valid=acquired.fixtures.filter(f=>approvedTeamIds.has(f.homeTeamId)&&approvedTeamIds.has(f.awayTeamId));
-  const changes=reconcileResults(existingResults,valid);
+  const eligibleExisting=existingResults.filter(f=>approvedTeamIds.has(f.homeTeamId)&&approvedTeamIds.has(f.awayTeamId));
+  const changes=reconcileResults(eligibleExisting,valid);
   const reviews=changes.filter(c=>c.kind==='review');
   const applied=changes.filter(c=>c.kind==='insert'||c.kind==='update');
-  const combined=new Map(existingResults.map(f=>[f.fixtureId,f]));
+  const combined=new Map(eligibleExisting.map(f=>[f.fixtureId,f]));
   for(const c of applied) combined.set(c.fixtureId,c.next);
   // This is a preview only, not a database write. Approved, final fixtures only.
   const table=standings([...combined.values()].filter(f=>f.status==='final'));
@@ -35,6 +36,9 @@ if(require.main===module){
     assert.equal(first.previewOnly,true);
     const repeat=await planCompetitionRefresh({...args,existingResults:[fixture]});
     assert.equal(repeat.changes.length,0);
+    const contaminated=await planCompetitionRefresh({...args,existingResults:[fixture,{...unknown,fixtureId:'old-unknown'}]});
+    assert.equal(contaminated.standings.length,2);
+    assert.equal(contaminated.standings.some(t=>t.teamId==='unknown'),false);
     const corrected=await planCompetitionRefresh({...args,existingResults:[{...fixture,homeGoals:1}]});
     assert.equal(corrected.changes[0].reason,'score-correction');
     console.log('PASS: pipeline preview, unresolved team quarantine, idempotency, score correction');
