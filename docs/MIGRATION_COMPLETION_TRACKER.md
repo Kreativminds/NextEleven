@@ -436,3 +436,10 @@ Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authentica
 - Commit `abfe3bf` updates `tests/regression_opponent_review_inbox.js`: two negative cases simulate a user switch and admin revocation during confirmation and require zero completion RPC calls.
 - Verification status: code and regression committed; **Node/CI execution not yet confirmed**. No isolated Supabase SQL change needed for this client-side guard. Next agent/manual Go: execute `node tests/regression_opponent_review_inbox.js`, inspect CI, then verify authenticated isolated API workflow and server-side authorization independently. Do not mark #17 or #19 Passed on mock tests alone.
 - Original 33: **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional 7: **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes, merges or deployment.
+
+## 2026-11-07: original #27 CI SQL fixture coverage handoff
+
+- Reviewed latest shared tracker and recent branch commits before choosing independent unfinished #27; prior #17/#19 inbox work was already underway. Manual-session visibility beyond durable GitHub/tracker is limited.
+- Commit `427f04e877922f2bf638a4d72f10c3689239d9f3` updates `.github/workflows/federation-picker-regression.yml`: all `tests/sql/*.sql` changes now trigger PR regression, and four public-share security SQL fixtures are explicitly required to exist and be nonempty. This closes a CI trigger/fixture-inventory gap; it does **not** execute SQL fixtures or validate the authenticated Data API.
+- Test evidence: workflow YAML and tracked fixture names reviewed; GitHub Actions execution on this commit **not yet verified**. Next: inspect PR workflow run and run isolated PostgreSQL role-matrix fixtures; then add authenticated API/browser coverage. No production changes, merge, deployment or fixture writes.
+- Original fixed KPI remains **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional **6 Passed, 0 Failed, 0 In progress, 1 To do**. #27 remains In progress; no evidence-based task completion percentage.
