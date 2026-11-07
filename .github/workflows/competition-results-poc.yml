@@ -24,3 +24,6 @@ jobs:
 
       - name: Validate read-only acquisition adapter
         run: node scripts/competition-acquisition.cjs
+
+      - name: Validate result reconciliation and corrections
+        run: node scripts/competition-reconcile.cjs
