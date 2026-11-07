@@ -335,3 +335,9 @@ Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authentica
 - Added `tests/sql/opponent_addition_local_role_matrix_isolated.sql`, commit `8eb8141257ca0224f89359e29e1b6b303bc0a34a`.
 - Executed the exact committed rollback-only fixture against isolated project `tqpykeuuzcqudqtfrqmc`: PASS, no SQL errors. Authenticated requester B cannot forge requester A; B cannot approve own request; administrator A can classify the request as `local` with an explicit decision reason; requester B sees the decision; `federation_club_id` remains null. Transaction rolled back all changes.
 - This closes one database role-matrix gap under original #17 and supports #19 addition review, but does not establish browser/API end-to-end, notification delivery or complete security acceptance. Original #17 remains In progress. Fixed KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes.
+
+## Overnight original #10: alias owner and federation negative regression (2026-11-07)
+
+- Added read-only synthetic fixture `tests/sql/federation_alias_identity_negative_fixture.sql`, commit `5711be38b3401f31f20bebf3a457687aac1a5f81`.
+- Executed on isolated Supabase `tqpykeuuzcqudqtfrqmc`: **PASS**, 6 alias scenarios, 5 independently detected findings, 0 expected/actual mismatches. Scenarios include valid Olivais A mapping, cross-owner canonical, Olivais Sul federation mismatch, retired canonical, missing source, and CAC/Cacém distinct identity.
+- Synthetic SQL does not prove production duplicates are reconciled or that the application consumes canonical aliases. Original #10 stays In progress. Fixed original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production mutation, deployment or merge.
