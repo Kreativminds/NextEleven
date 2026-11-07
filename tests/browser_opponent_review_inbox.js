@@ -14,6 +14,7 @@ const source=fs.readFileSync(path.join(__dirname,'..','js','opponent-review-inbo
    window.requests=[];window.messages=[];window.admin=false;window.allow=true;
    window.request=async (...args)=>{
     requests.push(args);
+    if(args[1]==='rpc/complete_approved_opponent_deletion')return true;
     if(args[0]==='GET')return [
      {id:'n1',event_type:'decided',message:'<img src=x onerror=alert(1)>',read_at:null},
      {id:'n2',event_type:'completed',message:'Deletion completed',read_at:'2026-11-07T00:00:00Z'}
