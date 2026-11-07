@@ -16,6 +16,20 @@ DO $$ BEGIN
 END $$;
 CREATE TEMP TABLE alias_game_snapshot ON COMMIT DROP AS
 SELECT id,payload FROM public.games WHERE payload->>'opponent'='Olivais "A"';
+-- Use the actual reviewed deletion state machine, not a privileged bypass.
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claim.sub='00000000-0000-0000-0000-00000000a001';
+INSERT INTO public.opponent_deletion_requests
+ (requester_id,opponent_local_id,opponent_name,request_reason)
+VALUES (auth.uid(),'-910002','Olivais "A"','Historical duplicate consolidation rehearsal');
+UPDATE public.opponent_deletion_requests
+ SET status='approved',decision_reason='Reviewed source and historical fixture aliases',
+ reviewed_by=auth.uid(),reviewed_at=now()
+ WHERE requester_id=auth.uid() AND opponent_local_id='-910002' AND status='pending';
+DO $ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM public.opponent_deletion_requests WHERE opponent_local_id='-910002' AND status='approved')
+ THEN RAISE EXCEPTION 'Approval did not complete'; END IF;
+END $;
 UPDATE public.opponents SET deleted_at=now() WHERE local_id='-910002' AND deleted_at IS NULL;
 DO $$ BEGIN
  IF (SELECT count(*) FROM public.opponents WHERE local_id='-910002' AND deleted_at IS NOT NULL)<>1
