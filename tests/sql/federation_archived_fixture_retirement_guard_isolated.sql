@@ -6,6 +6,11 @@ UPDATE public.games SET deleted_at=now()
    AND payload->>'opponent'='Olivais "A"' AND deleted_at IS NULL;
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claim.sub='00000000-0000-0000-0000-00000000a001';
+INSERT INTO public.opponent_deletion_requests (requester_id,opponent_local_id,opponent_name,request_reason)
+VALUES (auth.uid(),'-910002','Olivais "A"','Archived historical alias negative regression');
+UPDATE public.opponent_deletion_requests
+SET status='approved',decision_reason='Regression-only approval',reviewed_by=auth.uid(),reviewed_at=now()
+WHERE requester_id=auth.uid() AND opponent_local_id='-910002' AND status='pending';
 DO $audit$
 DECLARE n integer;
 BEGIN
