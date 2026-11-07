@@ -1,0 +1,23 @@
+name: Competition results POC checks
+on:
+  pull_request:
+    paths:
+      - 'scripts/competition-*.cjs'
+      - '.github/workflows/competition-results-poc.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate source URL generation
+        run: node scripts/competition-source-config.cjs
+      - name: Validate result text parsing
+        run: node scripts/competition-results-poc.cjs
+      - name: Validate provisional standings
+        run: node scripts/competition-standings.cjs
