@@ -389,3 +389,9 @@ Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authentica
 - Added read-only `tests/sql/opponent_share_token_hygiene_readonly.sql`, commit `ec61ac3fe95dd73720e85737edb9e16b51b44153`.
 - Re-fetched and executed exact committed SQL in isolated Supabase `tqpykeuuzcqudqtfrqmc`: PASS. Two links, one enabled, two distinct non-null tokens, minimum length 24 and maximum 29 characters. No bearer token values were returned or logged.
 - This verifies current isolated snapshot token uniqueness and minimum length only; **does not prove cryptographic randomness, token-generation strength, production configuration, rate limiting or HTTP security**. Original #17 remains In progress, fixed original KPI 14 Passed, 0 Failed, 8 In progress, 11 To do (42%); additional 6 Passed, 0 Failed, 0 In progress, 1 To do. No production mutation, merge or deployment.
+
+## Overnight INT-01 isolated RPC contract inventory (2026-11-07)
+
+- Added read-only reproducible `tests/sql/away_weather_rpc_contract_inventory_readonly.sql`, commit `5c698741da555cf83d2b72dcba5343c85aac2fb2`. Re-fetched and executed exact committed SQL on isolated project `tqpykeuuzcqudqtfrqmc`.
+- Result: only `public.gate11_normalize_venue_name(p text) returns text` matched weather/venue/ground function names. **No weather-named RPC exists in the isolated project root.** This is a verified contract gap in that environment, not evidence that production lacks the RPC, nor proof of the exact UI call signature. PR #36 application diff and branch-specific DB environment still need comparison before designing a fix.
+- INT-01 stays Open; original KPI unchanged: **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes.
