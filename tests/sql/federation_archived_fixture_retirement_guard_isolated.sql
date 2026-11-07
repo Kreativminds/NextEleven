@@ -6,7 +6,7 @@ UPDATE public.games SET deleted_at=now()
    AND payload->>'opponent'='Olivais "A"' AND deleted_at IS NULL;
 SET LOCAL ROLE authenticated;
 SET LOCAL request.jwt.claim.sub='00000000-0000-0000-0000-00000000a001';
-DO $
+DO $audit$
 DECLARE n integer;
 BEGIN
  SELECT count(*) INTO n FROM public.games
@@ -30,5 +30,5 @@ BEGIN
  END;
  IF EXISTS (SELECT 1 FROM public.opponents WHERE local_id='-910002' AND deleted_at IS NOT NULL)
  THEN RAISE EXCEPTION 'Archived fixture source was retired'; END IF;
-END $$;
+END $audit$;
 ROLLBACK;
