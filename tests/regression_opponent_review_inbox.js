@@ -31,5 +31,14 @@ const create=require('../js/opponent-review-inbox.js');
  assert(!calls.some(x=>x[1]==='opponents'),'UI must not directly mutate opponents');
  const failedApi=create({userId:()=> 'user-a',isAdmin:()=>true,confirm:async()=>true,request:async()=>false,notify:()=>{throw Error('must not notify')},refresh:async()=>{throw Error('must not refresh')}});
  await assert.rejects(()=>failedApi.completeDeletion('req-false'),/not confirmed/);
+ // Malformed server responses must not masquerade as an empty inbox.
+ const malformed=create({userId:()=> 'user-a',isAdmin:()=>false,request:async()=>({error:'upstream failure'})});
+ await assert.rejects(()=>malformed.load(),/Notification response must be an array/);
+ // A changing identity callback must not redirect the mark-read request to another owner.
+ let identityCalls=0;
+ const changing=create({userId:()=> (++identityCalls===1?'user-a':'user-b'),isAdmin:()=>false,
+  request:async(...args)=>{assert.equal(args[3].recipient_id,'eq.user-a');return []}});
+ await changing.markRead('n1');
+ assert.equal(identityCalls,1,'Mark-read should resolve the authenticated identity once');
  console.log('PASS: inbox RLS query, escaping, read state, admin gate, cancel, approved RPC, no direct opponent mutation');
 })().catch(e=>{console.error(e);process.exitCode=1});
