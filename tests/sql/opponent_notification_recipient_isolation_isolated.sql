@@ -36,7 +36,10 @@ BEGIN
  WHERE request_id=rid AND event_type='decided';
  IF nid IS NULL THEN RAISE EXCEPTION 'Requester B decision event missing'; END IF;
  SELECT count(*) INTO before_count FROM public.opponent_review_notifications WHERE request_id=rid;
- DELETE FROM public.opponent_review_notifications WHERE id=nid;
+ BEGIN
+   DELETE FROM public.opponent_review_notifications WHERE id=nid;
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
  IF NOT EXISTS(SELECT 1 FROM public.opponent_review_notifications WHERE id=nid)
  THEN RAISE EXCEPTION 'Requester B could delete decision audit'; END IF;
  IF (SELECT count(*) FROM public.opponent_review_notifications WHERE request_id=rid)<>before_count
