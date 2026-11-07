@@ -33,3 +33,6 @@ jobs:
 
       - name: Validate competition parent view model
         run: node scripts/competition-view.cjs
+
+      - name: Validate end-to-end parent competition preview
+        run: node scripts/competition-parent-preview.cjs
