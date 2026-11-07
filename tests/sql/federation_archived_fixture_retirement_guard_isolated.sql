@@ -4,7 +4,9 @@ BEGIN;
 UPDATE public.games SET deleted_at=now()
  WHERE user_id='00000000-0000-0000-0000-00000000a001'::uuid
    AND payload->>'opponent'='Olivais "A"' AND deleted_at IS NULL;
-DO $$
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claim.sub='00000000-0000-0000-0000-00000000a001';
+DO $
 DECLARE n integer;
 BEGIN
  SELECT count(*) INTO n FROM public.games
