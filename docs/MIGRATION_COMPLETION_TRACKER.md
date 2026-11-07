@@ -420,3 +420,11 @@ Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authentica
 - Current unfinished original #17 security acceptance, overlapping #19 approval UI: added Chromium regression for RPC completion responses `false`, `null`, `[]` and `{}` in `tests/browser_opponent_review_inbox.js` (commit `79bd0828717dfcc18d8be9deccf0d9cc7a31e390`). Assertions require an error, no success message, and no refresh. Existing positive case remains.
 - Test execution/CI **pending**; code committed, not yet a verified pass. No live authenticated Data API coverage. Next: inspect GitHub Actions on this commit, correct any failure, then exercise real isolated authenticated review workflow without production writes.
 - Original #17 and #19 remain In progress. Fixed original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes, merge or deployment.
+
+## 2026-11-07: Security #17 / approval #19 notification failure handling checkpoint
+
+- Latest shared tracker and branch reviewed before work; earlier agent browser-negative-completion regression `79bd082` was already present, so this checkpoint avoids editing that test.
+- `79d0fa0` modifies `js/opponent-review-inbox.js`: a malformed/non-array notification API response now raises an error instead of silently presenting an empty inbox. Mark-read captures the authenticated user ID once, preventing a changing identity callback from altering the recipient filter within one operation.
+- `025b824` adds negative tests in `tests/regression_opponent_review_inbox.js` for malformed API payloads and identity consistency.
+- **Tests not yet verified:** GitHub Actions / Node execution result pending. No claim of acceptance, no authenticated live API evidence. Next action: run `node tests/regression_opponent_review_inbox.js`, inspect CI and add authenticated isolated Data API test. Original #17/#19 remain In progress; KPI remains **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional **6 Passed, 0 Failed, 0 In progress, 1 To do**.
+- No production mutation, deployment or merge. Preserve 2026/27 fixture history, distinct Olivais Sul identity and administrator-only approval.
