@@ -13,8 +13,11 @@ on:
       - 'tests/regression_opponents_settings.js'
       - '.github/workflows/federation-picker-regression.yml'
       - 'supabase/migrations/20261106*.sql'
+      - 'supabase/migrations/20261107*.sql'
       - 'tests/sql/federation_*.sql'
       - 'tests/sql/opponent_review_*.sql'
+      - 'tests/sql/opponent_deletion_*.sql'
+      - 'tests/sql/opponent_notification_*.sql'
   workflow_dispatch:
 jobs:
   picker:
@@ -46,5 +49,12 @@ jobs:
           test -s tests/sql/opponent_review_nonadmin_rls_isolated.sql
           test -s tests/sql/opponent_deletion_completion_notifications_isolated.sql
           test -s tests/sql/opponent_notification_integrity_rls_isolated.sql
+          test -s tests/sql/federation_alias_soft_delete_survival_isolated.sql
+          test -s tests/sql/federation_reviewed_alias_identity_guard_isolated.sql
+          test -s tests/sql/federation_historical_alias_resolution_isolated.sql
           test -s supabase/migrations/20261106200000_game_opponent_federation_links.sql
           test -s supabase/migrations/20261106203000_backfill_verified_game_federation_links.sql
+          test -s supabase/migrations/20261107021000_opponent_historical_aliases.sql
+          test -s supabase/migrations/20261107023000_resolve_historical_opponent_alias.sql
+          test -s supabase/migrations/20261107024500_preserve_soft_deleted_historical_alias.sql
+          test -s supabase/migrations/20261107030000_guard_reviewed_alias_identity.sql
