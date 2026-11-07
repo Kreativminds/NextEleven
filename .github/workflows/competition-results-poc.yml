@@ -27,3 +27,6 @@ jobs:
 
       - name: Validate result reconciliation and corrections
         run: node scripts/competition-reconcile.cjs
+
+      - name: Validate competition refresh preview
+        run: node scripts/competition-refresh.cjs
