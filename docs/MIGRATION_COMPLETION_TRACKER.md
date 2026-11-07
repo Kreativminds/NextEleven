@@ -414,3 +414,9 @@ Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authentica
 - Commit `d7395c90` changes `js/opponent-review-inbox.js` to require an affirmative `true` response from `rpc/complete_approved_opponent_deletion` before showing a success notification or refreshing. A false/null/empty server result now raises an error instead of falsely claiming deletion completed.
 - Commit `dccb78a6` updates `tests/regression_opponent_review_inbox.js` with an affirmative RPC mock and a negative false-response case asserting no success notification or refresh.
 - **Verification pending:** these commits are present on the feature branch, but this run did not execute the Node regression or confirm a GitHub Actions result. Do not mark #19 Passed or count a successful test. The browser/Data API integration remains outstanding. Original KPI stays 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope stays 6 Passed, 0 Failed, 0 In progress, 1 To do. No production changes, merge or deployment.
+
+## 2026-11-07: Browser negative-completion acceptance checkpoint
+
+- Current unfinished original #17 security acceptance, overlapping #19 approval UI: added Chromium regression for RPC completion responses `false`, `null`, `[]` and `{}` in `tests/browser_opponent_review_inbox.js` (commit `79bd0828717dfcc18d8be9deccf0d9cc7a31e390`). Assertions require an error, no success message, and no refresh. Existing positive case remains.
+- Test execution/CI **pending**; code committed, not yet a verified pass. No live authenticated Data API coverage. Next: inspect GitHub Actions on this commit, correct any failure, then exercise real isolated authenticated review workflow without production writes.
+- Original #17 and #19 remain In progress. Fixed original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**. Additional **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes, merge or deployment.
