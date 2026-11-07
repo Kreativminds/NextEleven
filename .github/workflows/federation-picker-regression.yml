@@ -18,6 +18,7 @@ on:
       - 'tests/sql/opponent_deletion_*.sql'
       - 'tests/sql/opponent_notification_*.sql'
       - 'tests/sql/opponent_anonymous_*.sql'
+      - 'tests/sql/*.sql'
   workflow_dispatch:
 jobs:
   picker:
@@ -54,6 +55,10 @@ jobs:
           test -s tests/sql/federation_historical_alias_resolution_isolated.sql
           test -s tests/sql/federation_retirement_requires_reviewed_alias_isolated.sql
           test -s tests/sql/opponent_anonymous_security_boundary_isolated.sql
+          test -s tests/sql/opponent_public_share_invalid_token_isolated.sql
+          test -s tests/sql/opponent_public_share_revocation_isolated.sql
+          test -s tests/sql/opponent_public_share_valid_token_cross_owner_isolated.sql
+          test -s tests/sql/opponent_share_token_hygiene_readonly.sql
           test -s supabase/migrations/20261106200000_game_opponent_federation_links.sql
           test -s supabase/migrations/20261106203000_backfill_verified_game_federation_links.sql
           test -s supabase/migrations/20261107021000_opponent_historical_aliases.sql
