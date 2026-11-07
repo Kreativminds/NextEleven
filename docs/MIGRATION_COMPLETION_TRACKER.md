@@ -408,3 +408,9 @@ Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authentica
 - `7f8425f`: Settings notification GET/PATCH explicitly scoped to authenticated recipient.
 - `b9f8c839`: Pending **and approved** requests suppress duplicate user requests; completion UI requires RPC result `true`. CI workflow `42354846036` completed successfully.
 - **Original task #19 remains In progress:** authenticated live Data API and full application workflow with real session/notifications not yet evidenced. No production mutation or merge. Preserve original 33 tasks and the agreed KPI dashboard: 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional tasks: 6 Passed, 0 Failed, 0 In progress, 1 To do.
+
+## 2026-11-07: Task #19 review inbox false-success guard
+
+- Commit `d7395c90` changes `js/opponent-review-inbox.js` to require an affirmative `true` response from `rpc/complete_approved_opponent_deletion` before showing a success notification or refreshing. A false/null/empty server result now raises an error instead of falsely claiming deletion completed.
+- Commit `dccb78a6` updates `tests/regression_opponent_review_inbox.js` with an affirmative RPC mock and a negative false-response case asserting no success notification or refresh.
+- **Verification pending:** these commits are present on the feature branch, but this run did not execute the Node regression or confirm a GitHub Actions result. Do not mark #19 Passed or count a successful test. The browser/Data API integration remains outstanding. Original KPI stays 14 Passed, 0 Failed, 8 In progress, 11 To do (42%). Additional scope stays 6 Passed, 0 Failed, 0 In progress, 1 To do. No production changes, merge or deployment.
