@@ -5498,6 +5498,15 @@ async function renderOpponentsTab() {
       });
     } catch (err) { console.warn('Opponent review inbox unavailable:', err); }
   }
+  // A completed cloud soft-delete must also disappear from the Settings
+  // catalogue even when its historical IndexedDB record remains available
+  // for existing fixtures. Never physically delete the local record here.
+  const completedOpponentIds = new Set(deletionRequests
+    .filter(r => r.status === 'completed')
+    .map(r => String(r.opponent_local_id)));
+  const displayedGroups = visible.map(group =>
+    group.filter(record => !completedOpponentIds.has(String(record.opponentId)))
+  ).filter(group => group.length > 0);
   const requestsByOpponent = new Map(deletionRequests.filter(r => r.status === 'pending' || r.status === 'approved').map(r => [String(r.opponent_local_id), r]));
 
   el.innerHTML = `
@@ -5552,10 +5561,10 @@ async function renderOpponentsTab() {
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Deletion requests are reviewed by the application administrator. Teams cannot be deleted by users.</div>
       ${deletionRequests.filter(r => r.status !== 'pending' && r.status !== 'approved').slice(0,5).map(r => `<div class="card" style="margin-bottom:8px;font-size:12px">${esc(r.opponent_name)}: ${esc(r.status)}. ${esc(r.decision_reason || '')}</div>`).join('')}
       ${isDeletionReviewer ? `<div class="card" style="margin-bottom:16px"><strong>Deletion requests for administrator review</strong>${deletionRequests.filter(r=>r.status==='pending' || r.status==='approved').map(r=>`<div style="padding:8px 0">${esc(r.opponent_name)} (${esc(r.status)}) ${r.status==='pending' ? `<button class="btn btn-secondary btn-sm" onclick="reviewOpponentDeletionRequest('${r.id}',false)">Reject</button> <button class="btn btn-secondary btn-sm" onclick="reviewOpponentDeletionRequest('${r.id}',true)">Mark approved after checks</button>` : `<button class="btn btn-secondary btn-sm" onclick="completeApprovedOpponentDeletion('${r.id}')">Complete approved removal</button>`}</div>`).join('') || '<p>No pending or approved requests.</p>'}</div>` : ''}
-      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('opp_count', {n: visible.length})}</div>
-      ${!visible.length ? `<div class="empty"><strong>${I18n.t('opp_empty_title')}</strong><p>${I18n.t('opp_empty_desc')}</p></div>` : `
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('opp_count', {n: displayedGroups.length})}</div>
+      ${!displayedGroups.length ? `<div class="empty"><strong>${I18n.t('opp_empty_title')}</strong><p>${I18n.t('opp_empty_desc')}</p></div>` : `
       <div class="who-played-list">
-        ${visible.map(group => { const o = group[0]; return `
+        ${displayedGroups.map(group => { const o = group[0]; return `
           <div class="wp-row">
             <div style="padding:12px 14px">
               <div style="display:flex;align-items:center;gap:10px">
