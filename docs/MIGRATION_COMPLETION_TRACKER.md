@@ -341,3 +341,9 @@ Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authentica
 - Added read-only synthetic fixture `tests/sql/federation_alias_identity_negative_fixture.sql`, commit `5711be38b3401f31f20bebf3a457687aac1a5f81`.
 - Executed on isolated Supabase `tqpykeuuzcqudqtfrqmc`: **PASS**, 6 alias scenarios, 5 independently detected findings, 0 expected/actual mismatches. Scenarios include valid Olivais A mapping, cross-owner canonical, Olivais Sul federation mismatch, retired canonical, missing source, and CAC/Cacém distinct identity.
 - Synthetic SQL does not prove production duplicates are reconciled or that the application consumes canonical aliases. Original #10 stays In progress. Fixed original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production mutation, deployment or merge.
+
+## Overnight original #17: historical alias access role matrix (2026-11-07)
+
+- Added `tests/sql/federation_historical_alias_access_role_matrix_isolated.sql`, commit `bd688ca25f12afe1783ea4411835f79cbb47e5dc`.
+- Executed exact committed SQL on isolated Supabase `tqpykeuuzcqudqtfrqmc`: **PASS**, both transaction-local role blocks returned without SQL errors. `anon` has no alias table privileges or direct retirement-trigger execution; `authenticated` has owner-scoped read but no alias mutations or direct retirement-trigger execution. Authenticated user B observed no other-owner alias rows. All transaction-local changes rolled back.
+- These are privilege and current-row RLS checks, not a seeded cross-owner negative fixture or a complete browser/Data API security test. Task #17 remains **In progress**; task #10's production mapping and task #20's save/edit acceptance are unaffected. Original fixed KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. Production untouched.
