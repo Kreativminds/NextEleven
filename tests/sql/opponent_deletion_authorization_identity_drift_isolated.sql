@@ -65,6 +65,12 @@ BEGIN
  IF NOT denied THEN RAISE EXCEPTION 'Admin completed deletion despite identity drift'; END IF;
  IF (SELECT status FROM public.opponent_deletion_requests WHERE id=rid)<>'approved'
  THEN RAISE EXCEPTION 'Identity drift incorrectly completed request'; END IF;
+END $$;
+-- The administrator cannot SELECT a now-unapproved foreign opponent under RLS.
+-- Switch to the owner to verify the renamed row remains live.
+SET LOCAL request.jwt.claim.sub='00000000-0000-0000-0000-00000000a002';
+DO $$
+BEGIN
  IF NOT EXISTS (SELECT 1 FROM public.opponents
  WHERE user_id='00000000-0000-0000-0000-00000000a002'
  AND payload->>'opponentId'='9002' AND payload->>'opponentName'='Renamed After Approval'
