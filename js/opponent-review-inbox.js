@@ -43,7 +43,8 @@
       if (!requestId) throw new Error('Approved deletion request id required');
       if (typeof confirm==='function' && !await confirm('Complete approved opponent deletion? Historical fixtures will remain unchanged.'))
         return false;
-      await request('POST','rpc/complete_approved_opponent_deletion',{p_request_id:requestId});
+      const result=await request('POST','rpc/complete_approved_opponent_deletion',{p_request_id:requestId});
+      if (result !== true) throw new Error('Deletion completion was not confirmed by the server');
       if (typeof notify==='function') notify('Approved deletion completed.');
       if (typeof refresh==='function') await refresh();
       return true;
