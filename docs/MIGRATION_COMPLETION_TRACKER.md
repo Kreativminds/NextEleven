@@ -365,3 +365,9 @@ Implemented `20261106220000_complete_approved_opponent_deletion.sql`: authentica
 - Added read-only `tests/sql/opponent_public_share_rpc_boundary_readonly.sql`, commit `711b996235fce390f90abb32d0912a937e264b93`.
 - Re-fetched and executed the exact committed fixture on isolated Supabase `tqpykeuuzcqudqtfrqmc`: **PASS**, no SQL errors. Verifies intentional anonymous EXECUTE access for token-based `get_public_team_data_opponent_slice(text,text)`, prevents direct anonymous access to the internal owner-scoped lookup helper if its inspected signature exists, and requires SECURITY DEFINER plus pinned `search_path` on the public RPC.
 - Limitation: private helper signature is checked conditionally; this test is a grant/configuration boundary, not valid-token privacy, entropy, revocation, or browser/Data API acceptance. Original #17 stays **In progress**. Fixed KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes.
+
+## Overnight original #17: anonymous invalid share-token opponent boundary (2026-11-07)
+
+- Added `tests/sql/opponent_public_share_invalid_token_isolated.sql`, commit `aa2230d97a7a2b5735b29e071d3ccf402678a3ed`.
+- Re-fetched exact committed fixture and executed on isolated Supabase `tqpykeuuzcqudqtfrqmc`: **PASS**, no SQL errors. Anonymous role received zero opponent metadata rows for NULL, blank, synthetic invalid token, zero-UUID token, and a synthetic invalid token with the distinct Olivais Sul name. Rollback-only transaction, no valid token accessed or logged.
+- Scope limitation: invalid-token denial does not establish valid-token cross-owner privacy, revocation, token entropy, browser/Data API delivery or full security signoff. Original task #17 remains **In progress**. Fixed original KPI **14 Passed, 0 Failed, 8 In progress, 11 To do (42%)**; additional scope **6 Passed, 0 Failed, 0 In progress, 1 To do**. No production changes.
