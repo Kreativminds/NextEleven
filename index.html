@@ -5489,6 +5489,15 @@ async function renderOpponentsTab() {
     try { additionRequests = await Sync.supabaseRequest('GET', 'opponent_addition_requests', null, { select: 'id,requester_id,proposed_name,proposed_type,status,decision_reason', order: 'created_at.desc', limit: '500' }); }
     catch(err) { console.warn('Club proposal workflow unavailable:', err); }
   }
+  let reviewNotifications = [];
+  if (Sync.isConfigured() && Auth.isLoggedIn()) {
+    try {
+      reviewNotifications = await Sync.supabaseRequest('GET', 'opponent_review_notifications', null, {
+        select: 'id,event_type,message,created_at,read_at',
+        order: 'created_at.desc', limit: '20'
+      });
+    } catch (err) { console.warn('Opponent review inbox unavailable:', err); }
+  }
   const requestsByOpponent = new Map(deletionRequests.filter(r => r.status === 'pending').map(r => [String(r.opponent_local_id), r]));
 
   el.innerHTML = `
@@ -5539,9 +5548,10 @@ async function renderOpponentsTab() {
       <div class="card" style="margin-bottom:14px"><strong>Missing club?</strong><p style="font-size:12px">Suggest a club for federation verification, or identify it as a small local team.</p><button class="btn btn-secondary btn-sm" onclick="requestOpponentAddition()">Suggest a club</button></div>
       ${additionRequests.filter(r=>r.requester_id===Auth.getUserId()).slice(0,5).map(r=>`<div style="font-size:12px;padding:5px 0">${esc(r.proposed_name)}: ${esc(r.status)} ${r.decision_reason ? ' ('+esc(r.decision_reason)+')' : ''}</div>`).join('')}
       ${isDeletionReviewer ? `<div class="card" style="margin-bottom:14px"><strong>Club proposals for review</strong>${additionRequests.filter(r=>r.status==='pending').map(r=>`<div style="padding:8px 0">${esc(r.proposed_name)} (${esc(r.proposed_type)}) <button class="btn btn-secondary btn-sm" onclick="reviewOpponentAdditionRequest('${r.id}','verified')">Federation verified</button> <button class="btn btn-secondary btn-sm" onclick="reviewOpponentAdditionRequest('${r.id}','local')">Local team</button> <button class="btn btn-secondary btn-sm" onclick="reviewOpponentAdditionRequest('${r.id}','rejected')">Reject</button></div>`).join('') || '<p>No pending club proposals.</p>'}</div>` : ''}
+      ${reviewNotifications.length ? `<div class="card" style="margin-bottom:14px"><strong>Opponent review notifications</strong>${reviewNotifications.map(n=>`<div style="padding:7px 0;font-size:12px"><span>${esc(n.message || n.event_type)}</span> ${n.read_at ? '' : `<button class="btn btn-secondary btn-sm" onclick="markOpponentReviewNotificationRead('${n.id}')">Mark read</button>`}</div>`).join('')}</div>` : ''}
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Deletion requests are reviewed by the application administrator. Teams cannot be deleted by users.</div>
       ${deletionRequests.filter(r => r.status !== 'pending' && r.status !== 'approved').slice(0,5).map(r => `<div class="card" style="margin-bottom:8px;font-size:12px">${esc(r.opponent_name)}: ${esc(r.status)}. ${esc(r.decision_reason || '')}</div>`).join('')}
-      ${isDeletionReviewer ? `<div class="card" style="margin-bottom:16px"><strong>Deletion requests for administrator review</strong>${deletionRequests.filter(r=>r.status==='pending').map(r=>`<div style="padding:8px 0">${esc(r.opponent_name)} <button class="btn btn-secondary btn-sm" onclick="reviewOpponentDeletionRequest('${r.id}',false)">Reject</button> <button class="btn btn-secondary btn-sm" onclick="reviewOpponentDeletionRequest('${r.id}',true)">Mark approved after checks</button></div>`).join('') || '<p>No pending requests.</p>'}</div>` : ''}
+      ${isDeletionReviewer ? `<div class="card" style="margin-bottom:16px"><strong>Deletion requests for administrator review</strong>${deletionRequests.filter(r=>r.status==='pending' || r.status==='approved').map(r=>`<div style="padding:8px 0">${esc(r.opponent_name)} (${esc(r.status)}) ${r.status==='pending' ? `<button class="btn btn-secondary btn-sm" onclick="reviewOpponentDeletionRequest('${r.id}',false)">Reject</button> <button class="btn btn-secondary btn-sm" onclick="reviewOpponentDeletionRequest('${r.id}',true)">Mark approved after checks</button>` : `<button class="btn btn-secondary btn-sm" onclick="completeApprovedOpponentDeletion('${r.id}')">Complete approved removal</button>`}</div>`).join('') || '<p>No pending or approved requests.</p>'}</div>` : ''}
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('opp_count', {n: visible.length})}</div>
       ${!visible.length ? `<div class="empty"><strong>${I18n.t('opp_empty_title')}</strong><p>${I18n.t('opp_empty_desc')}</p></div>` : `
       <div class="who-played-list">
@@ -5765,6 +5775,43 @@ async function reviewOpponentDeletionRequest(requestId, approve) {
     Toast.show('Decision recorded. No opponent records were deleted.');
     await renderOpponentsTab();
   } catch(err) { Toast.error('Review failed: ' + err.message); }
+}
+
+async function markOpponentReviewNotificationRead(notificationId) {
+  if (!Sync.isConfigured() || !Auth.isLoggedIn()) return;
+  try {
+    await Sync.supabaseRequest('PATCH', 'opponent_review_notifications', {
+      read_at: new Date().toISOString()
+    }, { id: 'eq.' + notificationId, read_at: 'is.null' });
+    await renderOpponentsTab();
+  } catch (err) { Toast.error('Could not mark notification as read: ' + err.message); }
+}
+
+// Only the server-side administrator RPC can complete an approved deletion.
+// This UI never deletes local opponents or modifies fixtures directly.
+async function completeApprovedOpponentDeletion(requestId) {
+  if (!Sync.isConfigured() || !Auth.isLoggedIn()) return;
+  try {
+    const admins = await Sync.supabaseRequest('GET', 'opponent_deletion_admins', null, {
+      select: 'user_id', user_id: 'eq.' + Auth.getUserId(), limit: '1'
+    });
+    if (!admins.length) { Toast.error('Administrator authorization required.'); return; }
+    const requests = await Sync.supabaseRequest('GET', 'opponent_deletion_requests', null, {
+      select: 'id,opponent_name,status,decision_reason',
+      id: 'eq.' + requestId, status: 'eq.approved', limit: '1'
+    });
+    const request = requests[0];
+    if (!request || !request.decision_reason) {
+      Toast.error('Only reviewed, approved requests can be completed.'); return;
+    }
+    if (!window.confirm('Complete the approved removal of "' + request.opponent_name +
+      '"? This soft-deletes the exact opponent in the cloud. Historical matches remain unchanged.')) return;
+    await Sync.supabaseRequest('POST', 'rpc/complete_approved_opponent_deletion', {
+      p_request_id: requestId
+    });
+    Toast.show('Approved opponent removal completed. Historical matches were preserved.');
+    await renderOpponentsTab();
+  } catch (err) { Toast.error('Removal was not completed: ' + err.message); }
 }
 
 // ── TRAINING SESSIONS — data layer ───────────────────────────────────────────
