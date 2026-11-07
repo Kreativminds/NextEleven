@@ -6,6 +6,9 @@ on:
       - 'tests/regression_federation_picker_release.js'
       - 'tests/browser_federation_picker.js'
       - 'tests/browser_opponent_approval.js'
+      - 'tests/browser_opponent_review_inbox.js'
+      - 'tests/regression_opponent_review_inbox.js'
+      - 'js/opponent-review-inbox.js'
       - 'tests/regression_federation_match_save_contract.js'
       - 'tests/regression_opponents_settings.js'
       - '.github/workflows/federation-picker-regression.yml'
@@ -25,6 +28,7 @@ jobs:
       - run: node tests/regression_federation_picker_release.js
       - run: node tests/regression_federation_match_save_contract.js
       - run: node tests/regression_opponents_settings.js
+      - run: node tests/regression_opponent_review_inbox.js
       - name: Install Chromium test runner
         run: |
           npm install --no-save --no-package-lock playwright@1.58.2
@@ -33,10 +37,14 @@ jobs:
         run: node tests/browser_federation_picker.js
       - name: Browser opponent approval acceptance
         run: node tests/browser_opponent_approval.js
+      - name: Browser review inbox adapter acceptance
+        run: node tests/browser_opponent_review_inbox.js
       - name: Verify federation SQL test fixtures and migrations are tracked
         run: |
           test -s tests/sql/federation_link_negative_isolated.sql
           test -s tests/sql/federation_link_rls_matrix_isolated.sql
           test -s tests/sql/opponent_review_nonadmin_rls_isolated.sql
+          test -s tests/sql/opponent_deletion_completion_notifications_isolated.sql
+          test -s tests/sql/opponent_notification_integrity_rls_isolated.sql
           test -s supabase/migrations/20261106200000_game_opponent_federation_links.sql
           test -s supabase/migrations/20261106203000_backfill_verified_game_federation_links.sql
