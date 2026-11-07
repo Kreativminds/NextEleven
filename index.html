@@ -5494,7 +5494,7 @@ async function renderOpponentsTab() {
     try {
       reviewNotifications = await Sync.supabaseRequest('GET', 'opponent_review_notifications', null, {
         select: 'id,event_type,message,created_at,read_at',
-        order: 'created_at.desc', limit: '20'
+        recipient_id: 'eq.' + Auth.getUserId(), order: 'created_at.desc', limit: '20'
       });
     } catch (err) { console.warn('Opponent review inbox unavailable:', err); }
   }
@@ -5782,7 +5782,7 @@ async function markOpponentReviewNotificationRead(notificationId) {
   try {
     await Sync.supabaseRequest('PATCH', 'opponent_review_notifications', {
       read_at: new Date().toISOString()
-    }, { id: 'eq.' + notificationId, read_at: 'is.null' });
+    }, { id: 'eq.' + notificationId, recipient_id: 'eq.' + Auth.getUserId(), read_at: 'is.null' });
     await renderOpponentsTab();
   } catch (err) { Toast.error('Could not mark notification as read: ' + err.message); }
 }
