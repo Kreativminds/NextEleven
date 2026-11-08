@@ -1,0 +1,41 @@
+name: Competition results POC checks
+on:
+  pull_request:
+    paths:
+      - 'scripts/competition-*.cjs'
+      - '.github/workflows/competition-results-poc.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate source URL generation
+        run: node scripts/competition-source-config.cjs
+      - name: Validate result text parsing
+        run: node scripts/competition-results-poc.cjs
+      - name: Validate provisional standings
+        run: node scripts/competition-standings.cjs
+
+      - name: Validate read-only acquisition adapter
+        run: node scripts/competition-acquisition.cjs
+
+      - name: Validate result reconciliation and corrections
+        run: node scripts/competition-reconcile.cjs
+
+      - name: Validate competition refresh preview
+        run: node scripts/competition-refresh.cjs
+
+      - name: Validate competition parent view model
+        run: node scripts/competition-view.cjs
+
+      - name: Validate end-to-end parent competition preview
+        run: node scripts/competition-parent-preview.cjs
+
+      - name: Validate federation squad identity mapping
+        run: node scripts/competition-team-mapping.cjs
