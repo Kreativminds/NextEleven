@@ -3,12 +3,12 @@
 // No production database access, scheduling, browser scraping or parent submissions.
 const {planCompetitionRefresh}=require('./competition-refresh.cjs');
 const {buildCompetitionView}=require('./competition-view.cjs');
-async function previewParentCompetition({source,round,fetchPage,parsePage,existingResults=[],approvedTeamIds,now}) {
-  const preview=await planCompetitionRefresh({source,round,fetchPage,parsePage,existingResults,approvedTeamIds,now});
+async function previewParentCompetition({source,round,fetchPage,parsePage,existingResults=[],approvedTeamIds,competitionKey,now}) {
+  const preview=await planCompetitionRefresh({source,round,fetchPage,parsePage,existingResults,approvedTeamIds,competitionKey,now});
   const byId=new Map(existingResults.map(f=>[f.fixtureId,f]));
   for(const change of preview.changes) byId.set(change.fixtureId,change.next);
   // Only show approved teams, including preexisting results; conflicts remain untouched.
-  const approved=[...byId.values()].filter(f=>approvedTeamIds.has(f.homeTeamId)&&approvedTeamIds.has(f.awayTeamId));
+  const approved=[...byId.values()].filter(f=>f.competitionKey===competitionKey && approvedTeamIds.has(f.homeTeamId)&&approvedTeamIds.has(f.awayTeamId));
   const roundFixtures=approved.filter(f=>f.round===round);
   const view=buildCompetitionView({round,sourceUrl:preview.sourceUrl,retrievedAt:preview.retrievedAt,
     fixtures:roundFixtures,standings:preview.standings,unresolved:preview.unresolved});
@@ -18,9 +18,9 @@ module.exports={previewParentCompetition};
 if(require.main===module){
   const assert=require('node:assert/strict');
   const {DEFAULT_SOURCE}=require('./competition-source-config.cjs');
-  const fixture={fixtureId:'f6',round:6,homeTeamId:'sl-olivais-b',homeName:'SL Olivais B',
+  const fixture={fixtureId:'f6',competitionKey:'afl-2026-27-u14-s3',round:6,homeTeamId:'sl-olivais-b',homeName:'SL Olivais B',
     awayTeamId:'santa-maria-b',awayName:'Santa Maria B',status:'final',homeGoals:2,awayGoals:1};
-  const args={source:DEFAULT_SOURCE,round:6,fetchPage:async()=>({ok:true,body:'mock'}),
+  const args={source:DEFAULT_SOURCE,round:6,competitionKey:'afl-2026-27-u14-s3',fetchPage:async()=>({ok:true,body:'mock'}),
     parsePage:async()=>({round:6,fixtures:[fixture]}),
     approvedTeamIds:new Set(['sl-olivais-b','santa-maria-b']),
     now:()=>new Date('2026-11-07T19:00:00Z')};
