@@ -8,6 +8,75 @@ Newest entry on top.
 
 ---
 
+## 2026-11-08 — Scheduled nightly run
+
+- lastInspectedCommit: 709f8c8
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process. This is now
+  the 24th consecutive night (2026-10-15 through tonight) that stored
+  prompt has been wrong — that string was resolved back on 2026-10-12
+  (PR #1) and sits in the Resolved section. BUGS.md's real Open section
+  tonight holds the same single entry as every recent night: the
+  away-match weather forecast RPC gap (flagged 2026-11-03, already fully
+  root-caused, awaiting Victor's call) — unchanged. Went with real repo
+  state, per every run since 10-15. Flagged to Victor again via
+  notification tonight — not retrying `update_trigger` myself (per the
+  11-03/11-04 history of that call being blocked by a permission
+  classifier).
+- Also re-flagging: this schedule started 2026-10-12 as a stated 7-day
+  trial for Victor to review before deciding whether to keep it. It has
+  now run nightly for 27 days past that start date (20 days past the
+  intended 7-day review point) with no sign in this log that the trial
+  review happened. Surfaced to Victor via notification tonight.
+- Scope: diff since cebbfce (last run's lastInspectedCommit) was 2
+  commits, both this agent's own bookkeeping (last night's "nothing to
+  do" entry + tonight's lock-acquire). No changes to `index.html`,
+  `css/nexteleven.css`, `team.html` or `public-stats-core.js` since last
+  night — `cebbfce` itself was already reviewed and cleared in the
+  2026-11-07 entry.
+- Checks run:
+  - `check-syntax.js` → OK (all 3 script blocks parse).
+  - `check-i18n-parity.js` → OK (2030/2030 keys, no gaps).
+  - `check-html-comments.js` → OK (both files balanced, no swallowed tags).
+  - `tests/regression_caio_and_cards.js` → 6/6 pass.
+  - `tests/regression_marcadores_guests.js` → 8/8 pass.
+  - `tests/regression_next_game_weather.js` → 8/8 pass.
+  - `tests/regression_season_calendar.js` → **49/52 on first run** (3
+    failures — see "Fixed" below), 52/52 after the fix.
+- Zero-AI early exit did not fire: BUGS.md still has one `Status: Open`
+  entry (the away-weather RPC gap, unchanged), so triage ran per spec
+  (diff summary + check outputs + the one Open entry's text, plus the
+  new regression-suite finding below).
+- Triage (haiku): no P0/P1. Confirmed the away-weather RPC gap is the
+  known, already-root-caused item (not a tonight candidate — needs
+  Victor's call, can't verify a new RPC migration without a live
+  Supabase connection). Flagged the `regression_season_calendar.js`
+  failures as a genuine but test-only (P3) issue, not an app defect.
+- Fixed (1/2 cap used): `tests/regression_season_calendar.js`'s
+  month-grouping test had 3 hardcoded calendar dates (game on
+  2026-11-07, 2026-11-21, 2026-12-05; milestone 2027-01-15). Today being
+  2026-11-08, the first date slipped from future to past relative to
+  the real clock, so `renderSeasonCalendar()` correctly split it into
+  the separate collapsed "past events" section (its own month header) —
+  intentional, already-tested behavior from the 2026-11-01 today-anchor
+  split, not a code regression. The fixture's assumption (all 3 items
+  in one combined pass) is what broke. Replaced the hardcoded dates and
+  hardcoded PT month-label strings with values computed relative to the
+  real clock (3/4/5 months out) plus the app's own `calMonthLabel()`
+  helper, so this can't go stale the same way again. Verified: suite
+  back to 52/52; other 3 regression suites and all 3 mandated checks
+  still pass. Commit c2817ca on branch `maintenance/nightly-2026-11-08`,
+  PR https://github.com/Kreativminds/NextEleven/pull/45 (not yet
+  merged). Test-file-only change, no production behavior affected.
+- Needs your approval: unchanged — away-match weather forecast RPC gap
+  (see 2026-11-03 entry) still awaiting your call; no new information
+  tonight. Separately (not a code item): the stale scheduled-task
+  prompt and overdue trial review above, both flagged via notification.
+- Pending: none else (2nd fix slot unused — nothing else to fix tonight).
+- Known Unresolved housekeeping: none — nothing in tonight's diff
+  touches any carried-forward item; list unchanged.
+
 ## 2026-11-07 — Scheduled nightly run
 
 - lastInspectedCommit: cebbfce
