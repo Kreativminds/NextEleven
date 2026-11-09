@@ -8,6 +8,65 @@ Newest entry on top.
 
 ---
 
+## 2026-11-09 — Scheduled nightly run
+
+- lastInspectedCommit: 529b623
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process. This is now
+  the 25th consecutive night (2026-10-15 through tonight) that stored
+  prompt has been wrong — that string was resolved back on 2026-10-12
+  (PR #1) and sits in the Resolved section. BUGS.md's real Open section
+  tonight holds the same single entry as every recent night: the
+  away-match weather forecast RPC gap (flagged 2026-11-03, already fully
+  root-caused, awaiting Victor's call) — unchanged. Went with real repo
+  state, per every run since 10-15. Flagged to Victor again via
+  notification tonight — not retrying `update_trigger` myself (per the
+  11-03/11-04 history of that call being blocked by a permission
+  classifier).
+- Also re-flagging: this schedule started 2026-10-12 as a stated 7-day
+  trial for Victor to review before deciding whether to keep it. It has
+  now run nightly for 28 days past that start date (21 days past the
+  intended 7-day review point) with no sign in this log that the trial
+  review happened. Surfaced to Victor via notification tonight.
+- Scope: diff since 709f8c8 (last run's lastInspectedCommit) was 2
+  commits, both this agent's own bookkeeping (last night's fix/report
+  entry + tonight's lock-acquire). No changes to `index.html`,
+  `css/nexteleven.css`, `team.html` or `public-stats-core.js` since last
+  night.
+- Checks run:
+  - `check-syntax.js` → OK (all 3 script blocks parse).
+  - `check-i18n-parity.js` → OK (2030/2030 keys, no gaps).
+  - `check-html-comments.js` → OK (both files balanced, no swallowed tags).
+  - `tests/regression_caio_and_cards.js` → 6/6 pass.
+  - `tests/regression_marcadores_guests.js` → 8/8 pass.
+  - `tests/regression_next_game_weather.js` → 8/8 pass.
+  - `tests/regression_season_calendar.js` → 49/52 (same 3 pre-existing
+    failures as before last night's fix — not a new defect, see below).
+- Zero-AI early exit did not fire: BUGS.md still has one `Status: Open`
+  entry (the away-weather RPC gap, unchanged), so triage ran per spec
+  (diff summary + check outputs + the one Open entry's text, plus the
+  season-calendar regression finding).
+- Triage (haiku): no new candidates. Confirmed the away-weather RPC gap
+  is the known, already-root-caused item (still needs Victor's call,
+  still can't verify a new RPC migration without a live Supabase
+  connection). Confirmed the 3 `regression_season_calendar.js` failures
+  are the same pre-existing test-fixture-staleness issue fixed last
+  night on `maintenance/nightly-2026-11-08` (commit c2817ca) — they only
+  reappear on `main` because PR #45 (that fix) is still unmerged, not
+  because of any new regression. Nothing new to hand to a capable model.
+- Fixed: none tonight (0/2 cap used) — nothing new found to fix.
+- Needs your approval: unchanged — away-match weather forecast RPC gap
+  (see 2026-11-03 entry) still awaiting your call; no new information
+  tonight. Separately (not a code item): the stale scheduled-task
+  prompt and overdue trial review above, both flagged via notification;
+  also recommend merging PR #45 so the season-calendar regression suite
+  stops showing false failures on `main` each night it drifts further
+  from today's date.
+- Pending: none else.
+- Known Unresolved housekeeping: none — nothing in tonight's diff
+  touches any carried-forward item; list unchanged.
+
 ## 2026-11-08 — Scheduled nightly run
 
 - lastInspectedCommit: 709f8c8
