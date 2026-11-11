@@ -8,6 +8,53 @@ Newest entry on top.
 
 ---
 
+## 2026-11-11 — Scheduled nightly run
+
+- lastInspectedCommit: 712ab8d
+- Trigger: scheduled nightly run.
+- Note: tonight's scheduled prompt again stated BUGS.md had exactly one
+  Open entry (`integ_fix_review`, i18n, P3) to process — that string was
+  resolved on 2026-10-12 (PR #1) and sits in the Resolved section.
+  Checked real repo state directly rather than trusting the prompt (per
+  every run since 10-15). BUGS.md's actual Open section tonight still
+  holds the same single entry as every night since 2026-11-03: the
+  away-match weather forecast RPC gap, already fully root-caused, still
+  awaiting Victor's call — unchanged. Flagged to Victor again via
+  notification tonight (stale prompt now wrong on its 28th consecutive
+  night, 2026-10-15 through tonight).
+- Also re-flagging: this schedule started 2026-10-12 as a stated 7-day
+  trial for Victor to review before deciding whether to keep it. It has
+  now run nightly for 30 days past that start date (23 days past the
+  intended 7-day review point) with no sign in this log that the trial
+  review happened. Surfaced to Victor via notification tonight, same as
+  recent nights.
+- Scope: diff since 57ad098 (last run's lastInspectedCommit) was 2
+  commits, both this agent's own bookkeeping (last night's report entry
+  + tonight's lock-acquire). No changes to `index.html`,
+  `css/nexteleven.css`, `team.html` or `public-stats-core.js` since last
+  night.
+- Checks run:
+  - `check-syntax.js` → OK (all 3 script blocks parse).
+  - `check-i18n-parity.js` → OK (2030/2030 keys, no gaps).
+  - `check-html-comments.js` → OK (both files balanced, no swallowed tags).
+- Zero-AI early exit did not fire: BUGS.md still has one `Status: Open`
+  entry (the away-weather RPC gap, unchanged), so triage ran per spec
+  (diff summary + check outputs + the one Open entry's text).
+- Triage (haiku): "none" — no new candidates. The away-weather RPC gap
+  is the known, already-root-caused item (still needs Victor's call,
+  still can't verify a new RPC migration without a live Supabase
+  connection) — not re-flagged as new.
+- Fixed: none tonight (0/2 cap used) — nothing new found to fix.
+- Needs your approval: unchanged — away-match weather forecast RPC gap
+  (see 2026-11-03 entry) still awaiting your call; no new information
+  tonight. Separately (not a code item): stale scheduled-task prompt
+  and overdue trial review, both flagged via notification again.
+- Pending: none else.
+- Known Unresolved housekeeping: none — nothing in tonight's diff
+  touches any carried-forward item; list unchanged.
+
+---
+
 ## 2026-11-10 — Scheduled nightly run
 
 - lastInspectedCommit: 57ad098
