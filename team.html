@@ -811,7 +811,11 @@ function renderCardEventsStrip(g, players) {
   const sorted = [...events].sort((a, b) => sortKey(a) - sortKey(b));
   const tempPlayers = g.guestPlayers || [];
   const line = (c) => {
-    const who = c.team === 'us'
+    // Coach/staff cards carry no player id — label them generically (no
+    // staff name is exposed on the public page).
+    const who = c.scorerType === 'staff'
+      ? (c.team === 'us' ? esc(tr('card_staff')) : `${esc(tr('card_opponent'))} &middot; ${esc(tr('card_staff'))}`)
+      : c.team === 'us'
       ? (c.scorerType === 'temp'
           ? esc((tempPlayers.find(t => t.tempPlayerId === c.scorerId) || {}).name || 'Unknown')
           : esc(shortName((players.find(p => p.playerId === c.scorerId) || {}).fullName || 'Unknown')))
@@ -1803,7 +1807,7 @@ const STRINGS = {
     live_note:'Updating every 15 seconds while the game is on. Counted in the season record once the game ends.',
     own_goal:'Own goal',
     match_summary_badge:'FINAL', opponent_goal:'Opponent goal',
-    card_opponent:'Opponent', card_second_yellow_note:'(2nd yellow)',
+    card_opponent:'Opponent', card_staff:'Coach/Staff', card_second_yellow_note:'(2nd yellow)',
     yellow_cards:'Yellow Cards', red_cards:'Red Cards',
     next_match:'Next Match', today:'Today', tomorrow:'Tomorrow', days_remaining:'{n} days remaining', get_directions:'Directions', wx_rain_chance:'chance of rain',
     choose_nav_app:'Open directions in', open_google_maps:'Google Maps', open_waze:'Waze', cancel:'Cancel',
@@ -1894,7 +1898,7 @@ const STRINGS = {
     live_note:'Atualiza a cada 15 segundos durante o jogo. Entra no registo da época quando o jogo terminar.',
     own_goal:'Autogolo',
     match_summary_badge:'FINAL', opponent_goal:'Golo do adversário',
-    card_opponent:'Adversário', card_second_yellow_note:'(2º amarelo)',
+    card_opponent:'Adversário', card_staff:'Equipa técnica', card_second_yellow_note:'(2º amarelo)',
     yellow_cards:'Cartões Amarelos', red_cards:'Cartões Vermelhos',
     next_match:'Próximo Jogo', today:'Hoje', tomorrow:'Amanhã', days_remaining:'Faltam {n} dias', get_directions:'Direções', wx_rain_chance:'de chuva',
     choose_nav_app:'Abrir direções em', open_google_maps:'Google Maps', open_waze:'Waze', cancel:'Cancelar',

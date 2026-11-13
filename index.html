@@ -578,6 +578,24 @@
       <button type="button" class="btn btn-secondary btn-sm" id="cardTeamUsBtn" style="flex:1" onclick="selectCardTeam('us')" data-i18n="gd_card_us">Our Team</button>
       <button type="button" class="btn btn-secondary btn-sm" id="cardTeamOpponentBtn" style="flex:1" onclick="selectCardTeam('opponent')" data-i18n="gd_card_opponent">Opponent</button>
     </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button type="button" class="btn btn-secondary btn-sm" id="cardRecipientPlayerBtn" style="flex:1" onclick="selectCardRecipient('player')" data-i18n="gd_card_recipient_player">Player</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="cardRecipientStaffBtn" style="flex:1" onclick="selectCardRecipient('staff')" data-i18n="gd_card_recipient_staff">Coach / Staff</button>
+    </div>
+    <div id="cardStaffFields" style="display:none;margin-bottom:12px;gap:8px">
+      <div style="flex:1.6;min-width:0">
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px" data-i18n="gd_card_staff_role_label">Role</label>
+        <select id="cardStaffRole" style="width:100%;font-size:14px;padding:8px;border:1px solid var(--border);border-radius:8px" onchange="updateSecondYellowCheck()">
+          <option value="head_coach" data-i18n="gd_card_staff_head_coach">Head coach</option>
+          <option value="assistant_coach" data-i18n="gd_card_staff_assistant_coach">Assistant coach</option>
+          <option value="other_staff" data-i18n="gd_card_staff_other">Other staff</option>
+        </select>
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px" data-i18n="gd_card_opponent_name_label">Name (optional)</label>
+        <input type="text" id="cardStaffName" style="width:100%;font-size:15px;padding:8px;border:1px solid var(--border);border-radius:8px" oninput="updateSecondYellowCheck()">
+      </div>
+    </div>
     <div id="cardPlayerField" style="margin-bottom:12px">
       <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px" data-i18n="gd_card_player_label">Player</label>
       <select id="cardPlayerSelect" style="width:100%;font-size:15px;padding:8px;border:1px solid var(--border);border-radius:8px"></select>
@@ -6415,6 +6433,8 @@ const TR = {
 
     // ── GAME DETAIL ──
     gd_tab_squad:'Squad List', gd_tab_xi:'Starting XI', gd_tab_goals:'Goals', gd_tab_cards:'Cards', gd_tab_penalties:'Penalties',
+    gd_card_recipient_player:'Player', gd_card_recipient_staff:'Coach / Staff', gd_card_staff_role_label:'Role',
+    gd_card_staff_head_coach:'Head coach', gd_card_staff_assistant_coach:'Assistant coach', gd_card_staff_other:'Other staff',
     gd_card_us:'Our Team', gd_card_opponent:'Opponent', gd_card_player_label:'Player', gd_card_shirt_label:'Shirt number',
     gd_card_opponent_name_label:'Name (optional)', gd_card_type_label:'Card', gd_card_type_yellow:'Yellow', gd_card_type_second_yellow:'2nd Yellow',
     gd_card_type_red:'Red', gd_card_minute_label:'Minute', gd_card_minute_placeholder:'34 or 40+2', gd_card_add:'Add Card',
@@ -7900,6 +7920,8 @@ const TR = {
 
     // ── GAME DETAIL ──
     gd_tab_squad:'Convocados', gd_tab_xi:'Onze Inicial', gd_tab_goals:'Golos', gd_tab_cards:'Cartões', gd_tab_penalties:'Grandes Penalidades',
+    gd_card_recipient_player:'Jogador', gd_card_recipient_staff:'Treinador / Equipa técnica', gd_card_staff_role_label:'Função',
+    gd_card_staff_head_coach:'Treinador principal', gd_card_staff_assistant_coach:'Treinador adjunto', gd_card_staff_other:'Outro elemento',
     gd_card_us:'Nossa Equipa', gd_card_opponent:'Adversário', gd_card_player_label:'Jogador', gd_card_shirt_label:'Número da camisola',
     gd_card_opponent_name_label:'Nome (opcional)', gd_card_type_label:'Cartão', gd_card_type_yellow:'Amarelo', gd_card_type_second_yellow:'2.º Amarelo',
     gd_card_type_red:'Vermelho', gd_card_minute_label:'Minuto', gd_card_minute_placeholder:'34 ou 40+2', gd_card_add:'Adicionar Cartão',
@@ -27282,7 +27304,9 @@ async function renderSimpleGoalsTab(gameId) {
       // elsewhere in the app; see Cards tab ticket assessment).
       const cardEventsForSummary = (await DB.getAll('cardEvents', 'gameId', gameId)).filter(c => c && !c.isDeleted);
       const cardLine = (c) => {
-        const who = c.team === 'us'
+        const who = c.scorerType === 'staff'
+          ? (c.team === 'us' ? cardStaffLabel(c) : `${I18n.t('gd_card_opponent')} · ${cardStaffLabel(c)}`)
+          : c.team === 'us'
           ? (c.scorerType === 'temp'
               ? ((allTempPlayers.find(t => t.tempPlayerId === c.scorerId) || {}).name || I18n.t('gd_match_summary_unknown_scorer'))
               : (() => { const p = allPlayers.find(x => x.playerId === c.scorerId); return p ? shortName(p.fullName) : I18n.t('gd_match_summary_unknown_scorer'); })())
@@ -27871,6 +27895,13 @@ async function renderPenaltiesTab(gameId) {
 // removal. Totals are always derived from the live event list — never an
 // independent counter — so an edit or delete can't leave them out of sync.
 
+// Display label for a coach/staff card: role, plus the name when one was entered.
+function cardStaffLabel(c) {
+  const roleKey = c.staffRole === 'assistant_coach' ? 'gd_card_staff_assistant_coach'
+    : c.staffRole === 'other_staff' ? 'gd_card_staff_other' : 'gd_card_staff_head_coach';
+  return I18n.t(roleKey) + (c.staffName ? ' · ' + c.staffName : '');
+}
+
 function cardTypeIcon(cardType) {
   if (cardType === 'direct_red') return '<span style="display:inline-block;width:10px;height:14px;background:#c0392b;border-radius:2px" aria-hidden="true"></span>';
   if (cardType === 'second_yellow') return '<span style="display:inline-flex;gap:2px" aria-hidden="true"><span style="display:inline-block;width:10px;height:14px;background:#e8b800;border-radius:2px"></span><span style="display:inline-block;width:10px;height:14px;background:#c0392b;border-radius:2px"></span></span>';
@@ -27881,11 +27912,19 @@ function cardTypeIcon(cardType) {
 // Dismissals and red cards both include second_yellow — a second yellow
 // IS a red-card dismissal, not a separate event to add on top of.
 function computeCardTotals(cardEvents) {
-  const totals = { us: { yellow: 0, red: 0, dismissals: 0 }, opponent: { yellow: 0, red: 0, dismissals: 0 } };
+  // Coach/staff cards (scorerType 'staff') are counted on their own: they
+  // are not player cards and never reduce the players on the pitch.
+  const totals = { us: { yellow: 0, red: 0, dismissals: 0, staffYellow: 0, staffRed: 0 }, opponent: { yellow: 0, red: 0, dismissals: 0, staffYellow: 0, staffRed: 0 } };
   (cardEvents || []).forEach(c => {
     if (!c || c.isDeleted) return;
     const side = totals[c.team];
     if (!side) return;
+    if (c.scorerType === 'staff') {
+      if (c.cardType === 'yellow') side.staffYellow++;
+      else if (c.cardType === 'second_yellow') { side.staffYellow++; side.staffRed++; }
+      else if (c.cardType === 'direct_red') side.staffRed++;
+      return;
+    }
     if (c.cardType === 'yellow') side.yellow++;
     else if (c.cardType === 'second_yellow') { side.yellow++; side.red++; side.dismissals++; }
     else if (c.cardType === 'direct_red') { side.red++; side.dismissals++; }
@@ -27931,7 +27970,9 @@ async function renderCardsTab(gameId) {
     const sorted = [...cardEvents].sort((a,b) => cardMinuteSortKey(a) - cardMinuteSortKey(b));
 
     const rowHtml = (c) => {
-      const who = c.team === 'us'
+      const who = c.scorerType === 'staff'
+        ? esc(cardStaffLabel(c))
+        : c.team === 'us'
         ? esc(playerName(c))
         : `${I18n.t('gd_card_opponent')}${c.opponentShirtNumber != null ? ' #' + c.opponentShirtNumber : ''}${c.opponentPlayerName ? ' · ' + esc(c.opponentPlayerName) : ''}`;
       const missingCaution = c.cardType === 'second_yellow' && !c.linkedEventId;
@@ -27954,6 +27995,11 @@ async function renderCardsTab(gameId) {
           <div>${cardTypeIcon('yellow')} ${totals.us.yellow} &nbsp; ${cardTypeIcon('direct_red')} ${totals.us.red}</div>
           <div>${cardTypeIcon('yellow')} ${totals.opponent.yellow} &nbsp; ${cardTypeIcon('direct_red')} ${totals.opponent.red}</div>
         </div>
+        ${(totals.us.staffYellow + totals.us.staffRed + totals.opponent.staffYellow + totals.opponent.staffRed) ? `
+        <div id="cardStaffTotals" style="display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+          <div>${I18n.t('gd_card_recipient_staff')}: ${cardTypeIcon('yellow')} ${totals.us.staffYellow} &nbsp; ${cardTypeIcon('direct_red')} ${totals.us.staffRed}</div>
+          <div>${cardTypeIcon('yellow')} ${totals.opponent.staffYellow} &nbsp; ${cardTypeIcon('direct_red')} ${totals.opponent.staffRed}</div>
+        </div>` : ''}
       </div>
       <button type="button" class="btn btn-primary" style="width:100%;margin-bottom:14px" onclick="openCardDialog(${gameId})">+ ${I18n.t('gd_card_add')}</button>
       ${sorted.length ? sorted.map(rowHtml).join('') : `<p style="color:var(--muted);font-size:13px;text-align:center;padding:16px">${I18n.t('gd_card_none_recorded')}</p>`}
@@ -27971,9 +28017,31 @@ function selectCardTeam(team) {
   document.getElementById('cardTeamUsBtn').classList.toggle('btn-secondary', team !== 'us');
   document.getElementById('cardTeamOpponentBtn').classList.toggle('btn-primary', team === 'opponent');
   document.getElementById('cardTeamOpponentBtn').classList.toggle('btn-secondary', team !== 'opponent');
-  document.getElementById('cardPlayerField').style.display = team === 'us' ? '' : 'none';
-  document.getElementById('cardOpponentFields').style.display = team === 'opponent' ? 'flex' : 'none';
+  updateCardFieldVisibility();
   updateSecondYellowCheck();
+}
+
+// Player vs coach/staff. Staff cards never use the player select or the
+// opponent shirt-number fields.
+function selectCardRecipient(recipient) {
+  const dlg = document.getElementById('cardDialog');
+  dlg.dataset.recipient = recipient === 'staff' ? 'staff' : 'player';
+  const isStaff = dlg.dataset.recipient === 'staff';
+  document.getElementById('cardRecipientPlayerBtn').classList.toggle('btn-primary', !isStaff);
+  document.getElementById('cardRecipientPlayerBtn').classList.toggle('btn-secondary', isStaff);
+  document.getElementById('cardRecipientStaffBtn').classList.toggle('btn-primary', isStaff);
+  document.getElementById('cardRecipientStaffBtn').classList.toggle('btn-secondary', !isStaff);
+  updateCardFieldVisibility();
+  updateSecondYellowCheck();
+}
+
+function updateCardFieldVisibility() {
+  const dlg = document.getElementById('cardDialog');
+  const isStaff = dlg.dataset.recipient === 'staff';
+  const team = dlg.dataset.team;
+  document.getElementById('cardStaffFields').style.display = isStaff ? 'flex' : 'none';
+  document.getElementById('cardPlayerField').style.display = (!isStaff && team === 'us') ? '' : 'none';
+  document.getElementById('cardOpponentFields').style.display = (!isStaff && team === 'opponent') ? 'flex' : 'none';
 }
 
 function selectCardType(cardType) {
@@ -28003,7 +28071,13 @@ async function updateSecondYellowCheck() {
   const editingId = dlg.dataset.cardEventId ? parseInt(dlg.dataset.cardEventId) : null;
   const all = (await DB.getAll('cardEvents', 'gameId', gameId)).filter(c => c && !c.isDeleted && c.cardEventId !== editingId && c.cardType === 'yellow');
   let match = null;
-  if (dlg.dataset.team === 'us') {
+  if (dlg.dataset.recipient === 'staff') {
+    // Same team, same role, same (possibly empty) name.
+    const role = document.getElementById('cardStaffRole').value;
+    const name = document.getElementById('cardStaffName').value.trim().toLowerCase();
+    match = all.find(c => c.scorerType === 'staff' && c.team === dlg.dataset.team
+      && (c.staffRole || 'head_coach') === role && (c.staffName || '').trim().toLowerCase() === name);
+  } else if (dlg.dataset.team === 'us') {
     const sel = document.getElementById('cardPlayerSelect').value; // "player:ID" or "temp:ID"
     if (sel) {
       const [scorerType, scorerIdStr] = sel.split(':');
@@ -28013,7 +28087,7 @@ async function updateSecondYellowCheck() {
   } else {
     const shirt = parseInt(document.getElementById('cardOpponentShirt').value);
     if (Number.isFinite(shirt)) {
-      match = all.find(c => c.team === 'opponent' && c.opponentShirtNumber === shirt);
+      match = all.find(c => c.team === 'opponent' && c.scorerType !== 'staff' && c.opponentShirtNumber === shirt);
     }
   }
   if (match) {
@@ -28054,9 +28128,17 @@ async function openCardDialog(gameId, cardEventId) {
   let existing = null;
   if (cardEventId != null) existing = await DB.get('cardEvents', cardEventId);
 
+  document.getElementById('cardStaffRole').value = 'head_coach';
+  document.getElementById('cardStaffName').value = '';
+  dlg.dataset.recipient = (existing && existing.scorerType === 'staff') ? 'staff' : 'player';
+
   if (existing) {
     selectCardTeam(existing.team);
-    if (existing.team === 'us') sel.value = `${existing.scorerType}:${existing.scorerId}`;
+    selectCardRecipient(dlg.dataset.recipient);
+    if (existing.scorerType === 'staff') {
+      document.getElementById('cardStaffRole').value = existing.staffRole || 'head_coach';
+      document.getElementById('cardStaffName').value = existing.staffName || '';
+    } else if (existing.team === 'us') sel.value = `${existing.scorerType}:${existing.scorerId}`;
     else {
       document.getElementById('cardOpponentShirt').value = existing.opponentShirtNumber != null ? existing.opponentShirtNumber : '';
       document.getElementById('cardOpponentName').value = existing.opponentPlayerName || '';
@@ -28066,6 +28148,7 @@ async function openCardDialog(gameId, cardEventId) {
     document.getElementById('cardMinuteInput').value = formatCardMinute(existing);
   } else {
     selectCardTeam('us');
+    selectCardRecipient('player');
     selectCardType('yellow');
     document.getElementById('cardOpponentShirt').value = '';
     document.getElementById('cardOpponentName').value = '';
@@ -28103,7 +28186,16 @@ async function saveCardDialog() {
     stoppageMinute: minuteRecord.stoppageMinute,
     linkedEventId: dlg.dataset.linkedEventId ? parseInt(dlg.dataset.linkedEventId) : null,
   };
-  if (team === 'us') {
+  payload.staffRole = null;
+  payload.staffName = null;
+  if (dlg.dataset.recipient === 'staff') {
+    payload.scorerType = 'staff';
+    payload.scorerId = null;
+    payload.staffRole = document.getElementById('cardStaffRole').value || 'head_coach';
+    payload.staffName = document.getElementById('cardStaffName').value.trim() || null;
+    payload.opponentShirtNumber = null;
+    payload.opponentPlayerName = null;
+  } else if (team === 'us') {
     const sel = document.getElementById('cardPlayerSelect').value;
     if (!sel) { errEl.textContent = I18n.t('gd_card_select_player'); errEl.style.display = ''; return; }
     const [scorerType, scorerIdStr] = sel.split(':');
