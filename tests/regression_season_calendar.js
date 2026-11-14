@@ -169,28 +169,56 @@ function check(label, cond) {
     // easier to see by block"). Items spanning 3 distinct months must get
     // exactly 3 headers, each immediately preceding its own month's items,
     // with no repeated header for a second item in the same month.
+    //
+    // Dates are computed relative to the real clock (3/4/5 months out, all
+    // comfortably future) rather than hardcoded calendar dates. A hardcoded
+    // '2026-11-07' fixture here passed for weeks, then started failing on
+    // 2026-11-08 the moment the real clock caught up to it: the app
+    // correctly moved that now-past date into the separate collapsed
+    // "past events" section (its own, separate November header), which is
+    // intentional, existing, tested behavior (see the today-anchored split
+    // tests above) — the fixture's assumption (all 3 items visible together
+    // in one pass) was what broke, not the app. Keeping every date here
+    // months ahead of "today" avoids this test ever going stale the same
+    // way again.
     const monthGroupHtml = await page.evaluate(() => {
+      const dateMonthsFromNow = (monthsAhead, day) => {
+        const d = new Date();
+        d.setDate(1); // avoid day-of-month overflow rolling into the wrong month
+        d.setMonth(d.getMonth() + monthsAhead);
+        d.setDate(day);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      };
+      const dateM1a = dateMonthsFromNow(3, 10);
+      const dateM1b = dateMonthsFromNow(3, 20);
+      const dateM2 = dateMonthsFromNow(4, 10);
+      const dateM3 = dateMonthsFromNow(5, 10);
       const games = [
-        { date: '2026-11-07', opponent: 'Nov Match A', competitionType: 'League', tournamentId: null },
-        { date: '2026-11-21', opponent: 'Nov Match B', competitionType: 'League', tournamentId: null },
-        { date: '2026-12-05', opponent: 'Dec Match', competitionType: 'League', tournamentId: null },
+        { date: dateM1a, opponent: 'Month1 Match A', competitionType: 'League', tournamentId: null },
+        { date: dateM1b, opponent: 'Month1 Match B', competitionType: 'League', tournamentId: null },
+        { date: dateM2, opponent: 'Month2 Match', competitionType: 'League', tournamentId: null },
       ];
       const calendarEvents = [
-        { type: 'milestone', title: 'Jan Milestone', startDate: '2027-01-15', endDate: '2027-01-15' },
+        { type: 'milestone', title: 'Month3 Milestone', startDate: dateM3, endDate: dateM3 },
       ];
-      return renderSeasonCalendar(games, [], calendarEvents);
+      return {
+        html: renderSeasonCalendar(games, [], calendarEvents),
+        label1: calMonthLabel(dateM1a),
+        label2: calMonthLabel(dateM2),
+        label3: calMonthLabel(dateM3),
+      };
     });
-    check('Exactly 3 month headers rendered for 3 distinct months (Nov/Dec/Jan)',
-      (monthGroupHtml.match(/cal-month-header/g) || []).length === 3);
-    check('Both November items sit under the SAME single November header (not duplicated)',
-      (monthGroupHtml.slice(0, monthGroupHtml.indexOf('Nov Match B')).match(/cal-month-header/g) || []).length === 1);
-    check('Each month header shows the correct dynamically-computed event count (2 for November, 1 each for December/January)',
-      /Novembro de 2026[\s\S]{0,40}2 eventos/.test(monthGroupHtml) &&
-      /Dezembro de 2026[\s\S]{0,40}1 evento(?!s)/.test(monthGroupHtml) &&
-      /Janeiro de 2027[\s\S]{0,40}1 evento(?!s)/.test(monthGroupHtml));
-    check('Chronological order preserved: November header before December header before January header',
-      monthGroupHtml.indexOf('Nov Match A') < monthGroupHtml.indexOf('Dec Match') &&
-      monthGroupHtml.indexOf('Dec Match') < monthGroupHtml.indexOf('Jan Milestone'));
+    check('Exactly 3 month headers rendered for 3 distinct months',
+      (monthGroupHtml.html.match(/cal-month-header/g) || []).length === 3);
+    check('Both month-1 items sit under the SAME single header (not duplicated)',
+      (monthGroupHtml.html.slice(0, monthGroupHtml.html.indexOf('Month1 Match B')).match(/cal-month-header/g) || []).length === 1);
+    check('Each month header shows the correct dynamically-computed event count (2 for month 1, 1 each for months 2/3)',
+      new RegExp(monthGroupHtml.label1 + '[\\s\\S]{0,40}2 eventos').test(monthGroupHtml.html) &&
+      new RegExp(monthGroupHtml.label2 + '[\\s\\S]{0,40}1 evento(?!s)').test(monthGroupHtml.html) &&
+      new RegExp(monthGroupHtml.label3 + '[\\s\\S]{0,40}1 evento(?!s)').test(monthGroupHtml.html));
+    check('Chronological order preserved: month-1 header before month-2 header before month-3 header',
+      monthGroupHtml.html.indexOf('Month1 Match A') < monthGroupHtml.html.indexOf('Month2 Match') &&
+      monthGroupHtml.html.indexOf('Month2 Match') < monthGroupHtml.html.indexOf('Month3 Milestone'));
 
     // calMonthLabel itself: capitalised, includes the year, language-aware.
     const monthLabels = await page.evaluate(() => ({
