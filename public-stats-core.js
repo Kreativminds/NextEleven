@@ -135,7 +135,14 @@ function buildMatchGoalSummary(game, gpRecords, players, tempPlayers, goalEvents
     if (!hasKickoff || !scoredAt) return null;
     const t = new Date(scoredAt);
     if (isNaN(t)) return null;
-    const mins = Math.round((t - kickoff) / 60000);
+    // Second half: count from the recorded second-half start, so the
+    // half-time break is not added to the minute. Without that timestamp
+    // the minute is plain elapsed time from kick-off, as before.
+    const sh = game && game.secondHalfStartedAt ? new Date(game.secondHalfStartedAt) : null;
+    const halfLen = Math.round((parseInt(game && game.matchDurationMins) || 0) / 2);
+    let mins;
+    if (sh && !isNaN(sh) && halfLen > 0 && t >= sh) mins = halfLen + Math.round((t - sh) / 60000);
+    else mins = Math.round((t - kickoff) / 60000);
     if (mins < 0 || mins > MATCH_SUMMARY_MAX_PLAUSIBLE_MINUTE) return null;
     return mins;
   }
