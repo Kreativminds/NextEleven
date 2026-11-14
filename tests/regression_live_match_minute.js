@@ -29,6 +29,10 @@ const path = require('path');
       noKickoff: liveMatchMinute({ date: '2026-11-14', gameTime: '17:00' }, {}, at('17:30')),
       default90: lab({ actualKickoffAt: K }, '18:09'), default90ht: lab({ actualKickoffAt: K }, '18:20'),
       goalsNoSecond: sum(g), goalsSecond: sum(g2),
+      cardsHtml: renderLiveCard({ opponent: 'X', homeAway: 'Away', ourScore: '2', opponentScore: '1', goalEvents: [], goalScorers: [], guestPlayers: [], date: '2026-11-14', actualKickoffAt: new Date(Date.now() - 10 * 60000).toISOString(), matchDurationMins: '80',
+        cardEvents: [ { team: 'us', scorerType: 'player', scorerId: '121', cardType: 'yellow', minute: '12', stoppageMinute: null },
+                      { team: 'opponent', scorerType: null, scorerId: null, opponentShirtNumber: '7', cardType: 'direct_red', minute: '30', stoppageMinute: null },
+                      { team: 'us', scorerType: 'staff', scorerId: null, cardType: 'direct_red', minute: '35', stoppageMinute: null } ] }, { clubName: 'Us' }, [{ playerId: '121', fullName: 'Test Player' }], []),
       cardHtml: (function(){ const real = Date; return renderLiveCard(Object.assign({ opponent: 'X', homeAway: 'Away', ourScore: '2', opponentScore: '1', goalEvents: [], goalScorers: [], guestPlayers: [] }, g, { actualKickoffAt: new Date(Date.now() - 10 * 60000).toISOString() }), { clubName: 'Us' }, [], []); })(),
     };
   }).catch(e => ({ error: String(e && e.stack || e) }));
@@ -51,6 +55,12 @@ const path = require('path');
     check('goal minutes without second-half time: elapsed from kick-off (14, 32, 65)', JSON.stringify(r.goalsNoSecond) === '[14,32,65]', r.goalsNoSecond);
     check('goal minutes with second-half time: break removed (14, 32, 50)', JSON.stringify(r.goalsSecond) === '[14,32,50]', r.goalsSecond);
     check("live card shows the minute next to LIVE (11')", /class="live-minute"[^>]*>· 11'</.test(r.cardHtml), r.cardHtml && r.cardHtml.slice(0, 300));
+  }
+  if (!r.error) {
+    check('live card lists a player yellow with name and minute', /id="liveCards"[\s\S]*🟨<\/span> [^<]*Player[^<]* 12&#39;/.test(r.cardsHtml), r.cardsHtml);
+    check('live card lists an opponent red (Opponent #7 30\')', /🟥<\/span> Opponent #7 30&#39;/.test(r.cardsHtml), r.cardsHtml);
+    check('live card lists a coach red as Coach/Staff', /🟥<\/span> Coach\/Staff 35&#39;/.test(r.cardsHtml), r.cardsHtml);
+    check('live card has no cards block when no cards are recorded', !/id="liveCards"/.test(r.cardHtml));
   }
   console.log('\n' + (failures.length ? failures.length + ' FAILURE(S)' : 'All checks passed.'));
   await browser.close();
