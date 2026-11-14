@@ -8,6 +8,119 @@ Newest entry on top.
 
 ---
 
+## 2026-11-14 — Scheduled nightly run
+
+- lastInspectedCommit: 0f56298
+- Trigger: scheduled nightly run. Tonight's run was also described in the
+  scheduled prompt as a 7-day trial that started 2026-10-12 — now 33 days
+  in, 26 past the intended 7-day review point, same as every recent night.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process — this is now
+  the 31st consecutive night (2026-10-15 through tonight) that stored
+  prompt has been wrong. That string was resolved back on 2026-10-12
+  (PR #1) and sits in BUGS.md's Resolved section. BUGS.md's real Open
+  section tonight still holds the same single entry as every night since
+  2026-11-03: the away-match weather forecast RPC gap, unchanged, still
+  awaiting Victor's call. Went with real repo state, per every run since
+  10-15.
+- Scope: diff since d1a2f10 (last run's lastInspectedCommit) was 3 real
+  app-code commits from an interactive session today/yesterday — all
+  already shipped with their own passing regression tests:
+  - ec42bfb "feat(cards): coach/staff cards in the Add Card dialog"
+  - c335dc2 "feat(parents page): live match minute on the live card"
+  - a021f5e "feat(parents page): show cards on the live card"
+  Plus the usual bookkeeping commits either side. `index.html`,
+  `team.html` and `public-stats-core.js` all changed — zero-AI early exit
+  did not fire, so triage ran.
+- Checks run:
+  - `check-syntax.js` → OK (all 3 script blocks parse).
+  - `check-i18n-parity.js` → OK (2036/2036 keys, no gaps) — index.html
+    only; team.html's own EN/PT STRINGS object isn't covered by this
+    checker. Manually confirmed tonight's new team.html keys
+    (`half_time`, `card_opponent`, `card_staff`,
+    `card_second_yellow_note`) are present and correctly paired in both
+    languages — no actual gap, just a tooling blind spot worth a future
+    tidy-up (not urgent, not touched tonight).
+  - `check-html-comments.js` → OK (both files balanced, no swallowed
+    tags).
+  - `tests/regression_caio_and_cards.js` → 6/6 pass.
+  - `tests/regression_marcadores_guests.js` → 8/8 pass.
+  - `tests/regression_next_game_weather.js` → 11/11 pass.
+  - `tests/regression_staff_cards.js` → 16/16 pass (new tonight).
+  - `tests/regression_live_match_minute.js` → 20/20 pass (new tonight —
+    also covers commit a021f5e's live-card cards display, folded into
+    the same file from the same session).
+  - `tests/regression_season_calendar.js` → 49/52 (same 3 pre-existing
+    failures as every night since 2026-11-08: known test-fixture-date
+    staleness, fix already on unmerged PR #45 — confirmed still open
+    tonight, not merged). Not a new defect.
+- Triage (haiku): given the 3 commits' messages/diffstats, the check
+  outputs, and the BUGS.md Open section, returned: P1 "verify staff-card
+  exclusion holds in public-stats-core.js, which ec42bfb didn't touch";
+  P2 "test counts (13/13 tonight) don't match the 16-checks commit
+  messages"; P2 "a021f5e has no listed regression test"; P2 "c335dc2
+  changed the shared public-stats-core.js helper — check other callers
+  for changed output"; P3 "i18n parity check only covers index.html, not
+  team.html's new strings."
+- Orchestrator follow-through on every candidate:
+  - Staff-card exclusion (P1): **false positive**. Read the public RPC's
+    SQL (`009_harden_public_rpc_against_stuck_soft_deletes.sql`) — both
+    `cardYellowCount`/`cardRedCount` subqueries already filter
+    `scorerType = 'player'` explicitly (an allowlist, not a staff
+    exclusion bolted on), so a `scorerType:'staff'` row was never going
+    to be counted there, by construction, with no change needed. The
+    admin-side `playerSeasonStats`/`lorenzoStats` in index.html use the
+    same allowlist pattern (`scorerType === 'player'`/`'temp'` only) —
+    confirmed by reading the code, and already covered by tonight's
+    passing `regression_staff_cards.js` ("player totals exclude staff
+    cards").
+  - Test-count mismatch (P2): **false positive, my own error**. My first
+    pass reported 13/13 from a `tail -15`-truncated run (same failure
+    mode as the "66 vs 58" false alarm on 2026-11-02). Re-ran both suites
+    in full: `regression_staff_cards.js` is 16/16 (matches the commit
+    exactly), `regression_live_match_minute.js` is 20/20 (commit message
+    said "16 checks" but undercounted its own test — not a missing-check
+    bug, just an imprecise commit message; all 20 pass).
+  - a021f5e missing test (P2): **false positive**. Its "show cards on the
+    live card" behavior (player yellow, opponent red, coach/staff red,
+    nothing shown when no cards) is exercised by
+    `tests/regression_live_match_minute.js`'s "live card lists a
+    player/opponent/coach card" and "no cards block when no cards are
+    recorded" checks — folded into that file since it was added in the
+    same session, right after a021f5e.
+  - Shared-helper callers (P2): **real, confirmed, fixed tonight** — see
+    below.
+  - team.html i18n coverage (P3): confirmed not an actual gap tonight
+    (see Checks run above) — a tooling blind spot, not a defect. Not
+    pursued further.
+- Fixed (1/2 of cap used): `buildMatchGoalSummary`/`minuteFromScoredAt` is
+  documented as duplicated **verbatim** between `public-stats-core.js`
+  and `index.html` (no module system to share it — the file's own header
+  says "if this logic ever changes, update both places"). c335dc2 updated
+  the `public-stats-core.js` copy to measure a second-half goal's minute
+  from `game.secondHalfStartedAt` (excluding the half-time break) but
+  never touched the `index.html` copy, which feeds the admin app's
+  read-only Match Summary tab (Game Detail → Goals). Net effect: for any
+  finished game with `secondHalfStartedAt` recorded, that admin tab would
+  show a second-half goal's minute inflated by the break length, while
+  the Parents Page (via public-stats-core.js) now shows the correct one —
+  the two duplicated copies disagreed. Applied the identical calculation
+  to the `index.html` copy. Display-only, no data/schema impact. Verified:
+  both script blocks parse, all 3 deterministic checks pass, all 6
+  regression suites at their prior pass count. Commit 7ce5081 (+ version
+  bump 9362659) on `maintenance/nightly-2026-11-14`. PR:
+  https://github.com/Kreativminds/NextEleven/pull/50 (not yet merged).
+- Needs your approval: unchanged — away-match weather forecast RPC gap
+  (see 2026-11-03 entry) still awaiting your call; no new information
+  tonight.
+- Pending: none else (2nd fix slot unused — every real triage finding was
+  either run to ground and fixed, or confirmed a false positive tonight).
+  ~5 min of the ~20 min budget used.
+- Known Unresolved housekeeping: none — nothing in tonight's diff touches
+  any carried-forward item; list unchanged.
+
+---
+
 ## 2026-11-13 — Scheduled nightly run
 
 - lastInspectedCommit: d1a2f10
