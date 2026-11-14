@@ -325,6 +325,7 @@
   .comp-tag{font-size:10px;color:var(--muted);font-weight:600;flex-shrink:0}
   .live-card{border-color:var(--black);border-width:2px;padding:22px 18px 20px;text-align:center;box-shadow:0 2px 10px rgba(178,51,51,.18)}
   .live-flag{display:inline-flex;align-items:center;gap:7px;color:#fff;background:var(--black);border-radius:20px;padding:5px 14px;font-weight:800;font-size:12px;letter-spacing:1px}
+  .live-minute{font-variant-numeric:tabular-nums;letter-spacing:.3px}
   .live-flag .dot{width:9px;height:9px;background:#fff;border-radius:50%;animation:live-pulse 1.5s ease-in-out infinite}
   .live-fixture{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:14px}
   .live-team{flex:1;min-width:0;font-weight:800;font-size:15px;line-height:1.25;overflow-wrap:anywhere}
@@ -650,8 +651,48 @@ function isGameFinished(g, season) {
   if (!g.gameTime && !g.actualKickoffAt) return now > new Date(`${g.date}T23:59:59`);
   const kickoff = g.actualKickoffAt ? new Date(g.actualKickoffAt) : new Date(`${g.date}T${g.gameTime}`);
   if (isNaN(kickoff)) return false;
-  const mins = (parseInt(g.matchDurationMins) || parseInt(season && season.defaultMatchDurationMins) || 90) + 15;
+  const duration = parseInt(g.matchDurationMins) || parseInt(season && season.defaultMatchDurationMins) || 90;
+  // Once the second-half start is recorded, the end is measured from it:
+  // one half + the same 15 min buffer. The break length no longer matters.
+  const sh = g.secondHalfStartedAt ? new Date(g.secondHalfStartedAt) : null;
+  if (sh && !isNaN(sh)) return now >= new Date(sh.getTime() + (duration / 2 + 15) * 60000);
+  const mins = duration + 15;
   return now >= new Date(kickoff.getTime() + mins * 60000);
+}
+// Live match minute for the live card. Returns { label, state } or null.
+//   1st half: "23'"; past the half length: "40+'" for a few minutes, then
+//   "Half-time" (assumed — the break itself is not recorded).
+//   2nd half: needs g.secondHalfStartedAt (set from the admin side). Without
+//   it the page stays on "Half-time" and, after a long break, shows nothing
+//   rather than a wrong minute.
+// Keeps the minute moving between data refreshes (the page only re-renders
+// when it polls). Updates the text in place; never touches anything else.
+let _liveMinuteCtx = null;
+setInterval(() => {
+  if (!_liveMinuteCtx) return;
+  const lm = liveMatchMinute(_liveMinuteCtx.g, _liveMinuteCtx.season);
+  document.querySelectorAll('.live-minute').forEach(el => { el.textContent = lm ? '· ' + lm.label : ''; });
+}, 10000);
+const LIVE_STOPPAGE_GRACE_MINS = 4;
+const LIVE_HALFTIME_MAX_MINS = 30;
+function liveMatchMinute(g, season, now) {
+  if (!g || !g.actualKickoffAt) return null; // only when the real kick-off was recorded
+  const kickoff = new Date(g.actualKickoffAt);
+  if (isNaN(kickoff)) return null;
+  now = now || new Date();
+  const duration = parseInt(g.matchDurationMins) || parseInt(season && season.defaultMatchDurationMins) || 90;
+  const half = Math.round(duration / 2);
+  const sh = g.secondHalfStartedAt ? new Date(g.secondHalfStartedAt) : null;
+  if (sh && !isNaN(sh) && now >= sh) {
+    const m = half + Math.floor((now - sh) / 60000) + 1;
+    return m > duration ? { label: duration + "+'", state: 'second' } : { label: m + "'", state: 'second' };
+  }
+  const el = Math.floor((now - kickoff) / 60000);
+  if (el < 0) return null;
+  if (el < half) return { label: (el + 1) + "'", state: 'first' };
+  if (el < half + LIVE_STOPPAGE_GRACE_MINS) return { label: half + "+'", state: 'first' };
+  if (el < half + LIVE_STOPPAGE_GRACE_MINS + LIVE_HALFTIME_MAX_MINS) return { label: tr('half_time'), state: 'break' };
+  return null;
 }
 // Kicked off but not finished yet — shown live, never counted in any record.
 // Same grouping as the main app's Squad/Convocados/Starting XI screens —
@@ -733,9 +774,11 @@ function renderLiveCard(g, season, players, gamePlayers) {
   const ourName = season.clubName || 'Us';
   const homeName = usHome ? ourName : g.opponent;
   const awayName = usHome ? g.opponent : ourName;
+  const lm = liveMatchMinute(g, season);
+  _liveMinuteCtx = { g, season };
   return `
     <div class="card live-card">
-      <span class="live-flag"><span class="dot" aria-hidden="true"></span>${tr('live')}</span>
+      <span class="live-flag"><span class="dot" aria-hidden="true"></span>${tr('live')}${lm ? ` <span class="live-minute" id="liveMinute">· ${esc(lm.label)}</span>` : ''}</span>
       <div class="live-fixture">
         <div class="live-team">${esc(homeName)}</div>
         <div class="live-score" role="status" aria-live="polite">${sc.home} - ${sc.away}</div>
@@ -1804,7 +1847,7 @@ function setLang(lang) {
 const STRINGS = {
   en: {
     live:'LIVE', home:'Home', away:'Away', kickoff:'Kick-off',
-    live_note:'Updating every 15 seconds while the game is on. Counted in the season record once the game ends.',
+    half_time:'Half-time', live_note:'Updating every 15 seconds while the game is on. Counted in the season record once the game ends.',
     own_goal:'Own goal',
     match_summary_badge:'FINAL', opponent_goal:'Opponent goal',
     card_opponent:'Opponent', card_staff:'Coach/Staff', card_second_yellow_note:'(2nd yellow)',
@@ -1895,7 +1938,7 @@ const STRINGS = {
   },
   pt: {
     live:'AO VIVO', home:'Casa', away:'Fora', kickoff:'Início',
-    live_note:'Atualiza a cada 15 segundos durante o jogo. Entra no registo da época quando o jogo terminar.',
+    half_time:'Intervalo', live_note:'Atualiza a cada 15 segundos durante o jogo. Entra no registo da época quando o jogo terminar.',
     own_goal:'Autogolo',
     match_summary_badge:'FINAL', opponent_goal:'Golo do adversário',
     card_opponent:'Adversário', card_staff:'Equipa técnica', card_second_yellow_note:'(2º amarelo)',
