@@ -6052,12 +6052,20 @@ function renderLineupPitch(lineup, shirtColor) {
   // The position abbreviation is shown per player so the recorded position
   // is visibly verifiable on the pitch itself. Rows of five or more are
   // tightened so they stay on one line at phone width.
-  const shirt = ({player:p, position}, tight, color) => `
+  // Name on two lines — first name, then last name — so the last name is
+  // never cut off; the position goes underneath.
+  const shirt = ({player:p, position}, tight, color) => {
+    const parts = String(p.fullName || '').trim().split(/\s+/).filter(Boolean);
+    const first = parts[0] || '';
+    const last = parts.length > 1 ? parts[parts.length - 1] : '';
+    return `
         <div class="pitch-player" style="flex:0 1 ${tight ? 56 : 64}px;min-width:0">
           <div class="pitch-shirt" style="background:${color}">${p.shirtNumber||''}</div>
-          <div class="pitch-name">${esc(shortName(p.fullName))}</div>
+          <div class="pitch-name pitch-name-first" style="max-width:100%">${esc(first)}</div>
+          ${last ? `<div class="pitch-name pitch-name-last" style="max-width:100%;margin-top:0">${esc(last)}</div>` : ''}
           <div class="pitch-pos">${esc(POSITION_ABBR[position] || '')}</div>
         </div>`;
+  };
   const shirtRow = (players, extraClass='', color=shirtColor) => {
     if (!players.length) return '';
     const tight = players.length >= 5;
