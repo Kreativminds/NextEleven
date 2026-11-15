@@ -8,6 +8,119 @@ Newest entry on top.
 
 ---
 
+## 2026-11-15 — Scheduled nightly run
+
+- lastInspectedCommit: f9e194f
+- Trigger: scheduled nightly run. Tonight's run was also described in the
+  scheduled prompt as a 7-day trial that started 2026-10-12 — now 34 days
+  in, 27 past the intended 7-day review point, same as every recent night.
+- Note: tonight's scheduled prompt once again stated BUGS.md had exactly
+  one Open entry (`integ_fix_review`, i18n, P3) to process — this is now
+  the 32nd consecutive night (2026-10-15 through tonight) that stored
+  prompt has been wrong. That string was resolved back on 2026-10-12
+  (PR #1) and sits in BUGS.md's Resolved section. BUGS.md's real Open
+  section tonight still holds the same single entry as every night since
+  2026-11-03: the away-match weather forecast RPC gap, unchanged, still
+  awaiting Victor's call. Went with real repo state, per every run since
+  10-15.
+- Scope: diff since 0f56298 (last run's lastInspectedCommit) was 9 real
+  app-code commits from today's interactive sessions, all same-day
+  iterative work on two features, each already shipped with its own
+  updated/added regression test:
+  - Team Summary "Most Used Lineup" diagram (7 commits: 8d884db,
+    79f5ddb, d37f968, 518048e, afd1232, 2fd6c18, e7c29d8) — reworked to
+    fill the XI from starts in the last 3 official games, position logic,
+    midfield depth, footedness, two-line names.
+  - Parents Page result cards (2 commits: 729a494, 0a8390d) — cards and
+    tap-to-expand scorers on past results, backed by 2 new public-RPC
+    migrations (012, 013).
+  `index.html` and `team.html` both changed — zero-AI early exit did not
+  fire, so triage ran.
+- Checks run:
+  - `check-syntax.js` → OK (all 3 script blocks parse).
+  - `check-i18n-parity.js` → OK (2039/2039 keys, no gaps) — index.html
+    only. Tonight's team.html changes added no new translation keys
+    (confirmed by diff), so the checker's team.html blind spot (noted
+    2026-11-14) isn't in play tonight.
+  - `check-html-comments.js` → OK (both files balanced, no swallowed
+    tags).
+  - `tests/regression_caio_and_cards.js` → 6/6 pass.
+  - `tests/regression_marcadores_guests.js` → 8/8 pass.
+  - `tests/regression_next_game_weather.js` → 11/11 pass.
+  - `tests/regression_staff_cards.js` → 6/6 pass.
+  - `tests/regression_live_match_minute.js` → 6/6 pass (incl. tonight's
+    additional "final-result card lists its cards" checks from 729a494).
+  - `tests/regression_result_expand.js` → 6/6 pass (new tonight, covers
+    0a8390d's tap-to-expand scorers).
+  - `tests/regression_most_used_lineup.js` → 23/23 pass (re-ran in full
+    after an initial truncated `tail` view wrongly suggested only 6 ran —
+    corrected before drawing any conclusion; same "66 vs 58"-style trap
+    noted 2026-11-02/2026-11-14, caught this time before it caused a false
+    read).
+  - `tests/regression_season_calendar.js` → 49/52 — same 3 pre-existing
+    failures as every night since 2026-11-08 (test-fixture-date
+    staleness, fix on unmerged PR #45, confirmed still open). Not a new
+    defect; season calendar untouched tonight.
+- Triage (haiku): given the 9 commits' messages/diffstats, the check
+  outputs, and the BUGS.md Open section, returned 5 candidates: P1 "cards
+  on past results shipped while its 2 migrations are 'pending' — check
+  deploy ordering / missing-field handling"; P1 "scorer-names migration
+  on the public RPC — verify it doesn't over-expose data"; P2 "7 same-day
+  lineup commits, incl. a 197-line rewrite — verify no cross-commit
+  regression"; P2 "'last 3 official games' window boundary — verify
+  exactly 3, official-only, handles <3 games"; P3 "i18n parity check only
+  covers index.html, not tonight's team.html text".
+- Orchestrator follow-through on every candidate:
+  - Migration-ordering risk (P1): **false positive**. Both migration
+    files (012, 013) carry their own header: "APPLIED TO PRODUCTION on
+    2026-11-15", with an idempotency/verification note and rollback
+    instructions — they were applied the same day as the feature, by the
+    interactive session that shipped it, despite living in the
+    `migrations_pending/` directory (a naming/filing inconsistency, not a
+    deploy-ordering bug). Nothing is live today reading fields that
+    aren't there.
+  - Scorer-name exposure (P1): **not a fresh issue — already reasoned and
+    accepted by Victor the same day**. Migration 013's header says
+    outright that `goalEvents`/`goalScorers` are now sent regardless of
+    the "show player stats" toggle, and "the owner was told and accepted
+    this." Read `renderCardEventsStrip`/`renderScorerColumns` in
+    team.html: names are resolved against the already server-side
+    privacy-filtered `players`/`guestPlayers` lists (`fmt_public_name()`,
+    the same mechanism goals already relied on) — no new exposure
+    mechanism, just a widened time window on data already filtered the
+    same way.
+  - Lineup cross-commit regression (P2): **false positive**. Re-ran
+    `tests/regression_most_used_lineup.js` in full (not truncated) — all
+    23 checks pass, including XI composition, position/footedness/depth
+    assignment, naming, overflow, and edge cases (no roles recorded,
+    inactive player, no data, guest starter). No sign any of the 7
+    commits broke an earlier one.
+  - "Last 3" window boundary (P2): **false positive**. Read
+    `buildMostUsedLineup` directly: `LINEUP_RECENT_GAMES = 3`, applied to
+    `split.official` only (not all finished games), via a plain
+    `.slice(0, 3)` after sorting — exactly "official-only, exactly 3".
+    The test suite explicitly covers this ("uses the last 3 official
+    games (window = 3)", "a player who only started in older games is
+    out... none in the last 3", "zero-start substitute is out... even
+    with a friendly start").
+  - team.html i18n coverage (P3): **not applicable tonight** — confirmed
+    by diff that no new translation keys were added to team.html's
+    STRINGS block this run (unlike 2026-11-14's cards feature, which
+    did and was manually checked then). Nothing new to verify.
+- Fixed: none — every triage candidate resolved to a false positive or an
+  already-accepted design decision on follow-through; no code change
+  needed or made. 2-fix cap unused.
+- Needs your approval: unchanged — away-match weather forecast RPC gap
+  (see 2026-11-03 entry) still awaiting your call; no new information
+  tonight.
+- Pending: none (both fix slots unused — nothing found tonight needed a
+  fix). ~5 min of the ~20 min budget used.
+- Known Unresolved housekeeping: none — nothing in tonight's diff touches
+  any carried-forward item; list unchanged. Also worth noting for a
+  future tidy-up (not touched tonight, not urgent): migrations 012/013
+  are filed under `migrations_pending/` despite already being applied —
+  same loose-documentation pattern flagged for 003-009 back on 2026-11-01.
+
 ## 2026-11-14 — Scheduled nightly run
 
 - lastInspectedCommit: 0f56298
