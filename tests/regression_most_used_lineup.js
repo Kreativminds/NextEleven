@@ -35,7 +35,9 @@ const path = require('path');
       ['Lucas', 'Striker', ['Striker/Sub', 'Striker/Sub', 'Striker/Sub', '-/-', '', '', '']],
     ];
     const players = squad.map((x, i) => ({ playerId: i + 1, fullName: x[0], primaryPosition: x[1], shirtNumber: i + 1, isActive: true }));
-    const games = [1, 2, 3, 4, 5, 6, 7].map(gameId => ({ gameId }));
+    const games = [1, 2, 3, 4, 5, 6, 7].map(gameId => ({ gameId, date: '2026-10-0' + gameId, gameTime: '15:00' }));
+    // listed out of date order on purpose: the builder must sort by date itself
+    games.reverse(); games.push(games.shift());
     const gp = [];
     squad.forEach((x, i) => x[2].forEach((cell, gi) => {
       if (!cell) return;
@@ -47,6 +49,7 @@ const path = require('path');
     const names = l => ({ GK: l.GK.map(e => e.player.fullName), DEF: l.DEF.map(e => e.player.fullName + ':' + POSITION_ABBR[e.position]), MID: l.MID.map(e => e.player.fullName + ':' + POSITION_ABBR[e.position]), FWD: l.FWD.map(e => e.player.fullName + ':' + POSITION_ABBR[e.position]) });
     const lineup = buildMostUsedLineup(players, [], games, gp);
     const out = { main: names(lineup) };
+    out.seasonWide = (function(){ const prev = LINEUP_RECENT_GAMES; return prev; })();
     // rendering at phone width: 11 shirts, no horizontal overflow, translated title
     const host = document.createElement('div'); host.style.width = '320px'; host.innerHTML = renderLineupPitch(lineup, '#a33'); document.body.prepend(host);
     const pitch = host.querySelector('#mostUsedPitch');
@@ -76,11 +79,13 @@ const path = require('path');
     const m = r.main, all = [].concat(m.GK, m.DEF, m.MID, m.FWD).join(',');
     check('XI has 11 players', m.GK.length + m.DEF.length + m.MID.length + m.FWD.length === 11, m);
     check('goalkeeper is the one with most starts (Miguel)', JSON.stringify(m.GK) === '["Miguel"]', m.GK);
-    check('regular starters are in: Alexandre, William, Guilherme', /Alexandre/.test(all) && /William/.test(all) && /Guilherme/.test(all), all);
+    check('uses the last 3 official games (window = 3)', r.seasonWide === 3, r.seasonWide);
+    check('recent starters are in: Alexandre, William, Gustavo', /Alexandre/.test(all) && /William/.test(all) && /Gustavo/.test(all), all);
+    check('a player who only started in older games is out (Guilherme: 4 starts, none in the last 3)', !/Guilherme/.test(all), all);
     check('zero-start substitute is out (Octave), even with a friendly start', !/Octave/.test(all), all);
-    check('low-start players are out (Gustavo, Lucas, Rodrigo)', !/Gustavo|Lucas|Rodrigo/.test(all), all);
-    check('defence left to right: Lorenzo LB, three CBs, Guilherme RB', JSON.stringify(m.DEF) === '["Lorenzo:LB","Alexandre:CB","Eduardo:CB","Carlos:CB","Guilherme:RB"]', m.DEF);
-    check('midfield: Caio CM, William CM', JSON.stringify(m.MID) === '["Caio:CM","William:CM"]', m.MID);
+    check('substitutes are out (Lucas, Rodrigo)', !/Lucas|Rodrigo/.test(all), all);
+    check('defence left to right: Lorenzo LB, then three CBs', JSON.stringify(m.DEF) === '["Lorenzo:LB","Alexandre:CB","Eduardo:CB","Carlos:CB"]', m.DEF);
+    check('midfield: Caio, William, Gustavo (positions from season data when recent games have none)', JSON.stringify(m.MID) === '["Caio:CM","William:CM","Gustavo:CM"]', m.MID);
     check('attack: Vicente LW, David ST, Diogo RW', JSON.stringify(m.FWD) === '["Vicente:LW","David:ST","Diogo:RW"]', m.FWD);
     check('pitch renders 11 shirts', r.shirts === 11, r.shirts);
     check('no horizontal overflow and every row on one line at 320px', !r.overflow && r.rowsOneLine, [r.overflow, r.rowsOneLine]);
