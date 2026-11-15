@@ -58,6 +58,8 @@ const path = require('path');
     const host = document.createElement('div'); host.style.width = '320px'; host.innerHTML = renderLineupPitch(lineup, '#a33'); document.body.prepend(host);
     const pitch = host.querySelector('#mostUsedPitch');
     out.shirts = host.querySelectorAll('.pitch-player').length;
+    out.wide = (function(){ const row = host.querySelector('.pitch-row-wide'); if (!row) return null; const R = pitch.getBoundingClientRect(); const ps = Array.from(row.querySelectorAll('.pitch-player')).map(el => { const b = el.getBoundingClientRect(); return { pos: el.querySelector('.pitch-pos').textContent, c: (b.left + b.width / 2 - R.left) / R.width, top: b.top }; });
+      const g = k => ps.find(x => x.pos === k); return { sameLine: Math.max(...ps.map(x => x.top)) - Math.min(...ps.map(x => x.top)) < 2, lwLeft: g('LW').c, amCentre: g('AM').c, rwRight: g('RW').c }; })();
     // midfield depth: one pitch row per midfield role, attacking first
     out.rowOrder = Array.from(host.querySelectorAll('.pitch-row')).map(row => Array.from(row.querySelectorAll('.pitch-pos')).map(x => x.textContent).join('+'));
     out.overflow = pitch.scrollWidth > pitch.clientWidth + 1;
@@ -95,7 +97,8 @@ const path = require('path');
     check('midfield uses profile positions: Carlos DM, William DM, Gustavo CM, Caio AM', JSON.stringify(m.MID) === '["Carlos:DM","William:DM","Gustavo:CM","Caio:AM"]', m.MID);
     check('attack: Vicente LW, David ST, Diogo RW', JSON.stringify(m.FWD) === '["Vicente:LW","David:ST","Diogo:RW"]', m.FWD);
     check('pitch renders 11 shirts', r.shirts === 11, r.shirts);
-    check('midfield drawn by depth: AM row, then CM row, then DM row, between attack and defence', JSON.stringify(r.rowOrder) === '["LW+ST+RW","AM","CM","DM+DM","CB+CB+RB","GK"]', r.rowOrder);
+    check('midfield drawn by depth: AM row, then CM row, then DM row, between attack and defence', JSON.stringify(r.rowOrder) === '["ST","LW+AM+RW","CM","DM+DM","CB+CB+RB","GK"]', r.rowOrder);
+    check('wingers are on the touchlines, level with the attacking midfielder, who is centred', r.wide && r.wide.sameLine && r.wide.lwLeft < 0.25 && r.wide.rwRight > 0.75 && Math.abs(r.wide.amCentre - 0.5) < 0.06, r.wide);
     check('no horizontal overflow and every row on one line at 320px', !r.overflow && r.rowsOneLine, [r.overflow, r.rowsOneLine]);
     check('title translated (EN / PT)', r.titleEN === 'Most Used Lineup' && r.titlePT === 'Onze Mais Utilizado', [r.titleEN, r.titlePT]);
     check('no roles recorded: falls back to appearances and still fills 11', r.noRoleCount === 11, r.noRoleCount);
