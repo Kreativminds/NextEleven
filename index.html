@@ -5910,37 +5910,19 @@ async function findOpponentByName(name) {
 }
 
 // ── MOST USED LINEUP ─────────────────────────────────────────────────────────
-// One slot per SPECIFIC position (never a coarse row bucket). The previous
-// version grouped all ten positions into just four rows (GK/DEF/MID/FWD)
-// with a simple headcount per row (e.g. "3 forwards") and filled each row
-// by raw appearance strength — so a Striker with more appearances than a
-// Winger would take whichever FWD slot was still open, and the pitch graphic
-// (which always lays its 3 FWD players left-to-right as Winger/Striker/
-// Winger) would then show that Striker standing in a Winger's spot. Giving
-// every slot its own named position, and matching candidates to a slot only
-// when that candidate's OWN best recorded position is that exact slot's
-// position, is what stops a Striker from ever filling a Winger slot.
-// row/order place each slot within renderLineupPitch's four visual rows,
-// left-to-right, independent of the order candidates were matched in.
-const LINEUP_FORMATION = [
-  { position: 'Goalkeeper',           row: 'GK',  order: 0 },
-  { position: 'Left Back',            row: 'DEF', order: 0 },
-  { position: 'Centre Back',          row: 'DEF', order: 1 },
-  { position: 'Centre Back',          row: 'DEF', order: 2 },
-  { position: 'Right Back',           row: 'DEF', order: 3 },
-  { position: 'Defensive Midfielder', row: 'MID', order: 0 },
-  { position: 'Central Midfielder',   row: 'MID', order: 1 },
-  { position: 'Attacking Midfielder', row: 'MID', order: 2 },
-  { position: 'Left Winger',          row: 'FWD', order: 0 },
-  { position: 'Striker',              row: 'FWD', order: 1 },
-  { position: 'Right Winger',         row: 'FWD', order: 2 },
-];
 const POSITION_ABBR = {
   'Goalkeeper':'GK', 'Centre Back':'CB', 'Right Back':'RB', 'Left Back':'LB',
   'Defensive Midfielder':'DM', 'Central Midfielder':'CM', 'Attacking Midfielder':'AM',
   'Right Winger':'RW', 'Left Winger':'LW', 'Striker':'ST',
 };
 const MIN_APPEARANCES_FOR_LINEUP = 3;
+// Pitch row and left-to-right order for every position.
+const LINEUP_POSITION_ROW = {
+  'Goalkeeper': { row: 'GK', order: 0 },
+  'Left Back': { row: 'DEF', order: 0 }, 'Centre Back': { row: 'DEF', order: 1 }, 'Right Back': { row: 'DEF', order: 2 },
+  'Defensive Midfielder': { row: 'MID', order: 0 }, 'Central Midfielder': { row: 'MID', order: 1 }, 'Attacking Midfielder': { row: 'MID', order: 2 },
+  'Left Winger': { row: 'FWD', order: 0 }, 'Striker': { row: 'FWD', order: 1 }, 'Right Winger': { row: 'FWD', order: 2 },
+};
 
 // officialGames MUST already be filtered to League/Cup (splitGamesByCategory's
 // 'official' bucket) by the caller — this function trusts that boundary
@@ -5961,129 +5943,114 @@ const MIN_APPEARANCES_FOR_LINEUP = 3;
 // permanent player is created later — there is no guest→permanent conversion
 // feature in the app to retroactively merge them, so none is invented here.
 function buildMostUsedLineup(players, tempPlayers, officialGames, allGP) {
+  // The XI = the goalkeeper and the ten outfield players with the most
+  // STARTS in official games, each shown in the position he played most
+  // when starting. (Previously: one fixed slot per exact position, filled
+  // by call-ups — which put a substitute with zero starts into the XI and
+  // left the DM/AM slots empty whenever nobody's top position matched,
+  // so the pitch showed fewer than 11 players.)
   const activePlayers = (players || []).filter(p => p.isActive);
   const guests = tempPlayers || [];
   const officialGameIds = new Set((officialGames || []).map(g => g.gameId));
 
-  const posCounts = {};    // identity -> { position: count }
-  const totalApps = {};    // identity -> count
-  const identityInfo = {}; // identity -> { kind: 'player'|'guest', record }
-
-  allGP.forEach(gp => {
+  const stat = {}; // identity -> { apps, starts, startPos:{}, anyPos:{} }
+  (allGP || []).forEach(gp => {
     if (!gp.calledUp || !officialGameIds.has(gp.gameId)) return;
     const identity = (gp.tempPlayerId != null) ? ('T' + gp.tempPlayerId) : ('P' + gp.playerId);
-    totalApps[identity] = (totalApps[identity] || 0) + 1;
+    const st = stat[identity] || (stat[identity] = { apps: 0, starts: 0, startPos: {}, anyPos: {} });
+    st.apps++;
+    const isStart = gp.role === 'Starter';
+    if (isStart) st.starts++;
     if (gp.positionPlayed) {
-      if (!posCounts[identity]) posCounts[identity] = {};
-      posCounts[identity][gp.positionPlayed] = (posCounts[identity][gp.positionPlayed] || 0) + 1;
+      st.anyPos[gp.positionPlayed] = (st.anyPos[gp.positionPlayed] || 0) + 1;
+      if (isStart) st.startPos[gp.positionPlayed] = (st.startPos[gp.positionPlayed] || 0) + 1;
     }
   });
 
+  const identityInfo = {};
   activePlayers.forEach(p => { identityInfo['P' + p.playerId] = { kind: 'player', record: p }; });
   guests.forEach(tp => { identityInfo['T' + tp.tempPlayerId] = { kind: 'guest', record: tp }; });
 
-  // Build a candidate for every identity with at least one real official
-  // appearance — never for a player/guest with zero official games, which
-  // is exactly how friendly-only and tournament-only participation stays
-  // excluded (their only appearances were never in officialGameIds to
-  // begin with, so they never accumulate an entry in totalApps at all).
-  const allCandidates = [];
-  Object.keys(totalApps).forEach(identity => {
-    const info = identityInfo[identity];
-    if (!info) return; // appearance recorded for someone no longer resolvable (e.g. hard-deleted) — skip rather than guess
-    const counts = posCounts[identity] || {};
-    const bestPos = Object.entries(counts).sort((a,b) => b[1] - a[1])[0];
-    // Match-recorded position wins; the profile's primary/preferred
-    // position is only ever a fallback when no position was logged for
-    // any official appearance (section D of the ticket).
-    const fallbackPos = info.kind === 'player' ? info.record.primaryPosition : info.record.preferredPosition;
-    const position = bestPos ? bestPos[0] : (fallbackPos || null);
-    if (!position) return;
-    // bestCount is this identity's own appearance count IN THIS SPECIFIC
-    // POSITION — used below to rank several candidates competing for the
-    // same named slot (section B: "rank them using their official
-    // appearances in that position"). When position came from the profile
-    // fallback rather than any recorded match, there is no positional
-    // count to rank by, so it's 0 — such a candidate only ever wins a slot
-    // when nobody else with real position history is competing for it.
-    const bestCount = bestPos ? bestPos[1] : 0;
-    allCandidates.push({ identity, info, position, bestCount, apps: totalApps[identity] });
-  });
-
-  // The minimum-appearances rule is a season-progress gate, not a fixed
-  // wall: with fewer official games played all season than the threshold
-  // itself, applying it would empty the whole formation in the season's
-  // first couple of matches, so it relaxes to "any real appearance" until
-  // the season has played enough games for the real threshold to mean
-  // anything (section C/D).
+  // Seasons where the Starter/Sub role was never filled in fall back to
+  // appearances, so the card still works on older data.
+  const anyStarts = Object.values(stat).some(st => st.starts > 0);
   const effectiveMin = (officialGames || []).length < MIN_APPEARANCES_FOR_LINEUP ? 1 : MIN_APPEARANCES_FOR_LINEUP;
-  const byStrength = (a, b) => b.bestCount - a.bestCount || b.apps - a.apps;
+  const top = (counts) => Object.entries(counts).sort((x, y) => y[1] - x[1])[0];
 
-  // One real formation slot per specific position (LINEUP_FORMATION) —
-  // never a shared row bucket. Each slot only ever considers candidates
-  // whose OWN best recorded position matches that slot's position, so a
-  // Striker can never be handed a Winger's slot just because the Winger
-  // slot filled up first. A slot's candidate pool prefers players who
-  // clear the appearances threshold (primary) and only reaches into
-  // below-threshold players (secondary) — still restricted to that same
-  // specific position — when nobody above the threshold is available
-  // (the early-season relaxation of section D). A slot with no eligible
-  // candidate at all for its own position is simply left empty: per
-  // section B, "prioritise accurate positions over filling all 11 slots"
-  // rather than reassigning a leftover player into the wrong spot.
-  const used = new Set();
-  const bySlot = { GK: [], DEF: [], MID: [], FWD: [] };
+  const candidates = [];
+  Object.keys(stat).forEach(identity => {
+    const info = identityInfo[identity];
+    if (!info) return; // inactive or no longer resolvable — skip rather than guess
+    const st = stat[identity];
+    const measure = anyStarts ? st.starts : st.apps;
+    if (measure <= 0) return;
+    // Position: most played when starting, else most played at all, else
+    // the profile position. No position anywhere = cannot be placed.
+    const best = top(st.startPos) || top(st.anyPos);
+    const fallbackPos = info.kind === 'player' ? info.record.primaryPosition : info.record.preferredPosition;
+    const position = best ? best[0] : (fallbackPos || null);
+    if (!position || !LINEUP_POSITION_ROW[position]) return;
+    candidates.push({ identity, info, position, measure, apps: st.apps, posCount: best ? best[1] : 0, anyPos: st.anyPos, meetsMin: st.apps >= effectiveMin });
+  });
+  const byUse = (x, y) => (y.meetsMin - x.meetsMin) || (y.measure - x.measure) || (y.apps - x.apps) || (y.posCount - x.posCount);
 
-  LINEUP_FORMATION.forEach(slot => {
-    const pool = allCandidates.filter(c => c.position === slot.position && !used.has(c.identity));
-    const primary = pool.filter(c => c.apps >= effectiveMin).sort(byStrength);
-    const secondary = pool.filter(c => c.apps < effectiveMin).sort(byStrength);
-    const pick = primary[0] || secondary[0];
-    if (!pick) return;
-    used.add(pick.identity);
-    // renderLineupPitch only ever reads .fullName and .shirtNumber off
-    // the player object — a guest's temporaryPlayers record uses .name
-    // instead of .fullName, so it's normalized into the same shape here
-    // rather than teaching the renderer two field conventions.
-    const p = (pick.info.kind === 'player') ? pick.info.record : {
-      playerId: null, tempPlayerId: pick.info.record.tempPlayerId, isGuest: true,
-      fullName: pick.info.record.name, shirtNumber: pick.info.record.shirtNumber,
-    };
-    bySlot[slot.row].push({ player: p, position: pick.position, order: slot.order });
+  const keeper = candidates.filter(c => c.position === 'Goalkeeper').sort(byUse)[0] || null;
+  const outfield = candidates.filter(c => c.position !== 'Goalkeeper').sort(byUse).slice(0, 10);
+
+  // Two players listed on the same flank with nobody on the other one:
+  // move the one who has actually played the other side (most games there).
+  [['Left Back', 'Right Back'], ['Left Winger', 'Right Winger']].forEach(([l, r]) => {
+    [[l, r], [r, l]].forEach(([crowded, empty]) => {
+      const here = outfield.filter(c => c.position === crowded);
+      if (here.length < 2 || outfield.some(c => c.position === empty)) return;
+      const mover = here.filter(c => (c.anyPos[empty] || 0) > 0).sort((x, y) => (y.anyPos[empty] || 0) - (x.anyPos[empty] || 0))[0];
+      if (mover) mover.position = empty;
+    });
   });
 
-  // Each row keeps its canonical left-to-right pitch order (e.g. FWD is
-  // always Left Winger, Striker, Right Winger) regardless of the order
-  // slots happened to be filled above — this is what makes the pitch
-  // graphic itself show every player in their real position rather than
-  // just whichever generic spot in the row was still open.
-  Object.keys(bySlot).forEach(row => bySlot[row].sort((a, b) => a.order - b.order));
-
+  const bySlot = { GK: [], DEF: [], MID: [], FWD: [] };
+  const place = (c) => {
+    // renderLineupPitch reads .fullName and .shirtNumber — a guest record
+    // uses .name, so it is normalized into the same shape here.
+    const p = (c.info.kind === 'player') ? c.info.record : {
+      playerId: null, tempPlayerId: c.info.record.tempPlayerId, isGuest: true,
+      fullName: c.info.record.name, shirtNumber: c.info.record.shirtNumber,
+    };
+    const slot = LINEUP_POSITION_ROW[c.position];
+    bySlot[slot.row].push({ player: p, position: c.position, order: slot.order, measure: c.measure });
+  };
+  if (keeper) place(keeper);
+  outfield.forEach(place);
+  // Left-to-right pitch order within each row; most-used first among equals.
+  Object.keys(bySlot).forEach(row => bySlot[row].sort((x, y) => (x.order - y.order) || (y.measure - x.measure)));
   return bySlot;
 }
 
 function renderLineupPitch(lineup, shirtColor) {
   const totalPlaced = lineup.GK.length + lineup.DEF.length + lineup.MID.length + lineup.FWD.length;
   if (!totalPlaced) {
-    return `<div class="card"><div class="card-title">Most Used Lineup</div><p style="font-size:12px;color:var(--muted)">Not enough finished games with recorded positions yet. Needs at least ${MIN_APPEARANCES_FOR_LINEUP} appearances per player with position played logged (Game Detail → Details tab).</p></div>`;
+    return `<div class="card"><div class="card-title">${I18n.t('ts_lineup_title')}</div><p style="font-size:12px;color:var(--muted)">${I18n.t('ts_lineup_empty')}</p></div>`;
   }
-  // The position abbreviation is shown per player so a recorded position
-  // (Striker, Winger, etc.) is visibly verifiable on the pitch itself,
-  // rather than only implied by which slot a player happens to land in.
-  const shirtRow = (players, extraClass='', color=shirtColor) => `
-    <div class="pitch-row ${extraClass}">
+  // The position abbreviation is shown per player so the recorded position
+  // is visibly verifiable on the pitch itself. Rows of five or more are
+  // tightened so they stay on one line at phone width.
+  const shirtRow = (players, extraClass='', color=shirtColor) => {
+    const tight = players.length >= 5;
+    return `
+    <div class="pitch-row ${extraClass}" style="${tight ? 'gap:2px;flex-wrap:nowrap' : ''}">
       ${players.map(({player:p, position}) => `
-        <div class="pitch-player">
+        <div class="pitch-player" style="${tight ? 'width:56px;min-width:0' : ''}">
           <div class="pitch-shirt" style="background:${color}">${p.shirtNumber||''}</div>
           <div class="pitch-name">${esc(shortName(p.fullName))}</div>
           <div class="pitch-pos">${esc(POSITION_ABBR[position] || '')}</div>
         </div>`).join('')}
     </div>`;
+  };
   return `
     <div class="card">
-      <div class="card-title">Most Used Lineup</div>
-      <p style="font-size:11px;color:var(--muted);margin-bottom:10px">Based on players with the most appearances this season (minimum ${MIN_APPEARANCES_FOR_LINEUP} games).</p>
-      <div class="pitch">
+      <div class="card-title">${I18n.t('ts_lineup_title')}</div>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('ts_lineup_sub')}</p>
+      <div class="pitch" id="mostUsedPitch">
         ${shirtRow(lineup.FWD)}
         ${shirtRow(lineup.MID)}
         ${shirtRow(lineup.DEF)}
@@ -7510,6 +7477,7 @@ const TR = {
     ts_biggest_win:'Biggest Win', ts_biggest_loss:'Biggest Loss',
     ts_vs:'vs',
     ts_top_scorers:'Top Scorers', ts_top_assisters:'Top Assisters',
+    ts_lineup_title:'Most Used Lineup', ts_lineup_sub:'The 11 players with the most starts in official games this season, each in the position he played most.', ts_lineup_empty:'Not enough official games with starters recorded yet.',
     ts_most_used:'Most Starts', ts_player_of_match:'Player of the Match',
     ts_stat_goals:'GOALS', ts_stat_assists:'ASSISTS', ts_stat_apps:'STARTS', ts_stat_mom:'MOM',
     ts_joint_lead:'Joint 1st place with {n} players', ts_no_starts_yet:'No starts recorded yet',
@@ -8994,6 +8962,7 @@ const TR = {
     ts_biggest_win:'Maior Vitória', ts_biggest_loss:'Maior Derrota',
     ts_vs:'vs',
     ts_top_scorers:'Melhores Marcadores', ts_top_assisters:'Melhores Assistentes',
+    ts_lineup_title:'Onze Mais Utilizado', ts_lineup_sub:'Os 11 jogadores com mais titularidades em jogos oficiais esta época, cada um na posição em que mais jogou.', ts_lineup_empty:'Ainda não há jogos oficiais suficientes com titulares registados.',
     ts_most_used:'Mais Titularidades', ts_player_of_match:'Melhor em Campo',
     ts_stat_goals:'GOLOS', ts_stat_assists:'ASSISTÊNCIAS', ts_stat_apps:'TITULARIDADES', ts_stat_mom:'MVP',
     ts_joint_lead:'1.º lugar partilhado por {n} jogadores', ts_no_starts_yet:'Ainda sem titularidades registadas',
