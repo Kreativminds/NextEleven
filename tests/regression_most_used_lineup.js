@@ -26,8 +26,8 @@ const path = require('path');
       ['Diogo', 'Right Winger', ['Right Winger/Starter', '-/Starter', '-/Starter', 'Right Winger/Starter', '-/Starter', '-/Sub', '-/Starter']],
       ['Alexandre', 'Centre Back', ['', '-/Starter', '-/Starter', 'Centre Back/Starter', '-/Starter', '-/Starter', '-/Starter']],
       ['Eduardo', 'Centre Back', ['Centre Back/Starter', 'Centre Back/Starter', '-/Starter', 'Centre Back/Starter', '-/Starter', '', '']],
-      ['Carlos', 'Central Midfielder', ['Centre Back/Starter', 'Centre Back/Sub', 'Centre Back/Starter', 'Centre Back/Starter', '-/Sub', '-/Starter', '']],
-      ['William', 'Central Midfielder', ['-/Starter', 'Central Midfielder/Starter', '-/Sub', '-/Starter', '-/Starter', '', '']],
+      ['Carlos', 'Defensive Midfielder', ['Centre Back/Starter', 'Centre Back/Sub', 'Centre Back/Starter', 'Centre Back/Starter', '-/Sub', '-/Starter', '']],
+      ['William', 'Defensive Midfielder', ['-/Starter', 'Central Midfielder/Starter', '-/Sub', '-/Starter', '-/Starter', '', '']],
       ['Guilherme', 'Right Back', ['Right Back/Starter', '-/Starter', '-/Starter', '-/Starter', '', '', '']],
       ['Gustavo', 'Central Midfielder', ['-/Sub', '-/-', 'Central Midfielder/Sub', '-/Starter', '-/Starter', '-/-', '']],
       ['Rodrigo', 'Goalkeeper', ['Goalkeeper/Sub', '-/-', 'Goalkeeper/Sub', '-/Sub', '', '', '']],
@@ -50,6 +50,10 @@ const path = require('path');
     const lineup = buildMostUsedLineup(players, [], games, gp);
     const out = { main: names(lineup) };
     out.seasonWide = (function(){ const prev = LINEUP_RECENT_GAMES; return prev; })();
+    // Lorenzo (profile Right Back) starting 2 of his 3 recent games at Left Back -> shown at Left Back
+    const gpMaj = gp.map(x => (x.playerId === 5 && x.gameId === 7) ? Object.assign({}, x, { positionPlayed: 'Left Back' }) : (x.playerId === 5 && x.gameId === 6) ? Object.assign({}, x, { positionPlayed: 'Left Back' }) : x);
+    const lm = buildMostUsedLineup(players, [], games, gpMaj);
+    out.majority = (lm.DEF.find(e => e.player.fullName === 'Lorenzo') || {}).position;
     // rendering at phone width: 11 shirts, no horizontal overflow, translated title
     const host = document.createElement('div'); host.style.width = '320px'; host.innerHTML = renderLineupPitch(lineup, '#a33'); document.body.prepend(host);
     const pitch = host.querySelector('#mostUsedPitch');
@@ -84,8 +88,9 @@ const path = require('path');
     check('a player who only started in older games is out (Guilherme: 4 starts, none in the last 3)', !/Guilherme/.test(all), all);
     check('zero-start substitute is out (Octave), even with a friendly start', !/Octave/.test(all), all);
     check('substitutes are out (Lucas, Rodrigo)', !/Lucas|Rodrigo/.test(all), all);
-    check('defence left to right: Lorenzo LB, then three CBs', JSON.stringify(m.DEF) === '["Lorenzo:LB","Alexandre:CB","Eduardo:CB","Carlos:CB"]', m.DEF);
-    check('midfield: Caio, William, Gustavo (positions from season data when recent games have none)', JSON.stringify(m.MID) === '["Caio:CM","William:CM","Gustavo:CM"]', m.MID);
+    check('defence: Lorenzo, Alexandre, Eduardo — Carlos is NOT a defender', JSON.stringify(m.DEF) === '["Alexandre:CB","Eduardo:CB","Lorenzo:RB"]', m.DEF);
+    check('majority rule: a player who started most recent games in another position is shown there', r.majority === 'Left Back', r.majority);
+    check('midfield uses profile positions: Carlos DM, William DM, Gustavo CM, Caio AM', JSON.stringify(m.MID) === '["Carlos:DM","William:DM","Gustavo:CM","Caio:AM"]', m.MID);
     check('attack: Vicente LW, David ST, Diogo RW', JSON.stringify(m.FWD) === '["Vicente:LW","David:ST","Diogo:RW"]', m.FWD);
     check('pitch renders 11 shirts', r.shirts === 11, r.shirts);
     check('no horizontal overflow and every row on one line at 320px', !r.overflow && r.rowsOneLine, [r.overflow, r.rowsOneLine]);

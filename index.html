@@ -5995,12 +5995,17 @@ function buildMostUsedLineup(players, tempPlayers, officialGames, allGP) {
     const st = stat[identity];
     const measure = anyStarts ? st.rStarts : st.rApps;
     if (measure <= 0) return;
-    // Position: most played when starting in the recent games, else when
-    // starting this season, else most played at all, else the profile
-    // position. No position anywhere = cannot be placed.
-    const best = top(st.rStartPos) || top(st.startPos) || top(st.anyPos);
-    const fallbackPos = info.kind === 'player' ? info.record.primaryPosition : info.record.preferredPosition;
-    const position = best ? best[0] : (fallbackPos || null);
+    // Position: the profile position is the player's real role and is the
+    // default. A match-recorded position only replaces it when he started
+    // there in MORE THAN HALF of his recent starts — one game covering for
+    // an absent team-mate (a midfielder filling in at centre back) must not
+    // relabel him. With no profile position, the most-played recorded
+    // position is used. No position anywhere = cannot be placed.
+    const profilePos = info.kind === 'player' ? info.record.primaryPosition : info.record.preferredPosition;
+    const recentTop = top(st.rStartPos);
+    const recentWins = recentTop && st.rStarts > 0 && recentTop[1] * 2 > st.rStarts;
+    const best = recentWins ? recentTop : (top(st.startPos) || top(st.anyPos));
+    const position = recentWins ? recentTop[0] : (profilePos || (best ? best[0] : null));
     if (!position || !LINEUP_POSITION_ROW[position]) return;
     candidates.push({ identity, info, position, measure, seasonStarts: st.starts, apps: st.apps, posCount: best ? best[1] : 0, anyPos: st.anyPos });
   });
@@ -7490,7 +7495,7 @@ const TR = {
     ts_biggest_win:'Biggest Win', ts_biggest_loss:'Biggest Loss',
     ts_vs:'vs',
     ts_top_scorers:'Top Scorers', ts_top_assisters:'Top Assisters',
-    ts_lineup_title:'Most Used Lineup', ts_lineup_sub:'The 11 players with the most starts in the last 3 official games, each in the position he played most.', ts_lineup_empty:'Not enough official games with starters recorded yet.',
+    ts_lineup_title:'Most Used Lineup', ts_lineup_sub:'The 11 players with the most starts in the last 3 official games, each in his usual position.', ts_lineup_empty:'Not enough official games with starters recorded yet.',
     ts_most_used:'Most Starts', ts_player_of_match:'Player of the Match',
     ts_stat_goals:'GOALS', ts_stat_assists:'ASSISTS', ts_stat_apps:'STARTS', ts_stat_mom:'MOM',
     ts_joint_lead:'Joint 1st place with {n} players', ts_no_starts_yet:'No starts recorded yet',
@@ -8975,7 +8980,7 @@ const TR = {
     ts_biggest_win:'Maior Vitória', ts_biggest_loss:'Maior Derrota',
     ts_vs:'vs',
     ts_top_scorers:'Melhores Marcadores', ts_top_assisters:'Melhores Assistentes',
-    ts_lineup_title:'Onze Mais Utilizado', ts_lineup_sub:'Os 11 jogadores com mais titularidades nos últimos 3 jogos oficiais, cada um na posição em que mais jogou.', ts_lineup_empty:'Ainda não há jogos oficiais suficientes com titulares registados.',
+    ts_lineup_title:'Onze Mais Utilizado', ts_lineup_sub:'Os 11 jogadores com mais titularidades nos últimos 3 jogos oficiais, cada um na sua posição habitual.', ts_lineup_empty:'Ainda não há jogos oficiais suficientes com titulares registados.',
     ts_most_used:'Mais Titularidades', ts_player_of_match:'Melhor em Campo',
     ts_stat_goals:'GOLOS', ts_stat_assists:'ASSISTÊNCIAS', ts_stat_apps:'TITULARIDADES', ts_stat_mom:'MVP',
     ts_joint_lead:'1.º lugar partilhado por {n} jogadores', ts_no_starts_yet:'Ainda sem titularidades registadas',
