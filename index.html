@@ -5915,7 +5915,8 @@ const POSITION_ABBR = {
   'Defensive Midfielder':'DM', 'Central Midfielder':'CM', 'Attacking Midfielder':'AM',
   'Right Winger':'RW', 'Left Winger':'LW', 'Striker':'ST',
 };
-const MIN_APPEARANCES_FOR_LINEUP = 3;
+const MIN_APPEARANCES_FOR_LINEUP = 3; // no longer used by the lineup; kept for any external reference
+const LINEUP_RECENT_GAMES = 3;
 // Pitch row and left-to-right order for every position.
 const LINEUP_POSITION_ROW = {
   'Goalkeeper': { row: 'GK', order: 0 },
@@ -5944,8 +5945,8 @@ const LINEUP_POSITION_ROW = {
 // feature in the app to retroactively merge them, so none is invented here.
 function buildMostUsedLineup(players, tempPlayers, officialGames, allGP) {
   // The XI = the goalkeeper and the ten outfield players with the most
-  // STARTS in official games, each shown in the position he played most
-  // when starting. (Previously: one fixed slot per exact position, filled
+  // STARTS in the last LINEUP_RECENT_GAMES official games, each shown in
+  // the position he played most when starting. (Previously: one fixed slot per exact position, filled
   // by call-ups — which put a substitute with zero starts into the XI and
   // left the DM/AM slots empty whenever nobody's top position matched,
   // so the pitch showed fewer than 11 players.)
@@ -5953,17 +5954,28 @@ function buildMostUsedLineup(players, tempPlayers, officialGames, allGP) {
   const guests = tempPlayers || [];
   const officialGameIds = new Set((officialGames || []).map(g => g.gameId));
 
-  const stat = {}; // identity -> { apps, starts, startPos:{}, anyPos:{} }
+  // Who is in the XI is decided on the most recent official games only
+  // (LINEUP_RECENT_GAMES), so the card follows the current team rather than
+  // the whole season. Positions still draw on the whole season when the
+  // recent games have none recorded.
+  const recentIds = new Set([...(officialGames || [])]
+    .sort((x, y) => gameSortKey(y) - gameSortKey(x))
+    .slice(0, LINEUP_RECENT_GAMES).map(g => g.gameId));
+
+  const stat = {}; // identity -> season { apps, starts, startPos, anyPos } + recent { rApps, rStarts, rStartPos }
   (allGP || []).forEach(gp => {
     if (!gp.calledUp || !officialGameIds.has(gp.gameId)) return;
     const identity = (gp.tempPlayerId != null) ? ('T' + gp.tempPlayerId) : ('P' + gp.playerId);
-    const st = stat[identity] || (stat[identity] = { apps: 0, starts: 0, startPos: {}, anyPos: {} });
+    const st = stat[identity] || (stat[identity] = { apps: 0, starts: 0, startPos: {}, anyPos: {}, rApps: 0, rStarts: 0, rStartPos: {} });
+    const isRecent = recentIds.has(gp.gameId);
     st.apps++;
+    if (isRecent) st.rApps++;
     const isStart = gp.role === 'Starter';
-    if (isStart) st.starts++;
+    if (isStart) { st.starts++; if (isRecent) st.rStarts++; }
     if (gp.positionPlayed) {
       st.anyPos[gp.positionPlayed] = (st.anyPos[gp.positionPlayed] || 0) + 1;
       if (isStart) st.startPos[gp.positionPlayed] = (st.startPos[gp.positionPlayed] || 0) + 1;
+      if (isStart && isRecent) st.rStartPos[gp.positionPlayed] = (st.rStartPos[gp.positionPlayed] || 0) + 1;
     }
   });
 
@@ -5973,8 +5985,7 @@ function buildMostUsedLineup(players, tempPlayers, officialGames, allGP) {
 
   // Seasons where the Starter/Sub role was never filled in fall back to
   // appearances, so the card still works on older data.
-  const anyStarts = Object.values(stat).some(st => st.starts > 0);
-  const effectiveMin = (officialGames || []).length < MIN_APPEARANCES_FOR_LINEUP ? 1 : MIN_APPEARANCES_FOR_LINEUP;
+  const anyStarts = Object.values(stat).some(st => st.rStarts > 0);
   const top = (counts) => Object.entries(counts).sort((x, y) => y[1] - x[1])[0];
 
   const candidates = [];
@@ -5982,17 +5993,19 @@ function buildMostUsedLineup(players, tempPlayers, officialGames, allGP) {
     const info = identityInfo[identity];
     if (!info) return; // inactive or no longer resolvable — skip rather than guess
     const st = stat[identity];
-    const measure = anyStarts ? st.starts : st.apps;
+    const measure = anyStarts ? st.rStarts : st.rApps;
     if (measure <= 0) return;
-    // Position: most played when starting, else most played at all, else
-    // the profile position. No position anywhere = cannot be placed.
-    const best = top(st.startPos) || top(st.anyPos);
+    // Position: most played when starting in the recent games, else when
+    // starting this season, else most played at all, else the profile
+    // position. No position anywhere = cannot be placed.
+    const best = top(st.rStartPos) || top(st.startPos) || top(st.anyPos);
     const fallbackPos = info.kind === 'player' ? info.record.primaryPosition : info.record.preferredPosition;
     const position = best ? best[0] : (fallbackPos || null);
     if (!position || !LINEUP_POSITION_ROW[position]) return;
-    candidates.push({ identity, info, position, measure, apps: st.apps, posCount: best ? best[1] : 0, anyPos: st.anyPos, meetsMin: st.apps >= effectiveMin });
+    candidates.push({ identity, info, position, measure, seasonStarts: st.starts, apps: st.apps, posCount: best ? best[1] : 0, anyPos: st.anyPos });
   });
-  const byUse = (x, y) => (y.meetsMin - x.meetsMin) || (y.measure - x.measure) || (y.apps - x.apps) || (y.posCount - x.posCount);
+  // Recent starts first; season starts, then season appearances, break ties.
+  const byUse = (x, y) => (y.measure - x.measure) || (y.seasonStarts - x.seasonStarts) || (y.apps - x.apps) || (y.posCount - x.posCount);
 
   const keeper = candidates.filter(c => c.position === 'Goalkeeper').sort(byUse)[0] || null;
   const outfield = candidates.filter(c => c.position !== 'Goalkeeper').sort(byUse).slice(0, 10);
@@ -6037,9 +6050,9 @@ function renderLineupPitch(lineup, shirtColor) {
   const shirtRow = (players, extraClass='', color=shirtColor) => {
     const tight = players.length >= 5;
     return `
-    <div class="pitch-row ${extraClass}" style="${tight ? 'gap:2px;flex-wrap:nowrap' : ''}">
+    <div class="pitch-row ${extraClass}" style="flex-wrap:nowrap;${tight ? 'gap:2px' : ''}">
       ${players.map(({player:p, position}) => `
-        <div class="pitch-player" style="${tight ? 'width:56px;min-width:0' : ''}">
+        <div class="pitch-player" style="flex:0 1 ${tight ? 56 : 64}px;min-width:0">
           <div class="pitch-shirt" style="background:${color}">${p.shirtNumber||''}</div>
           <div class="pitch-name">${esc(shortName(p.fullName))}</div>
           <div class="pitch-pos">${esc(POSITION_ABBR[position] || '')}</div>
@@ -7477,7 +7490,7 @@ const TR = {
     ts_biggest_win:'Biggest Win', ts_biggest_loss:'Biggest Loss',
     ts_vs:'vs',
     ts_top_scorers:'Top Scorers', ts_top_assisters:'Top Assisters',
-    ts_lineup_title:'Most Used Lineup', ts_lineup_sub:'The 11 players with the most starts in official games this season, each in the position he played most.', ts_lineup_empty:'Not enough official games with starters recorded yet.',
+    ts_lineup_title:'Most Used Lineup', ts_lineup_sub:'The 11 players with the most starts in the last 3 official games, each in the position he played most.', ts_lineup_empty:'Not enough official games with starters recorded yet.',
     ts_most_used:'Most Starts', ts_player_of_match:'Player of the Match',
     ts_stat_goals:'GOALS', ts_stat_assists:'ASSISTS', ts_stat_apps:'STARTS', ts_stat_mom:'MOM',
     ts_joint_lead:'Joint 1st place with {n} players', ts_no_starts_yet:'No starts recorded yet',
@@ -8962,7 +8975,7 @@ const TR = {
     ts_biggest_win:'Maior Vitória', ts_biggest_loss:'Maior Derrota',
     ts_vs:'vs',
     ts_top_scorers:'Melhores Marcadores', ts_top_assisters:'Melhores Assistentes',
-    ts_lineup_title:'Onze Mais Utilizado', ts_lineup_sub:'Os 11 jogadores com mais titularidades em jogos oficiais esta época, cada um na posição em que mais jogou.', ts_lineup_empty:'Ainda não há jogos oficiais suficientes com titulares registados.',
+    ts_lineup_title:'Onze Mais Utilizado', ts_lineup_sub:'Os 11 jogadores com mais titularidades nos últimos 3 jogos oficiais, cada um na posição em que mais jogou.', ts_lineup_empty:'Ainda não há jogos oficiais suficientes com titulares registados.',
     ts_most_used:'Mais Titularidades', ts_player_of_match:'Melhor em Campo',
     ts_stat_goals:'GOLOS', ts_stat_assists:'ASSISTÊNCIAS', ts_stat_apps:'TITULARIDADES', ts_stat_mom:'MVP',
     ts_joint_lead:'1.º lugar partilhado por {n} jogadores', ts_no_starts_yet:'Ainda sem titularidades registadas',
