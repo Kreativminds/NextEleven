@@ -58,6 +58,8 @@ const path = require('path');
     const host = document.createElement('div'); host.style.width = '320px'; host.innerHTML = renderLineupPitch(lineup, '#a33'); document.body.prepend(host);
     const pitch = host.querySelector('#mostUsedPitch');
     out.shirts = host.querySelectorAll('.pitch-player').length;
+    // midfield depth: one pitch row per midfield role, attacking first
+    out.rowOrder = Array.from(host.querySelectorAll('.pitch-row')).map(row => Array.from(row.querySelectorAll('.pitch-pos')).map(x => x.textContent).join('+'));
     out.overflow = pitch.scrollWidth > pitch.clientWidth + 1;
     out.rowsOneLine = Array.from(host.querySelectorAll('.pitch-row')).every(row => { const tops = Array.from(row.children).map(c => c.getBoundingClientRect().top); return Math.max(...tops) - Math.min(...tops) < 2; });
     out.titleEN = host.querySelector('.card-title').textContent;
@@ -93,6 +95,7 @@ const path = require('path');
     check('midfield uses profile positions: Carlos DM, William DM, Gustavo CM, Caio AM', JSON.stringify(m.MID) === '["Carlos:DM","William:DM","Gustavo:CM","Caio:AM"]', m.MID);
     check('attack: Vicente LW, David ST, Diogo RW', JSON.stringify(m.FWD) === '["Vicente:LW","David:ST","Diogo:RW"]', m.FWD);
     check('pitch renders 11 shirts', r.shirts === 11, r.shirts);
+    check('midfield drawn by depth: AM row, then CM row, then DM row, between attack and defence', JSON.stringify(r.rowOrder) === '["LW+ST+RW","AM","CM","DM+DM","CB+CB+RB","GK"]', r.rowOrder);
     check('no horizontal overflow and every row on one line at 320px', !r.overflow && r.rowsOneLine, [r.overflow, r.rowsOneLine]);
     check('title translated (EN / PT)', r.titleEN === 'Most Used Lineup' && r.titlePT === 'Onze Mais Utilizado', [r.titleEN, r.titlePT]);
     check('no roles recorded: falls back to appearances and still fills 11', r.noRoleCount === 11, r.noRoleCount);

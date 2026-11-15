@@ -6064,13 +6064,19 @@ function renderLineupPitch(lineup, shirtColor) {
         </div>`).join('')}
     </div>`;
   };
+  // Midfield is drawn by depth, not side by side: attacking midfielders in
+  // front, central in the middle, defensive behind — each centred on its
+  // own line. Empty lines are skipped.
+  const midRows = ['Attacking Midfielder', 'Central Midfielder', 'Defensive Midfielder']
+    .map(pos => lineup.MID.filter(e => e.position === pos))
+    .filter(r => r.length);
   return `
     <div class="card">
       <div class="card-title">${I18n.t('ts_lineup_title')}</div>
       <p style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('ts_lineup_sub')}</p>
       <div class="pitch" id="mostUsedPitch">
         ${shirtRow(lineup.FWD)}
-        ${shirtRow(lineup.MID)}
+        ${midRows.map(r => shirtRow(r)).join('')}
         ${shirtRow(lineup.DEF)}
         ${shirtRow(lineup.GK, 'pitch-row-gk', '#3a3a3a')}
       </div>
