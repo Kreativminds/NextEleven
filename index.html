@@ -6052,30 +6052,46 @@ function renderLineupPitch(lineup, shirtColor) {
   // The position abbreviation is shown per player so the recorded position
   // is visibly verifiable on the pitch itself. Rows of five or more are
   // tightened so they stay on one line at phone width.
-  const shirtRow = (players, extraClass='', color=shirtColor) => {
-    const tight = players.length >= 5;
-    return `
-    <div class="pitch-row ${extraClass}" style="flex-wrap:nowrap;${tight ? 'gap:2px' : ''}">
-      ${players.map(({player:p, position}) => `
+  const shirt = ({player:p, position}, tight, color) => `
         <div class="pitch-player" style="flex:0 1 ${tight ? 56 : 64}px;min-width:0">
           <div class="pitch-shirt" style="background:${color}">${p.shirtNumber||''}</div>
           <div class="pitch-name">${esc(shortName(p.fullName))}</div>
           <div class="pitch-pos">${esc(POSITION_ABBR[position] || '')}</div>
-        </div>`).join('')}
+        </div>`;
+  const shirtRow = (players, extraClass='', color=shirtColor) => {
+    if (!players.length) return '';
+    const tight = players.length >= 5;
+    return `
+    <div class="pitch-row ${extraClass}" style="flex-wrap:nowrap;${tight ? 'gap:2px' : ''}">
+      ${players.map(e => shirt(e, tight, color)).join('')}
+    </div>`;
+  };
+  // Wingers sit a line behind the striker, level with the attacking
+  // midfielders but out on the touchlines: left wingers at the left edge,
+  // attacking midfielders centred, right wingers at the right edge.
+  const wideRow = (left, centre, right) => {
+    if (!left.length && !centre.length && !right.length) return '';
+    const tight = left.length + centre.length + right.length >= 5;
+    const group = (list, justify) => `<div style="flex:1 1 0;min-width:0;display:flex;justify-content:${justify};gap:${tight ? 2 : 10}px">${list.map(e => shirt(e, tight, shirtColor)).join('')}</div>`;
+    return `
+    <div class="pitch-row pitch-row-wide" style="flex-wrap:nowrap;gap:2px;justify-content:space-between">
+      ${group(left, 'flex-start')}${group(centre, 'center')}${group(right, 'flex-end')}
     </div>`;
   };
   // Midfield is drawn by depth, not side by side: attacking midfielders in
   // front, central in the middle, defensive behind — each centred on its
   // own line. Empty lines are skipped.
-  const midRows = ['Attacking Midfielder', 'Central Midfielder', 'Defensive Midfielder']
+  const midRows = ['Central Midfielder', 'Defensive Midfielder']
     .map(pos => lineup.MID.filter(e => e.position === pos))
     .filter(r => r.length);
+  const at = (list, pos) => list.filter(e => e.position === pos);
   return `
     <div class="card">
       <div class="card-title">${I18n.t('ts_lineup_title')}</div>
       <p style="font-size:11px;color:var(--muted);margin-bottom:10px">${I18n.t('ts_lineup_sub')}</p>
       <div class="pitch" id="mostUsedPitch">
-        ${shirtRow(lineup.FWD)}
+        ${shirtRow(at(lineup.FWD, 'Striker'))}
+        ${wideRow(at(lineup.FWD, 'Left Winger'), at(lineup.MID, 'Attacking Midfielder'), at(lineup.FWD, 'Right Winger'))}
         ${midRows.map(r => shirtRow(r)).join('')}
         ${shirtRow(lineup.DEF)}
         ${shirtRow(lineup.GK, 'pitch-row-gk', '#3a3a3a')}
