@@ -6035,12 +6035,16 @@ function buildMostUsedLineup(players, tempPlayers, officialGames, allGP) {
       fullName: c.info.record.name, shirtNumber: c.info.record.shirtNumber,
     };
     const slot = LINEUP_POSITION_ROW[c.position];
-    bySlot[slot.row].push({ player: p, position: c.position, order: slot.order, measure: c.measure });
+    // Side within a shared position: left-footed players go to the left,
+    // right-footed to the right, unknown/both in between.
+    const foot = String((c.info.record && c.info.record.dominantFoot) || '').toLowerCase();
+    const footRank = foot === 'left' ? 0 : foot === 'right' ? 2 : 1;
+    bySlot[slot.row].push({ player: p, position: c.position, order: slot.order, footRank, measure: c.measure });
   };
   if (keeper) place(keeper);
   outfield.forEach(place);
   // Left-to-right pitch order within each row; most-used first among equals.
-  Object.keys(bySlot).forEach(row => bySlot[row].sort((x, y) => (x.order - y.order) || (y.measure - x.measure)));
+  Object.keys(bySlot).forEach(row => bySlot[row].sort((x, y) => (x.order - y.order) || (x.footRank - y.footRank) || (y.measure - x.measure)));
   return bySlot;
 }
 
