@@ -305,6 +305,14 @@
      the border moves onto the strip instead, so the visual rhythm (one
      border per result item) stays the same whichever one is actually last. */
   .row:has(+ .card-events-line){border-bottom:none}
+  details.res > summary{list-style:none;cursor:pointer}
+  details.res > summary::-webkit-details-marker{display:none}
+  details.res:has(+ .card-events-line) > summary.row, details.res[open] > summary.row{border-bottom:none}
+  .res-chev{color:var(--muted);font-size:16px;line-height:1;transition:transform .15s ease;flex-shrink:0}
+  details.res[open] .res-chev{transform:rotate(90deg)}
+  .res-detail{font-size:12px;line-height:1.6;padding:0 0 9px 0;border-bottom:1px solid var(--border)}
+  details.res:has(+ .card-events-line) .res-detail{border-bottom:none;padding-bottom:3px}
+  .res-detail .who{font-weight:600}
   .card-events-line{font-size:11px;color:var(--muted);padding:0 0 9px 0;border-bottom:1px solid var(--border);line-height:1.5}
   .card-events-line:last-child{border-bottom:none}
   .row-name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
@@ -1178,14 +1186,56 @@ function renderResultRow(g, players) {
   // League results (spec §4).
   const compLabel = (g.tournamentId || (g.competitionType && g.competitionType !== 'League'))
     ? (g.competitionName || compTypeTag(g.competitionType)) : '';
-  return `<div class="row">
+  const rowInner = `
     <span class="row-name">${esc(g.opponent)}</span>
     ${roundTxt?`<span class="row-meta">${esc(roundTxt)}</span>`:''}
     ${compLabel ? `<span class="comp-tag">${esc(compLabel)}</span>` : ''}
     <span class="score">${s.home}-${s.away}</span>
     ${hasPens?`<span class="row-meta">${g.ourPenaltyGoals}-${g.penaltiesForThem}P</span>`:''}
-    <span class="badge badge-${res}">${res}</span>
-  </div>${renderCardEventsStrip(g, players)}`;
+    <span class="badge badge-${res}">${res}</span>`;
+  // Tap to see who scored: the row stays compact and the scorers open
+  // inline underneath (no new page). Only offered when there is something
+  // to show; a result with no recorded scorers stays a plain row.
+  const scorers = renderResultScorers(g, players);
+  if (!scorers) return `<div class="row">${rowInner}</div>${renderCardEventsStrip(g, players)}`;
+  const gid = esc(String(g.gameId));
+  return `<details class="res" data-gid="${gid}" ${_openResults.has(String(g.gameId)) ? 'open' : ''} ontoggle="resToggle(this)">
+    <summary class="row">${rowInner}<span class="res-chev" aria-hidden="true">›</span></summary>
+    <div class="res-detail">${scorers}</div>
+  </details>${renderCardEventsStrip(g, players)}`;
+}
+// Which results are expanded — kept across the page's periodic re-render,
+// so a row the reader opened does not snap shut on the next refresh.
+const _openResults = new Set();
+function resToggle(el) {
+  const gid = el.getAttribute('data-gid');
+  if (el.open) _openResults.add(gid); else _openResults.delete(gid);
+}
+// Our scorers for one finished game, grouped per player, on one wrapped
+// line: "⚽ Caio 32', 70' · David 14'". A minute is shown only when it can
+// be trusted: the real kick-off was recorded, and the goal is either in the
+// first half or the second-half start was recorded too. Otherwise the
+// goal shows without a minute (a count when a player scored several).
+// Opponent goals are not listed — the score already carries them.
+function renderResultScorers(g, players) {
+  const gps = (g.goalScorers || []).map(r => ({ ...r, gameId: g.gameId }));
+  const summary = buildMatchGoalSummary(g, gps, players || [], g.guestPlayers || [], g.goalEvents || []);
+  if (!summary.ourGoals.length) return '';
+  const half = Math.round((parseInt(g.matchDurationMins) || 90) / 2);
+  const trusted = (m) => m != null && !!g.actualKickoffAt && (!!g.secondHalfStartedAt || m <= half);
+  const order = [];
+  const by = {};
+  summary.ourGoals.forEach(x => {
+    const name = x.isOwnGoal ? tr('own_goal') : (x.name ? shortName(x.name) : 'Unknown');
+    if (!by[name]) { by[name] = []; order.push(name); }
+    by[name].push(trusted(x.minute) ? x.minute : null);
+  });
+  const part = (name) => {
+    const mins = by[name];
+    const txt = mins.every(m => m != null) ? ' ' + mins.map(m => `${m}&#39;`).join(', ') : (mins.length > 1 ? ` ×${mins.length}` : '');
+    return `<span class="res-scorer"><span class="who">${esc(name)}</span>${txt}</span>`;
+  };
+  return `<span aria-hidden="true">⚽</span> ${order.map(part).join(' &middot; ')}`;
 }
 // Per-game competition tag — singular, since this labels one fixture at
 // a time (distinct from tr('friendlies')/tr('tournaments'), which are
