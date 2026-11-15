@@ -47,8 +47,11 @@ const path = require('path');
     // a friendly (not in the official list) must not count
     gp.push({ gameId: 99, playerId: 14, calledUp: true, positionPlayed: 'Left Back', role: 'Starter' });
     const names = l => ({ GK: l.GK.map(e => e.player.fullName), DEF: l.DEF.map(e => e.player.fullName + ':' + POSITION_ABBR[e.position]), MID: l.MID.map(e => e.player.fullName + ':' + POSITION_ABBR[e.position]), FWD: l.FWD.map(e => e.player.fullName + ':' + POSITION_ABBR[e.position]) });
+    // production profiles: Eduardo is left-footed, Alexandre and Carlos right-footed
+    players.forEach(pl => { pl.dominantFoot = pl.fullName === 'Eduardo' ? 'Left' : 'Right'; });
     const lineup = buildMostUsedLineup(players, [], games, gp);
-    const out = { main: names(lineup) };
+    const noFoot = (function(){ const l = buildMostUsedLineup(players.map(pl => Object.assign({}, pl, { dominantFoot: null })), [], games, gp); return l.DEF.map(e => e.player.fullName); })();
+    const out = { main: names(lineup), noFoot };
     out.seasonWide = (function(){ const prev = LINEUP_RECENT_GAMES; return prev; })();
     // Lorenzo (profile Right Back) starting 2 of his 3 recent games at Left Back -> shown at Left Back
     const gpMaj = gp.map(x => (x.playerId === 5 && x.gameId === 7) ? Object.assign({}, x, { positionPlayed: 'Left Back' }) : (x.playerId === 5 && x.gameId === 6) ? Object.assign({}, x, { positionPlayed: 'Left Back' }) : x);
@@ -99,7 +102,9 @@ const path = require('path');
     check('a player who only started in older games is out (Guilherme: 4 starts, none in the last 3)', !/Guilherme/.test(all), all);
     check('zero-start substitute is out (Octave), even with a friendly start', !/Octave/.test(all), all);
     check('substitutes are out (Lucas, Rodrigo)', !/Lucas|Rodrigo/.test(all), all);
-    check('defence: Lorenzo, Alexandre, Eduardo — Carlos is NOT a defender', JSON.stringify(m.DEF) === '["Alexandre:CB","Eduardo:CB","Lorenzo:RB"]', m.DEF);
+    check('defence: Lorenzo, Alexandre, Eduardo — Carlos is NOT a defender', JSON.stringify(m.DEF) === '["Eduardo:CB","Alexandre:CB","Lorenzo:RB"]', m.DEF);
+    check('left-footed centre back is on the left (Eduardo before Alexandre)', m.DEF.indexOf('Eduardo:CB') < m.DEF.indexOf('Alexandre:CB'), m.DEF);
+    check('no foot recorded: order falls back to most used (Alexandre before Eduardo)', r.noFoot.indexOf('Alexandre') < r.noFoot.indexOf('Eduardo'), r.noFoot);
     check('majority rule: a player who started most recent games in another position is shown there', r.majority === 'Left Back', r.majority);
     check('midfield uses profile positions: Carlos DM, William DM, Gustavo CM, Caio AM', JSON.stringify(m.MID) === '["Carlos:DM","William:DM","Gustavo:CM","Caio:AM"]', m.MID);
     check('attack: Vicente LW, David ST, Diogo RW', JSON.stringify(m.FWD) === '["Vicente:LW","David:ST","Diogo:RW"]', m.FWD);
