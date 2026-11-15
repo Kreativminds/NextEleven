@@ -33,6 +33,9 @@ const path = require('path');
         cardEvents: [ { team: 'us', scorerType: 'player', scorerId: '121', cardType: 'yellow', minute: '12', stoppageMinute: null },
                       { team: 'opponent', scorerType: null, scorerId: null, opponentShirtNumber: '7', cardType: 'direct_red', minute: '30', stoppageMinute: null },
                       { team: 'us', scorerType: 'staff', scorerId: null, cardType: 'direct_red', minute: '35', stoppageMinute: null } ] }, { clubName: 'Us' }, [{ playerId: '121', fullName: 'Test Player' }], []),
+      summaryHtml: renderMatchSummaryCard({ opponent: 'X', homeAway: 'Away', ourScore: '3', opponentScore: '1', goalEvents: [], goalScorers: [], guestPlayers: [], date: '2026-11-14', gameTime: '17:00',
+        cardEvents: [ { team: 'us', scorerType: 'player', scorerId: '121', cardType: 'yellow', minute: '33', stoppageMinute: null } ] }, { clubName: 'Us' }, [{ playerId: '121', fullName: 'Test Player' }], [], []),
+      summaryNoCards: renderMatchSummaryCard({ opponent: 'X', homeAway: 'Away', ourScore: '3', opponentScore: '1', goalEvents: [], goalScorers: [], guestPlayers: [], date: '2026-11-14', gameTime: '17:00', cardEvents: [] }, { clubName: 'Us' }, [], [], []),
       cardHtml: (function(){ const real = Date; return renderLiveCard(Object.assign({ opponent: 'X', homeAway: 'Away', ourScore: '2', opponentScore: '1', goalEvents: [], goalScorers: [], guestPlayers: [] }, g, { actualKickoffAt: new Date(Date.now() - 10 * 60000).toISOString() }), { clubName: 'Us' }, [], []); })(),
     };
   }).catch(e => ({ error: String(e && e.stack || e) }));
@@ -61,6 +64,8 @@ const path = require('path');
     check('live card lists an opponent red (Opponent #7 30\')', /🟥<\/span> Opponent #7 30&#39;/.test(r.cardsHtml), r.cardsHtml);
     check('live card lists a coach red as Coach/Staff', /🟥<\/span> Coach\/Staff 35&#39;/.test(r.cardsHtml), r.cardsHtml);
     check('live card has no cards block when no cards are recorded', !/id="liveCards"/.test(r.cardHtml));
+    check('final-result card of the last game lists its cards', /id="summaryCards"[\s\S]*🟨<\/span> [^<]*Player[^<]* 33&#39;/.test(r.summaryHtml), r.summaryHtml);
+    check('final-result card has no cards block when there are none', !/id="summaryCards"/.test(r.summaryNoCards));
   }
   console.log('\n' + (failures.length ? failures.length + ' FAILURE(S)' : 'All checks passed.'));
   await browser.close();

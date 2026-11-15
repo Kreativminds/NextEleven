@@ -827,6 +827,7 @@ function renderMatchSummaryCard(g, season, players, gamePlayers, tempPlayers) {
       </div>
       <div class="live-meta">${roundLabel(g) ? esc(roundLabel(g)) + ' · ' : ''}${g.homeAway === 'Home' ? tr('home') : tr('away')}${g.venue ? ' · ' + esc(g.venue) : ''} · ${tr('kickoff')} ${esc(g.actualKickoffAt ? fmtTimeHM(g.actualKickoffAt) : (g.gameTime||''))}</div>
       ${cols.hasAny ? `<div class="scorer-cols">${cols.html}</div>` : ''}
+      ${(() => { const strip = renderCardEventsStrip(g, players || []); return strip ? `<div class="live-cards" id="summaryCards">${strip}</div>` : ''; })()}
     </div>`;
 }
 
