@@ -8,6 +8,50 @@ Newest entry on top.
 
 ---
 
+## 2026-11-20 — Scheduled nightly run
+
+- lastInspectedCommit: 432ee28
+- Trigger: scheduled nightly run. Tonight's scheduled prompt once again
+  stated BUGS.md had exactly one Open entry (`integ_fix_review`, i18n,
+  P3) to process — this is now the 37th consecutive night (2026-10-15
+  through tonight) that stored prompt has been wrong. That string was
+  resolved back on 2026-10-12 (PR #1) and sits in BUGS.md's Resolved
+  section. BUGS.md's real Open section tonight still holds the same
+  single entry as every night since 2026-11-03: the away-match weather
+  forecast RPC gap, unchanged, still awaiting Victor's call. Went with
+  real repo state, per every run since 10-15.
+- Scope: diff since fd44887 (last run's lastInspectedCommit) was 1
+  commit (0cef696, last night's final report) plus tonight's
+  lock-acquire (432ee28) — both this agent's own bookkeeping. No changes
+  to `index.html`, `css/nexteleven.css`, `team.html` or
+  `public-stats-core.js` since last night.
+- Checks run:
+  - `check-syntax.js` → OK (all 3 script blocks parse).
+  - `check-i18n-parity.js` → OK (2039/2039 keys, no gaps).
+  - `check-html-comments.js` → OK (both files balanced, no swallowed tags).
+- Zero-AI early exit did not fire: BUGS.md still has one `Status: Open`
+  entry (the away-weather RPC gap, unchanged), so triage ran per spec
+  (diff summary + check outputs + the one Open entry's text only).
+- Triage (haiku): "none" — no new candidates. Confirmed the away-weather
+  RPC gap is the known, already-root-caused item (still needs Victor's
+  call, still can't verify a new RPC migration without a live Supabase
+  connection) — not re-flagged as new.
+- Fixed: none tonight (0/2 cap used) — nothing new found to fix.
+- Needs your approval: unchanged — away-match weather forecast RPC gap
+  (see 2026-11-03 entry) still awaiting your call; no new information
+  tonight. Separately (not a code item): the stale scheduled-task prompt
+  (now wrong for 37 consecutive nights) and the 7-day trial, started
+  2026-10-12, now 39 days in — 32 days past the intended 7-day review
+  point. Escalated again tonight via notification — it's been 2 nights
+  since the last one (2026-11-18) and nothing has changed; per that
+  run's own note, a future run should keep escalating rather than let
+  the log become the only trace of it.
+- Pending: none else.
+- Known Unresolved housekeeping: none — nothing in tonight's diff
+  touches any carried-forward item; list unchanged.
+
+---
+
 ## 2026-11-19 — Scheduled nightly run
 
 - lastInspectedCommit: fd44887
